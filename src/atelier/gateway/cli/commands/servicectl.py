@@ -54,6 +54,14 @@ from atelier.infra.runtime.stack_lifecycle import (
 
 logger = logging.getLogger(__name__)
 
+# The tick subprocess's own work can legitimately run long: its budgets
+# (import <=300s + recall index <=300s + occasional workspace prune <=600s +
+# up to 20 queued jobs at <=600s each) can exceed a short fixed ceiling under
+# normal load. 30 minutes is generous enough that only a genuinely stuck tick
+# trips it; a timeout is now recoverable (logged, loop continues) rather than
+# fatal, so this is a "give up and retry" ceiling, not a completion guarantee.
+_TICK_SUBPROCESS_TIMEOUT_SECONDS = 1800
+
 
 @click.group("service")
 def service_group() -> None:
@@ -436,7 +444,15 @@ def servicectl_run(
                     "--auto-update-interval-seconds",
                     str(auto_update_interval_seconds),
                 ]
-            result = subprocess.run(cmd, timeout=600)
+            try:
+                result = subprocess.run(cmd, timeout=_TICK_SUBPROCESS_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "servicectl tick subprocess exceeded %ds; continuing to next interval",
+                    _TICK_SUBPROCESS_TIMEOUT_SECONDS,
+                )
+                time.sleep(max(1, interval_seconds))
+                continue
             if result.returncode == 3:
                 # Tick subprocess applied an auto-update (exit code 3 = restart needed).
                 # Exit here so systemd / the parent restarts this process with new code.

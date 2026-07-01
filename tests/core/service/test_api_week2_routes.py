@@ -609,6 +609,150 @@ class TestListSessions:
         assert [item["session_id"] for item in data[:2]] == ["sess-new", "sess-old"]
         assert data[0]["updated_at"] > data[1]["updated_at"]
 
+    def test_in_progress_session_sorts_above_older_completed_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for finding 5: sort must use effective last-activity
+        (ended_at or updated_at or started_at), not a 3-tuple that maps a
+        running session's missing ended_at to 0.0 and buries it below any
+        completed session regardless of how recently it was active.
+        """
+        now = datetime.now(UTC)
+
+        def write_run(session_id: str, *, status: str, business_at: str, mtime: float) -> None:
+            runs_dir = tmp_path / "sessions" / session_id
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            snap = _run_snapshot(session_id)
+            snap["status"] = status
+            snap["created_at"] = business_at
+            snap["updated_at"] = business_at
+            path = runs_dir / "run.json"
+            path.write_text(json.dumps(snap))
+            os.utime(path, (mtime, mtime))
+
+        # Completed a full day ago (ended_at set, far in the past).
+        write_run(
+            "sess-completed",
+            status="done",
+            business_at=(now - timedelta(days=1)).isoformat(),
+            mtime=(now - timedelta(days=1)).timestamp(),
+        )
+        # Still running; last activity was seconds ago (ended_at is None).
+        write_run(
+            "sess-running",
+            status="running",
+            business_at=(now - timedelta(minutes=5)).isoformat(),
+            mtime=(now - timedelta(seconds=5)).timestamp(),
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        data = listing.json()
+        session_ids = [item["session_id"] for item in data]
+        assert "sess-running" in session_ids
+        assert "sess-completed" in session_ids
+        assert session_ids.index("sess-running") < session_ids.index("sess-completed")
+
+        running_item = next(item for item in data if item["session_id"] == "sess-running")
+        assert running_item["ended_at"] is None
+
+    def test_naive_turn_timestamp_does_not_500(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression for finding 4: an offset-less ISO turn timestamp used to
+        parse as a naive datetime and raise (TypeError: can't compare
+        offset-naive and offset-aware datetimes) when compared against the
+        aware trace.created_at. _parse_session_datetime now normalizes naive
+        results to UTC, so both the list and detail endpoints stay 200.
+        """
+        session_id = "sess-naive-ts"
+        artifact_id = "artifact-naive-ts"
+        content, _ = _build_imported_host_fixture("claude")
+        # Strip the trailing "Z" so the turn's "at" timestamp parses naive.
+        assert "2026-05-16T00:00:05Z" in content
+        content = content.replace("2026-05-16T00:00:05Z", "2026-05-16T00:00:05")
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            source="claude",
+            content=content,
+        )
+        _write_imported_trace(
+            tmp_path,
+            session_id,
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=100,
+            output_tokens=50,
+            raw_artifact_ids=[artifact_id],
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        assert any(item["session_id"] == session_id for item in listing.json())
+
+        detail = client.get(f"/v1/sessions/{session_id}")
+        assert detail.status_code == 200
+        assert detail.json()["session_id"] == session_id
+
+    def test_bad_imported_session_is_skipped_not_fatal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression for finding 4: one imported session raising inside
+        _build_imported_session_payload must not 500 the whole /v1/sessions
+        listing — it should be logged and skipped, leaving other sessions intact.
+        """
+        for session_id in ("sess-bad", "sess-good"):
+            artifact_id = f"artifact-{session_id}"
+            content, _ = _build_imported_host_fixture("claude")
+            _write_raw_artifact(
+                tmp_path,
+                artifact_id=artifact_id,
+                session_id=session_id,
+                source="claude",
+                content=content,
+            )
+            _write_imported_trace(
+                tmp_path,
+                session_id,
+                host="claude",
+                model="claude-sonnet-4-6",
+                input_tokens=100,
+                output_tokens=50,
+                raw_artifact_ids=[artifact_id],
+            )
+
+        def fake_savings(session_id: str, root: Path) -> float:
+            if session_id == "sess-bad":
+                raise RuntimeError("boom")
+            return 0.0
+
+        monkeypatch.setattr("atelier.infra.runtime.session_report.read_total_savings_from_events", fake_savings)
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/v1/sessions")
+        assert resp.status_code == 200
+        session_ids = [item["session_id"] for item in resp.json()]
+        assert "sess-good" in session_ids
+        assert "sess-bad" not in session_ids
+
 
 # ---------------------------------------------------------------------------
 # Tests: GET /v1/sessions/{session_id}

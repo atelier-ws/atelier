@@ -50,6 +50,21 @@ _FILE_TOOL_NAMES = {
     "developer__write_file",
 }
 
+# System-message prefixes marking host-injected content (permissions
+# banners, environment context, IDE-injected commands) rather than real user
+# input. Shared by claude.py's Trace user-text extraction and
+# _session_parser.py's turn rendering so the two lists can't drift apart.
+_SYSTEM_PREFIXES_CLAUDE = (
+    "I have been initialized",
+    "Environment context:",
+    "<environment_context>",
+    "<permissions instructions>",
+    "<local-command",
+    "<ide_",
+    "<command-",
+    "<thinking>",
+)
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -560,7 +575,7 @@ def _build_trace_from_normalized_content(
             if not task_text:
                 title = str(event.get("title") or "").strip()
                 if title:
-                    task_text = title
+                    task_text = redact(title)
 
             # Extract settings if available
             if "settings" in event:
@@ -622,7 +637,7 @@ def _build_trace_from_normalized_content(
                 if not first_user_text:
                     first_user_text = combined[:200]
                     if not task_text and not first_user_text.startswith("/"):
-                        task_text = first_user_text
+                        task_text = redact(first_user_text)
             continue
 
         if role != "assistant":
@@ -690,19 +705,21 @@ def _build_trace_from_normalized_content(
                     if path:
                         files_touched[path] = FileEditRecord(
                             path=path,
-                            diff=str(
-                                arguments_dict.get("diff")
-                                or arguments_dict.get("patch")
-                                or arguments_dict.get("content")
-                                or arguments_dict.get("new_string")
-                                or ""
-                            )[:4096],
+                            diff=redact(
+                                str(
+                                    arguments_dict.get("diff")
+                                    or arguments_dict.get("patch")
+                                    or arguments_dict.get("content")
+                                    or arguments_dict.get("new_string")
+                                    or ""
+                                )[:4096]
+                            ),
                         )
 
                 if _is_command_tool(name):
                     command = str(arguments_dict.get("command") or "").strip()
                     if command:
-                        commands_run.append(CommandRecord(command=command[:4096]))
+                        commands_run.append(CommandRecord(command=redact(command[:4096])))
 
     if not task_text:
         task_text = f"untitled {source} session"

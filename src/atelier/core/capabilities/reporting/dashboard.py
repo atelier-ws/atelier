@@ -226,10 +226,10 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
 
             from atelier.core.capabilities.pricing import usage_cost_usd
             from atelier.core.capabilities.savings_summary import resolve_model_id
-            from atelier.core.foundation.session_store import SessionStore
+            from atelier.core.foundation.store import ContextStore
 
-            sessions = SessionStore(root)
-            token_rows = sessions.token_rows()
+            cstore = ContextStore(root)
+            token_rows = cstore.token_rows()
             for trow in token_rows:
                 sid = trow["session_id"]
                 inp, out, cr, th = (
@@ -247,7 +247,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                 )
                 tokens_map[sid] = tokens_map.get(sid, 0) + (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
             total_runs_in_db = len(token_rows)
-            db_runs = sessions.list_full(limit=1000)
+            db_runs = cstore.list_trace_payloads(limit=1000)
 
             # context_budget remains in atelier.db (separate table, not traces).
             # Group by model so each row is priced with its own rate, then

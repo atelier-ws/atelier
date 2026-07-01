@@ -25,6 +25,7 @@ import re
 import shlex
 import sqlite3
 import threading
+import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -3644,7 +3645,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.core.service.telemetry.config import save_telemetry_config
 
         cfg_telemetry = save_telemetry_config(
-            remote_enabled=payload.get("remote_enabled"),
             lexical_frustration_enabled=payload.get("lexical_frustration_enabled"),
         )
         return {
@@ -3736,39 +3736,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         rows = _query_analytics_rows(store.db_path, grouped=grouped, days=days, limit=limit)
         filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
         return _build_analytics_summary(filtered, days=days)
-
-    @app.get("/analytics/tui-sessions", tags=["analytics"])
-    async def get_tui_sessions(limit: int = 50) -> dict[str, Any]:
-        """Return recent TUI coding sessions with cost/cache analytics."""
-        try:
-            from atelier.core.capabilities.analytics.store import AnalyticsStore
-
-            tui_store = AnalyticsStore()
-            sessions = [
-                {
-                    "session_id": s.session_id,
-                    "started_at": s.started_at,
-                    "ended_at": s.ended_at,
-                    "model": s.model,
-                    "provider": s.provider,
-                    "mode": s.mode,
-                    "total_cost_usd": s.total_cost_usd,
-                    "total_savings_usd": s.total_savings_usd,
-                    "cache_efficiency_pct": s.cache_efficiency_pct,
-                    "input_tokens": s.input_tokens,
-                    "output_tokens": s.output_tokens,
-                    "cache_read_tokens": s.cache_read_tokens,
-                    "cache_write_tokens": s.cache_write_tokens,
-                    "turns": s.turns,
-                    "tool_calls": s.tool_calls,
-                }
-                for s in tui_store.recent_sessions(limit)
-            ]
-            stats = tui_store.summary_stats()
-            tui_store.close()
-            return {"sessions": sessions, "summary": stats}
-        except Exception as exc:
-            return {"sessions": [], "summary": {}, "error": str(exc)}
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
     def analytics_dashboard(
@@ -4770,21 +4737,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 if row:
                     trace = Trace.model_validate_json(coerce_trace_json(row[0]))
 
-        def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
-            raw_at = turn.get("at")
-            if isinstance(raw_at, (int, float)):
-                return (0, datetime.fromtimestamp(float(raw_at) / 1000, tz=UTC).isoformat())
-            if isinstance(raw_at, str):
-                stripped = raw_at.strip()
-                if stripped.isdigit():
-                    return (0, datetime.fromtimestamp(int(stripped) / 1000, tz=UTC).isoformat())
-                try:
-                    parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
-                    return (0, parsed.isoformat())
-                except ValueError:
-                    return (1, stripped)
-            return (2, "")
-
         conversations: list[dict[str, Any]] = []
         source_files: list[dict[str, Any]] = []
         artifacts: list[dict[str, Any]] = []
@@ -5231,59 +5183,101 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     return datetime.fromtimestamp(int(stripped) / 1000, tz=UTC)
                 return None
             with contextlib.suppress(ValueError):
-                return datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+                # Offset-less ISO timestamps (no "Z"/"+HH:MM") parse naive; treat
+                # them as UTC so comparisons against aware datetimes never raise.
+                return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
         return None
 
-    def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
+    def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, float, str]:
         parsed = _parse_session_datetime(turn.get("at"))
         if parsed is not None:
-            return (0, parsed.isoformat())
+            return (0, parsed.timestamp(), "")
         raw_at = turn.get("at")
         if isinstance(raw_at, str):
-            return (1, raw_at.strip())
-        return (2, "")
+            return (1, 0.0, raw_at.strip())
+        return (2, 0.0, "")
+
+    _TRACE_LOOKUP_NEGATIVE_TTL_SECONDS = 20.0
+    _trace_lookup_negative_cache: dict[str, float] = {}
+    _trace_lookup_negative_cache_lock = threading.Lock()
 
     def _load_trace_for_session(session_id: str) -> Trace | None:
         store = get_store()
-        trace = store.get_trace(session_id)
-        if trace is not None:
-            return trace
+
+        now = time.monotonic()
+        with _trace_lookup_negative_cache_lock:
+            expiry = _trace_lookup_negative_cache.get(session_id)
+        if expiry is not None:
+            if expiry > now:
+                return None
+            with _trace_lookup_negative_cache_lock:
+                _trace_lookup_negative_cache.pop(session_id, None)
 
         from atelier.gateway.hosts.session_parsers.registry import (
             SUPPORTED_SESSION_IMPORT_HOSTS,
         )
 
-        for host in SUPPORTED_SESSION_IMPORT_HOSTS:
-            trace = store.get_trace(f"{host}-{session_id}")
-            if trace is not None:
-                return trace
-
+        # Direct id + every host-prefixed variant in ONE indexed lookup instead
+        # of N sequential get_trace() calls (each of which also runs its own
+        # json_extract fallback scan on miss).
+        candidate_ids = [session_id, *(f"{host}-{session_id}" for host in SUPPORTED_SESSION_IMPORT_HOSTS)]
+        placeholders = ",".join("?" for _ in candidate_ids)
         with sqlite3.connect(store.db_path) as conn:
-            row = conn.execute(
-                "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
-                (session_id,),
-            ).fetchone()
-        if not row:
+            rows = conn.execute(
+                f"SELECT id, payload FROM traces WHERE id IN ({placeholders})",
+                candidate_ids,
+            ).fetchall()
+            by_id = {row[0]: row[1] for row in rows}
+            payload = next((by_id[cid] for cid in candidate_ids if cid in by_id), None)
+            if payload is None:
+                # Slower fallback: session_id embedded in the payload rather
+                # than the trace id itself. Relies on the traces json_extract
+                # index for performance.
+                row = conn.execute(
+                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
+                    (session_id,),
+                ).fetchone()
+                payload = row[0] if row else None
+
+        if payload is None:
+            with _trace_lookup_negative_cache_lock:
+                if len(_trace_lookup_negative_cache) > 2000:
+                    _trace_lookup_negative_cache.clear()
+                _trace_lookup_negative_cache[session_id] = now + _TRACE_LOOKUP_NEGATIVE_TTL_SECONDS
             return None
-        return Trace.model_validate_json(coerce_trace_json(row[0]))
+        return Trace.model_validate_json(coerce_trace_json(payload))
 
     def _reconstruct_trace_conversations(
         session_id: str,
         trace: Trace,
         store_inst: Any | None = None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
         store_inst = store_inst or get_store()
         conversations: list[dict[str, Any]] = []
         source_files: list[dict[str, Any]] = []
         artifacts: list[dict[str, Any]] = []
         seen_source_files: set[tuple[str, str]] = set()
+        raw_usage_summary: dict[str, Any] = {
+            "started_model": None,
+            "models_used": {},
+            "total_turns": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "thinking_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "usage_entries": [],
+        }
 
         if not trace.raw_artifact_ids:
-            return conversations, source_files, artifacts
+            return conversations, source_files, artifacts, raw_usage_summary
 
         from atelier.gateway.hosts.session_parsers._session_parser import (
             _extract_claude_session_id,
             attach_atelier_sidecar_savings,
+            extract_session_usage_summary,
             parse_session_turns,
         )
 
@@ -5298,6 +5292,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     source_files.append({"path": artifact.source_path, "artifact_id": artifact.id})
                     seen_source_files.add(source_file_key)
             try:
+                # Single read of the raw artifact backs both the turn-by-turn
+                # conversation reconstruction and the usage summary below —
+                # avoids parsing every transcript twice per request.
                 raw_content = store_inst.read_raw_artifact_content(artifact)
                 artifact_turns = parse_session_turns(raw_content, artifact.source)
                 # Join host sidecar (real per-call savings written by the MCP
@@ -5343,6 +5340,35 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     if scope == "subagent" and not turn.get("subagent_name"):
                         turn["subagent_name"] = artifact_label
                 conversations.extend(artifact_turns)
+
+                try:
+                    summary = extract_session_usage_summary(raw_content, artifact.source)
+                except Exception as usage_exc:
+                    logger.error(
+                        "Failed to summarize imported artifact %s for session %s: %s",
+                        art_id,
+                        session_id,
+                        usage_exc,
+                        exc_info=True,
+                    )
+                else:
+                    if raw_usage_summary["started_model"] is None and summary.get("started_model"):
+                        raw_usage_summary["started_model"] = summary["started_model"]
+                    for key in (
+                        "total_turns",
+                        "input_tokens",
+                        "output_tokens",
+                        "reasoning_output_tokens",
+                        "thinking_tokens",
+                        "cached_input_tokens",
+                        "cache_creation_input_tokens",
+                    ):
+                        raw_usage_summary[key] += int(summary.get(key, 0) or 0)
+                    for model_id, count in dict(summary.get("models_used") or {}).items():
+                        raw_usage_summary["models_used"][model_id] = int(
+                            raw_usage_summary["models_used"].get(model_id, 0)
+                        ) + int(count or 0)
+                    raw_usage_summary["usage_entries"].extend(list(summary.get("usage_entries") or []))
             except Exception as exc:
                 artifacts.append(
                     {
@@ -5364,7 +5390,52 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 )
 
         conversations.sort(key=_conversation_sort_key)
-        return conversations, source_files, artifacts
+        return conversations, source_files, artifacts, raw_usage_summary
+
+    def _imported_session_fingerprint(
+        session_id: str, trace: Trace, store_inst: Any, root: Path | None
+    ) -> tuple[Any, ...]:
+        """Cheap staleness signal for the cache below.
+
+        Raw artifact content is immutable once ingested (content-addressed by
+        sha256), so per-artifact (mtime, size) never changes for a given
+        artifact id without a new id being appended — no need to read/parse
+        the transcript to detect a stale entry. The savings sidecars feeding
+        total_atelier_savings_usd are stat()'d too so that number stays live.
+        """
+        artifact_fp: list[tuple[str, int]] = []
+        for art_id in trace.raw_artifact_ids:
+            artifact = store_inst.get_raw_artifact(art_id)
+            if artifact is None:
+                artifact_fp.append(("", -1))
+                continue
+            mtime = artifact.source_file_mtime.isoformat() if artifact.source_file_mtime else ""
+            artifact_fp.append((mtime, artifact.byte_count_original))
+
+        def _stat_fp(path: Path) -> tuple[float, int]:
+            try:
+                st = path.stat()
+            except OSError:
+                return (0.0, -1)
+            return (st.st_mtime, st.st_size)
+
+        savings_fp = (0.0, -1)
+        sidecar_fp = (0.0, -1)
+        if root is not None:
+            from atelier.core.foundation.paths import find_session_dir
+
+            savings_fp = _stat_fp(root / "live_savings_events.jsonl")
+            existing = find_session_dir(root, session_id)
+            sidecar_path = (
+                (existing / "savings.jsonl")
+                if existing is not None
+                else (root / "sessions" / session_id / "savings.jsonl")
+            )
+            sidecar_fp = _stat_fp(sidecar_path)
+        return (trace.id, tuple(artifact_fp), savings_fp, sidecar_fp)
+
+    _imported_session_payload_cache: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+    _imported_session_payload_cache_lock = threading.Lock()
 
     def _build_imported_session_payload(
         session_id: str,
@@ -5372,9 +5443,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         store_inst: Any | None = None,
         root: Path | None = None,
     ) -> dict[str, Any]:
-        from atelier.gateway.hosts.session_parsers._session_parser import (
-            extract_session_usage_summary,
-        )
         from atelier.infra.runtime.session_report import (
             _derive_vendor,
             read_total_savings_from_events,
@@ -5387,56 +5455,20 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             return authoritative if authoritative > 0 else fallback
 
         store_inst = store_inst or get_store()
-        conversations, _, _ = _reconstruct_trace_conversations(session_id, trace, store_inst)
+
+        # Unchanged sessions cost zero parsing on re-poll: list_sessions is
+        # hit by the frontend every ~30s, and re-parsing the full raw
+        # transcript each time is the dominant cost of that endpoint.
+        fingerprint = _imported_session_fingerprint(session_id, trace, store_inst, root)
+        with _imported_session_payload_cache_lock:
+            cached = _imported_session_payload_cache.get(session_id)
+        if cached is not None and cached[0] == fingerprint:
+            return dict(cached[1])
+
+        conversations, _, _, raw_usage_summary = _reconstruct_trace_conversations(session_id, trace, store_inst)
         trace_payload = to_jsonable(trace)
         trace_usage_entries = _trace_usage_entries(trace_payload)
         trace_model_usages = _trace_model_usages(trace_payload)
-        raw_usage_summary: dict[str, Any] = {
-            "started_model": None,
-            "models_used": {},
-            "total_turns": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "reasoning_output_tokens": 0,
-            "thinking_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "usage_entries": [],
-        }
-
-        for art_id in trace.raw_artifact_ids:
-            artifact = store_inst.get_raw_artifact(art_id)
-            if artifact is None:
-                continue
-            try:
-                raw_content = store_inst.read_raw_artifact_content(artifact)
-                summary = extract_session_usage_summary(raw_content, artifact.source)
-            except Exception as exc:
-                logger.error(
-                    "Failed to summarize imported artifact %s for session %s: %s",
-                    art_id,
-                    session_id,
-                    exc,
-                    exc_info=True,
-                )
-                continue
-            if raw_usage_summary["started_model"] is None and summary.get("started_model"):
-                raw_usage_summary["started_model"] = summary["started_model"]
-            for key in (
-                "total_turns",
-                "input_tokens",
-                "output_tokens",
-                "reasoning_output_tokens",
-                "thinking_tokens",
-                "cached_input_tokens",
-                "cache_creation_input_tokens",
-            ):
-                raw_usage_summary[key] += int(summary.get(key, 0) or 0)
-            for model_id, count in dict(summary.get("models_used") or {}).items():
-                raw_usage_summary["models_used"][model_id] = int(
-                    raw_usage_summary["models_used"].get(model_id, 0)
-                ) + int(count or 0)
-            raw_usage_summary["usage_entries"].extend(list(summary.get("usage_entries") or []))
 
         started_at = trace.created_at
         ended_at = trace.created_at
@@ -5511,9 +5543,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell"
-                        if turn.get("kind") == "shell_command"
-                        else turn.get("kind") or "session"
+                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5657,9 +5687,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns
-            if trace_total_turns > 0
-            else reconstructed_total_turns
+            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
         )
 
         input_token_cost_usd = (
@@ -5730,7 +5758,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             reverse=True,
         )[:5]
 
-        return {
+        result: dict[str, Any] = {
             "session_id": session_id,
             "started_at": started_at.isoformat(),
             "ended_at": ended_at.isoformat(),
@@ -5779,6 +5807,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "tool_savings": [],
             "top_tools_by_cost": top_tools_by_cost,
         }
+        with _imported_session_payload_cache_lock:
+            if len(_imported_session_payload_cache) > 2000:
+                _imported_session_payload_cache.clear()
+            _imported_session_payload_cache[session_id] = (fingerprint, dict(result))
+        return result
 
     def _build_session_payload(report: Any, trace: Trace | None = None) -> dict[str, Any]:
         active_trace = trace or _load_trace_for_session(report.session_id)
@@ -5909,14 +5942,18 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             sid = trace.session_id or trace.id
             if sid in seen_session_ids:
                 continue
-            payload = _build_imported_session_payload(sid, trace, store_inst, root=root)
-            payload["updated_at"] = trace.created_at.isoformat()
-            results.append(payload)
-            seen_session_ids.add(sid)
+            try:
+                payload = _build_imported_session_payload(sid, trace, store_inst, root=root)
+                payload["updated_at"] = trace.created_at.isoformat()
+                results.append(payload)
+                seen_session_ids.add(sid)
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
             if len(results) >= limit:
                 break
 
-        def _session_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
+        def _session_sort_key(item: dict[str, Any]) -> float:
             def _ts(value: Any) -> float:
                 if not value:
                     return 0.0
@@ -5925,11 +5962,12 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     return parsed.timestamp()
                 return 0.0
 
-            return (
-                _ts(item.get("ended_at")),
-                _ts(item.get("updated_at")),
-                _ts(item.get("started_at")),
-            )
+            # Effective last-activity: an in-progress session has no ended_at
+            # yet, so fall back to updated_at (run-ledger mtime) and finally
+            # started_at — matching the frontend comparator (ended_at ||
+            # updated_at) so a running session isn't sorted below history and
+            # truncated out by results[:limit].
+            return _ts(item.get("ended_at")) or _ts(item.get("updated_at")) or _ts(item.get("started_at"))
 
         results.sort(key=_session_sort_key, reverse=True)
         if len(results) > limit:

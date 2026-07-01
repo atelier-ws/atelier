@@ -825,20 +825,41 @@ def test_pricing_no_prefix_fallback_for_unknown_variant() -> None:
 def test_pricing_copilot_explicit_models() -> None:
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    # Explicit copilot models from LiteLLM should match via alias stripping.
+    # GitHub Copilot is a flat-rate subscription product ($19-39/mo). Alias
+    # stripping must NOT resolve "copilot/<model>" through to the underlying
+    # model's real LiteLLM per-token rate -- that would massively overbill
+    # usage the subscription already covers (regression: this used to match
+    # "copilot/gpt-5.5" -> real gpt-5.5 pricing at $5/$30 per Mtok).
     p = get_model_pricing("copilot/gpt-5.5")
-    assert p.known is True
-    assert p.input == 5.0
-    assert p.output == 30.0
-    assert p.cache_read == 0.5
-    assert p.cache_write == 0.0
-    assert p.thinking == 30.0
-    assert p.model_id == "gpt-5.5"
+    assert p.known is False
+    assert p.input == 0.0
+    assert p.output == 0.0
+    assert p.cache_read == 0.0
+    assert p.model_id == "copilot/gpt-5.5"
 
-    # Other copilot models should NOT match a wildcard anymore.
+    # Unknown copilot models behave identically -- zero cost either way.
     p2 = get_model_pricing("copilot/some-new-model")
     assert p2.known is False
     assert p2.model_id == "copilot/some-new-model"
+
+
+def test_pricing_copilot_subscription_usage_is_zero_cost() -> None:
+    """Regression: copilot.py namespaces the real underlying model as
+    ``copilot/<model>`` (e.g. ``copilot/gpt-5``) so GitHub Copilot's flat
+    subscription fee is never double-billed at the model's real per-token
+    API rate. A copilot trace must always cost $0 regardless of how many
+    tokens were reported.
+    """
+    from atelier.core.capabilities.pricing import usage_cost_usd
+
+    cost = usage_cost_usd(
+        "copilot/gpt-5",
+        input_tokens=50_000,
+        output_tokens=10_000,
+        cache_read_tokens=5_000,
+        cache_write_tokens=1_000,
+    )
+    assert cost == 0.0
 
 
 def test_pricing_cursor_agent_auto() -> None:

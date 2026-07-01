@@ -286,6 +286,49 @@ def test_parse_claude_assigns_usage_to_only_one_visible_turn() -> None:
     }
 
 
+def test_parse_claude_merges_split_message_usage_with_null_token_values() -> None:
+    """A message split across JSONL lines whose later usage has nulls must not crash the merge."""
+    content = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-16T00:00:05Z",
+                    "message": {
+                        "id": "msg-1",
+                        "model": "claude-sonnet-4-6",
+                        "usage": {
+                            "input_tokens": None,
+                            "output_tokens": None,
+                            "cache_read_input_tokens": None,
+                        },
+                        "content": [{"type": "text", "text": "First chunk."}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-16T00:00:06Z",
+                    "message": {
+                        "id": "msg-1",
+                        "model": "claude-sonnet-4-6",
+                        "usage": {"input_tokens": 120, "output_tokens": 45},
+                        "content": [{"type": "text", "text": "Second chunk."}],
+                    },
+                }
+            ),
+        ]
+    )
+
+    turns = parse_session_turns(content, "claude")
+
+    tokenized = [turn for turn in turns if any((turn.get("tokens") or {}).values())]
+    assert len(tokenized) == 1
+    assert tokenized[0]["tokens"]["in"] == 120
+    assert tokenized[0]["tokens"]["out"] == 45
+
+
 def test_parse_copilot_assigns_output_tokens_once_across_sibling_turns() -> None:
     content = "\n".join(
         [

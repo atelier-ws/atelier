@@ -202,6 +202,27 @@ def _servicectl_refresh_host_status(root: Path) -> dict[str, str]:
     return status
 
 
+def _run_tick_subprocess(cmd: list[str], *, timeout: int, what: str) -> subprocess.CompletedProcess[bytes] | None:
+    """``subprocess.run`` guarded against timeout/launch failures.
+
+    A tick subprocess (import, recall index, workspace prune) can legitimately
+    run long under load. Letting ``TimeoutExpired`` propagate would abort
+    ``_servicectl_tick`` before its periodic-job timestamp and state file are
+    written, so the same subprocess would re-run and re-time-out on every
+    subsequent tick forever, starving recall indexing / pruning / job
+    processing behind it. Return ``None`` instead so callers can record the
+    attempt (advance the periodic key) and let the tick continue.
+    """
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logging.warning("%s subprocess timed out after %ds", what, timeout)
+        return None
+    except OSError:
+        logging.exception("failed to launch %s subprocess", what)
+        return None
+
+
 def _servicectl_import_sessions(root: Path) -> dict[str, int]:
     """Import host sessions by delegating to the ``atelier import`` CLI subprocess.
 
@@ -209,11 +230,13 @@ def _servicectl_import_sessions(root: Path) -> dict[str, int]:
     the ``sync_usage`` upload out of the daemon's heap. ``sync_usage`` is called
     inside the subprocess, so there is no double-upload.
     """
-    result = subprocess.run(
+    result = _run_tick_subprocess(
         [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "import", "--json"],
-        capture_output=True,
         timeout=300,
+        what="session import",
     )
+    if result is None:
+        return {}
     if result.returncode != 0:
         logging.warning(
             "session import subprocess failed (rc=%d): %s",
@@ -235,11 +258,13 @@ def _servicectl_index_recall(root: Path) -> dict[str, int]:
     Keeps embedding work and SQLite writes out of the daemon's heap. The subprocess
     is incremental by default (unchanged sessions are skipped).
     """
-    result = subprocess.run(
+    result = _run_tick_subprocess(
         [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "recall", "index", "--json"],
-        capture_output=True,
         timeout=300,
+        what="recall index",
     )
+    if result is None:
+        return {}
     if result.returncode != 0:
         logging.warning(
             "recall index subprocess failed (rc=%d): %s",
@@ -264,7 +289,7 @@ def _servicectl_prune_workspaces(root: Path, *, max_age_days: int = _WORKSPACE_P
     Runs out-of-process to keep the rmtree/walk work off the daemon heap,
     matching the import/recall pattern.
     """
-    result = subprocess.run(
+    result = _run_tick_subprocess(
         [
             sys.executable,
             "-m",
@@ -279,9 +304,11 @@ def _servicectl_prune_workspaces(root: Path, *, max_age_days: int = _WORKSPACE_P
             str(max_age_days),
             "--json",
         ],
-        capture_output=True,
         timeout=600,
+        what="workspace prune",
     )
+    if result is None:
+        return {}
     if result.returncode != 0:
         logging.warning(
             "workspace prune subprocess failed (rc=%d): %s",

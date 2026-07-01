@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { api, type FileEditRecord } from "../../api";
 import { cx } from "../../components/WorkbenchUI";
@@ -23,18 +23,32 @@ function parseSideBySideFromUnifiedDiff(diff: string): SBSRow[] {
   let oldNum = 0;
   let newNum = 0;
   let i = 0;
+  // `---`/`+++` only mean "file header" before the first hunk (or right
+  // after a `diff --git` file boundary) — inside a hunk they're ordinary
+  // removed/added content (e.g. a removed SQL comment `-- disable trigger`
+  // produces the diff line `--- disable trigger`).
+  let inHunk = false;
 
   while (i < lines.length) {
     const line = lines[i];
 
-    // Skip file headers
-    if (line.startsWith("---") || line.startsWith("+++")) {
+    // A new file section resets hunk state so its own --- / +++ headers
+    // are recognized as headers again.
+    if (line.startsWith("diff --git")) {
+      inHunk = false;
+      i++;
+      continue;
+    }
+
+    // Skip file headers — only valid outside a hunk.
+    if (!inHunk && (line.startsWith("---") || line.startsWith("+++"))) {
       i++;
       continue;
     }
 
     // Hunk header: @@ -old_start[,count] +new_start[,count] @@
     if (line.startsWith("@@")) {
+      inHunk = true;
       const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (m) {
         oldNum = parseInt(m[1]) - 1;
@@ -322,81 +336,78 @@ export function getFileEditInfo(turn: any): FileEditInfo | null {
 // ---------------------------------------------------------------------------
 
 function SideBySideBody({ rows }: { rows: SBSRow[] }) {
+  // A shared 2-column grid — one row per SBSRow — so a wrapped long line on
+  // either side grows the grid row and both cells stay height-matched. Two
+  // independent flow columns (one per side) desync the moment any row wraps.
   return (
-    <div className="flex font-mono text-[10px]">
-      {/* Left: old */}
-      <div className="w-1/2 border-r border-neutral-800/30 min-w-0">
-        {rows.map((row, idx) =>
-          row.left ? (
-            <div
-              key={idx}
-              className={cx(
-                "flex items-start",
-                row.left.type === "remove"
+    <div className="grid grid-cols-2 font-mono text-[10px]">
+      {rows.map((row, idx) => (
+        <Fragment key={idx}>
+          <div
+            className={cx(
+              "flex items-start border-r border-neutral-800/30 min-w-0",
+              row.left
+                ? row.left.type === "remove"
                   ? "bg-red-950/25 border-l-2 border-l-red-600/50"
                   : ""
-              )}
-            >
-              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
-                {row.left.num}
-              </span>
-              <span
-                className={cx(
-                  "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
-                  row.left.type === "remove"
-                    ? "text-red-300"
-                    : "text-neutral-400"
-                )}
-              >
-                {row.left.type === "remove" && (
-                  <span className="text-red-300 select-none mr-1">−</span>
-                )}
-                {row.left.content}
-              </span>
-            </div>
-          ) : (
-            <div key={idx} className="min-h-[1.4em] bg-neutral-900/25" />
-          )
-        )}
-      </div>
+                : "bg-neutral-900/25"
+            )}
+          >
+            {row.left && (
+              <>
+                <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
+                  {row.left.num}
+                </span>
+                <span
+                  className={cx(
+                    "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5",
+                    row.left.type === "remove"
+                      ? "text-red-300"
+                      : "text-neutral-400"
+                  )}
+                >
+                  {row.left.type === "remove" && (
+                    <span className="text-red-300 select-none mr-1">−</span>
+                  )}
+                  {row.left.content}
+                </span>
+              </>
+            )}
+          </div>
 
-      {/* Right: new */}
-      <div className="w-1/2 min-w-0">
-        {rows.map((row, idx) =>
-          row.right ? (
-            <div
-              key={idx}
-              className={cx(
-                "flex items-start",
-                row.right.type === "insert"
+          <div
+            className={cx(
+              "flex items-start min-w-0",
+              row.right
+                ? row.right.type === "insert"
                   ? "bg-emerald-950/25 border-l-2 border-l-emerald-600/50"
                   : ""
-              )}
-            >
-              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
-                {row.right.num}
-              </span>
-              <span
-                className={cx(
-                  "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
-                  row.right.type === "insert"
-                    ? "text-emerald-300"
-                    : "text-neutral-400"
-                )}
-              >
-                {row.right.type === "insert" && (
-                  <span className="text-emerald-300 select-none mr-1">
-                    +
-                  </span>
-                )}
-                {row.right.content}
-              </span>
-            </div>
-          ) : (
-            <div key={idx} className="min-h-[1.4em] bg-neutral-900/25" />
-          )
-        )}
-      </div>
+                : "bg-neutral-900/25"
+            )}
+          >
+            {row.right && (
+              <>
+                <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
+                  {row.right.num}
+                </span>
+                <span
+                  className={cx(
+                    "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5",
+                    row.right.type === "insert"
+                      ? "text-emerald-300"
+                      : "text-neutral-400"
+                  )}
+                >
+                  {row.right.type === "insert" && (
+                    <span className="text-emerald-300 select-none mr-1">+</span>
+                  )}
+                  {row.right.content}
+                </span>
+              </>
+            )}
+          </div>
+        </Fragment>
+      ))}
     </div>
   );
 }

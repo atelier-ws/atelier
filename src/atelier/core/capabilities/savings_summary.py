@@ -1216,11 +1216,12 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     breakdown = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0}
 
     try:
-        from atelier.core.foundation.session_store import SessionStore
+        from atelier.core.foundation.store import ContextStore
 
-        # Traces live in the file-based session store; read token/model rows
-        # from its tiny index.
-        for row in SessionStore(root_path).token_rows():
+        # Token/model rows come straight from atelier.db's traces table (see
+        # ContextStore.token_rows) -- json_extract on the payload, not a full
+        # Trace parse per row.
+        for row in ContextStore(root_path).token_rows():
             inp = int(row["input_tokens"] or 0)
             out = int(row["output_tokens"] or 0)
             cr = int(row["cached_input_tokens"] or 0)
@@ -1296,7 +1297,7 @@ _SPEND_CACHE_TTL_S = 60.0
 # new tool call completes. Cache keyed on root_str (and days for the
 # historical cache); entries expire after this many seconds.
 _HISTORICAL_SAVINGS_CACHE_TTL_S: float = 60.0
-_historical_savings_cache: dict[tuple[int, str], tuple[float, tuple]] = {}
+_historical_savings_cache: dict[tuple[int, str], tuple[float, tuple[float, int, int, int, float, float]]] = {}
 _first_savings_ts_cache: dict[str, tuple[float, float]] = {}  # root_str → (cached_at, result)
 
 
