@@ -82,7 +82,7 @@
       "astropy__astropy"
     ],
     [
-      "A direct approach to ITRS to Observed transformations that stays within the ITRS.\n<!-- This comments are hidden when you submit the issue,\r\nso you do not need to remove them! -->\r\n\r\n<!-- Please be sure to check out our contributing guidelines,\r\nhttps://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .\r\nPlease be sure to check out our code of…",
+      "A direct approach to ITRS to Observed transformations that stays within the ITRS.\n<!-- This comments are hidden when you submit the issue,\r\nso you do not need to remove them! -->\r\n\r\n<!-- Please be sure to check out our contributing guidelines,\r\nhttps://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .\r\nPlease be sure to check out our code of\u2026",
       "60421eb8e67982a51861",
       "astropy__astropy"
     ],
@@ -112,7 +112,7 @@
       "astropy__astropy"
     ],
     [
-      "Inconsistent behavior of `world_to_pixel` in `SlicedLowLevelWCS` \n<!-- This comments are hidden when you submit the issue,\r\nso you do not need to remove them! -->\r\n\r\n<!-- Please be sure to check out our contributing guidelines,\r\nhttps://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .\r\nPlease be sure to check out our code of…",
+      "Inconsistent behavior of `world_to_pixel` in `SlicedLowLevelWCS` \n<!-- This comments are hidden when you submit the issue,\r\nso you do not need to remove them! -->\r\n\r\n<!-- Please be sure to check out our contributing guidelines,\r\nhttps://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .\r\nPlease be sure to check out our code of\u2026",
       "7d3df85932db683de435",
       "astropy__astropy"
     ],
@@ -202,7 +202,7 @@
       "astropy__astropy"
     ],
     [
-      "Incorrect units read from MRT (CDS format) files with astropy.table\n### Description\n\nWhen reading MRT files (formatted according to the CDS standard which is also the format recommended by AAS/ApJ) with `format='ascii.cds'`, astropy.table incorrectly parses composite units. According to CDS standard the units should be SI without spaces (http://vizier.u-strasbg.fr/doc/catstd-3.2.htx). Thus a unit…",
+      "Incorrect units read from MRT (CDS format) files with astropy.table\n### Description\n\nWhen reading MRT files (formatted according to the CDS standard which is also the format recommended by AAS/ApJ) with `format='ascii.cds'`, astropy.table incorrectly parses composite units. According to CDS standard the units should be SI without spaces (http://vizier.u-strasbg.fr/doc/catstd-3.2.htx). Thus a unit\u2026",
       "8e9e6ee6f6ff7de3537b",
       "astropy__astropy"
     ],
@@ -282,7 +282,7 @@
       "astropy__astropy"
     ],
     [
-      "Header.fromstring does not accept Python 3 bytes\nAccording to [the docs](http://docs.astropy.org/en/stable/_modules/astropy/io/fits/header.html#Header.fromstring), the method `Header.fromstring` \"...creates an HDU header from a byte string containing the entire header data.\"\r\n\r\nBy \"byte string\" here it really means the `str` type which on Python 2 could be raw binary data, but on Python 3…",
+      "Header.fromstring does not accept Python 3 bytes\nAccording to [the docs](http://docs.astropy.org/en/stable/_modules/astropy/io/fits/header.html#Header.fromstring), the method `Header.fromstring` \"...creates an HDU header from a byte string containing the entire header data.\"\r\n\r\nBy \"byte string\" here it really means the `str` type which on Python 2 could be raw binary data, but on Python 3\u2026",
       "c73e675a7912502e6241",
       "astropy__astropy"
     ],
@@ -492,7 +492,7 @@
       "django__django"
     ],
     [
-      "TIME_ZONE value in DATABASES settings is not used when making dates timezone-aware on MySQL, SQLite, and Oracle.\nDescription\n\t \n\t\t(last modified by Victor Talpaert)\n\t \n(We assume the mysql backends)\nI can set TIME_ZONE several times in settings.py, one for the global django app, and one for each database (see ​https://docs.djangoproject.com/en/1.11/ref/settings/#time-zone (ref1))\nTypical usage…",
+      "TIME_ZONE value in DATABASES settings is not used when making dates timezone-aware on MySQL, SQLite, and Oracle.\nDescription\n\t \n\t\t(last modified by Victor Talpaert)\n\t \n(We assume the mysql backends)\nI can set TIME_ZONE several times in settings.py, one for the global django app, and one for each database (see \u200bhttps://docs.djangoproject.com/en/1.11/ref/settings/#time-zone (ref1))\nTypical usage\u2026",
       "53097b75b43c6b752272",
       "django__django"
     ],
@@ -532,7 +532,7 @@
       "django__django"
     ],
     [
-      "Optimization: Multiple URLResolvers may be unintentionally be constructed by calls to `django.urls.resolvers.get_resolver`\nDescription\n\t\nMultiple URLResolvers may be constructed by django.urls.resolvers.get_resolver if django.urls.base.set_urlconf has not yet been called, resulting in multiple expensive calls to URLResolver._populate.\n​`get_resolver` constructs a new URLResolver, and caches it…",
+      "Optimization: Multiple URLResolvers may be unintentionally be constructed by calls to `django.urls.resolvers.get_resolver`\nDescription\n\t\nMultiple URLResolvers may be constructed by django.urls.resolvers.get_resolver if django.urls.base.set_urlconf has not yet been called, resulting in multiple expensive calls to URLResolver._populate.\n\u200b`get_resolver` constructs a new URLResolver, and caches it\u2026",
       "c68dec3c391e4f4db506",
       "django__django"
     ],
@@ -552,7 +552,7 @@
       "django__django"
     ],
     [
-      "docutils reports an error rendering view docstring when the first line is not empty\nDescription\n\t\nCurrently admindoc works correctly only with docstrings where the first line is empty, and all Django docstrings are formatted in this way.\nHowever usually the docstring text starts at the first line, e.g.:\ndef test():\n\t\"\"\"test tests something.\n\t\"\"\"\nand this cause an error:\nError in \"default-role\"…",
+      "docutils reports an error rendering view docstring when the first line is not empty\nDescription\n\t\nCurrently admindoc works correctly only with docstrings where the first line is empty, and all Django docstrings are formatted in this way.\nHowever usually the docstring text starts at the first line, e.g.:\ndef test():\n\t\"\"\"test tests something.\n\t\"\"\"\nand this cause an error:\nError in \"default-role\"\u2026",
       "aef5dc71cf9ca1858048",
       "django__django"
     ],
@@ -732,7 +732,7 @@
       "django__django"
     ],
     [
-      "Migration crashes deleting an index_together if there is a unique_together on the same fields\nDescription\n\t\nHappens with Django 1.11.10\nSteps to reproduce:\n1) Create models with 2 fields, add 2 same fields to unique_together and to index_together\n2) Delete index_together -> Fail\nIt will fail at django/db/backends/base/schema.py, line 378, in _delete_composed_index(), ValueError: Found wrong…",
+      "Migration crashes deleting an index_together if there is a unique_together on the same fields\nDescription\n\t\nHappens with Django 1.11.10\nSteps to reproduce:\n1) Create models with 2 fields, add 2 same fields to unique_together and to index_together\n2) Delete index_together -> Fail\nIt will fail at django/db/backends/base/schema.py, line 378, in _delete_composed_index(), ValueError: Found wrong\u2026",
       "a571821ecda95f73a4d9",
       "django__django"
     ],
@@ -857,7 +857,7 @@
       "django__django"
     ],
     [
-      "make temporal subtraction work without ExpressionWrapper\nDescription\n\t\nclass Experiment(models.Model):\n\tstart = models.DateTimeField()\n\tend = models.DateTimeField()\nExperiment.objects.annotate(\n\tdelta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n)\nThis gives:\ndjango.core.exceptions.FieldError: Expression contains mixed types: DateTimeField, DurationField. You…",
+      "make temporal subtraction work without ExpressionWrapper\nDescription\n\t\nclass Experiment(models.Model):\n\tstart = models.DateTimeField()\n\tend = models.DateTimeField()\nExperiment.objects.annotate(\n\tdelta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n)\nThis gives:\ndjango.core.exceptions.FieldError: Expression contains mixed types: DateTimeField, DurationField. You\u2026",
       "87d1d4783aad55802a64",
       "django__django"
     ],
@@ -967,7 +967,7 @@
       "django__django"
     ],
     [
-      "Coroutine passed to the first middleware's process_response() instead of HttpResponse.\nDescription\n\t\nLike the title says, using ASGI (+ uvicorn in my case), the first middleware (according to the list in settings.py) receives a coroutine as its response parameter, while all other middlewares down the line receive a django.http.response.HttpResponse object.\nThis seems to have caused an issue in…",
+      "Coroutine passed to the first middleware's process_response() instead of HttpResponse.\nDescription\n\t\nLike the title says, using ASGI (+ uvicorn in my case), the first middleware (according to the list in settings.py) receives a coroutine as its response parameter, while all other middlewares down the line receive a django.http.response.HttpResponse object.\nThis seems to have caused an issue in\u2026",
       "6a3f1c5b992c08571987",
       "django__django"
     ],
@@ -1197,7 +1197,7 @@
       "django__django"
     ],
     [
-      "Lag() with DecimalField crashes on SQLite.\nDescription\n\t\nOn Django 3.0.7 with a SQLite database using the following model:\nfrom django.db import models\nclass LagTest(models.Model):\n\tmodified = models.DateField()\n\tdata = models.FloatField()\n\tamount = models.DecimalField(decimal_places=4, max_digits=7)\nand the following query\nfrom django.db.models import F\nfrom django.db.models.functions import…",
+      "Lag() with DecimalField crashes on SQLite.\nDescription\n\t\nOn Django 3.0.7 with a SQLite database using the following model:\nfrom django.db import models\nclass LagTest(models.Model):\n\tmodified = models.DateField()\n\tdata = models.FloatField()\n\tamount = models.DecimalField(decimal_places=4, max_digits=7)\nand the following query\nfrom django.db.models import F\nfrom django.db.models.functions import\u2026",
       "689c78f135064a8c1db8",
       "django__django"
     ],
@@ -1217,7 +1217,7 @@
       "django__django"
     ],
     [
-      "Allow autoreloading of `python -m pkg_other_than_django runserver`\nDescription\n\t \n\t\t(last modified by William Schwartz)\n\t \n​django.utils.autoreload.get_child_arguments detects if Python was launched as python -m django. Currently it detects only when ​-m was passed specifically django (and only in Python environments in which __file__ is set on modules, which is ​not true of all Python…",
+      "Allow autoreloading of `python -m pkg_other_than_django runserver`\nDescription\n\t \n\t\t(last modified by William Schwartz)\n\t \n\u200bdjango.utils.autoreload.get_child_arguments detects if Python was launched as python -m django. Currently it detects only when \u200b-m was passed specifically django (and only in Python environments in which __file__ is set on modules, which is \u200bnot true of all Python\u2026",
       "db61f0c93be1a01125f1",
       "django__django"
     ],
@@ -1287,7 +1287,7 @@
       "django__django"
     ],
     [
-      "Database converters (from_db_value) not called for returning_fields on insert\nDescription\n\t\nMaking a subclass of BigAutoField, I've found that, unlike all other query pathways, on insert the returned integer is not passed through any database converters defined for the field - including the from_db_value hook.\nThis means that a field which would normally use a wrapper class has instead a plain…",
+      "Database converters (from_db_value) not called for returning_fields on insert\nDescription\n\t\nMaking a subclass of BigAutoField, I've found that, unlike all other query pathways, on insert the returned integer is not passed through any database converters defined for the field - including the from_db_value hook.\nThis means that a field which would normally use a wrapper class has instead a plain\u2026",
       "89bad72ae2b0c3a79bc7",
       "django__django"
     ],
@@ -1317,7 +1317,7 @@
       "django__django"
     ],
     [
-      "MySQL backend uses deprecated \"db\" and \"passwd\" kwargs.\nDescription\n\t\nThe \"db\" and \"passwd\" usage can be seen at ​https://github.com/django/django/blob/ca9872905559026af82000e46cde6f7dedc897b6/django/db/backends/mysql/base.py#L202-L205 in main. mysqlclient recently marked these two kwargs as deprecated (see ​https://github.com/PyMySQL/mysqlclient/commit/fa25358d0f171bd8a63729c5a8d76528f4ae74e9)…",
+      "MySQL backend uses deprecated \"db\" and \"passwd\" kwargs.\nDescription\n\t\nThe \"db\" and \"passwd\" usage can be seen at \u200bhttps://github.com/django/django/blob/ca9872905559026af82000e46cde6f7dedc897b6/django/db/backends/mysql/base.py#L202-L205 in main. mysqlclient recently marked these two kwargs as deprecated (see \u200bhttps://github.com/PyMySQL/mysqlclient/commit/fa25358d0f171bd8a63729c5a8d76528f4ae74e9)\u2026",
       "754cbb23688c220929d7",
       "django__django"
     ],
@@ -1452,7 +1452,7 @@
       "django__django"
     ],
     [
-      "BaseForm's _clean_fields() and changed_data should access values via BoundField\nDescription\n\t \n\t\t(last modified by Chris Jerdonek)\n\t \nWhile working on #32917, I noticed that ​BaseForm._clean_fields() and ​BaseForm.changed_data don't currently access their values through a BoundField object. It would be better for consistency if they did, and to reduce the number of code paths.\nOne consequence of…",
+      "BaseForm's _clean_fields() and changed_data should access values via BoundField\nDescription\n\t \n\t\t(last modified by Chris Jerdonek)\n\t \nWhile working on #32917, I noticed that \u200bBaseForm._clean_fields() and \u200bBaseForm.changed_data don't currently access their values through a BoundField object. It would be better for consistency if they did, and to reduce the number of code paths.\nOne consequence of\u2026",
       "33a89cee9ffb2595d674",
       "django__django"
     ],
@@ -1532,7 +1532,7 @@
       "django__django"
     ],
     [
-      "Query.change_aliases raises an AssertionError\nDescription\n\t\nPython Version: 3.9.2\nDjango Version: 2.2.24, 3.2.9 (reproduced using two different versions) \nCode to Reproduce\n# models.py\nfrom django.db import models\nclass Foo(models.Model):\n\tqux = models.ForeignKey(\"app.Qux\", on_delete=models.CASCADE, related_name=\"foos\")\nclass Bar(models.Model):\n\tfoo = models.ForeignKey(\"app.Foo\",…",
+      "Query.change_aliases raises an AssertionError\nDescription\n\t\nPython Version: 3.9.2\nDjango Version: 2.2.24, 3.2.9 (reproduced using two different versions) \nCode to Reproduce\n# models.py\nfrom django.db import models\nclass Foo(models.Model):\n\tqux = models.ForeignKey(\"app.Qux\", on_delete=models.CASCADE, related_name=\"foos\")\nclass Bar(models.Model):\n\tfoo = models.ForeignKey(\"app.Foo\",\u2026",
       "4d0254a8973d5b814c22",
       "django__django"
     ],
@@ -1622,7 +1622,7 @@
       "django__django"
     ],
     [
-      "Optimize multiple AlterFooTogether operations into one\nDescription\n\t\nHi,\nIn #31503 we split the AlterFooTogether (AlterUniqueTogether and AlterIndexTogether) operations into two types of operations.\nFirst, a migration will have operations to remove constraints, and then other operations adds the new constraints. This allows field alterations to work as expected during in between operations.\nIn…",
+      "Optimize multiple AlterFooTogether operations into one\nDescription\n\t\nHi,\nIn #31503 we split the AlterFooTogether (AlterUniqueTogether and AlterIndexTogether) operations into two types of operations.\nFirst, a migration will have operations to remove constraints, and then other operations adds the new constraints. This allows field alterations to work as expected during in between operations.\nIn\u2026",
       "1bed1192d361b0f9cb50",
       "django__django"
     ],
@@ -1672,7 +1672,7 @@
       "django__django"
     ],
     [
-      "has_key, has_keys, and has_any_keys JSONField() lookups don't handle numeric keys on SQLite, MySQL, and Oracle.\nDescription\n\t \n\t\t(last modified by TheTerrasque)\n\t \nProblem\nWhen using models.​JSONField() ​has_key lookup with numerical keys on SQLite database it fails to find the keys.\nVersions:\nDjango: 4.0.3\nPython: 3.9.6 (tags/v3.9.6:db3ff76, Jun 28 2021, 15:26:21) [MSC v.1929 64 bit (AMD64)] on…",
+      "has_key, has_keys, and has_any_keys JSONField() lookups don't handle numeric keys on SQLite, MySQL, and Oracle.\nDescription\n\t \n\t\t(last modified by TheTerrasque)\n\t \nProblem\nWhen using models.\u200bJSONField() \u200bhas_key lookup with numerical keys on SQLite database it fails to find the keys.\nVersions:\nDjango: 4.0.3\nPython: 3.9.6 (tags/v3.9.6:db3ff76, Jun 28 2021, 15:26:21) [MSC v.1929 64 bit (AMD64)] on\u2026",
       "15c86a8f865c388a9d65",
       "django__django"
     ],
@@ -2022,7 +2022,7 @@
       "django__django"
     ],
     [
-      "Prefetch objects don't work with slices\nDescription\n\t\n​Prefetch() objects does not work with sliced querysets. For example the following code results in AssertionError: Cannot filter a query once a slice has been taken.:\nCategory.objects.prefetch_related(Prefetch(\n\t'post_set',\n\tqueryset=Post.objects.all()[:3],\n\tto_attr='example_posts',\n))\nThis behavior is also mentioned in ​this StackOverflow…",
+      "Prefetch objects don't work with slices\nDescription\n\t\n\u200bPrefetch() objects does not work with sliced querysets. For example the following code results in AssertionError: Cannot filter a query once a slice has been taken.:\nCategory.objects.prefetch_related(Prefetch(\n\t'post_set',\n\tqueryset=Post.objects.all()[:3],\n\tto_attr='example_posts',\n))\nThis behavior is also mentioned in \u200bthis StackOverflow\u2026",
       "bddd092653b16715ad2c",
       "django__django"
     ],
@@ -2107,7 +2107,7 @@
       "django__django"
     ],
     [
-      "Allow to customize the code attribute of ValidationError raised by BaseConstraint.validate\nDescription\n\t\nIt is currently possible to customize the violation_error_message of a ValidationError raised by a constraint but not the code.\nI'd like to add a new violation_error_message parameter to BaseConstraint to allow to easily add one.\nCurrently, to achieve the same result, you have to subclass the…",
+      "Allow to customize the code attribute of ValidationError raised by BaseConstraint.validate\nDescription\n\t\nIt is currently possible to customize the violation_error_message of a ValidationError raised by a constraint but not the code.\nI'd like to add a new violation_error_message parameter to BaseConstraint to allow to easily add one.\nCurrently, to achieve the same result, you have to subclass the\u2026",
       "926e23b8022867129897",
       "django__django"
     ],
@@ -2157,7 +2157,7 @@
       "matplotlib__matplotlib"
     ],
     [
-      "Inverting an axis using its limits does not work for log scale\n### Bug report\r\n\r\n**Bug summary**\r\nStarting in matplotlib 3.1.0 it is no longer possible to invert a log axis using its limits.\r\n\r\n**Code for reproduction**\r\n```python\r\nimport numpy as np\r\nimport matplotlib.pyplot as plt\r\n\r\n\r\ny = np.linspace(1000e2, 1, 100)\r\nx = np.exp(-np.linspace(0, 1, y.size))\r\n\r\nfor yscale in ('linear', 'log'):\r\n …",
+      "Inverting an axis using its limits does not work for log scale\n### Bug report\r\n\r\n**Bug summary**\r\nStarting in matplotlib 3.1.0 it is no longer possible to invert a log axis using its limits.\r\n\r\n**Code for reproduction**\r\n```python\r\nimport numpy as np\r\nimport matplotlib.pyplot as plt\r\n\r\n\r\ny = np.linspace(1000e2, 1, 100)\r\nx = np.exp(-np.linspace(0, 1, y.size))\r\n\r\nfor yscale in ('linear', 'log'):\r\n \u2026",
       "b777c179ae52395078b1",
       "matplotlib__matplotlib"
     ],
@@ -2247,7 +2247,7 @@
       "matplotlib__matplotlib"
     ],
     [
-      "[ENH]: Auto-detect bool arrays passed to contour()?\n### Problem\n\nI find myself fairly regularly calling\r\n```python\r\nplt.contour(boolean_2d_array, levels=[.5], ...)\r\n```\r\nto draw the boundary line between True and False regions on a boolean 2d array.  Without `levels=[.5]`, one gets the default 8 levels which go at 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05 resulting in all the contour lines being…",
+      "[ENH]: Auto-detect bool arrays passed to contour()?\n### Problem\n\nI find myself fairly regularly calling\r\n```python\r\nplt.contour(boolean_2d_array, levels=[.5], ...)\r\n```\r\nto draw the boundary line between True and False regions on a boolean 2d array.  Without `levels=[.5]`, one gets the default 8 levels which go at 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05 resulting in all the contour lines being\u2026",
       "680b3c5ac0e16b0a8455",
       "matplotlib__matplotlib"
     ],
@@ -2447,7 +2447,7 @@
       "mwaskom__seaborn"
     ],
     [
-      "Nominal scale should be drawn the same way as categorical scales\nThree distinctive things happen on the categorical axis in seaborn's categorical plots:\r\n\r\n1. The scale is drawn to +/- 0.5 from the first and last tick, rather than using the normal margin logic\r\n2. A grid is not shown, even when it otherwise would be with the active style\r\n3. If on the y axis, the axis is inverted\r\n\r\nIt probably…",
+      "Nominal scale should be drawn the same way as categorical scales\nThree distinctive things happen on the categorical axis in seaborn's categorical plots:\r\n\r\n1. The scale is drawn to +/- 0.5 from the first and last tick, rather than using the normal margin logic\r\n2. A grid is not shown, even when it otherwise would be with the active style\r\n3. If on the y axis, the axis is inverted\r\n\r\nIt probably\u2026",
       "630abbdc8383ce55570d",
       "mwaskom__seaborn"
     ],
@@ -2612,7 +2612,7 @@
       "mwaskom__seaborn"
     ],
     [
-      "Wrong legend values of large ranges\nAs of 0.12.1, legends describing large numbers that were created using `ScalarFormatter` with an offset are formatted without their multiplicative offset value. An example:\r\n```python\r\nimport seaborn as sns\r\nimport seaborn.objects as so\r\n\r\npenguins = sns.load_dataset(\"Penguins\")\r\npenguins[\"body_mass_mg\"] = penguins[\"body_mass_g\"]*1000\r\n(\r\n    so.Plot(\r\n       …",
+      "Wrong legend values of large ranges\nAs of 0.12.1, legends describing large numbers that were created using `ScalarFormatter` with an offset are formatted without their multiplicative offset value. An example:\r\n```python\r\nimport seaborn as sns\r\nimport seaborn.objects as so\r\n\r\npenguins = sns.load_dataset(\"Penguins\")\r\npenguins[\"body_mass_mg\"] = penguins[\"body_mass_g\"]*1000\r\n(\r\n    so.Plot(\r\n       \u2026",
       "058ba533ab18b4cc6633",
       "mwaskom__seaborn"
     ],
@@ -2692,7 +2692,7 @@
       "psf__requests"
     ],
     [
-      "Request with binary payload fails due to calling to_native_string\nIntroduced with https://github.com/kennethreitz/requests/issues/2844\n\n```\nimport requests\nrequests.put(\"http://httpbin.org/put\", data=u\"ööö\".encode(\"utf-8\"))\n```\n\nThis works with 2.8.1, but not with 2.9.",
+      "Request with binary payload fails due to calling to_native_string\nIntroduced with https://github.com/kennethreitz/requests/issues/2844\n\n```\nimport requests\nrequests.put(\"http://httpbin.org/put\", data=u\"\u00f6\u00f6\u00f6\".encode(\"utf-8\"))\n```\n\nThis works with 2.8.1, but not with 2.9.",
       "202ecf3d32d647b466af",
       "psf__requests"
     ],
@@ -2792,7 +2792,7 @@
       "psf__requests"
     ],
     [
-      "Proxy authentication bug\n<!-- Summary. -->\r\n\r\nWhen using proxies in python 3.8.12, I get an error 407. Using any other version of python works fine. I am assuming it could be to do with this https://docs.python.org/3/whatsnew/3.8.html#notable-changes-in-python-3-8-12.\r\n\r\n<!-- What you expected. -->\r\n\r\nI should get a status of 200.\r\n\r\n<!-- What happened instead. -->\r\n\r\nI get a status code of…",
+      "Proxy authentication bug\n<!-- Summary. -->\r\n\r\nWhen using proxies in python 3.8.12, I get an error 407. Using any other version of python works fine. I am assuming it could be to do with this https://docs.python.org/3/whatsnew/3.8.html#notable-changes-in-python-3-8-12.\r\n\r\n<!-- What you expected. -->\r\n\r\nI should get a status of 200.\r\n\r\n<!-- What happened instead. -->\r\n\r\nI get a status code of\u2026",
       "3e6893d73a20303d6665",
       "psf__requests"
     ],
@@ -2822,7 +2822,7 @@
       "pydata__xarray"
     ],
     [
-      "REGRESSION: copy(deep=True) casts unicode indices to object\nDataset.copy(deep=True) and DataArray.copy (deep=True/False) accidentally cast IndexVariable's with dtype='<U*' to object. Same applies to copy.copy() and copy.deepcopy().\r\n\r\nThis is a regression in xarray >= 0.12.2. xarray 0.12.1 and earlier are unaffected.\r\n\r\n```\r\n\r\nIn [1]: ds = xarray.Dataset(\r\n   ...:     coords={'x': ['foo'], 'y':…",
+      "REGRESSION: copy(deep=True) casts unicode indices to object\nDataset.copy(deep=True) and DataArray.copy (deep=True/False) accidentally cast IndexVariable's with dtype='<U*' to object. Same applies to copy.copy() and copy.deepcopy().\r\n\r\nThis is a regression in xarray >= 0.12.2. xarray 0.12.1 and earlier are unaffected.\r\n\r\n```\r\n\r\nIn [1]: ds = xarray.Dataset(\r\n   ...:     coords={'x': ['foo'], 'y':\u2026",
       "b0efb8ec8dfbcf6ff81d",
       "pydata__xarray"
     ],
@@ -2847,7 +2847,7 @@
       "pydata__xarray"
     ],
     [
-      "DataArray.quantile does not honor `keep_attrs`\n#### MCVE Code Sample\r\n<!-- In order for the maintainers to efficiently understand and prioritize issues, we ask you post a \"Minimal, Complete and Verifiable Example\" (MCVE): http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports -->\r\n\r\n```python\r\n# Your code here\r\nimport xarray as xr                                                       …",
+      "DataArray.quantile does not honor `keep_attrs`\n#### MCVE Code Sample\r\n<!-- In order for the maintainers to efficiently understand and prioritize issues, we ask you post a \"Minimal, Complete and Verifiable Example\" (MCVE): http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports -->\r\n\r\n```python\r\n# Your code here\r\nimport xarray as xr                                                       \u2026",
       "66eea49ff4ae3af6694d",
       "pydata__xarray"
     ],
@@ -2942,7 +2942,7 @@
       "pydata__xarray"
     ],
     [
-      "DataArray.integrate has a 'dim' arg, but Dataset.integrate has a 'coord' arg\nThis is just a minor gripe but I think it should be fixed.\r\n\r\nThe API syntax is inconsistent:\r\n```python\r\nds.differentiate(coord='x')\r\nda.differentiate(coord='x')\r\nds.integrate(coord='x')\r\nda.integrate(dim='x')   # why dim??\r\n```\r\nIt should definitely be `coord` - IMO it doesn't make sense to integrate or differentiate…",
+      "DataArray.integrate has a 'dim' arg, but Dataset.integrate has a 'coord' arg\nThis is just a minor gripe but I think it should be fixed.\r\n\r\nThe API syntax is inconsistent:\r\n```python\r\nds.differentiate(coord='x')\r\nda.differentiate(coord='x')\r\nds.integrate(coord='x')\r\nda.integrate(dim='x')   # why dim??\r\n```\r\nIt should definitely be `coord` - IMO it doesn't make sense to integrate or differentiate\u2026",
       "bb25db275d35df5434ed",
       "pydata__xarray"
     ],
@@ -3202,7 +3202,7 @@
       "pylint-dev__pylint"
     ],
     [
-      "Argument expected for short verbose option\n### Bug description\r\n\r\nThe short option of the `verbose` option expects an argument.\r\nAlso, the help message for the `verbose` option suggests a value `VERBOSE` should be provided.\r\n\r\nThe long option works ok & doesn't expect an argument:\r\n`pylint mytest.py --verbose`\r\n\r\n\r\n### Command used\r\n\r\n```shell\r\npylint mytest.py -v\r\n```\r\n\r\n\r\n### Pylint…",
+      "Argument expected for short verbose option\n### Bug description\r\n\r\nThe short option of the `verbose` option expects an argument.\r\nAlso, the help message for the `verbose` option suggests a value `VERBOSE` should be provided.\r\n\r\nThe long option works ok & doesn't expect an argument:\r\n`pylint mytest.py --verbose`\r\n\r\n\r\n### Command used\r\n\r\n```shell\r\npylint mytest.py -v\r\n```\r\n\r\n\r\n### Pylint\u2026",
       "d1fd6c19f8cd584daf07",
       "pylint-dev__pylint"
     ],
@@ -3332,7 +3332,7 @@
       "pylint-dev__pylint"
     ],
     [
-      "Pylint does not respect ignores in `--recursive=y` mode\n### Bug description\r\n\r\nPylint does not respect the `--ignore`, `--ignore-paths`, or `--ignore-patterns` setting when running in recursive mode. This contradicts the documentation and seriously compromises the usefulness of recursive mode.\r\n\r\n### Configuration\r\n\r\n_No response_\r\n\r\n### Command used\r\n\r\n```shell\r\n### .a/foo.py\r\n# import re\r\n\r\n###…",
+      "Pylint does not respect ignores in `--recursive=y` mode\n### Bug description\r\n\r\nPylint does not respect the `--ignore`, `--ignore-paths`, or `--ignore-patterns` setting when running in recursive mode. This contradicts the documentation and seriously compromises the usefulness of recursive mode.\r\n\r\n### Configuration\r\n\r\n_No response_\r\n\r\n### Command used\r\n\r\n```shell\r\n### .a/foo.py\r\n# import re\r\n\r\n###\u2026",
       "4d64d541acac7dd2cc0c",
       "pylint-dev__pylint"
     ],
@@ -3457,7 +3457,7 @@
       "pylint-dev__pylint"
     ],
     [
-      "bad-names-rgxs mangles regular expressions with commas\n### Bug description\r\n\r\nSince pylint splits on commas in this option, instead of taking a list of strings, if there are any commas in the regular expression, the result is mangled before being parsed. The config below demonstrates this clearly by causing pylint to crash immediately.\r\n\r\n### Configuration\r\n\r\n```ini\r\n[tool.pylint.basic]\r\n#…",
+      "bad-names-rgxs mangles regular expressions with commas\n### Bug description\r\n\r\nSince pylint splits on commas in this option, instead of taking a list of strings, if there are any commas in the regular expression, the result is mangled before being parsed. The config below demonstrates this clearly by causing pylint to crash immediately.\r\n\r\n### Configuration\r\n\r\n```ini\r\n[tool.pylint.basic]\r\n#\u2026",
       "c53476d926d50c774411",
       "pylint-dev__pylint"
     ],
@@ -3567,7 +3567,7 @@
       "pytest-dev__pytest"
     ],
     [
-      "exception serialization should include chained exceptions\ngiven some simple tests:\r\n```\r\ndef test_chained_exception_with_from():\r\n    try:\r\n        try:\r\n            raise ValueError(11)\r\n        except Exception as e1:\r\n            raise ValueError(12) from e1\r\n    except Exception as e2:\r\n        raise ValueError(13) from e2\r\n\r\n\r\ndef test_chained_exception_without_from():\r\n    try:\r\n       …",
+      "exception serialization should include chained exceptions\ngiven some simple tests:\r\n```\r\ndef test_chained_exception_with_from():\r\n    try:\r\n        try:\r\n            raise ValueError(11)\r\n        except Exception as e1:\r\n            raise ValueError(12) from e1\r\n    except Exception as e2:\r\n        raise ValueError(13) from e2\r\n\r\n\r\ndef test_chained_exception_without_from():\r\n    try:\r\n       \u2026",
       "d32750b33e39338446be",
       "pytest-dev__pytest"
     ],
@@ -3597,7 +3597,7 @@
       "pytest-dev__pytest"
     ],
     [
-      "5.1.2 ImportError while loading conftest (windows import folder casing issues)\n5.1.1 works fine. after upgrade to 5.1.2, the path was converted to lower case\r\n```\r\nInstalling collected packages: pytest\r\n  Found existing installation: pytest 5.1.1\r\n    Uninstalling pytest-5.1.1:\r\n      Successfully uninstalled pytest-5.1.1\r\nSuccessfully installed pytest-5.1.2\r\nPS C:\\Azure\\KMS\\ComponentTest\\Python>…",
+      "5.1.2 ImportError while loading conftest (windows import folder casing issues)\n5.1.1 works fine. after upgrade to 5.1.2, the path was converted to lower case\r\n```\r\nInstalling collected packages: pytest\r\n  Found existing installation: pytest 5.1.1\r\n    Uninstalling pytest-5.1.1:\r\n      Successfully uninstalled pytest-5.1.1\r\nSuccessfully installed pytest-5.1.2\r\nPS C:\\Azure\\KMS\\ComponentTest\\Python>\u2026",
       "73096f4515a3d2f17a09",
       "pytest-dev__pytest"
     ],
@@ -3677,7 +3677,7 @@
       "pytest-dev__pytest"
     ],
     [
-      "Regression in 5.2.3: pytest tries to collect random __init__.py files\nThis was caught by our build server this morning.  It seems that pytest 5.2.3 tries to import any `__init__.py` file under the current directory. (We have some package that is only used on windows and cannot be imported on linux.)\r\n\r\nHere is a minimal example using tox that reproduces the problem (I'm running on Debian 10 with…",
+      "Regression in 5.2.3: pytest tries to collect random __init__.py files\nThis was caught by our build server this morning.  It seems that pytest 5.2.3 tries to import any `__init__.py` file under the current directory. (We have some package that is only used on windows and cannot be imported on linux.)\r\n\r\nHere is a minimal example using tox that reproduces the problem (I'm running on Debian 10 with\u2026",
       "83f3eac4dede728b415f",
       "pytest-dev__pytest"
     ],
@@ -3717,7 +3717,7 @@
       "pytest-dev__pytest"
     ],
     [
-      "Pytest 6: Dynamically adding xfail marker in test no longer ignores failure\n<!--\r\nThanks for submitting an issue!\r\n\r\nHere's a quick checklist for what to provide:\r\n-->\r\n\r\n## Description\r\n\r\nWith pytest 5.x, we can dynamically add an xfail to a test `request` object using `request.node.add_marker(mark)` (see example below). In 5.x this treated the failing test like a a test marked statically with…",
+      "Pytest 6: Dynamically adding xfail marker in test no longer ignores failure\n<!--\r\nThanks for submitting an issue!\r\n\r\nHere's a quick checklist for what to provide:\r\n-->\r\n\r\n## Description\r\n\r\nWith pytest 5.x, we can dynamically add an xfail to a test `request` object using `request.node.add_marker(mark)` (see example below). In 5.x this treated the failing test like a a test marked statically with\u2026",
       "b904e13915eca36c9d73",
       "pytest-dev__pytest"
     ],
@@ -3762,7 +3762,7 @@
       "pytest-dev__pytest"
     ],
     [
-      "Starting v6.2.0, unittest setUpClass fixtures are no longer \"private\"\n<!--\r\nThanks for submitting an issue!\r\n\r\nQuick check-list while reporting bugs:\r\n-->\r\nMinimal example:\r\n```\r\nimport unittest\r\n\r\nclass Tests(unittest.TestCase):\r\n    @classmethod\r\n    def setUpClass(cls):\r\n        pass\r\n\r\n    def test_1(self):\r\n        pass\r\n```\r\n```\r\n~$  pytest --fixtures\r\n...\r\nunittest_setUpClass_fixture_Tests…",
+      "Starting v6.2.0, unittest setUpClass fixtures are no longer \"private\"\n<!--\r\nThanks for submitting an issue!\r\n\r\nQuick check-list while reporting bugs:\r\n-->\r\nMinimal example:\r\n```\r\nimport unittest\r\n\r\nclass Tests(unittest.TestCase):\r\n    @classmethod\r\n    def setUpClass(cls):\r\n        pass\r\n\r\n    def test_1(self):\r\n        pass\r\n```\r\n```\r\n~$  pytest --fixtures\r\n...\r\nunittest_setUpClass_fixture_Tests\u2026",
       "9e3d24fb7fd3145f8d5b",
       "pytest-dev__pytest"
     ],
@@ -3822,22 +3822,22 @@
       "scikit-learn__scikit-learn"
     ],
     [
-      "`SparseCoder` doesn't expose `max_iter` for `Lasso`\n`SparseCoder` uses `Lasso` if the algorithm is set to `lasso_cd`. It sets some of the `Lasso`'s parameters, but not `max_iter`, and that by default is 1000. This results in a warning in `examples/decomposition/plot_sparse_coding.py` complaining that the estimator has not converged.\r\n\r\nI guess there should be a way for the user to specify other…",
+      "`SparseCoder` doesn't expose `max_iter` for `Lasso`\n`SparseCoder` uses `Lasso` if the algorithm is set to `lasso_cd`. It sets some of the `Lasso`'s parameters, but not `max_iter`, and that by default is 1000. This results in a warning in `examples/decomposition/plot_sparse_coding.py` complaining that the estimator has not converged.\r\n\r\nI guess there should be a way for the user to specify other\u2026",
       "e6b10cea8dbabb543966",
       "scikit-learn__scikit-learn"
     ],
     [
-      "Preserving dtypes for DataFrame output by transformers that do not modify the input values\n### Describe the workflow you want to enable\r\n\r\nIt would be nice to optionally preserve the dtypes of the input using pandas output for transformers #72.\r\nDtypes can contain information relevant for later steps of the analyses. \r\nE.g. if I include pd.categorical columns to represent ordinal data and then…",
+      "Preserving dtypes for DataFrame output by transformers that do not modify the input values\n### Describe the workflow you want to enable\r\n\r\nIt would be nice to optionally preserve the dtypes of the input using pandas output for transformers #72.\r\nDtypes can contain information relevant for later steps of the analyses. \r\nE.g. if I include pd.categorical columns to represent ordinal data and then\u2026",
       "f8dcad23bb0724b9ad36",
       "scikit-learn__scikit-learn"
     ],
     [
-      "toctree contains reference to nonexisting document 'genindex', 'modindex', 'search'\n**Is your feature request related to a problem? Please describe.**\r\nA lot of users try to add the following links to the toctree:\r\n```\r\n* :ref:`genindex`\r\n* :ref:`modindex`\r\n* :ref:`search`\r\n```\r\nlike this:\r\n```\r\n.. toctree::\r\n   :maxdepth: 1\r\n   :caption: Indices and tables\r\n\r\n   genindex \r\n   modindex\r\n  …",
+      "toctree contains reference to nonexisting document 'genindex', 'modindex', 'search'\n**Is your feature request related to a problem? Please describe.**\r\nA lot of users try to add the following links to the toctree:\r\n```\r\n* :ref:`genindex`\r\n* :ref:`modindex`\r\n* :ref:`search`\r\n```\r\nlike this:\r\n```\r\n.. toctree::\r\n   :maxdepth: 1\r\n   :caption: Indices and tables\r\n\r\n   genindex \r\n   modindex\r\n  \u2026",
       "66b1a9ba8186cea5708b",
       "sphinx-doc__sphinx"
     ],
     [
-      "locale/<language>/LC_MESSAGES/sphinx.po translation ignored\n**Describe the bug**\r\nI read [1] as it should be possible to add a file ``locale/<language>/LC_MESSAGES/sphinx.mo`` to the source dir (same dir as the ``Makefile``) and through that change translations or add additional translation to <language>. \r\n\r\nWhen I add ``locale/da/LC_MESSAGES/sphinx.po``, with updated entries for ``Fig. %s`` and…",
+      "locale/<language>/LC_MESSAGES/sphinx.po translation ignored\n**Describe the bug**\r\nI read [1] as it should be possible to add a file ``locale/<language>/LC_MESSAGES/sphinx.mo`` to the source dir (same dir as the ``Makefile``) and through that change translations or add additional translation to <language>. \r\n\r\nWhen I add ``locale/da/LC_MESSAGES/sphinx.po``, with updated entries for ``Fig. %s`` and\u2026",
       "6e690df03edd1fbdb70b",
       "sphinx-doc__sphinx"
     ],
@@ -3847,37 +3847,37 @@
       "sphinx-doc__sphinx"
     ],
     [
-      ":type: and :rtype: gives false ambiguous class lookup warnings\n**Describe the bug**\r\nThe implicit xrefs created by the info fields ``:type:`` and ``:rtype:`` seems to do lookup differently than explicit xref roles. For unqualified names it seems like they search for the name in every (sub)module instead of in the current module and then parent modules.\r\n\r\n**To Reproduce**\r\n```rst\r\n.. py:class::…",
+      ":type: and :rtype: gives false ambiguous class lookup warnings\n**Describe the bug**\r\nThe implicit xrefs created by the info fields ``:type:`` and ``:rtype:`` seems to do lookup differently than explicit xref roles. For unqualified names it seems like they search for the name in every (sub)module instead of in the current module and then parent modules.\r\n\r\n**To Reproduce**\r\n```rst\r\n.. py:class::\u2026",
       "14b0745b32a708d7bc10",
       "sphinx-doc__sphinx"
     ],
     [
-      "Methods decorated with @classmethod and @property do not get documented.\n**EDIT:** The problem seems to be that `type(BaseClass.baseclass_property)` returns `property`, thus sphinx can just lookup `BaseClass.baseclass_property.__doc__`. However, `type(BaseClass.baseclass_class_property)` returns the type of the returned object, since essentially, a `@classmethod@property` ends up behaving like a…",
+      "Methods decorated with @classmethod and @property do not get documented.\n**EDIT:** The problem seems to be that `type(BaseClass.baseclass_property)` returns `property`, thus sphinx can just lookup `BaseClass.baseclass_property.__doc__`. However, `type(BaseClass.baseclass_class_property)` returns the type of the returned object, since essentially, a `@classmethod@property` ends up behaving like a\u2026",
       "2336b9a4cf381e7fe9c0",
       "sphinx-doc__sphinx"
     ],
     [
-      "combinatorics.Permutation can't be subclassed properly\nI stumbled across a subclassing issue with `combinatorics.Permutation`:\r\nThe object creation is done in `Permutation.__new__`, but internally the function `_af_new` is used (which itself is a reference to the static method `Permutation._af_new`). This method eventually creates the object calling `Basic.__new__(Perm, perm)` (`Perm` is a…",
+      "combinatorics.Permutation can't be subclassed properly\nI stumbled across a subclassing issue with `combinatorics.Permutation`:\r\nThe object creation is done in `Permutation.__new__`, but internally the function `_af_new` is used (which itself is a reference to the static method `Permutation._af_new`). This method eventually creates the object calling `Basic.__new__(Perm, perm)` (`Perm` is a\u2026",
       "7d33669f60ce1a503246",
       "sympy__sympy"
     ],
     [
-      "Return NotImplemented, not False, upon rich comparison with unknown type\nComparison methods should ideally return ``NotImplemented`` when unable to make sense of the arguments. This way, the comparison is delegated to the reflected method on the other object, which might support the comparison (see https://docs.python.org/3/reference/datamodel.html#object.__lt__, and your own article on the…",
+      "Return NotImplemented, not False, upon rich comparison with unknown type\nComparison methods should ideally return ``NotImplemented`` when unable to make sense of the arguments. This way, the comparison is delegated to the reflected method on the other object, which might support the comparison (see https://docs.python.org/3/reference/datamodel.html#object.__lt__, and your own article on the\u2026",
       "f9cef2add0ad782a68f5",
       "sympy__sympy"
     ],
     [
-      "Matrix determinant raises Invalid NaN comparison with particular symbolic entries\n    >>> from sympy import *\r\n    >>> from sympy.abc import a\r\n    >>> f = lambda n: det(Matrix([[i + a*j for i in range(n)] for j in range(n)]))\r\n    >>> f(1)\r\n    0\r\n    >>> f(2)\r\n    -a\r\n    >>> f(3)\r\n    2*a*(a + 2) + 2*a*(2*a + 1) - 3*a*(2*a + 2)\r\n    >>> f(4)\r\n    0\r\n    >>> f(5)\r\n    nan\r\n    >>> f(6)\r\n   …",
+      "Matrix determinant raises Invalid NaN comparison with particular symbolic entries\n    >>> from sympy import *\r\n    >>> from sympy.abc import a\r\n    >>> f = lambda n: det(Matrix([[i + a*j for i in range(n)] for j in range(n)]))\r\n    >>> f(1)\r\n    0\r\n    >>> f(2)\r\n    -a\r\n    >>> f(3)\r\n    2*a*(a + 2) + 2*a*(2*a + 1) - 3*a*(2*a + 2)\r\n    >>> f(4)\r\n    0\r\n    >>> f(5)\r\n    nan\r\n    >>> f(6)\r\n   \u2026",
       "be8efcad0989bb8aba00",
       "sympy__sympy"
     ],
     [
-      "Precompute the CDF of several distributions where integration doesn't work well\nThe way [continuous distributions](http://docs.sympy.org/dev/modules/stats.html#continuous-types) are implemented is that the density function (PDF) is defined, and then the cumulative distribution function (CDF) is meant to be obtained by integration. This often doesn't work well because integration is hard. In such…",
+      "Precompute the CDF of several distributions where integration doesn't work well\nThe way [continuous distributions](http://docs.sympy.org/dev/modules/stats.html#continuous-types) are implemented is that the density function (PDF) is defined, and then the cumulative distribution function (CDF) is meant to be obtained by integration. This often doesn't work well because integration is hard. In such\u2026",
       "66fc47dee4275112c76e",
       "sympy__sympy"
     ],
     [
-      "The difference of MatrixSymbols prints as a sum with (-1) coefficient\nInternally, differences like a-b are represented as the sum of a with `(-1)*b`, but they are supposed to print like a-b. This does not happen with MatrixSymbols. I tried three printers: str, pretty, and latex: \r\n```\r\nfrom sympy import *\r\nA = MatrixSymbol('A', 2, 2)\r\nB = MatrixSymbol('B', 2, 2)\r\nprint(A - A*B - B)\r\npprint(A -…",
+      "The difference of MatrixSymbols prints as a sum with (-1) coefficient\nInternally, differences like a-b are represented as the sum of a with `(-1)*b`, but they are supposed to print like a-b. This does not happen with MatrixSymbols. I tried three printers: str, pretty, and latex: \r\n```\r\nfrom sympy import *\r\nA = MatrixSymbol('A', 2, 2)\r\nB = MatrixSymbol('B', 2, 2)\r\nprint(A - A*B - B)\r\npprint(A -\u2026",
       "86e8ffb5f0258c204c92",
       "sympy__sympy"
     ],
@@ -7677,7 +7677,7 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "\\b\\d+(\\.\\d+)?\\s*[x×%]|\\$\\d|cheaper|reduction|tokens?\\s+saved|faster|outperform|beats?\\b",
+      "\\b\\d+(\\.\\d+)?\\s*[x\u00d7%]|\\$\\d|cheaper|reduction|tokens?\\s+saved|faster|outperform|beats?\\b",
       "session_759",
       "atelier-ws__atelier-dev"
     ],
@@ -7717,7 +7717,7 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "♻|↓|I:|C:|ctx |def.*status.*line|status_line",
+      "\u267b|\u2193|I:|C:|ctx |def.*status.*line|status_line",
       "session_767",
       "atelier-ws__atelier-dev"
     ],
@@ -7727,12 +7727,12 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "♻|↓|ctx|I:|recycl|cache.*sav",
+      "\u267b|\u2193|ctx|I:|recycl|cache.*sav",
       "session_769",
       "atelier-ws__atelier-dev"
     ],
     [
-      "def .*status|ctx_pct|context_pct|format_cost|def _render|↓|♻",
+      "def .*status|ctx_pct|context_pct|format_cost|def _render|\u2193|\u267b",
       "session_770",
       "atelier-ws__atelier-dev"
     ],
@@ -8217,7 +8217,7 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "space toggle|enter confirm|❯|◼",
+      "space toggle|enter confirm|\u276f|\u25fc",
       "session_867",
       "atelier-ws__atelier-dev"
     ],
@@ -8232,7 +8232,7 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "questionary|prompt_toolkit|InquirerPy|◆|◇|◼|clack|intro\\(|select_hosts|choose_hosts|host_menu|interactive",
+      "questionary|prompt_toolkit|InquirerPy|\u25c6|\u25c7|\u25fc|clack|intro\\(|select_hosts|choose_hosts|host_menu|interactive",
       "session_870",
       "atelier-ws__atelier-dev"
     ],
@@ -9452,12 +9452,12 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "carry|def.*segment|--segment|def compute_savings_summary|↓|↑|savings_frame|def _segment",
+      "carry|def.*segment|--segment|def compute_savings_summary|\u2193|\u2191|savings_frame|def _segment",
       "session_1114",
       "atelier-ws__atelier-dev"
     ],
     [
-      "def resolve_model_id|frames\\.append|frames = \\[|saved_usd > 0|saved_usd <= 0|if .*saved_usd|↓|frame_0|frame_1|cost_frame|savings_frame",
+      "def resolve_model_id|frames\\.append|frames = \\[|saved_usd > 0|saved_usd <= 0|if .*saved_usd|\u2193|frame_0|frame_1|cost_frame|savings_frame",
       "session_1115",
       "atelier-ws__atelier-dev"
     ],
@@ -13212,7 +13212,7 @@
       "atelier-ws__atelier-dev"
     ],
     [
-      "Opus|ctx 0%|↓|savings|total_atelier_savings|session_stats|context_savings|compact_savings_estimate",
+      "Opus|ctx 0%|\u2193|savings|total_atelier_savings|session_stats|context_savings|compact_savings_estimate",
       "session_1866",
       "atelier-ws__atelier-dev"
     ],
@@ -35484,7 +35484,8 @@
       "base_commit": "d1320814eda6549996190618a21eaf212cfd4d1e"
     },
     "atelier-ws__atelier-dev": {
-      "ws": "/home/pankaj/Projects/leanchain/atelier"
+      "ws": "/home/pankaj/Projects/leanchain/atelier",
+      "db": "/home/pankaj/.atelier/workspaces/Projects-leanchain-atelier/code_context.sqlite"
     },
     "atelier__atelier": {
       "ws": "/home/pankaj/Projects/leanchain/atelier",
