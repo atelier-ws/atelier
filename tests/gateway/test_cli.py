@@ -197,9 +197,12 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
             "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
         },
     )
-    # Real measured savings come from sessions/<id>/savings.jsonl (written by
-    # the stop hook at session end, priced at the model in use that turn).
-    savings_file = root / "sessions" / "s1" / "savings.jsonl"
+    # Real measured savings come from the canonical session dir's savings.jsonl
+    # (written by the stop hook at session end, priced at the model in use
+    # that turn).
+    from atelier.core.foundation.paths import session_dir
+
+    savings_file = session_dir(root, "claude", "s1") / "savings.jsonl"
     savings_file.parent.mkdir(parents=True, exist_ok=True)
     import datetime
 

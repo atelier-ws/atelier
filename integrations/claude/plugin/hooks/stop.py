@@ -145,7 +145,12 @@ def _write_token_event(stats: dict[str, Any], session_id: str | None = None) -> 
         session_id = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
-    run_file = _sessions_root() / "sessions" / session_id / "run.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_file = session_dir(_sessions_root(), "claude", session_id) / "run.json"
+    except ImportError:
+        return
     if not run_file.exists():
         return
     try:
@@ -410,7 +415,7 @@ def _extract_edited_paths(transcript_path: str) -> list[str]:
                     continue
                 try:
                     entry = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     continue
                 if entry.get("type") != "assistant":
                     continue
@@ -491,7 +496,12 @@ def _write_session_enrichment(
     """
     if not session_id:
         return
-    run_file = _sessions_root() / "sessions" / session_id / "run.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_file = session_dir(_sessions_root(), "claude", session_id) / "run.json"
+    except ImportError:
+        return
     if not run_file.exists():
         return
     try:
@@ -687,7 +697,7 @@ def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, 
     #   • If compact DID erase entries (older behaviour), pre_compact > transcript and we
     #     recover only the truly missing portion.
     #
-    # The old "unconditional add" inflated cost by up to N× (N = compact count) because
+    # The old "unconditional add" inflated cost by up to Nx (N = compact count) because
     # it summed N growing snapshots on top of a transcript that already contained them all.
     pre_compact = aggregate.get("pre_compact_usage")
     if isinstance(pre_compact, dict):
@@ -739,7 +749,12 @@ def _write_session_cost(
     """
     if not session_id or cost_usd <= 0:
         return
-    path = _sessions_root() / "sessions" / session_id / "savings.jsonl"
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        path = session_dir(_sessions_root(), "claude", session_id) / "savings.jsonl"
+    except ImportError:
+        return
     if not path.exists():
         return  # no savings sidecar → session produced no MCP events; skip
     row = {

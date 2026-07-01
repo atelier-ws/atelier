@@ -112,11 +112,16 @@ def outcomes_group() -> None:
 @click.pass_context
 def outcomes_show(ctx: click.Context, session_id: str) -> None:
     """Print JSON outcome data for SESSION_ID."""
+    from atelier.core.foundation.paths import find_session_dir
     from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
     root: Path = ctx.obj["root"]
-    path = root / "sessions" / session_id / "outcomes.json"
-    data = load_outcomes_from_state(path)
+    session_path = find_session_dir(root, session_id)
+    data = (
+        load_outcomes_from_state(session_path / "outcomes.json")
+        if session_path is not None
+        else {"route_outcomes": [], "compact_outcomes": []}
+    )
     click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
@@ -142,7 +147,7 @@ def outcomes_summary(ctx: click.Context, since: str) -> None:
         "route_outcomes": [],
         "compact_outcomes": [],
     }
-    for outcomes_file in runs_dir.glob("*/outcomes.json"):
+    for outcomes_file in runs_dir.glob("*/*/*/*/*/outcomes.json"):
         try:
             mtime = datetime.fromtimestamp(outcomes_file.stat().st_mtime, tz=UTC)
         except OSError:

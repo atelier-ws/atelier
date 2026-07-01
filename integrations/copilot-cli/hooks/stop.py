@@ -44,19 +44,32 @@ def _workspace_key(path: str) -> str:
 def _session_savings_path(workspace: str) -> Path:
     """Resolve the per-session savings path, mirroring the MCP writer.
 
-    Matches `_get_host_session_sidecar_path()` /`_workspace_savings_path()` in
-    mcp_server.py byte-for-byte:
-    1. If a host session-id env var is set (GITHUB_COPILOT_SESSION_ID, plus
-       CLAUDE_CODE_SESSION_ID for parity) -> sessions/<sid>/savings.jsonl.
+    Delegates host segregation to the canonical `session_dir()` helper
+    (`atelier.core.foundation.paths`) rather than re-deriving
+    `_get_host_session_sidecar_path()` /`_workspace_savings_path()` from
+    mcp_server.py by hand. The old fallback to CLAUDE_CODE_SESSION_ID "for
+    parity" was itself a real cross-host collision bug: a copilot-cli session
+    and a Claude Code session that happened to share an id (or a stale
+    CLAUDE_CODE_SESSION_ID left over in the environment) would silently
+    corrupt each other's savings.jsonl. Only GITHUB_COPILOT_SESSION_ID
+    identifies a copilot-cli session. The host is hardcoded to "copilot" (not
+    `detect_host()`) since this file is only ever invoked by copilot-cli.
+
+    1. If GITHUB_COPILOT_SESSION_ID is set ->
+       session_dir(root, "copilot", sid) / "savings.jsonl".
     2. Else workspaces/<sha256(resolve(ATELIER_WORKSPACE_ROOT or cwd))[:12]>/
        session_savings.jsonl. The hash input is ATELIER_WORKSPACE_ROOT or the
        cwd -- NOT payload["cwd"] -- so it agrees with the MCP when the env var
        is present.
     """
-    for env_var in ("GITHUB_COPILOT_SESSION_ID", "CLAUDE_CODE_SESSION_ID"):
-        sid = os.environ.get(env_var, "").strip()
-        if sid:
-            return _atelier_root() / "sessions" / sid / "savings.jsonl"
+    sid = os.environ.get("GITHUB_COPILOT_SESSION_ID", "").strip()
+    if sid:
+        try:
+            from atelier.core.foundation.paths import session_dir
+        except ImportError:
+            pass
+        else:
+            return session_dir(_atelier_root(), "copilot", sid) / "savings.jsonl"
     workspace = str(Path(os.environ.get("ATELIER_WORKSPACE_ROOT") or workspace).resolve())
     h = _workspace_key(workspace)
     return _atelier_root() / "workspaces" / h / "session_savings.jsonl"

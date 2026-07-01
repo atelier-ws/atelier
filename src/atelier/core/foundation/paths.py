@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import date as _date
+from datetime import timedelta as _timedelta
 from hashlib import sha256 as _sha256
 from pathlib import Path
 
@@ -100,6 +102,102 @@ def resolve_lessons_root(root: Path | str | None = None, lessons_root: Path | st
         return Path(configured).expanduser().resolve()
 
     return (resolve_workspace_root(root) / DEFAULT_LESSONS_DIRNAME).resolve()
+
+
+def detect_host() -> str:
+    """Derive the host/agent label from the runtime environment.
+
+    The single canonical implementation -- every per-session storage path is
+    segregated by this value so two hosts (claude/codex/copilot/opencode/...)
+    can never collide on the same session_id: each host's own session-id
+    namespace is independent, so string equality across hosts is coincidence,
+    not identity. Previously re-derived independently in mcp_server.py and
+    reimplemented (badly -- via a same-session-id cross-check) in the
+    copilot-cli hooks; this is now the only place that sniffs these env vars.
+
+    Checks, in order:
+    1. ATELIER_AGENT env var (explicit override -- any host can set this)
+    2. CLAUDE_CODE -> "claude"
+    3. ANTIGRAVITY_SESSION_ID or AGY_SESSION_ID -> "antigravity"
+    4. CODEX_SESSION_ID -> "codex"
+    5. OPENCODE_SESSION_ID -> "opencode"
+    6. CURSOR_SESSION_ID or CURSOR_TRACE_ID -> "cursor"
+    7. HERMES_* -> "hermes"
+    8. COPILOT_CLI or GITHUB_COPILOT_SESSION_ID -> "copilot"
+    9. Falls back to "claude" (the MCP wrapper ships with the Claude plugin)
+    """
+    explicit = os.environ.get("ATELIER_AGENT", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("CLAUDE_CODE"):
+        return "claude"
+    if (
+        os.environ.get("ANTIGRAVITY_SESSION_ID")
+        or os.environ.get("AGY_SESSION_ID")
+        or os.environ.get("ANTIGRAVITY_CLI")
+        or os.environ.get("AGY_CLI")
+    ):
+        return "antigravity"
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
+        return "codex"
+    if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
+        return "opencode"
+    if os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
+        return "cursor"
+    if os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or os.environ.get("HERMES_CLI"):
+        return "hermes"
+    if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
+        return "copilot"
+    return "claude"
+
+
+def session_dir(root: Path | str, host: str, session_id: str, *, search_days: int = 3) -> Path:
+    """Canonical per-session directory: ``sessions/YYYY/MM/DD/<host>/<session_id>/``.
+
+    Every per-session artifact (run.json, stats.json, events.jsonl,
+    mcp_debug.jsonl, runtime_state.json, statusline_segment, savings.jsonl,
+    outcomes.json, ...) belongs in this ONE directory -- the single write
+    surface for a session, replacing the flat ``sessions/<id>/`` layout most
+    writers used, the date-partitioned ``sessions/YYYY/MM/DD/<id>/`` layout
+    RunLedger's own persist/load used, and every ad hoc reimplementation of
+    either. Host-segregated so two hosts can never collide on the same id
+    (see :func:`detect_host`).
+
+    The date is resolved, not blindly recomputed as "today": a session that
+    already has a directory within the last *search_days* days keeps it, so a
+    session spanning midnight does not silently start writing into a new
+    day's folder and orphan its own earlier state. Only a session with no
+    existing directory in that window mints today's date (first writer for a
+    session pins its folder for every later caller, in-process or not).
+
+    For read-side lookups where the host is not known up front (e.g. a CLI
+    command given a bare session id), use :func:`find_session_dir` instead.
+    """
+    root = Path(root)
+    today = _date.today()
+    for offset in range(search_days):
+        d = today - _timedelta(days=offset)
+        candidate = root / "sessions" / d.strftime("%Y") / d.strftime("%m") / d.strftime("%d") / host / session_id
+        if candidate.exists():
+            return candidate
+    return root / "sessions" / today.strftime("%Y") / today.strftime("%m") / today.strftime("%d") / host / session_id
+
+
+def find_session_dir(root: Path | str, session_id: str) -> Path | None:
+    """Locate an existing session directory by id alone, host unknown.
+
+    Globs ``sessions/*/*/*/*/`` <session_id> under *root*. session_id is a
+    high-entropy id (a host-issued UUID in practice), so a glob match is safe
+    and this stays a read-only lookup -- callers that are writing must go
+    through :func:`session_dir` with an explicit host instead. Returns the
+    first match (there should only ever be one) or ``None``.
+    """
+    root = Path(root)
+    sessions_root = root / "sessions"
+    if not sessions_root.is_dir():
+        return None
+    matches = sorted(sessions_root.glob(f"*/*/*/*/{session_id}"))
+    return matches[0] if matches else None
 
 
 def resolve_session_state_path(workspace_root: Path | str | None = None) -> Path:
@@ -229,10 +327,13 @@ __all__ = [
     "DEFAULT_STORE_DIRNAME",
     "confine_to_root",
     "default_store_root",
+    "detect_host",
+    "find_session_dir",
     "resolve_lessons_root",
     "resolve_session_state_path",
     "resolve_store_root_for_workspace",
     "resolve_workspace_root",
     "resolve_workspace_store_dir",
+    "session_dir",
     "workspace_key",
 ]

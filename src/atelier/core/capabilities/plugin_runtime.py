@@ -1889,12 +1889,13 @@ def _codex_append_compaction_savings_row(
     if not session_id:
         return
     try:
-        try:
-            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+        from atelier.core.foundation.paths import session_dir
 
-            path = _srd(root, session_id) / "savings.jsonl"
-        except ImportError:
-            path = Path(root) / "sessions" / session_id / "savings.jsonl"
+        # Hardcoded, not detect_host(): this helper is Codex-specific (its
+        # callers only ever run in a Codex context), and the calling process
+        # (e.g. a test, or a future non-Codex-env invocation) may not have the
+        # CODEX_* env vars set that detect_host() would otherwise need.
+        path = session_dir(root, "codex", session_id) / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",
@@ -2396,11 +2397,15 @@ def baseline_time_saved(calls_saved: int) -> dict[str, Any]:
 
 
 def session_stats_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "sessions" / session_id / "stats.json"
+    from atelier.core.foundation.paths import detect_host, session_dir
+
+    return session_dir(root, detect_host(), session_id) / "stats.json"
 
 
 def _session_event_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "sessions" / session_id / "events.jsonl"
+    from atelier.core.foundation.paths import detect_host, session_dir
+
+    return session_dir(root, detect_host(), session_id) / "events.jsonl"
 
 
 def _now_ms(payload: dict[str, Any] | None = None) -> int:
@@ -3193,7 +3198,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json"))
+        else sorted(sessions_dir.glob("*/*/*/*/*/stats.json"))
         if sessions_dir.exists()
         else []
     )

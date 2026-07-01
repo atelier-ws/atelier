@@ -2,8 +2,9 @@
 """PostToolUse hook — capture file diffs into the active RunLedger.
 
 Fires after Edit, Write, or MultiEdit. Computes the diff and appends a
-``file_edit`` event to ``sessions/<session_id>/run.json`` so it shows up in
-the Atelier traces dashboard.
+``file_edit`` event to the session's ``run.json`` (see
+``atelier.core.foundation.paths.session_dir``) so it shows up in the Atelier
+traces dashboard.
 
 Fail-open: any error exits silently (code 0) — never blocks the agent.
 """
@@ -147,8 +148,12 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
 
 
 def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
-    """Append a file_edit event to sessions/<session_id>/run.json atomically."""
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    """Append a file_edit event to the session's run.json atomically."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 

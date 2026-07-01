@@ -160,8 +160,11 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     # Resolve ledger path
     ledger_path: str | None = None
     if session_id:
-        candidate = sessions_dir / session_id / "run.json"
-        if candidate.exists():
+        from atelier.core.foundation.paths import find_session_dir
+
+        existing = find_session_dir(root, session_id)
+        candidate = (existing / "run.json") if existing is not None else None
+        if candidate is not None and candidate.exists():
             ledger_path = str(candidate)
     elif sessions_dir.is_dir():
         files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)

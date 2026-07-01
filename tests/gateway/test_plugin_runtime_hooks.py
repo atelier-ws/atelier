@@ -19,6 +19,7 @@ from atelier.core.capabilities.plugin_runtime import (
     update_session_stats,
     write_plugin_setting,
 )
+from atelier.core.foundation.paths import session_dir
 
 pytestmark = pytest.mark.slow  # Each test spawns a real Python subprocess (~2s each)
 
@@ -87,10 +88,10 @@ def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
         env={"ATELIER_ROOT": str(atelier_root)},
     )
 
-    stats = json.loads((atelier_root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(atelier_root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
     assert stats["edit_tool_calls"] == 1
-    assert (atelier_root / "sessions" / "s1" / "events.jsonl").exists()
+    assert (session_dir(atelier_root, "claude", "s1") / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path) -> None:
@@ -111,7 +112,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     update_session_stats(root, {"hook_event_name": "PostCompact", "session_id": "s1", "now_ms": 2750})
     update_session_stats(root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000})
 
-    stats = json.loads((root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     # Only per-turn deltas from payload.usage accumulate; transcript is NOT read here.
     assert stats["usage"]["input_tokens"] == 5
     assert stats["usage"]["output_tokens"] == 3
@@ -121,7 +122,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert stats["subagents_started"] == 1
     assert stats["subagents_completed"] == 1
     assert stats["pending_subagents"] == 0
-    assert (root / "sessions" / "s1" / "events.jsonl").exists()
+    assert (session_dir(root, "claude", "s1") / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_spawn_cache_signals(tmp_path: Path) -> None:
@@ -193,7 +194,7 @@ def test_context_window_snapshot_overwrites_not_accumulates(tmp_path: Path) -> N
             },
         )
 
-    stats = json.loads((root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     # Must equal the LAST snapshot values, not the sum over 5 calls.
     assert stats["usage"]["cache_read_tokens"] == 200_000  # last cR snapshot
     assert stats["usage"]["input_tokens"] == 50  # turn=5: 5*10
@@ -273,7 +274,7 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
     assert result["auth"]["isAnonymous"] is True
     assert "Atelier budget optimizer" in result["stdout"]["additionalContext"]
-    assert (root / "sessions" / "s1" / "stats.json").exists()
+    assert (session_dir(root, "claude", "s1") / "stats.json").exists()
 
 
 def test_spinner_setting_writes_top_level_object() -> None:
@@ -327,8 +328,10 @@ def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> N
 
 
 def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Path) -> None:
+    from atelier.core.foundation.paths import session_dir
+
     root = tmp_path / ".atelier"
-    stats_dir = root / "sessions" / "s1"
+    stats_dir = session_dir(root, "claude", "s1")
     stats_dir.mkdir(parents=True)
     (stats_dir / "stats.json").write_text(
         json.dumps(
@@ -603,9 +606,9 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
 
 def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    (root / "sessions" / "s1").mkdir(parents=True)
+    session_dir(root, "claude", "s1").mkdir(parents=True)
     (root / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
-    (root / "sessions" / "s1" / "stats.json").write_text(
+    (session_dir(root, "claude", "s1") / "stats.json").write_text(
         json.dumps({"session_id": "s1", "savings": {"calls_saved": 1, "tokens_saved": 10_000}}),
         encoding="utf-8",
     )

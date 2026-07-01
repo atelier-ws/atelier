@@ -143,21 +143,10 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     """
     if not session_id:
         return
-    sidecar = atelier_root / "sessions" / session_id / "savings.jsonl"
-    if not sidecar.is_file():
-        # Also check date-partitioned layout (sessions/YYYY/MM/DD/<id>/).
-        try:
-            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+    from atelier.core.foundation.paths import find_session_dir
 
-            _dated = _srd(atelier_root, session_id) / "savings.jsonl"
-        except ImportError:
-            _dated = sidecar
-        if _dated.is_file():
-            sidecar = _dated
-        else:
-            _found = next((atelier_root / "sessions").glob(f"**/{session_id}/savings.jsonl"), None)
-            if _found is not None:
-                sidecar = _found
+    existing = find_session_dir(atelier_root, session_id)
+    sidecar = (existing / "savings.jsonl") if existing is not None else (atelier_root / "sessions" / session_id / "savings.jsonl")
     if not sidecar.is_file():
         return
 

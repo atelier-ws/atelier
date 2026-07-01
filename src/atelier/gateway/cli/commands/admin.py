@@ -33,6 +33,7 @@ from atelier.core.capabilities.workspace_host_overrides import (
     write_workspace_opencode_agents,
 )
 from atelier.core.foundation.models import Playbook, Rubric
+from atelier.core.foundation.paths import detect_host
 from atelier.gateway.cli.commands._shared import (
     _core_runtime,
     _emit,
@@ -282,7 +283,9 @@ def _detected_workspace_hosts(workspace_root: Path) -> tuple[str, ...]:
         ("cursor", bool((workspace_root / ".cursor").exists())),
         (
             "hermes",
-            bool(os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or shutil.which("hermes")),
+            # detect_host() covers the env-var signal canonically; shutil.which
+            # catches an installed hermes binary even with no session active.
+            bool(detect_host() == "hermes" or shutil.which("hermes")),
         ),
     )
     return tuple(host for host, present in checks if present)
@@ -1124,7 +1127,10 @@ def status_cmd(
         sessions_dir = root / "sessions"
         target: Path | None
         if session_id:
-            target = sessions_dir / session_id / "run.json"
+            from atelier.core.foundation.paths import find_session_dir
+
+            existing = find_session_dir(root, session_id)
+            target = (existing / "run.json") if existing is not None else None
         else:
             files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)
             target = files[0] if files else None

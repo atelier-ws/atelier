@@ -119,7 +119,11 @@ def _atelier_root() -> Path:
 
 
 def _append_prompt_event(session_id: str, prompt: str) -> None:
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -409,9 +413,11 @@ def _recent_working_set(session_id: str | None) -> set[str]:
     if not session_id:
         return set()
     try:
-        run_file = _atelier_root() / "sessions" / session_id / "run.json"
+        from atelier.core.foundation.paths import session_dir
+
+        run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
         data = json.loads(run_file.read_text("utf-8"))
-    except (OSError, ValueError, TypeError):
+    except (ImportError, OSError, ValueError, TypeError):
         return set()
     tokens: set[str] = set()
     seen = 0
@@ -462,7 +468,12 @@ def _append_compaction_savings_row(tokens: int, usd: float, model: str | None, s
     try:
         if not session_id:
             return
-        path = _atelier_root() / "sessions" / session_id / "savings.jsonl"
+        try:
+            from atelier.core.foundation.paths import session_dir
+
+            path = session_dir(_atelier_root(), "claude", session_id) / "savings.jsonl"
+        except ImportError:
+            path = _atelier_root() / "sessions" / session_id / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",
@@ -683,6 +694,17 @@ def main() -> int:
     # model context would itself waste the tokens it complains about.
     transcript_path: str = payload.get("transcript_path", "") or ""
     session_id = str(payload.get("session_id") or "").strip()
+    if session_id and _NOOP_PROMPT not in prompt:
+        # Feeds mcp_server.py's convergence-spiral detector: it reads
+        # sessions/<session_id>/stats.json's `turns` counter (maintained here,
+        # and already the Codex parity path's own turn counter) to reset its
+        # gather-streak counters on a genuinely new user turn -- a fresh
+        # question needs fresh exploration, so the old "searches/reads, 0
+        # edits" count must not carry over and misfire.
+        with contextlib.suppress(Exception):
+            from atelier.core.capabilities.plugin_runtime import update_session_stats
+
+            update_session_stats(_atelier_root(), payload)
     ui_messages: list[str] = []
     # Folds the last_user_prompt persist into a single session-state RMW.
     compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path, stored_prompt, session_id)

@@ -125,9 +125,13 @@ def _load_outcomes_for_session(
     session_id: str,
     root: Path,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Load outcomes from ``sessions/<session_id>/outcomes.json``."""
-    path = root / "sessions" / session_id / "outcomes.json"
-    return load_outcomes_from_state(path)
+    """Load outcomes from the session's ``outcomes.json`` (host-agnostic lookup)."""
+    from atelier.core.foundation.paths import find_session_dir
+
+    session_path = find_session_dir(root, session_id)
+    if session_path is None:
+        return {"route_outcomes": [], "compact_outcomes": []}
+    return load_outcomes_from_state(session_path / "outcomes.json")
 
 
 # --------------------------------------------------------------------------- #

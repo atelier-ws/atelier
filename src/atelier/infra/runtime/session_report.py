@@ -182,22 +182,12 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
     both sources uniformly.
     """
     from atelier.core.capabilities.savings_summary import _price_savings_row
+    from atelier.core.foundation.paths import find_session_dir
 
-    sidecar = root / "sessions" / session_id / "savings.jsonl"
-    if not sidecar.is_file():
-        # Also check date-partitioned layout (sessions/YYYY/MM/DD/<id>/).
-        try:
-            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
-
-            _dated = _srd(root, session_id) / "savings.jsonl"
-        except ImportError:
-            _dated = sidecar
-        if _dated.is_file():
-            sidecar = _dated
-        else:
-            _found = next((root / "sessions").glob(f"**/{session_id}/savings.jsonl"), None)
-            if _found is not None:
-                sidecar = _found
+    existing = find_session_dir(root, session_id)
+    sidecar = (
+        (existing / "savings.jsonl") if existing is not None else (root / "sessions" / session_id / "savings.jsonl")
+    )
     if not sidecar.is_file():
         return 0, 0.0, []
 
@@ -538,7 +528,10 @@ def build_report_from_ledger(ledger: RunLedger, root: Path) -> SessionReport:
 
 def load_report(session_id: str, root: Path) -> SessionReport | None:
     """Load and build a report from a persisted run file, or *None* if not found."""
-    run_path = root / "sessions" / session_id / "run.json"
+    from atelier.core.foundation.paths import find_session_dir
+
+    existing = find_session_dir(root, session_id)
+    run_path = (existing / "run.json") if existing is not None else (root / "sessions" / session_id / "run.json")
     if not run_path.exists():
         return None
     try:
