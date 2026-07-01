@@ -55,13 +55,19 @@ SAMPLE = int(os.environ.get("FITNESS_SAMPLE", "0"))
 REPO_FILTER = os.environ.get("FITNESS_REPO", "")
 EMBEDDER_PIN = os.environ.get("ATELIER_CODE_EMBEDDER", "bge")
 
-_DEFAULT_GOLD = ",".join(filter(None, [
-    "benchmarks/codebench/data/bench_pairs_def_gold.json",
-    "benchmarks/codebench/data/bench_pairs_content_gold.json",
-    # semantic gold included when present (mined by mine_semantic_gold.py)
-    "benchmarks/codebench/data/bench_pairs_semantic_gold.json"
-    if Path("benchmarks/codebench/data/bench_pairs_semantic_gold.json").exists() else "",
-]))
+_DEFAULT_GOLD = ",".join(
+    filter(
+        None,
+        [
+            "benchmarks/codebench/data/bench_pairs_def_gold.json",
+            "benchmarks/codebench/data/bench_pairs_content_gold.json",
+            # semantic gold (qwen3-coder behavior->code, mined by build_llm_gold.py)
+            "benchmarks/codebench/data/bench_pairs_qwen_gold.json"
+            if Path("benchmarks/codebench/data/bench_pairs_qwen_gold.json").exists()
+            else "",
+        ],
+    )
+)
 _gold_paths = [
     p.strip()
     for p in os.environ.get("FITNESS_PAIRS", _DEFAULT_GOLD).split(",")

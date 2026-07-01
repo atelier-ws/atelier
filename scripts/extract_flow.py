@@ -4,6 +4,11 @@ Usage: uv run --project benchmarks python scripts/extract_flow.py <path>
 
 Outputs <file>.flow_dump.txt alongside each .flow file.
 Only shows the text/tool content - skips all raw request/response payloads.
+
+The transcript is dumped IN FULL (no truncation) so dumps are usable for
+offline analysis (savings accounting, context reconstruction), not just
+skimming. Secrets (API keys, bearer tokens, credential assignments) are
+scrubbed from every emitted line; nothing else is altered.
 """
 
 import base64
@@ -14,6 +19,51 @@ from pathlib import Path
 
 from mitmproxy.exceptions import FlowReadException
 from mitmproxy.io import FlowReader
+
+# Sensitive-value scrubbing: bare tokens are replaced wholesale; key/value
+# assignments keep the key and redact only the value.
+_TOKEN_RES = [
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{10,}"),
+    re.compile(r"\bsk-[A-Za-z0-9]{24,}\b"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+]
+_KV_RE = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)"
+    r"(\s*[:=]\s*[\"']?)[^\s\"',;]{8,}"
+)
+
+
+def _scrub(text: str) -> str:
+    """Strip sensitive values from an emitted line; everything else untouched."""
+    for pat in _TOKEN_RES:
+        text = pat.sub("<redacted>", text)
+    return _KV_RE.sub(r"\1\2<redacted>", text)
+
+
+def _usage_from_response(resp_raw: bytes) -> dict | None:
+    """Per-request token usage: JSON body `usage`, or SSE message_start/delta."""
+    try:
+        return json.loads(resp_raw.decode("utf-8", errors="ignore")).get("usage")
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        pass
+    usage: dict | None = None
+    for line in resp_raw.decode("utf-8", errors="ignore").splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            chunk = json.loads(line[6:])
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if chunk.get("type") == "message_start":
+            usage = chunk.get("message", {}).get("usage") or usage
+        elif chunk.get("type") == "message_delta" and isinstance(chunk.get("usage"), dict):
+            if usage is None:
+                usage = {}
+            usage.update(chunk["usage"])
+    return usage
 
 
 def _is_messages_request(url: str) -> bool:
@@ -120,7 +170,8 @@ def extract(path: str, output_file: str) -> None:
                             text = "\n".join(parts)
                         else:
                             text = ""
-                        out.write(f"[{role}] {text[:300]}\n")
+                        # Full text, no truncation -- the dump IS the transcript.
+                        out.write(f"[{role}] {_scrub(text)}\n")
             except json.JSONDecodeError:
                 pass
 
@@ -146,9 +197,21 @@ def extract(path: str, output_file: str) -> None:
                     resp_text = "".join(_iter_text_from_bedrock_stream(resp_raw))
 
             if resp_text:
-                out.write(f"[assistant] {resp_text}\n")
+                out.write(f"[assistant] {_scrub(resp_text)}\n")
             else:
                 out.write(f"[assistant] (empty response, status={flow.response.status_code})\n")
+            # Per-request measured token usage -- the ground truth for offline
+            # context/cost reconstruction (savings accounting validation).
+            usage = _usage_from_response(resp_raw)
+            if usage:
+                out.write(
+                    "[usage] input={} cache_read={} cache_write={} output={}\n".format(
+                        usage.get("input_tokens", 0),
+                        usage.get("cache_read_input_tokens", 0),
+                        usage.get("cache_creation_input_tokens", 0),
+                        usage.get("output_tokens", 0),
+                    )
+                )
 
     print(f"  {interactions} turns -> {output_file}")
 

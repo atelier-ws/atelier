@@ -15,7 +15,7 @@ identifiers (a bare symbol name defined in <= --max-def files, length >=
 (unscorable for definition retrieval -- those need an NL-intent eval).
 
 Each surviving query gets a stable unique id, so the existing harnesses
-(``fitness_explore_mrr.py`` / ``eval_fused_mrr.py``, which key ``true_map`` by
+(``fitness_explore_mrr.py``, which keys ``true_map`` by
 tid) work unchanged via ``--pairs`` / ``FITNESS_PAIRS`` / ``EVAL_PAIRS``.
 
 Usage::
