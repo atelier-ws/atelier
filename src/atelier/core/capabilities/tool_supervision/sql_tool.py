@@ -340,12 +340,39 @@ def _sqlite_search(conn: sqlite3.Connection, terms: list[str], *, limit: int = 2
 _MAX_SQL_CELL_BYTES = 4096
 
 
+def _sql_spill_enabled() -> bool:
+    """Mirrors the MCP dispatch layer's T7 kill switch (``ATELIER_TOOL_OUTPUT_SPILL``)."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cell_spill_hint(full_text: str) -> str:
+    """Persist the full pre-truncation cell *full_text* and return a recovery-hint suffix.
+
+    A large BLOB/TEXT cell clipped by ``_bound_cell`` used to have the rest
+    silently discarded. Mirrors ``bash_exec._spill_hint`` /
+    ``web_fetch._truncate_with_spill``: persist the untouched original to the
+    shared T7 spill store and name the path in the truncation notice. Returns
+    "" when spill is disabled or the write fails, so the caller falls back to
+    the bare marker.
+    """
+    if not _sql_spill_enabled():
+        return ""
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    record = tool_output_spill.spill(full_text, tool_name="sql", kind="original")
+    if record is None:
+        return ""
+    return f"; full value ({record.original_bytes}B) spilled to {record.path}; read {record.path} to recover"
+
+
 def _bound_cell(value: Any) -> Any:
     """Cap one cell so a large BLOB/TEXT column can't return MBs in a single response."""
     if isinstance(value, str) and len(value) > _MAX_SQL_CELL_BYTES:
-        return value[:_MAX_SQL_CELL_BYTES] + f"... <truncated {len(value) - _MAX_SQL_CELL_BYTES} chars>"
+        hint = _cell_spill_hint(value)
+        return value[:_MAX_SQL_CELL_BYTES] + f"... <truncated {len(value) - _MAX_SQL_CELL_BYTES} chars{hint}>"
     if isinstance(value, (bytes, bytearray)) and len(value) > _MAX_SQL_CELL_BYTES:
-        return f"<{len(value)} byte blob, truncated>"
+        hint = _cell_spill_hint(bytes(value).hex())
+        return f"<{len(value)} byte blob, truncated{hint} (hex-encoded)>"
     return value
 
 

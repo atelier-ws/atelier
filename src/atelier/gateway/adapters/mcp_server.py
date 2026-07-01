@@ -708,6 +708,15 @@ _DEFAULT_READ_INLINE_BUDGET_BYTES = 40 * 1024
 _READ_PARTIAL_COUNTS: dict[str, int] = {}
 _READ_ITERATIVE_ESCALATE_AT = 3
 
+# Honest-baseline caps for savings accounting. Savings are "input tokens kept
+# out of the host prompt vs what the host would actually have paid" -- never vs
+# an unbounded firehose. Vanilla Claude Code itself truncates Bash output at
+# ~30k chars, and the host inlines at most ~50KB of MCP tool output before
+# dumping the rest to a file the model never pays for. Both constants bound the
+# NAIVE side of a savings computation only; they never change returned bytes.
+_VANILLA_BASH_OUTPUT_CHARS = 30_000
+_HOST_INLINE_RESULT_CHARS = 50 * 1024
+
 
 def _service_backed_state() -> bool:
     return True
@@ -3144,6 +3153,32 @@ def _extract_tokens_saved(result: dict[str, Any]) -> int:
     if tl > 0:
         return tl
     return _extract_compact_output_tokens_saved(result)
+
+
+def _bash_omitted_tokens_saved(polled: dict[str, Any], chars_omitted: int) -> int:
+    """Tokens credited for bash output trimming, against an honest baseline.
+
+    Vanilla Claude Code truncates Bash output at ~30k chars itself, so the
+    naive cost of the omitted chars is capped at what vanilla would actually
+    have put in context: a 10 MB build log is NOT ~2.5M tokens saved. chars/4
+    is the standard chars-per-token estimate.
+    """
+    if chars_omitted <= 0:
+        return 0
+    shown = len(str(polled.get("stdout") or "")) + len(str(polled.get("stderr") or ""))
+    naive = min(shown + chars_omitted, _VANILLA_BASH_OUTPUT_CHARS)
+    return max(0, naive - shown) // 4
+
+
+def _trimmed_tokens_saved(pre_chars: int, post_chars: int) -> int:
+    """Tokens credited for dispatcher-level result trimming (spill/compact/truncate).
+
+    The trimmed bytes were already rendered and would have entered the host
+    prompt 1:1 -- but the host inlines at most ~50KB of MCP output before
+    dumping the rest to a file, so the naive baseline is capped there. Returns
+    0 when nothing was trimmed or the final text already exceeds that cap.
+    """
+    return max(0, min(pre_chars, _HOST_INLINE_RESULT_CHARS) - post_chars) // 4
 
 
 def _acquire_smart_state_flock() -> Any:
@@ -5641,7 +5676,14 @@ def tool_smart_read(
             except Exception as exc:  # noqa: BLE001
                 results.append({"path": spec_path, "error": str(exc)})
         _tool_call_tokens_saved.value = batch_saved
-        return {"files": results}
+        batch_result: dict[str, Any] = {"files": results}
+        # Batched reads collapse N would-be single-file read calls into 1 -- the
+        # same honest cross-call credit the edit (distinct files) and sql
+        # (batched queries) surfaces already get. Errored entries earned nothing.
+        ok_entries = sum(1 for entry in results if isinstance(entry, dict) and not entry.get("error"))
+        if ok_entries > 1:
+            batch_result["calls_saved"] = ok_entries - 1
+        return batch_result
 
     return _smart_read_single(
         path=path,
@@ -6563,7 +6605,21 @@ def tool_smart_edit(
     # Fold lint diagnostics (errors/warnings only) into FIXME so all must-act
     # signals surface under one key. Informational notes are dropped as noise.
     if "diagnostics" in result:
-        result["diagnostics"] = [d for d in result["diagnostics"] if d.get("severity") in ("error", "warning")]
+
+        def _diag_in_repo_root(d: dict, root: Path) -> bool:
+            raw = d.get("file", "")
+            if not raw:
+                return False
+            path = Path(raw)
+            if not path.is_absolute():
+                path = root / path
+            return _is_within_root(path.resolve(), root)
+
+        result["diagnostics"] = [
+            d
+            for d in result["diagnostics"]
+            if d.get("severity") in ("error", "warning") and _diag_in_repo_root(d, repo_root)
+        ]
         if not result["diagnostics"]:
             result.pop("diagnostics")
         else:
@@ -7411,13 +7467,18 @@ _CODE_BATCH_KEYS: tuple[str, ...] = (
 
 
 def _finish_code_result(result: dict[str, Any]) -> dict[str, Any]:
-    # Infer calls_saved for batched ops: each list-of-items result represents
-    # N findings that would have cost N naive calls (grep + read + scan).
+    # Infer calls_saved for batched ops. One code-intel call replaces a locating
+    # grep plus a read per DISTINCT file surfaced -- not one call per returned
+    # item (20 symbols across 3 files is ~3 avoided reads, not 19 avoided
+    # calls). Credit distinct files: (1 grep + N reads) - the 1 call made = N.
+    # Items without file info credit only the single locate scan they replaced.
     if isinstance(result, dict) and "calls_saved" not in result:
         for key in _CODE_BATCH_KEYS:
             items = result.get(key)
             if isinstance(items, list) and len(items) > 1:
-                result["calls_saved"] = len(items) - 1
+                paths = {str(item.get("path") or item.get("file") or "") for item in items if isinstance(item, dict)}
+                paths.discard("")
+                result["calls_saved"] = len(paths) if paths else 1
                 break
     engine = getattr(_code_engine_for_current_call, "value", None)
     if engine is not None and isinstance(result, dict) and "index_status" not in result:
@@ -8697,9 +8758,9 @@ def _run_bash_tool(
             polled.pop("session_id", None)
             polled.pop("status", None)
             chars_omitted = int(polled.pop("chars_omitted", 0) or 0)
-            if chars_omitted > 0:
-                # chars_omitted / 4 is the standard chars-per-token estimate.
-                _tool_call_tokens_saved.value = chars_omitted // 4
+            ts = _bash_omitted_tokens_saved(polled, chars_omitted)
+            if ts > 0:
+                _tool_call_tokens_saved.value = ts
             return polled
 
         def _register(cb: Callable[[], None]) -> bool:
@@ -8731,9 +8792,9 @@ def _run_bash_tool(
     polled.pop("session_id", None)
     polled.pop("status", None)
     chars_omitted = int(polled.pop("chars_omitted", 0) or 0)
-    if chars_omitted > 0:
-        # chars_omitted / 4 is the standard chars-per-token estimate.
-        _tool_call_tokens_saved.value = chars_omitted // 4
+    ts = _bash_omitted_tokens_saved(polled, chars_omitted)
+    if ts > 0:
+        _tool_call_tokens_saved.value = ts
     return polled
 
 
@@ -8799,7 +8860,8 @@ def _render_bash_text(result: dict[str, Any]) -> str:
     if truncated and isinstance(lines_omitted, int) and lines_omitted > 0:
         if stdout or stderr:
             parts.append("")
-        parts.append(f"[output truncated: {lines_omitted} lines omitted]")
+        spill_hint = str(result.get("spill_hint") or "")
+        parts.append(f"[output truncated: {lines_omitted} lines omitted{spill_hint}]")
     # No exit-code guard: pipelines (e.g. `... 2>&1 | tail`) mask failures.
     if "No module named pip" in stdout or "No module named pip" in stderr:
         parts.append(
@@ -9625,7 +9687,7 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     description=(
         "Run a command via the system shell and return compact text. Prefer Atelier "
         "read/grep/search where possible; use bash for git, make, uv, npm, etc. "
-        "Don't spawn nested interactive shells."
+        "No bash -c / sh -c — blocked."
     ),
     hidden_params=("max_lines",),
 )
@@ -10775,6 +10837,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # untransformed original in the T7 spill store so it stays
                 # reversible. Off -> returns response_text unchanged.
                 _spill_args = args if isinstance(args, dict) else {}
+                # Measure dispatcher-level trimming (T8 auto-compact, T7 spill,
+                # legacy compaction, wire truncation) across the whole chain so
+                # the elided bytes are credited as savings below -- they are
+                # exactly the "kept out of the host prompt" tokens this
+                # accounting exists for.
+                _pre_trim_chars = len(response_text)
                 response_text = _auto_compact_result_text(response_text, name, _spill_args)
                 # T7 (ATELIER_TOOL_OUTPUT_SPILL, default on): spill the FULL,
                 # UNTRANSFORMED payload BEFORE the legacy char compaction below, gated
@@ -10804,7 +10872,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 response_text = _spill_oversized_result_text(response_text, name, _spill_args, _max_result_bytes())
                 # Bound the result so one oversized frame can't trip the host's
                 # stdout guard and disconnect the server (no mid-session reconnect).
-                response_text = _truncate_result_text(response_text, _max_result_bytes())
+                response_text = _truncate_result_text(response_text, _max_result_bytes(), name)
+                _trim_saved = _trimmed_tokens_saved(_pre_trim_chars, len(response_text))
                 with contextlib.suppress(Exception):
                     response_text = _codesearch_outline_transform(name, _spill_args, response_text)
                     _reset_gather_streaks_on_new_user_message()
@@ -10847,7 +10916,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # When deduped, skip the original per-call savings (they'd otherwise be
                 # credited against bytes we just elided).
                 if not dedup_stubbed and isinstance(result, dict):
-                    saved_tokens = _extract_tokens_saved(result)
+                    saved_tokens = _extract_tokens_saved(result) + _trim_saved
                     saved_calls = _coerce_saved_tokens(result.pop("calls_saved", None))
                     if saved_tokens > 0 or saved_calls > 0:
                         content_item["saved"] = {
@@ -11149,6 +11218,27 @@ def _reset_gather_streaks_on_new_user_message() -> None:
         _HISTORY_STREAK[0] = 0
 
 
+# Bash commands that are PRODUCTIVE ACTION -- running the check, building, or working
+# around the environment (installing deps) -- not gathering. These are the "iterate
+# against the real check" half of the solve loop, the peer of an edit, so they RESET
+# the gather streak exactly like an edit. This keeps the nudge from harassing a
+# legitimate verification phase (a pytest/pip/make loop rides the bash tool and so
+# would otherwise read as "searches"). The edit->test->FAIL churn pathology is caught
+# separately by _test_churn_intervention, so a genuinely stuck test loop still
+# escalates there -- this only silences HEALTHY execution.
+_EXECUTION_CMD_RE = re.compile(
+    r"\b(?:pytest|py\.test|nosetests|tox|unittest|jest|vitest|mocha|rspec|ctest|phpunit)\b"
+    r"|\bmanage\.py\s+test\b"
+    r"|\bpython[0-9.]*\s+-m\s+(?:pytest|unittest|build|pip|tox)\b"
+    r"|\b(?:make|cmake|ninja|meson|bazel|gradle|mvn|tsc|webpack|vite)\b"
+    r"|\b(?:cargo|go|npm|pnpm|yarn|dotnet|composer)\s+(?:test|build|run|check|install|ci)\b"
+    r"|\b(?:pip[0-9.]*|pip3|conda|poetry|apt-get|apt|brew|gem)\s+(?:install|add|sync|update)\b"
+    r"|\buv\s+(?:pip|add|sync|run|build)\b"
+    r"|\./configure\b|\bg\+\+\b|\bgcc\b|\bclang\b",
+    re.IGNORECASE,
+)
+
+
 def _convergence_intervention(tool_name: str, args: object, response_text: str) -> str:
     """Escalate from nudge -> consolidate -> degrade as a gather-without-edit streak grows."""
     if tool_name in {"edit", "codemod"}:  # a commit resets the streak
@@ -11157,6 +11247,14 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
         return response_text
     if tool_name not in _INVESTIGATIVE_TOOLS:
         return response_text
+    # Execution (running tests/builds/installs) is progress, not gathering -> reset
+    # like an edit, so a healthy verification phase never trips the gather nudge.
+    if tool_name == "bash":
+        command = str(args.get("command") or "") if isinstance(args, dict) else ""
+        if _EXECUTION_CMD_RE.search(command):
+            _NONEDIT_STREAK[0] = 0
+            _CONVERGENCE_TIER[0] = -1
+            return response_text
     _NONEDIT_STREAK[0] += 1
     n = _NONEDIT_STREAK[0]
     if n < _NUDGE_AT:
@@ -11191,13 +11289,26 @@ _TEST_RUN_RE = re.compile(
     r"|python[0-9.]*\s+\S*repro\S*\.py|python[0-9.]*\s+-m\s+(?:pytest|unittest)",
     re.IGNORECASE,
 )
-_TEST_FAIL_RE = re.compile(
-    r"\b\d+\s+failed\b|\bFAILED\b|\bERRORS?\b|Traceback \(most recent call last\)"
-    r"|\bAssertionError\b|^E\s|\b\d+\s+errors?\b",
+# An explicit NONZERO failure/error COUNT is unambiguous red. Zero-counts
+# ("0 failed", "Failures: 0", "Errors: 0") are excluded so a green summary that
+# merely reports its (zero) error tally isn't misread as a failure.
+_TEST_FAIL_COUNT_RE = re.compile(
+    r"\b[1-9]\d*\s+(?:failed|errors?)\b"  # "3 failed", "2 errors"
+    r"|\b(?:failures?|errors?)[:=]\s*[1-9]\d*\b",  # "Failures: 3", "Errors=2"
+    re.IGNORECASE,
+)
+# Soft failure signals -- real only when NOT accompanied by a pass summary. A
+# PASSING run legitimately prints these (a caught-and-asserted Traceback, an
+# "ERROR" log line, pytest's "E " detail lines), so they must lose to an explicit
+# pass rather than override it. (The old single _TEST_FAIL_RE was checked BEFORE
+# pass and matched bare "error"/"Traceback", so it tagged every green run whose
+# output merely mentioned an error as a failure.)
+_TEST_FAIL_SOFT_RE = re.compile(
+    r"\bFAILED\b|\bAssertionError\b|Traceback \(most recent call last\)|^E\s",
     re.IGNORECASE | re.MULTILINE,
 )
 _TEST_PASS_RE = re.compile(
-    r"\b\d+\s+passed\b|^OK\b|\bRan\s+\d+\s+tests?\b",
+    r"\b\d+\s+passed\b|^OK\b|\bRan\s+\d+\s+tests?\b|\bBUILD SUCCESS\b",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -11207,10 +11318,17 @@ def _classify_test_outcome(command: str, text: str) -> str | None:
     (or the outcome is ambiguous, which must not count toward the streak)."""
     if not _TEST_RUN_RE.search(command or ""):
         return None
-    if _TEST_FAIL_RE.search(text or ""):
+    text = text or ""
+    # An explicit nonzero failure/error count is unambiguous red -- it wins outright.
+    if _TEST_FAIL_COUNT_RE.search(text):
         return "FAIL"
-    if _TEST_PASS_RE.search(text or ""):
+    # An explicit pass summary beats incidental failure WORDS: a green run often
+    # prints "Traceback"/"ERROR"/"E " in captured logs or caught-exception tests.
+    if _TEST_PASS_RE.search(text):
         return "PASS"
+    # No pass summary: a soft failure signal now genuinely indicates red.
+    if _TEST_FAIL_SOFT_RE.search(text):
+        return "FAIL"
     # A test-ish run with neither marker (e.g. a custom repro.py printing its own
     # diagnostics) is NOT confirmed progress -- treat as no-pass so a repeated repro
     # spiral builds the streak instead of slipping past the detector.
@@ -11261,6 +11379,17 @@ _HISTORY_CMD_RE = re.compile(
     r"\bgit\b(?:\s+-\S+|\s+-C\s+\S+)*\s+(?:log|show|blame|bisect|rev-list|reflog|whatchanged)\b",
     re.IGNORECASE,
 )
+# Targeted historical RETRIEVAL, not blind archaeology: a date/keyword-bounded read,
+# deepening a shallow clone to reach a commit, or fetching a file blob at a specific
+# commit (`git show <ref>:path`). For some tasks the answer legitimately lives in
+# history (e.g. reconstruct a past state), so these are productive -- like a test run,
+# they RESET the streak rather than counting. Bare log/blame/`show <commit>` (reading
+# diffs to understand code) carry no selector and still accumulate.
+_HISTORY_TARGETED_RE = re.compile(
+    r"--(?:before|after|since|until|grep|unshallow)\b"  # date/keyword-bounded, or deepen-to-retrieve
+    r"|\bshow\s+\S+:",  # `git show <ref>:path` -> fetch a specific file blob
+    re.IGNORECASE,
+)
 
 
 def _history_archaeology_intervention(tool_name: str, args: object, response_text: str) -> str:
@@ -11272,6 +11401,10 @@ def _history_archaeology_intervention(tool_name: str, args: object, response_tex
         return response_text
     command = str(args.get("command") or "") if isinstance(args, dict) else ""
     if not _HISTORY_CMD_RE.search(command):
+        return response_text
+    # Targeted retrieval is progress, not spiraling -> reset like an edit/test run.
+    if _HISTORY_TARGETED_RE.search(command):
+        _HISTORY_STREAK[0] = 0
         return response_text
     _HISTORY_STREAK[0] += 1
     n = _HISTORY_STREAK[0]
@@ -11414,16 +11547,32 @@ def _read_inline_budget_bytes() -> int:
     return max(8 * 1024, configured)
 
 
-def _truncate_result_text(text: str, limit: int) -> str:
+def _truncate_result_text(text: str, limit: int, tool_name: str | None = None) -> str:
     """Bound a tool-result string to *limit* UTF-8 bytes, appending a notice.
 
     A single oversized result would otherwise serialize into one JSON-RPC frame
     larger than the host's stdout guard, which disconnects the whole server.
+
+    This is the last-resort backstop: tools in ``_SPILL_TOOLS`` are already
+    spilled by ``_spill_oversized_result_text`` before this runs, so this
+    mainly fires for everything else. When T7 spill is enabled and *tool_name*
+    is given, the full pre-truncation text is persisted here too, so the notice
+    names a recoverable path instead of a bare "narrow the query".
     """
     encoded = text.encode("utf-8")
     if len(encoded) <= limit:
         return text
-    notice = f"\n\n[truncated to {limit}B of {len(encoded)}B; narrow the query]"
+    notice_body = "narrow the query"
+    if tool_name and _tool_output_spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(text, tool_name=tool_name, kind="original")
+        if record is not None:
+            notice_body = (
+                f"full output ({record.original_bytes}B) spilled to {record.path}; "
+                f"read {record.path} to recover (:L1-L200, :L201-L400 … to page)"
+            )
+    notice = f"\n\n[truncated to {limit}B of {len(encoded)}B; {notice_body}]"
     headroom = max(0, limit - len(notice.encode("utf-8")))
     head = encoded[:headroom].decode("utf-8", "ignore")
     return head + notice
@@ -11484,6 +11633,12 @@ def _compact_result_text(text: str, tool_name: str) -> str:
     context) and the tail (final status/return value) with an omission marker in
     between, then appends a recovery hint. Results within the threshold pass
     through untouched.
+
+    This is the generic backstop for tools OUTSIDE ``_SPILL_TOOLS`` -- those get
+    spilled earlier (``_spill_oversized_result_text``) and never reach here at
+    full size. When T7 spill is enabled the full pre-compaction text is
+    persisted here too, so the recovery hint names a path instead of just
+    "narrow the query" regardless of which tool produced the result.
     """
     threshold = _compact_result_chars()
     if threshold <= 0:
@@ -11503,7 +11658,17 @@ def _compact_result_text(text: str, tool_name: str) -> str:
     head = int(target * 0.7)
     tail = max(1, target - head)
     compacted = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
-    return f"{compacted}\n\n[compacted from {len(text)} chars; narrow {tool_name} query for full]"
+    notice = f"narrow {tool_name} query for full"
+    if _tool_output_spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(text, tool_name=tool_name, kind="original")
+        if record is not None:
+            notice = (
+                f"full output ({record.original_bytes}B) spilled to {record.path}; "
+                f"read {record.path} to recover (:L1-L200, :L201-L400 … to page)"
+            )
+    return f"{compacted}\n\n[compacted from {len(text)} chars; {notice}]"
 
 
 # T7/T8 — tools whose oversized output is worth spilling/compacting reversibly.

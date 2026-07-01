@@ -1169,6 +1169,62 @@ def test_smart_edit_cross_file_credit_matches_distinct_files(
     assert payload["calls_saved"] == len(files) - 1
 
 
+def test_bash_omitted_tokens_saved_caps_at_vanilla_baseline() -> None:
+    """Bash trim credit is measured against vanilla CC's own ~30k-char Bash cap,
+    not the raw firehose: a multi-MB build log is not millions of tokens saved."""
+    # Under the vanilla cap: the full omission is credited.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 1_000, "stderr": ""}, 4_000) == 1_000
+    # Firehose: the naive side is capped at what vanilla would have shown.
+    assert (
+        mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 8_000, "stderr": ""}, 10_000_000)
+        == (30_000 - 8_000) // 4
+    )
+    # Already showing more than vanilla ever would: no credit.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 40_000, "stderr": ""}, 5_000) == 0
+    # Nothing omitted: no credit.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x"}, 0) == 0
+
+
+def test_trimmed_tokens_saved_caps_at_host_inline_guard() -> None:
+    """Dispatcher trim credit (spill/compact/truncate) caps the naive side at the
+    host's inline MCP-output guard: anything larger would have been dumped to a
+    file the model never pays for, so it was never a real context cost."""
+    cap = mcp_server._HOST_INLINE_RESULT_CHARS
+    assert mcp_server._trimmed_tokens_saved(10_000, 2_000) == 8_000 // 4
+    assert mcp_server._trimmed_tokens_saved(cap * 10, 2_000) == (cap - 2_000) // 4
+    # Nothing trimmed, or final text already over the cap -> no credit.
+    assert mcp_server._trimmed_tokens_saved(2_000, 2_000) == 0
+    assert mcp_server._trimmed_tokens_saved(cap * 10, cap + 1) == 0
+
+
+def test_finish_code_result_credits_distinct_files_not_items() -> None:
+    """20 symbols across 3 files ~= one grep + 3 reads avoided, not 19 calls."""
+    items = [{"name": f"sym{i}", "path": f"src/f{i % 3}.py"} for i in range(20)]
+    assert mcp_server._finish_code_result({"items": items})["calls_saved"] == 3
+    # Items without file info credit only the single locate scan they replaced.
+    assert mcp_server._finish_code_result({"routes": [{"method": "GET"}, {"method": "POST"}]})["calls_saved"] == 1
+    # Single-item results credit nothing.
+    assert "calls_saved" not in mcp_server._finish_code_result({"items": [{"path": "a.py"}]})
+    # An explicit handler-set credit is never overwritten.
+    assert mcp_server._finish_code_result({"items": items, "calls_saved": 7})["calls_saved"] == 7
+
+
+def test_smart_read_batch_credits_calls_saved(store_root: Path, tmp_path: Path) -> None:
+    """N files in one read call replace N single-file read calls => N - 1 saved;
+    errored entries earned nothing and are excluded from the credit."""
+    _ = store_root
+    a = tmp_path / "a.py"
+    b = tmp_path / "b.py"
+    a.write_text("alpha_val = 1\n", encoding="utf-8")
+    b.write_text("beta_val = 2\n", encoding="utf-8")
+
+    payload = mcp_server.tool_smart_read({"files": [str(a), str(b), str(tmp_path / "missing.py")]})
+    assert payload["calls_saved"] == 1  # 2 ok entries -> 1 avoided call
+
+    single = mcp_server.tool_smart_read({"files": [str(a)]})
+    assert "calls_saved" not in single
+
+
 def test_compact_applied_entries_groups_by_path() -> None:
     """Compaction groups same-path hunks and keeps special entries (e.g. symbol).
 
@@ -2070,9 +2126,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2214,6 +2270,37 @@ def test_render_shell_text_running_surfaces_progress_hints() -> None:
     assert "timeout_in=29m25s" in text
 
 
+def test_render_bash_text_includes_spill_hint_in_truncation_notice() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "stdout": "line1\n... (50 lines omitted) ...\nline300",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": True,
+            "lines_omitted": 50,
+            "spill_hint": "; full output (123B) spilled to /tmp/x.txt; read /tmp/x.txt to recover",
+        }
+    )
+    assert "[output truncated: 50 lines omitted; full output (123B) spilled to /tmp/x.txt" in text
+
+
+def test_render_bash_text_omits_spill_hint_when_absent() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "stdout": "line1\n... (50 lines omitted) ...\nline300",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": True,
+            "lines_omitted": 50,
+        }
+    )
+    assert "[output truncated: 50 lines omitted]" in text
+
+
 def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
@@ -2285,9 +2372,40 @@ def test_truncate_result_text_caps_oversized_with_notice() -> None:
 
 
 def test_truncate_result_text_keeps_valid_utf8_on_multibyte_boundary() -> None:
-    # 'é' encodes to 2 bytes; an odd byte limit must not yield a partial char.
+    # 'é' encodes to 2 bytes; an odd byte limit must not yield a partial char.
     out = mcp_server._truncate_result_text("é" * 1000, 101)
     out.encode("utf-8")  # raises if the head was split mid-codepoint
+
+
+def test_truncate_result_text_spills_full_text_when_tool_name_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This is the last-resort wire-byte backstop; a bare 'narrow the query'
+    used to discard everything past the cut. With T7 spill enabled (default)
+    and a tool_name given, the full text is persisted first.
+    """
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path / "spill"))
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)  # default on
+    middle_marker = "UNIQUE-MIDDLE-MARKER"
+    text = "HEAD" + ("x" * 5000) + middle_marker + ("x" * 5000) + "TAIL"
+    out = mcp_server._truncate_result_text(text, 1024, "bash")
+
+    assert len(out.encode("utf-8")) <= 1024
+    assert "spilled to" in out
+    match = re.search(r"spilled to (\S+\.txt);", out)
+    assert match is not None
+    recovered = Path(match.group(1)).read_text(encoding="utf-8")
+    assert recovered == text
+    assert middle_marker in recovered
+
+
+def test_truncate_result_text_without_tool_name_keeps_bare_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)
+    out = mcp_server._truncate_result_text("x" * 5000, 1024)
+    assert "spilled to" not in out
+    assert "narrow the query" in out
 
 
 def test_write_jsonrpc_backstop_replaces_oversized_frame(

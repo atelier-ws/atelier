@@ -908,6 +908,16 @@ _HEF_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.future
 )
 
 
+# Per-statement wall-clock deadline for a single search channel.  The caller's
+# `_fut.result(timeout=8.0)` only abandons the WAIT -- without this, the SQLite
+# query keeps running in the worker thread (a leading-wildcard LIKE '%term%'
+# full-scans a huge symbol_trigram table for 15-20s on linux-sized repos) and
+# piles up behind later queries.  A progress handler that trips at the deadline
+# ABORTS the running statement, so a pathological scan self-cancels.  Kept below
+# the 8s caller wait so the channel returns [] cleanly before that fires.
+_SEARCH_CHANNEL_DEADLINE_S = float(os.environ.get("ATELIER_SEARCH_CHANNEL_DEADLINE_S", "2.5"))
+
+
 def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
     """Execute one FTS/trigram search channel on a dedicated read connection.
 
@@ -920,6 +930,13 @@ def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> lis
     sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
     treated as an empty result set so it never crashes the caller.
     Returns dicts (not sqlite3.Row) for consistent dict-based result handling.
+
+    A SQLite progress handler enforces _SEARCH_CHANNEL_DEADLINE_S as a real
+    statement timeout: sqlite3.connect(timeout=...) is only a busy-lock wait, so
+    without this a slow full-scan (leading-wildcard LIKE on a large trigram
+    table) would run for tens of seconds even after the caller has timed out.
+    Returning non-zero from the handler raises OperationalError, caught below as
+    an empty channel -> graceful degradation instead of a stuck worker thread.
     """
     conn = sqlite3.connect(
         f"file:{db_path}?mode=ro",
@@ -928,6 +945,11 @@ def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> lis
         check_same_thread=False,
     )
     conn.row_factory = sqlite3.Row
+    _deadline = time.monotonic() + _SEARCH_CHANNEL_DEADLINE_S
+    # Checked every ~50k VM ops: frequent enough to abort a runaway scan within
+    # milliseconds of the deadline, rare enough to add no measurable overhead to
+    # the common <200ms query.
+    conn.set_progress_handler(lambda: 1 if time.monotonic() > _deadline else 0, 50_000)
     try:
         return [dict(row) for row in conn.execute(sql, params).fetchall()]
     except sqlite3.OperationalError:

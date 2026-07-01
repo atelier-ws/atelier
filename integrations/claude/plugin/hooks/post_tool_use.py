@@ -147,6 +147,11 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
 # ---------------------------------------------------------------------------
 
 
+# Cap the stored diff: run.json is rewritten in full on every edit (O(n^2) over a
+# session), so an unbounded diff from a large Write/refactor would bloat it badly.
+_MAX_DIFF_CHARS = 4000
+
+
 def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
     """Append a file_edit event to the session's run.json atomically."""
     try:
@@ -164,6 +169,8 @@ def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
     short_path = Path(file_path).name
+    if len(diff) > _MAX_DIFF_CHARS:
+        diff = diff[:_MAX_DIFF_CHARS] + f"\n...[diff truncated, {len(diff)} chars total]"
     events.append(
         {
             "kind": "file_edit",

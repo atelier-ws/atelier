@@ -46,6 +46,7 @@ from pathlib import Path
 SEARCH_TOOLS = {
     "mcp__atelier__grep",
     "mcp__atelier__explore",
+    "mcp__atelier__code_search",
     "ToolSearch",
     "Grep",
     "mcp__plugin_atelier_atelier__grep",
@@ -788,10 +789,7 @@ def generate_pairs(
             # Gold validation: only keep files that actually exist in this
             # workspace. Stale absolute paths from old or remote sessions
             # can never be matched by explore, so they drag MRR to zero.
-            valid_files = [
-                f for f in files[:10]
-                if (_ws / f).exists() or (f.startswith("/") and Path(f).exists())
-            ]
+            valid_files = [f for f in files[:10] if (_ws / f).exists() or (f.startswith("/") and Path(f).exists())]
             if not valid_files:
                 continue
             # Use the grep's own result files as the content gold.

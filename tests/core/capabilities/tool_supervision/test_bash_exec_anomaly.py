@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
+import pytest
+
 from atelier.core.capabilities.tool_supervision.bash_exec import _compact_result, _extract_anomaly_windows
 
 
@@ -50,3 +55,60 @@ def test_compact_result_generic_command_unaffected_when_clean() -> None:
     assert "lines omitted" in result.stdout
     assert "line 0:" in result.stdout
     assert "line 299:" in result.stdout
+
+
+def test_compact_result_spills_full_output_when_truncated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bare "(N lines omitted)" marker used to discard the middle for good.
+    With T7 spill enabled (default), the untouched raw stdout is persisted and a
+    recovery hint names the path, so the dropped lines stay reachable via `read`.
+    """
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path / "spill"))
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)  # default on
+    lines = [f"line {i}: all good" for i in range(300)]
+    stdout = "\n".join(lines)
+    result = _compact_result(
+        command="python3 build.py",
+        raw_stdout=stdout,
+        raw_stderr="",
+        exit_code=0,
+        duration_ms=10,
+        max_lines=200,
+    )
+    assert result.lines_omitted > 0
+    assert "line 100: all good" not in result.stdout  # dropped from the summary
+    assert "spilled to" in result.spill_hint
+    match = re.search(r"spilled to (\S+\.txt);", result.spill_hint)
+    assert match is not None
+    recovered = Path(match.group(1)).read_text(encoding="utf-8")
+    assert "line 100: all good" in recovered  # recoverable from the full spill
+
+
+def test_compact_result_no_spill_hint_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "0")
+    lines = [f"line {i}: all good" for i in range(300)]
+    result = _compact_result(
+        command="python3 build.py",
+        raw_stdout="\n".join(lines),
+        raw_stderr="",
+        exit_code=0,
+        duration_ms=10,
+        max_lines=200,
+    )
+    assert result.lines_omitted > 0
+    assert result.spill_hint == ""
+
+
+def test_compact_result_no_spill_hint_when_nothing_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)
+    result = _compact_result(
+        command="echo hi",
+        raw_stdout="hi\n",
+        raw_stderr="",
+        exit_code=0,
+        duration_ms=1,
+        max_lines=200,
+    )
+    assert result.lines_omitted == 0
+    assert result.spill_hint == ""

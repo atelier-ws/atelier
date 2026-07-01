@@ -1,0 +1,13 @@
+normalized_cost.csv — baseline (tbench Opus4.8 ClaudeCode 2.1.152) re-priced at Atelier's cost model.
+Atelier bills cache; tbench bills cache at $0. To compare Atelier vs baseline fairly, re-price baseline.
+
+Rates (Atelier model): input $5/M, output $25/M, cache_read $0.5/M, cache_write $6.25/M.
+
+Columns:
+  cost_raw_tbench_cache_free : original tbench cost (cache billed $0). NOT comparable to Atelier.
+  cost_norm_read_0p5         : cache_read priced at $0.5/M. CONSERVATIVE — omits baseline cache-WRITE
+                               (tbench records only cache_read_tokens), so slightly favors baseline.
+  cost_norm_blended_0p79     : cache_read priced at $0.79/M (read + amortized write). Reproduces the
+                               existing atelier_vs_baseline_per_task.csv 'baseline_avg_cost_corrected'.
+
+Caveat: tbench does not record cache_write separately; the write term is estimated via the 0.79/M blend.

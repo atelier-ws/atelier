@@ -24,6 +24,8 @@ import re
 from pathlib import Path
 from typing import Any, Protocol
 
+from atelier.core.foundation.redaction import redact_tool_output
+
 _QUOTED_LITERAL_RE = re.compile(r"'((?:\\.|[^'\\])*)'|\"((?:\\.|[^\"\\])*)\"|`((?:\\.|[^`\\])*)`")
 
 # Decorators whose removal silently strips attributes/methods callers may use, with
@@ -219,7 +221,10 @@ def decorator_contract_impact(
                         "path": f"{path}:L{line}" if isinstance(line, int) else path,
                         "old": f"@{deco} on {name}()",
                         "new": f"{access} no longer exists",
-                        "snippet": text.strip()[:80],
+                        # Snippet is raw file content -- mask secrets before it
+                        # rides into agent-facing FIXME evidence (same masking
+                        # applied to every other live tool output).
+                        "snippet": redact_tool_output(text.strip())[:80],
                     }
                 )
                 if len(sites) >= limit:
@@ -427,7 +432,10 @@ def contract_literal_impact(
             entry: dict[str, Any] = {
                 "path": f"{path}:L{line}",
                 "old": literal,
-                "snippet": snippet[:80],
+                # Snippet is raw file content -- mask secrets before it rides
+                # into agent-facing FIXME evidence (same masking applied to
+                # every other live tool output).
+                "snippet": redact_tool_output(snippet)[:80],
             }
             if replacements[literal] is not None:
                 entry["new"] = replacements[literal]
