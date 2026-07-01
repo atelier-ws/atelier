@@ -17,9 +17,11 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast
@@ -48,7 +50,14 @@ class _JsonRpcLineClient:
             text=True,
             bufsize=1,
         )
-        self.call("initialize", {"protocolVersion": "2024-11-05", "clientInfo": {"name": "atelier-bench", "version": "1"}, "capabilities": {}})
+        self.call(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "clientInfo": {"name": "atelier-bench", "version": "1"},
+                "capabilities": {},
+            },
+        )
         self.notify("notifications/initialized", {})
 
     def _read_message(self, *, timeout: float) -> dict[str, Any]:
@@ -77,14 +86,19 @@ class _JsonRpcLineClient:
 
     def notify(self, method: str, params: dict[str, Any]) -> None:
         assert self.proc is not None and self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method, "params": params}, ensure_ascii=False) + "\n")
+        self.proc.stdin.write(
+            json.dumps({"jsonrpc": "2.0", "method": method, "params": params}, ensure_ascii=False) + "\n"
+        )
         self.proc.stdin.flush()
 
     def call(self, method: str, params: dict[str, Any], *, timeout: float = 60) -> dict[str, Any]:
         assert self.proc is not None and self.proc.stdin is not None
         request_id = self._next_id
         self._next_id += 1
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, ensure_ascii=False) + "\n")
+        self.proc.stdin.write(
+            json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, ensure_ascii=False)
+            + "\n"
+        )
         self.proc.stdin.flush()
         while True:
             message = self._read_message(timeout=timeout)
@@ -100,6 +114,7 @@ class _JsonRpcLineClient:
             self.proc.wait(timeout=6)
         self.proc.kill()
 
+
 sys.path.insert(0, "src")
 sys.path.insert(0, ".")
 
@@ -110,7 +125,7 @@ _parser = argparse.ArgumentParser(description="External provider MRR benchmark")
 _parser.add_argument(
     "--provider",
     required=True,
-    choices=["ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "cg", "rg"],
+    choices=["ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "cg", "rg", "cmm"],
 )
 _parser.add_argument("--full", action="store_true")
 _parser.add_argument("--sample", type=int, default=None)
@@ -878,6 +893,115 @@ class CgProvider(Provider):
 
 
 # ---------------------------------------------------------------------------
+# cmm (codebase-memory-mcp)
+# ---------------------------------------------------------------------------
+
+_CMM_VERSION = "v0.8.1"
+_CMM_ASSET = "codebase-memory-mcp-linux-amd64.tar.gz"
+_CMM_HOME = Path(os.environ.get("CMM_HOME", "/tmp/cmm-bench")).resolve()
+
+
+class CmmProvider(Provider):
+    """DeusData's codebase-memory-mcp: a single static Go binary driven in
+    one-shot `cli <tool> '<json>'` mode -- no persistent MCP server, so
+    start()/stop() manage the binary + per-repo index rather than a long-lived
+    process (the same on-disk graph.db is read fresh on every call)."""
+
+    name = "cmm"
+
+    def __init__(self) -> None:
+        self._bin: Path | None = None
+        self._env: dict[str, str] = {}
+        self._project: str | None = None
+
+    @staticmethod
+    def _ensure_binary() -> Path:
+        env_bin = os.environ.get("CMM_BIN")
+        if env_bin and Path(env_bin).is_file():
+            return Path(env_bin)
+        bindir = _CMM_HOME / "bin"
+        binpath = bindir / "codebase-memory-mcp"
+        if binpath.is_file():
+            return binpath
+        bindir.mkdir(parents=True, exist_ok=True)
+        tgz = bindir / _CMM_ASSET
+        url = f"https://github.com/DeusData/codebase-memory-mcp/releases/download/{_CMM_VERSION}/{_CMM_ASSET}"
+        print(f"{_TAG} downloading {url}", file=sys.stderr, flush=True)
+        urllib.request.urlretrieve(url, tgz)  # nosec - pinned release asset
+        with tarfile.open(tgz) as tf:
+            tf.extract("codebase-memory-mcp", path=bindir)
+        binpath.chmod(0o755)
+        return binpath
+
+    def _cli(self, tool: str, args: dict, timeout: int = 120) -> dict:
+        assert self._bin is not None
+        proc = subprocess.run(
+            [str(self._bin), "cli", tool, json.dumps(args)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=self._env,
+        )
+        out = proc.stdout.strip()
+        if not out:
+            return {}
+        try:
+            return cast(dict, json.loads(out))
+        except json.JSONDecodeError:
+            for line in reversed(out.splitlines()):
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        return cast(dict, json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            return {}
+
+    def _paths(self, result: dict, key: str, ws: Path, limit: int = 10) -> list[str]:
+        files: list[str] = []
+        seen: set[str] = set()
+        for it in result.get("results", []) or []:
+            raw = str(it.get(key) or it.get("file_path") or it.get("file") or "")
+            f = _rel(raw, ws) if raw else ""
+            if f and f not in seen:
+                seen.add(f)
+                files.append(f)
+            if len(files) >= limit:
+                break
+        return files
+
+    def start(self, ws: Path) -> None:
+        self._bin = self._ensure_binary()
+        self._env = dict(os.environ)
+        home = _CMM_HOME / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        self._env["HOME"] = str(home)
+        idx = self._cli("index_repository", {"repo_path": str(ws), "mode": "full"}, timeout=3600)
+        project = idx.get("project")
+        if not project or (idx.get("status") != "indexed" and not idx.get("nodes")):
+            raise RuntimeError(f"cmm index failed: {json.dumps(idx)[:400]}")
+        self._project = project
+
+    def stop(self) -> None:
+        self._project = None  # one-shot CLI -- no persistent process to tear down
+
+    def search_symbol(self, query: str, ws: Path) -> list[str]:
+        if not self._project:
+            return []
+        res = self._cli("search_graph", {"project": self._project, "query": query, "limit": 10})
+        return self._paths(res, "file_path", ws)
+
+    def search_text(self, query: str, ws: Path) -> list[str]:
+        if not self._project:
+            return []
+        res = self._cli(
+            "search_code",
+            {"project": self._project, "pattern": query, "limit": 10, "mode": "compact"},
+        )
+        return self._paths(res, "file", ws)
+
+
+# ---------------------------------------------------------------------------
 # Provider factory
 # ---------------------------------------------------------------------------
 
@@ -889,6 +1013,7 @@ _PROVIDERS: dict[str, type[Provider]] = {
     "jcodemunch": JCodeMunchProvider,
     "cg": CgProvider,
     "rg": RgProvider,
+    "cmm": CmmProvider,
 }
 
 # ---------------------------------------------------------------------------

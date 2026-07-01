@@ -1,9 +1,9 @@
 """Provision diverse-6 SWE-bench repos for the multi-repo retrieval fitness.
 
 Per repo: pick the dump-mined task with the most queries as the snapshot anchor,
-clone + checkout its base_commit (Django reuses the existing checkout/index), build
+clone + checkout its base_commit, build
 the Atelier symbol index into /tmp/idx_<repo>.db, warm zoekt. Emits the raw query
-universe benchmarks/codebench/data/bench_pairs_multi.json: {pairs:[[query,tid,prefix]],
+universe benchmarks/codebench/data/bench_pairs_swebench_gold.json: {pairs:[[query,tid,prefix]],
 true_map:{tid:[files]}, repos:{prefix:{ws,db,anchor}}}, then derives the canonical
 retrieval gold benchmarks/codebench/data/bench_pairs_def_gold.json (build_definition_gold.py)
 that every eval reads. Idempotent: skips clone/index when present.
@@ -66,8 +66,6 @@ def symbol_count(db):
 
 
 def main():
-    django_ws = Path(open("/tmp/djroot.txt").read().strip())
-    django_db = Path("/tmp/chanx_django5.db")
     repos_meta, pairs, true_map = {}, [], {}
 
     for prefix, repo in PREFIX2REPO.items():
@@ -83,29 +81,36 @@ def main():
         anchor = max(task_ids, key=lambda t: len(by_task.get(t, [])))
         base_commit = getattr(insts.get(anchor), "base_commit", "") if insts.get(anchor) else ""
 
-        if prefix == "django__django":
-            ws, db = django_ws, django_db
+        safe = prefix.replace("/", "_")
+        ws, db = Path(f"/tmp/idx_ws_{safe}"), Path(f"/tmp/idx_{safe}.db")
+        if not ws.exists() or not any(ws.iterdir()):
+            # Shallow-fetch just the pinned commit (not full history) -- a plain
+            # `git clone` of a large/old repo (e.g. django) can take long enough to
+            # blow the timeout and leave a broken .git-only checkout behind.
+            print(f"[{prefix}] shallow-fetch {repo}@{base_commit[:10]} -> {ws}", flush=True)
+            ws.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "init", "--quiet", str(ws)], check=True, timeout=60)
+            subprocess.run(
+                ["git", "-C", str(ws), "remote", "add", "origin", f"https://github.com/{repo}.git"],
+                check=True,
+                timeout=60,
+            )
+            rev = base_commit or "HEAD"
+            subprocess.run(
+                ["git", "-C", str(ws), "fetch", "--quiet", "--depth", "1", "origin", rev], check=True, timeout=1200
+            )
+            subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", "FETCH_HEAD"], check=True, timeout=300)
+        if not db.exists():
+            print(f"[{prefix}] indexing -> {db}", flush=True)
+            t0 = time.time()
+            try:
+                CodeContextEngine(ws, db_path=db, autosync_enabled=False).index_repo()
+            except Exception as e:
+                print(f"[{prefix}] INDEX FAILED: {e}", flush=True)
+                continue
+            print(f"[{prefix}] index done {time.time() - t0:.0f}s, symbols={symbol_count(db)}", flush=True)
         else:
-            safe = prefix.replace("/", "_")
-            ws, db = Path(f"/tmp/idx_ws_{safe}"), Path(f"/tmp/idx_{safe}.db")
-            if not ws.exists() or not any(ws.iterdir()):
-                print(f"[{prefix}] clone {repo}@{base_commit[:10]} -> {ws}", flush=True)
-                subprocess.run(
-                    ["git", "clone", "--quiet", f"https://github.com/{repo}.git", str(ws)], check=True, timeout=1200
-                )
-                if base_commit:
-                    subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", base_commit], check=True, timeout=300)
-            if not db.exists():
-                print(f"[{prefix}] indexing -> {db}", flush=True)
-                t0 = time.time()
-                try:
-                    CodeContextEngine(ws, db_path=db, autosync_enabled=False).index_repo()
-                except Exception as e:
-                    print(f"[{prefix}] INDEX FAILED: {e}", flush=True)
-                    continue
-                print(f"[{prefix}] index done {time.time() - t0:.0f}s, symbols={symbol_count(db)}", flush=True)
-            else:
-                print(f"[{prefix}] index exists, symbols={symbol_count(db)}", flush=True)
+            print(f"[{prefix}] index exists, symbols={symbol_count(db)}", flush=True)
 
         if get_zoekt_supervisor is not None:
             try:
@@ -126,7 +131,7 @@ def main():
         repos_meta[prefix] = {"ws": str(ws), "db": str(db), "anchor": anchor, "base_commit": base_commit}
         print(f"[{prefix}] ready: {kept} pairs, symbols={symbol_count(db)}", flush=True)
 
-    with open("benchmarks/codebench/data/bench_pairs_multi.json", "w") as fh:
+    with open("benchmarks/codebench/data/bench_pairs_swebench_gold.json", "w") as fh:
         json.dump({"pairs": pairs, "true_map": true_map, "repos": repos_meta}, fh)
     uniq = len({(q, p) for q, _, p in pairs})
     print(f"\nDONE: {len(pairs)} pairs | {uniq} unique (query,repo) | {len(repos_meta)} repos", flush=True)

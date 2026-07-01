@@ -13,12 +13,13 @@ against regressions when changing `_search_symbols_local` / fusion / ranking.
 | 1 | **Lexical** | `fitness_explore_mrr.py` | `tool_explore` symbol FTS/trigram + ranking (no zoekt binaries on PATH) |
 | 2 | **+ Zoekt fusion** | `fitness_explore_mrr.py` (zoekt installed) | adds zoekt trigram-anchor files to the fusion (auto-on when binaries resolve) |
 | 3 | **BGE semantic** | `eval_semantic_mrr.py` | standalone embedding retrieval (BGE-Code-v1) over the pre-built corpus |
-| 4 | **CMM (codebase-memory-mcp)** | `eval_cmm_mrr.py` | external arm: DeusData's knowledge-graph MCP server (`search_graph` BM25 + bundled nomic-embed-code) over an independently-built index |
+| 4 | **CMM (codebase-memory-mcp)** | `eval_external_provider_mrr.py --provider cmm` | external arm: DeusData's knowledge-graph MCP server (`search_graph` BM25 + bundled nomic-embed-code) over an independently-built index |
 
 Channel 4 is an **external retrieval provider** (not Atelier): a fair, independent
 baseline that builds its own index, so unlike channels 1–3 it does not share the
-gold's index-derivation. Run it via `atelier eval retrieval --channel cmm` or the
-standalone `eval_cmm_mrr.py` (see the CMM section below).
+gold's index-derivation. Run it via `atelier eval retrieval --channel cmm` (see
+the CMM section below) — CMM is a `Provider` in `eval_external_provider_mrr.py`
+just like ctags/serena/jcodemunch, no separate driver script.
 
 Channels 1–2 are the SHIPPED `tool_explore` path. Channel 3 is a standalone probe
 (semantic is not yet fused into explore) answering "does the embedder help these
@@ -352,25 +353,26 @@ Two additions: (a) a new **external retrieval provider** arm for DeusData's
 (b) the **Linux kernel** (core subsystems) added to the golden set + benchmark so
 every arm can be evaluated on a genuinely large, C codebase.
 
-### The CMM arm — `eval_cmm_mrr.py`
+### The CMM arm — `eval_external_provider_mrr.py --provider cmm` (`CmmProvider`)
 
 `codebase-memory-mcp` is a single static Go binary that indexes a repo into a
 persistent knowledge graph (BM25 full-text + bundled `nomic-embed-code` semantic
 edges, 158 languages, all local — no network, no API key). It exposes 14 MCP
-tools; the arm uses two, mapped to the two golds exactly as the other external
-arms (ctags/serena/jcodemunch) split symbol vs content:
+tools; `CmmProvider` uses two, mapped to `search_symbol`/`search_text` exactly
+like the other external providers (ctags/serena/jcodemunch) split symbol vs content:
 
-| gold | CMM tool | result file-path key |
-|---|---|---|
-| definition | `search_graph` (graph BM25; handles `a\|b\|c` alternations natively) | `file_path` |
-| content | `search_code` (grep + graph enrichment) | `file` |
+| gold | CMM tool | Provider method | result file-path key |
+|---|---|---|---|
+| definition | `search_graph` (graph BM25; handles `a\|b\|c` alternations natively) | `search_symbol` | `file_path` |
+| content | `search_code` (grep + graph enrichment) | `search_text` | `file` |
 
 The binary is driven in one-shot `cli <tool> '<json>'` mode (no MCP stdio
-handshake needed — the same `graph.db` is read each call). Methodology is
-identical to `eval_cg_mrr.py`/`fitness_explore_mrr.py`: same `(query, tid,
-prefix)` pairs, same `FITNESS_PAIRS`/`FITNESS_SAMPLE`/`FITNESS_REPO` knobs, one
-query per pair, rank-of-gold-file (endswith, top-10), one JSON line out. Each
-repo is indexed once (idempotent). All CMM state lives under an isolated `$HOME`
+handshake needed — the same `graph.db` is read each call), so `start()`/`stop()`
+manage the binary + per-repo index rather than a long-lived process. Methodology
+is identical to every other channel: same `(query, tid, prefix)` pairs, same
+`FITNESS_PAIRS` env + `--sample`/`--repo` flags, one query per pair, exact-match
+rank-of-gold-file (top-10) via the shared harness's `_rank()`. Each repo is
+indexed once (idempotent). All CMM state lives under an isolated `$HOME`
 (`CMM_HOME`, default `/tmp/cmm-bench`) so a run never touches a user's cache; the
 pinned `v0.8.1` Linux binary is fetched on first use (or point `CMM_BIN` at it).
 
@@ -382,11 +384,10 @@ the fair external apples-to-apples baseline.
 # via the CLI (downloads the pinned binary on first use)
 atelier eval retrieval --channel cmm --full
 
-# standalone (point CMM_BIN at the binary; def + content golds)
+# directly (point CMM_BIN at the binary; def + content golds)
 CMM_BIN=/path/to/codebase-memory-mcp \
   FITNESS_PAIRS=benchmarks/codebench/data/bench_pairs_def_gold.json,benchmarks/codebench/data/bench_pairs_content_gold.json \
-  FITNESS_REPO=pydata__xarray \
-  python benchmarks/codebench/eval_cmm_mrr.py
+  python benchmarks/codebench/eval_external_provider_mrr.py --provider cmm --repo pydata__xarray
 ```
 
 ### Results — diverse-5 definition gold (single-worker, n=762)
@@ -455,7 +456,7 @@ lexical score.
 
 ### What is wired
 
-- `benchmarks/codebench/eval_cmm_mrr.py` — the CMM arm.
+- `benchmarks/codebench/eval_external_provider_mrr.py`'s `CmmProvider` — the CMM arm.
 - `scripts/_provision_linux_kernel.py` — kernel scope + index + gold mining + merge.
 - `benchmarks/codebench/data/bench_pairs_linux_def_gold.json` — kernel-only def gold.
 - `bench_pairs_def_gold.json` now carries `torvalds__linux` (591 pairs).
