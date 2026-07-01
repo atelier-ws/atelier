@@ -393,3 +393,69 @@ def test_is_ip_address() -> None:
     assert web_fetch._is_ip_address("::1") is True
     assert web_fetch._is_ip_address("example.com") is False
     assert web_fetch._is_ip_address("") is False
+
+
+# --------------------------------------------------------------------------- #
+# Query-gated relevance truncation                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_chunk_markdown_splits_a_big_table_one_row_per_chunk_pinned_to_header() -> None:
+    md = "| Rank | Model |\n|---|---|\n" + "".join(f"| {i} | m{i} |\n" for i in range(50))
+    chunks = web_fetch._chunk_markdown(md)
+    assert len(chunks) == 50
+    assert all(pin == "| Rank | Model |\n|---|---|" for _text, pin in chunks)
+
+
+def test_chunk_markdown_keeps_short_prose_as_one_chunk() -> None:
+    md = "# Title\n\nJust a short paragraph of prose."
+    chunks = web_fetch._chunk_markdown(md)
+    assert len(chunks) == 2
+    assert all(pin is None for _text, pin in chunks)
+
+
+def test_finish_fetch_without_query_is_unchanged_head_truncation() -> None:
+    md = "x" * 5000
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="text/plain",
+        headers={},
+        body=md.encode(),
+        truncated_body=False,
+    )
+    payload = web_fetch._finish_fetch(
+        raw, rendered={"content": md, "format": "text"}, char_limit=1000, include_meta=False
+    )
+    assert payload["content"].startswith("x" * 100)
+    assert "[truncated to 1000 of 5000 chars" in payload["content"]
+
+
+def test_finish_fetch_with_query_surfaces_a_row_the_head_cut_would_miss() -> None:
+    header = "| Rank | Model | Score |\n|---|---|---|\n"
+    body = "".join(f"| {i} | {'Claude Code / Opus 4.6' if i == 130 else f'Model-{i}'} | {i} |\n" for i in range(142))
+    md = header + body
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="text/html",
+        headers={},
+        body=md.encode(),
+        truncated_body=False,
+    )
+    no_query = web_fetch._finish_fetch(
+        raw, rendered={"content": md, "format": "markdown"}, char_limit=1500, include_meta=False
+    )
+    assert "Claude Code" not in no_query["content"]
+
+    with_query = web_fetch._finish_fetch(
+        raw,
+        rendered={"content": md, "format": "markdown"},
+        char_limit=1500,
+        include_meta=False,
+        query="Claude Code",
+    )
+    assert "Claude Code / Opus 4.6" in with_query["content"]
+    assert "matching" in with_query["content"]

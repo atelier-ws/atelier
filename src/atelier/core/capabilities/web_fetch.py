@@ -7,6 +7,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import time
@@ -280,6 +281,7 @@ def fetch_url(
     max_chars: int = DEFAULT_MAX_CHARS,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     include_meta: bool = False,
+    query: str | None = None,
 ) -> dict[str, Any]:
     """Fetch an HTTP(S) URL and return coding-agent-friendly content."""
     requested_format = _normalize_output_format(output_format)
@@ -288,7 +290,106 @@ def fetch_url(
     accept = _accept_header(requested_format)
     raw = _fetch_with_cache(url.strip(), accept=accept, timeout_s=timeout)
     rendered = _render_content(raw, requested_format=requested_format)
-    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta)
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta, query=query)
+
+
+def _spill_enabled() -> bool:
+    """Mirrors the MCP dispatch layer's T7 kill switch (``ATELIER_TOOL_OUTPUT_SPILL``)."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _truncate_with_spill(content: str, char_limit: int) -> str:
+    """Cut *content* to ``char_limit`` without discarding the overflow.
+
+    A page rendered well past ``char_limit`` (a long table, a big doc) used to
+    have everything past the cut silently dropped -- there was no way to reach
+    row 50 of a 142-row table short of raising ``max_chars`` (itself capped at
+    ``MAX_MAX_CHARS``). Instead, persist the FULL rendered content to the shared
+    T7 spill store (same store bash/read/code_search use) and name the path in
+    the truncation notice, so ``read <path>`` (with a ``range=`` to page through
+    it) recovers the rest. Falls back to a bare notice if spill is disabled or
+    the write fails.
+    """
+    head = content[:char_limit].rstrip()
+    if _spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(content, tool_name="web_fetch", kind="original")
+        if record is not None:
+            return (
+                f"{head}\n\n[truncated to {char_limit} of {len(content)} chars; "
+                f'full page: read {record.path} (range="L1-" to page through it)]'
+            )
+    return f"{head}\n\n[truncated to {char_limit} of {len(content)} chars]"
+
+
+_TABLE_ROW_RE = re.compile(r"^\s*\|")
+
+
+def _chunk_markdown(content: str) -> list[tuple[str, str | None]]:
+    """Split rendered markdown into ``(text, pin)`` chunks for relevance ranking.
+
+    Blank-line-delimited blocks are the base unit. A block that's entirely
+    table rows (>=3 lines, all starting with ``|``) is split one row per
+    chunk, pinned to its header+separator (the first two lines) so pulling in
+    a single matched row deep in a 142-row table still shows column labels.
+    An oversized non-table block is split into fixed-size line groups so one
+    giant section (e.g. a long code block) can't swallow the whole budget as
+    a single, unsplittable chunk.
+    """
+    chunks: list[tuple[str, str | None]] = []
+    for block in re.split(r"\n{2,}", content):
+        if not block.strip():
+            continue
+        lines = block.splitlines()
+        non_blank = [ln for ln in lines if ln.strip()]
+        if len(non_blank) >= 3 and all(_TABLE_ROW_RE.match(ln) for ln in non_blank):
+            header = "\n".join(lines[:2])
+            for row in lines[2:]:
+                if row.strip():
+                    chunks.append((row, header))
+            continue
+        if len(block) > 2000:
+            for i in range(0, len(lines), 20):
+                group = "\n".join(lines[i : i + 20])
+                if group.strip():
+                    chunks.append((group, None))
+            continue
+        chunks.append((block, None))
+    return chunks
+
+
+def _truncate_with_relevance(content: str, char_limit: int, query: str) -> str:
+    """Query-gated alternative to the blind prefix cut.
+
+    Ranks chunks of the page by relevance to *query* (semantic if a real
+    embedder is configured, else deterministic lexical term-coverage — see
+    ``tool_supervision.relevance_ranking``) and keeps the highest-scoring ones
+    in original order, within ``char_limit``. The full page is still spilled
+    regardless, so a bad ranking is recoverable, not a dead end: grep the
+    named path for another term, or ``range=`` through it directly.
+    """
+    from atelier.core.capabilities.tool_supervision.relevance_ranking import rank_and_select
+
+    chunks = _chunk_markdown(content)
+    if not chunks:
+        return _truncate_with_spill(content, char_limit)
+    assembled, meta = rank_and_select(chunks, query=query, char_budget=max(256, char_limit - 300))
+
+    pointer = ""
+    if _spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(content, tool_name="web_fetch", kind="original")
+        if record is not None:
+            pointer = (
+                f" full page ({len(content)} chars): read {record.path} "
+                f'(grep it for other terms, or range="L1-" to page through it)'
+            )
+    return (
+        f"{assembled}\n\n[showing {meta['chunks_kept']}/{meta['chunks_total']} sections matching "
+        f'"{query}" ({meta["tier"]}) of {len(content)} total chars;{pointer}]'
+    )
 
 
 def _finish_fetch(
@@ -297,6 +398,7 @@ def _finish_fetch(
     rendered: dict[str, str],
     char_limit: int,
     include_meta: bool,
+    query: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the public fetch payload from a raw result + rendered content.
 
@@ -304,10 +406,11 @@ def _finish_fetch(
     both return a byte-identical payload shape for the same inputs.
     """
     content = rendered["content"]
-    truncated = False
-    if len(content) > char_limit:
-        content = content[:char_limit].rstrip() + "\n\n[truncated]"
-        truncated = True
+    truncated = len(content) > char_limit
+    if truncated:
+        content = (
+            _truncate_with_relevance(content, char_limit, query) if query else _truncate_with_spill(content, char_limit)
+        )
 
     payload: dict[str, Any] = {"content": content, "format": rendered["format"]}
     tokens_saved = _estimate_tokens_saved(raw, content)
@@ -494,6 +597,7 @@ async def async_fetch_url(
     max_chars: int = DEFAULT_MAX_CHARS,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     include_meta: bool = False,
+    query: str | None = None,
 ) -> dict[str, Any]:
     """Async twin of :func:`fetch_url` — identical SSRF guard and output shape.
 
@@ -509,7 +613,7 @@ async def async_fetch_url(
     rendered = await loop.run_in_executor(
         None, functools.partial(_render_content, raw, requested_format=requested_format)
     )
-    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta)
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta, query=query)
 
 
 def _normalize_output_format(output_format: str) -> OutputFormat:

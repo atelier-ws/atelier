@@ -405,7 +405,7 @@ def execute_inline_op(
     """Execute a fast-path file-read op in Python, returning (stdout, stderr, exit_code).
 
     Covers ``head``, ``tail``, and ``wc``.  No subprocess is spawned; latency
-    is O(microseconds) rather than O(30–50 ms) for fork+exec of bash+head.
+    is O(microseconds) rather than O(30-50 ms) for fork+exec of bash+head.
     Called from both ``run_command`` and the MCP adapter so they share the same
     implementation.
     """
@@ -1207,6 +1207,46 @@ def _bash_output_budget(command: str) -> int:
     return _BASH_STDOUT_CHAR_CAP
 
 
+# Generalizes _extract_test_output beyond test runners. Any long-running
+# command (build, migration, deploy script, linter) can bury its one actionable
+# line in the middle of an otherwise-routine log, and blind head/tail -- like
+# the FAILURES block for test runs -- would drop exactly that line.
+_ANOMALY_LINE_RE = re.compile(
+    r"\b(error|exception|traceback|fatal|panic|denied|refused|failed|failure|"
+    r"segfault|deadlock|cannot|can't|unable to)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_anomaly_windows(text: str, max_chars: int, *, context: int = 3) -> str | None:
+    """For a non-test command, keep a window of context lines around each
+    anomaly-marker line instead of blind head/tail. Returns ``None`` when no
+    marker is found anywhere in *text*, so the caller falls back to the
+    existing head+tail path unchanged -- a clean run's output is untouched.
+    """
+    lines = text.splitlines()
+    hits = [i for i, ln in enumerate(lines) if _ANOMALY_LINE_RE.search(ln)]
+    if not hits:
+        return None
+    windows: list[list[int]] = []
+    for i in hits:
+        start, end = max(0, i - context), min(len(lines), i + context + 1)
+        if windows and start <= windows[-1][1]:
+            windows[-1][1] = max(windows[-1][1], end)
+        else:
+            windows.append([start, end])
+    parts: list[str] = []
+    prev_end = 0
+    for start, end in windows:
+        if start > prev_end:
+            parts.append(f"... ({start - prev_end} lines omitted) ...")
+        parts.extend(lines[start:end])
+        prev_end = end
+    if prev_end < len(lines):
+        parts.append(f"... ({len(lines) - prev_end} lines omitted) ...")
+    return _cap_chars("\n".join(parts), max_chars)
+
+
 def _compact_result(
     *,
     command: str,
@@ -1231,11 +1271,17 @@ def _compact_result(
         stdout_chars = max(0, len(clean_stdout) - len(compact))
         stdout_compact = compact
     else:
-        stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(clean_stdout.splitlines(), head, tail)
-        capped = _cap_chars(stdout_compact, budget)
-        if capped != stdout_compact:
-            stdout_chars += len(stdout_compact) - len(capped)
-            stdout_compact = capped
+        anomaly = _extract_anomaly_windows(clean_stdout, budget)
+        if anomaly is not None:
+            stdout_compact = anomaly
+            stdout_omitted = 0
+            stdout_chars = max(0, len(clean_stdout) - len(anomaly))
+        else:
+            stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(clean_stdout.splitlines(), head, tail)
+            capped = _cap_chars(stdout_compact, budget)
+            if capped != stdout_compact:
+                stdout_chars += len(stdout_compact) - len(capped)
+                stdout_compact = capped
     stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
     lines_omitted = stdout_omitted + stderr_omitted
     chars_omitted = stdout_chars + stderr_chars

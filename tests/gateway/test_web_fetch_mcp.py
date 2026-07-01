@@ -31,8 +31,9 @@ def test_web_fetch_renders_content_only(mcp_env: Path, monkeypatch: pytest.Monke
         max_chars: int,
         timeout_s: float,
         include_meta: bool,
+        query: str | None = None,
     ) -> dict[str, Any]:
-        _ = (url, output_format, max_chars, timeout_s, include_meta)
+        _ = (url, output_format, max_chars, timeout_s, include_meta, query)
         return {"content": "# Hello\n\nWorld", "format": "markdown", "tokens_saved": 12}
 
     monkeypatch.setattr("atelier.core.capabilities.web_fetch.fetch_url", fake_fetch_url)
