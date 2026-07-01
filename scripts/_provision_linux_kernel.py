@@ -29,8 +29,8 @@ Usage::
     uv run --no-sync python scripts/_provision_linux_kernel.py --mine
 
 Outputs (merged INTO the existing bench files so every arm sees the kernel):
-    benchmarks/codebench/data/bench_pairs_linux.json       (kernel-only multi)
-    benchmarks/codebench/data/bench_pairs_linux_def_gold.json (kernel-only def gold)
+    /tmp/bench_pairs_linux.json       (kernel-only multi, intermediate)
+    /tmp/bench_pairs_linux_def_gold.json (kernel-only def gold, intermediate)
 and, with --merge, appends the kernel repo+pairs into the shared
     benchmarks/codebench/data/bench_pairs_def_gold.json
 """
@@ -58,8 +58,8 @@ CORE_SUBTREES = ["kernel", "mm", "fs", "block", "ipc", "lib", "security", "crypt
 KERNEL_URL = "https://github.com/torvalds/linux.git"
 
 DATA = Path("benchmarks/codebench/data")
-MULTI = DATA / "bench_pairs_linux.json"
-GOLD = DATA / "bench_pairs_linux_def_gold.json"
+MULTI = Path("/tmp/bench_pairs_linux.json")
+GOLD = Path("/tmp/bench_pairs_linux_def_gold.json")
 SHARED_GOLD = DATA / "bench_pairs_def_gold.json"
 
 # Symbol kinds that name a real definition (skip noise like variables/params/fields).

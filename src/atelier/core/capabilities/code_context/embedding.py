@@ -210,6 +210,7 @@ class SemanticSearchRanker:
         limit: int,
         graph_hits: Sequence[SymbolRecord] | None = None,
         weights: FusionWeights | None = None,
+        semantic_additive_k: int = 0,
     ) -> list[SymbolRecord]:
         """Fuse lexical + semantic (+ optional graph) rankings with weighted RRF.
 
@@ -220,6 +221,16 @@ class SemanticSearchRanker:
         semantic=1.0, graph=0.0), so existing call sites stay byte-identical
         unless those env knobs are set. The ``graph_hits`` signal is a no-op
         unless callers pass it AND a non-zero graph weight.
+
+        ``semantic_additive_k`` gates semantic to *additive-only* promotion
+        (default 0 = off, prior behaviour). When > 0, the top-``k`` candidates of
+        the non-semantic base ranking (lexical + graph) are frozen: their
+        semantic reciprocal-rank contribution is dropped (set to 0, not
+        penalised), so a symbol lexical already ranked highly cannot be demoted
+        by semantic noise, while a candidate lexical missed or ranked below the
+        top-``k`` still receives its full semantic lift. This is position-aware,
+        not a cosine threshold: a symbol lexical ranked #1 keeps its lead even if
+        semantic ranks it #5.
         """
         effective = weights if weights is not None else self.fusion_weights
         fused: dict[str, _FusionEntry] = {}
@@ -229,15 +240,9 @@ class SemanticSearchRanker:
                 _FusionEntry(symbol=symbol, score=0.0, lexical_rank=rank),
             )
             entry.score += effective.lexical * (1.0 / (self.rrf_k + rank))
-        for rank, symbol in enumerate(semantic_hits, start=1):
-            entry = fused.setdefault(
-                symbol.symbol_id,
-                _FusionEntry(symbol=symbol, score=0.0, semantic_rank=rank),
-            )
-            entry.score += effective.semantic * (1.0 / (self.rrf_k + rank))
-            if entry.lexical_rank is None:
-                entry.symbol = symbol
-            entry.semantic_rank = rank
+        # Graph is folded in before semantic so the non-semantic base ranking is
+        # complete when the additive gate is computed below (a no-op when
+        # graph_hits is None -> byte-identical to the prior loop order).
         for rank, symbol in enumerate(graph_hits or (), start=1):
             entry = fused.setdefault(
                 symbol.symbol_id,
@@ -247,6 +252,33 @@ class SemanticSearchRanker:
             if entry.lexical_rank is None and entry.semantic_rank is None:
                 entry.symbol = symbol
             entry.graph_rank = rank
+        # "Semantic additive only" gate: freeze the top-k of the non-semantic
+        # (lexical + graph) base so the semantic channel can only promote what
+        # they missed or ranked below the cut -- it never adds score to (and so
+        # cannot demote) a symbol already in their top-k.
+        additive_frozen: frozenset[str] = frozenset()
+        if semantic_additive_k > 0 and fused:
+            base_ranked = sorted(
+                fused.values(),
+                key=lambda entry: (
+                    -entry.score,
+                    entry.lexical_rank or 10_000,
+                    entry.graph_rank or 10_000,
+                    entry.symbol.file_path,
+                    entry.symbol.start_line,
+                ),
+            )
+            additive_frozen = frozenset(entry.symbol.symbol_id for entry in base_ranked[:semantic_additive_k])
+        for rank, symbol in enumerate(semantic_hits, start=1):
+            entry = fused.setdefault(
+                symbol.symbol_id,
+                _FusionEntry(symbol=symbol, score=0.0, semantic_rank=rank),
+            )
+            if symbol.symbol_id not in additive_frozen:
+                entry.score += effective.semantic * (1.0 / (self.rrf_k + rank))
+            if entry.lexical_rank is None:
+                entry.symbol = symbol
+            entry.semantic_rank = rank
 
         ordered = sorted(
             fused.values(),

@@ -26,7 +26,7 @@ except Exception:  # noqa: BLE001
     get_zoekt_supervisor = None
 
 RUN = pathlib.Path("reports/benchmark/codebench/swe50_stress_run1")
-OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_multi.json")
+OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_swebench_gold.json")
 TID_RE = re.compile(r"^(.*?)_(?:atelier|baseline)_rep\d+\.flow_dump\.txt$")
 GREP_RE = re.compile(r"mcp__plugin_atelier_atelier__grep\] (\{.*?\})", re.S)
 TESTRE = re.compile(r"(^|/)(test_|tests?/|conftest)")

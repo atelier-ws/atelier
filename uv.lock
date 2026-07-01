@@ -400,7 +400,7 @@ wheels = [
 
 [[package]]
 name = "atelier"
-version = "0.4.25"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -429,6 +429,7 @@ dependencies = [
     { name = "rapidfuzz" },
     { name = "regex" },
     { name = "rich" },
+    { name = "sqliteai-vector" },
     { name = "tenacity" },
     { name = "tiktoken" },
     { name = "trafilatura" },
@@ -559,6 +560,7 @@ requires-dist = [
     { name = "rope", marker = "extra == 'rename'", specifier = ">=0.23" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sentence-transformers", marker = "extra == 'semantic'", specifier = ">=3,<5" },
+    { name = "sqliteai-vector", specifier = ">=1.0.0" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
     { name = "torch", marker = "extra == 'semantic'", specifier = ">=2.2" },
@@ -6450,6 +6452,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/7d/eb9565b6a49426552a5bf5c57e7c239c506dc0e4e5315aec6d1e8241dc7c/sqlalchemy_utils-0.42.1.tar.gz", hash = "sha256:881f9cd9e5044dc8f827bccb0425ce2e55490ce44fc0bb848c55cc8ee44cc02e", size = 130789 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7c/25/7400c18c3ee97914cc99c90007795c00a4ec5b60c853b49db7ba24d11179/sqlalchemy_utils-0.42.1-py3-none-any.whl", hash = "sha256:243cfe1b3a1dae3c74118ae633f1d1e0ed8c787387bc33e556e37c990594ac80", size = 91761 },
+]
+
+[[package]]
+name = "sqliteai-vector"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2b/40/77ea9053e9538d097d71ce944e7fe9f356648e5acf39adc3983b01be9287/sqliteai_vector-1.0.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:e6724447b32e00342cab3ee67734c918d87ab2caa336a458f48dd4fe05830f9d", size = 144141 },
+    { url = "https://files.pythonhosted.org/packages/0f/6c/800d73d53b77d6dae6b11796ae8ce6bce6d5745b851900157b56a85a3e89/sqliteai_vector-1.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:5f52dede7372e67b9f219bd2163e4fd246eb867debee5f4ad825bab998a08812", size = 144136 },
+    { url = "https://files.pythonhosted.org/packages/62/1e/ac1bbd2f444b8b3fb3dd72b798cd52003c3ab2b80420049868a5280496af/sqliteai_vector-1.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:f9428101b02f633a7e1dde766edcf979827a97ec4ff113d3cd060739297e68fc", size = 67543 },
+    { url = "https://files.pythonhosted.org/packages/10/fa/c8c067b3a430351e828e686afd70a1ab736ddb73a01236d3e3ab3566fa5d/sqliteai_vector-1.0.0-py3-none-manylinux2014_x86_64.whl", hash = "sha256:108c56a3b11d36fd5b807b9d08169f10ba763cbabc569a7f0029c09d43ca066b", size = 83527 },
+    { url = "https://files.pythonhosted.org/packages/bb/00/ddce58f23164d65fd166f60e545120a7124ea38be33c23e67589251e7b28/sqliteai_vector-1.0.0-py3-none-win_amd64.whl", hash = "sha256:80eeddcbd7e41bd99c9e267de8aee6fdc04452d49a7168537bc7416059747900", size = 85343 },
 ]
 
 [[package]]

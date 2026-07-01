@@ -32,6 +32,14 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+# run.json's "agent" field sometimes holds a subagent PERSONA (e.g.
+# "atelier:code", "atelier:explore") rather than a host -- those aren't valid
+# directory-safe host labels (colons) and aren't real hosts anyway. Only trust
+# it as a host when it's one of these known values; everything else (persona
+# names, unknown/empty) defaults to "claude", matching detect_host()'s own
+# fallback and the fact this repo's historical usage is Claude-Code-centric.
+_KNOWN_HOSTS = frozenset({"claude", "codex", "opencode", "copilot", "cursor", "hermes", "antigravity"})
+
 _SESSION_FILES = (
     "run.json",
     "stats.json",
@@ -44,6 +52,12 @@ _SESSION_FILES = (
     "compact_manifest.json",
     "HANDOVER.md",
     "spend_cache.json",
+    # SessionStore (traces/lessons/raw-artifacts) -- no run.json/stats.json at
+    # all, so it needs its own markers or _looks_like_session_dir misses every
+    # trace-only session entirely.
+    "meta.json",
+    "traces.jsonl",
+    "raw_artifacts.jsonl",
 )
 
 
@@ -56,9 +70,20 @@ def _detect_host(session_dir: Path) -> str:
     if run_json.exists():
         try:
             data = json.loads(run_json.read_text("utf-8"))
-            agent = str(data.get("agent") or "").strip()
-            if agent:
+            agent = str(data.get("agent") or "").strip().lower()
+            if agent in _KNOWN_HOSTS:
                 return agent
+        except (OSError, ValueError):
+            pass
+    # SessionStore sessions have no run.json at all; their meta.json carries
+    # its own "host" field (see SessionStore._update_meta).
+    meta_json = session_dir / "meta.json"
+    if meta_json.exists():
+        try:
+            data = json.loads(meta_json.read_text("utf-8"))
+            host = str(data.get("host") or "").strip().lower()
+            if host in _KNOWN_HOSTS:
+                return host
         except (OSError, ValueError):
             pass
     return "claude"
@@ -83,6 +108,15 @@ def _detect_date(session_dir: Path, path_date: date | None) -> date:
             started_ms = data.get("started_at_ms")
             if isinstance(started_ms, (int, float)) and started_ms > 0:
                 return datetime.fromtimestamp(started_ms / 1000).date()
+        except (OSError, ValueError):
+            pass
+    meta_json = session_dir / "meta.json"
+    if meta_json.exists():
+        try:
+            data = json.loads(meta_json.read_text("utf-8"))
+            created = str(data.get("created_at") or "").strip()
+            if created:
+                return datetime.fromisoformat(created.replace("Z", "+00:00")).date()
         except (OSError, ValueError):
             pass
     try:

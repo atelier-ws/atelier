@@ -312,8 +312,8 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
     help="Channel(s) to benchmark. Repeatable for side-by-side comparison: "
     "--channel lexical --channel lexical+zoekt. "
     "Use 'all' to run every channel. "
-    "Atelier: lexical, zoekt, lexical+zoekt, cmm. "
-    "External: cg, ctags, ast-grep, serena, code-index-mcp, jcodemunch.",
+    "Atelier: lexical, zoekt, lexical+zoekt, lexical+zoekt+semantic. "
+    "External: cg, ctags, ast-grep, serena, code-index-mcp, jcodemunch, rg, cmm.",
 )
 @click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
 @click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")

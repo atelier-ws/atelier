@@ -14,7 +14,7 @@ license = { text = "LicenseRef-Atelier-Commercial" }
 authors = [{ name = "Atelier" }]
 # Depends on the open-source core; the overlay imports its public compute and
 # adds the paid activation surfaces.
-dependencies = ["atelier>=0.4.25"]
+dependencies = ["atelier>=0.1.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/atelier_pro"]

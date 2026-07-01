@@ -1,4 +1,4 @@
-"""Augment bench_pairs_multi.json with symbol-name queries extracted directly
+"""Augment bench_pairs_swebench_gold.json with symbol-name queries extracted directly
 from the gold files in true_map.
 
 For every (tid, gold_files) entry we parse each gold .py file with the AST and
@@ -21,7 +21,7 @@ import os
 import pathlib
 import sys
 
-OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_multi.json")
+OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_swebench_gold.json")
 
 
 def _extract_names(path: pathlib.Path) -> list[str]:

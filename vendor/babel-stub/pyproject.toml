@@ -5,5 +5,5 @@ build-backend = "hatchling.build"
 [project]
 name = "babel"
 version = "99.0.0"
-description = "Zero-content stub: courlan declares babel as a dep but never imports it at runtime."
+description = "Minimal stub: courlan only needs Locale.parse(...).language, not the full 32 MB locale-data package."
 requires-python = ">=3.10"

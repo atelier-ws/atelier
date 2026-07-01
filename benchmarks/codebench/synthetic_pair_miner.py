@@ -716,7 +716,7 @@ def main():
         help="Cap on synthetic pairs added during merge (for 50/50 balance with session pairs).",
     )
     parser.add_argument("--pairs-per-file", type=int, default=5, help="Max synthetic queries per file (default: 5)")
-    parser.add_argument("--max-files", type=int, default=None, help="Cap on files to process (default: all)")
+    parser.add_argument("--max-files", type=int, default=100, help="Cap on files to process (default: 100)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print progress")
     args = parser.parse_args()

@@ -15,7 +15,7 @@ from collections import defaultdict
 sys.path.insert(0, "benchmarks/codebench")
 from build_definition_gold import _idents, _symbol_def_index
 
-m = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
+m = json.load(open("benchmarks/codebench/data/bench_pairs_swebench_gold.json"))
 g = json.load(open("benchmarks/codebench/data/bench_pairs_def_gold.json"))
 guq = {(p[2], p[0]) for p in g["pairs"]}
 

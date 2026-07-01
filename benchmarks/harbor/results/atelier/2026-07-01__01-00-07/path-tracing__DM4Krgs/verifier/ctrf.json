@@ -1,0 +1,65 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 5,
+            "passed": 5,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1782865528.5240426,
+            "stop": 1782865534.1129727
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_image_c_exists",
+                "status": "passed",
+                "duration": 0.000199344998691231,
+                "start": 1782865528.556621,
+                "stop": 1782865528.5569243,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_image_compiles",
+                "status": "passed",
+                "duration": 0.05482909699640004,
+                "start": 1782865528.5570147,
+                "stop": 1782865528.6119642,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_no_deps",
+                "status": "passed",
+                "duration": 0.036611815994547214,
+                "start": 1782865528.6120896,
+                "stop": 1782865528.64885,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_runs_and_produces_output",
+                "status": "passed",
+                "duration": 0.26436084900342394,
+                "start": 1782865528.649028,
+                "stop": 1782865528.913557,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_image_similarity",
+                "status": "passed",
+                "duration": 5.198972448000859,
+                "start": 1782865528.913723,
+                "stop": 1782865534.1128483,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

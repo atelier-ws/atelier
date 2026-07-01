@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-REPEAT_THRESHOLD = 2  # block on the second identical failure
+REPEAT_THRESHOLD = 3  # block on the third identical failure
 
 
 def _workspace_key(path: str) -> str:
@@ -187,7 +187,7 @@ def main() -> int:
                 {
                     "decision": "ask",
                     "reason": (
-                        "This command failed twice with the same error. "
+                        "This command failed 3 times with the same error. "
                         "Call `rescue` before any retry; do not repeat the same fix."
                     ),
                 }

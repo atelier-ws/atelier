@@ -1,0 +1,55 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1782862702.6836343,
+            "stop": 1782862738.808011
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_parallel_linear_exists",
+                "status": "passed",
+                "duration": 0.0003844660022878088,
+                "start": 1782862705.063391,
+                "stop": 1782862705.0639513,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_column_parallel_linear",
+                "status": "passed",
+                "duration": 1.3024589599881438,
+                "start": 1782862705.064086,
+                "stop": 1782862706.3667412,
+                "retries": 5,
+                "file_path": "test_outputs.py",
+                "tags": [
+                    "parametrize::world_size::[1, 2, 4]",
+                    "parametrize::bias::[True, False]"
+                ]
+            },
+            {
+                "name": "test_outputs.py::test_row_parallel_linear",
+                "status": "passed",
+                "duration": 0.8167397360084578,
+                "start": 1782862724.4949703,
+                "stop": 1782862725.3118782,
+                "retries": 5,
+                "file_path": "test_outputs.py",
+                "tags": [
+                    "parametrize::world_size::[1, 2, 4]",
+                    "parametrize::bias::[True, False]"
+                ]
+            }
+        ]
+    }
+}

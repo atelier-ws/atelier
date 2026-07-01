@@ -143,7 +143,6 @@ eval_results/
 
 # Scripts output
 outputs/
-results/
 !docs/plans/world-class-atelier/results/
 !docs/plans/world-class-atelier/results/optimization/
 !docs/plans/world-class-atelier/results/optimization/latest.json

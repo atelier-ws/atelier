@@ -8,8 +8,10 @@ guidance. State is process-local and resets with the server.
 from __future__ import annotations
 
 import re
+import shlex
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -84,23 +86,47 @@ def _first_head(norm: str) -> str:
     return ""
 
 
-def _redirect_hint(norm: str) -> tuple[str, str] | None:
+def _is_repo_path(token: str, cwd: str | None) -> bool:
+    """Whether an absolute-path *token* falls inside the workspace at *cwd*.
+
+    Relative paths and an unknown *cwd* are assumed in-repo (conservative:
+    don't suppress the hint without positive evidence it's out of scope).
+    """
+    if not cwd:
+        return True
+    try:
+        root = Path(cwd).resolve()
+        candidate = Path(token).resolve()
+    except OSError:
+        return True
+    return candidate == root or root in candidate.parents
+
+
+def _redirect_hint(norm: str, cwd: str | None) -> tuple[str, str] | None:
     """Coaching for a leading shell command that duplicates an Atelier tool.
 
     Only the *first* command word is inspected, so piped output filters like
     ``ps aux | grep node`` are left alone — only a top-level code search/read or
-    database command is nudged.
+    database command is nudged. Also skipped when an argument is an absolute
+    path outside the workspace (e.g. ``grep foo /tmp/scratch.html``) —
+    code_search only covers indexed repo files, so the hint would be wrong.
     """
     head = _first_head(norm)
-    if head in _SEARCH_HEADS:
-        return (
-            "search",
-            f"Prefer the `code_search` tool over shell `{head}` for code exploration.",
-        )
-    return None
+    if head not in _SEARCH_HEADS:
+        return None
+    try:
+        tokens = shlex.split(norm)
+    except ValueError:
+        tokens = norm.split()
+    if any(tok.startswith("/") and not _is_repo_path(tok, cwd) for tok in tokens[1:]):
+        return None
+    return (
+        "search",
+        f"Prefer the `code_search` tool over shell `{head}` for code exploration.",
+    )
 
 
-def pre_run_gate(command: str) -> GateDecision:
+def pre_run_gate(command: str, *, cwd: str | None = None) -> GateDecision:
     """Decide whether *command* may run, runs with a warning, or is blocked."""
     norm = _normalize(command)
     if not norm:
@@ -122,7 +148,7 @@ def pre_run_gate(command: str) -> GateDecision:
                 return GateDecision("allow")
             _silence_warned.add(norm)
             return GateDecision("allow")
-        hint = _redirect_hint(norm)
+        hint = _redirect_hint(norm, cwd)
         if hint is not None:
             cls, message = hint
             if cls not in _redirect_warned:

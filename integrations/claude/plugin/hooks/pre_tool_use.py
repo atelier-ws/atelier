@@ -139,6 +139,14 @@ def main() -> int:
         session_id = str(payload.get("session_id") or "").strip()
         targets = extract_edit_targets(tool_name, tool_input, workspace_root=workspace)
         risky_targets = [target for target in targets if _is_risky(target)]
+        # New-file exemption: a target that does not yet exist on disk cannot be
+        # grounded by read/grep/search, so requiring evidence would deadlock its
+        # creation. Only require grounding for targets that already exist.
+        risky_targets = [
+            target
+            for target in risky_targets
+            if (Path(workspace) / target).exists() or Path(target).exists()
+        ]
         missing = missing_grounding_targets(
             state,
             session_id=session_id,

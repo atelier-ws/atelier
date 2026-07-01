@@ -622,20 +622,27 @@ class CodeIndexProvider(Provider):
     def start(self, ws: Path) -> None:
         from benchmarks.mcp_tools.bench_external_indexers import (
             CodeIndexRunner,
-            default_benchmark_root,
+            bench_tools_root,
             ensure_code_index_checkout,
+            ensure_code_index_runtime,
         )
 
         self._ws = ws
-        bench_root = default_benchmark_root(ws)
-        code_index_repo = ensure_code_index_checkout(bench_root / "code-index-mcp")
+        # Single shared checkout under ~/.atelier/_bench_tools/ so we don't clone
+        # a fresh copy for every gold repo workspace, and so python_bin is always
+        # an absolute Path (no cwd-relative confusion in run_cmd).
+        code_index_repo = ensure_code_index_checkout(bench_tools_root() / "code-index-mcp")
+        # Pre-warm the venv before creating the runner so any uv sync failure
+        # surfaces during start() rather than inside the subprocess -- and so
+        # python_bin is always an absolute Path (no cwd-relative confusion).
+        python_bin = ensure_code_index_runtime(code_index_repo)
         tmp_ws = Path(tempfile.mkdtemp(prefix="cidx-ws-"))
         self._runner = CodeIndexRunner(
             repo_root=ws,
             workspace_root=tmp_ws,
             code_index_repo=code_index_repo,
         )
-        self._runner.start()
+        self._runner.start(python_bin=python_bin)
 
     def stop(self) -> None:
         self._runner = None

@@ -41,7 +41,7 @@ cannot be scored there.
 ## Provisioning (one-time)
 
 - **Pairs + per-repo index DBs**: `scripts/_provision_repos.py` provisions each repo to a
-  prebuilt read-only `(ws, db)`, writes the raw query universe to `bench_pairs_multi.json`,
+   prebuilt read-only `(ws, db)`, writes the raw query universe to `bench_pairs_swebench_gold.json`,
   then derives the canonical **definition gold** `bench_pairs_def_gold.json` (via
   `build_definition_gold.py`) — the single gold every eval reads. Override the path with
   `EVAL_PAIRS` / `FITNESS_PAIRS`.
@@ -240,7 +240,7 @@ grep-shaped benchmark.
 
 ## The gold was flawed for retrieval — use the DEFINITION gold
 
-The shipped `bench_pairs_multi.json` gold is the file the SWE-task PR **edited**
+The shipped `bench_pairs_swebench_gold.json` gold is the file the SWE-task PR **edited**
 (edit-localization). For a *search* eval it is mislabeled. Measured on atelier
 (n=335): **45% of golds are test files**, and by whether the gold defines a symbol
 the query names:
@@ -458,6 +458,5 @@ lexical score.
 
 - `benchmarks/codebench/eval_external_provider_mrr.py`'s `CmmProvider` — the CMM arm.
 - `scripts/_provision_linux_kernel.py` — kernel scope + index + gold mining + merge.
-- `benchmarks/codebench/data/bench_pairs_linux_def_gold.json` — kernel-only def gold.
 - `bench_pairs_def_gold.json` now carries `torvalds__linux` (591 pairs).
 - `atelier eval retrieval --channel cmm` (CLI wiring in `gateway/cli/commands/eval.py`).

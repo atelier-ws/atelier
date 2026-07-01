@@ -1148,6 +1148,11 @@ _ER_FEATURE_NAMES: tuple[str, ...] = (
     "doc_scope_match",
     "doc_scope_mismatch",
     "path_depth",
+    # Semantic cosine of the file's best-matching symbol to the query (0 when the
+    # file was not a semantic anchor). The learned reranker was previously blind to
+    # the embedding signal -- this is the feature it needs to arbitrate lexical vs
+    # semantic. Sourced from the explore payload's per-file ``semantic_score``.
+    "semantic_cosine",
 )
 _ER_STOPWORDS: frozenset[str] = frozenset(
     {
@@ -1446,6 +1451,7 @@ def _er_entry_features(
         float(wants_docs and is_doc),
         float(not wants_docs and is_doc),
         depth,
+        float(entry.get("semantic_score") or 0.0),
     ]
 
 
@@ -5184,6 +5190,10 @@ class CodeContextEngine:
             file_entry: dict[str, Any] = {
                 "file_path": file_path,
                 "language": symbols[0].language if symbols else "unknown",
+                # Per-file semantic cosine for the learned reranker's feature vector
+                # (0.0 when the file was not a semantic anchor). Cheap to carry; only
+                # the reranker reads it.
+                "semantic_score": float(_sem_scores.get(file_path, 0.0)),
                 "symbols": [
                     {
                         "symbol_id": symbol.symbol_id,

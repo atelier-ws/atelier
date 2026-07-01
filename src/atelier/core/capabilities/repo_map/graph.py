@@ -106,7 +106,15 @@ def _iter_git_visible_source_files(
         if progress_callback is not None:
             progress_callback(i, total_raw)
         rel = raw_entry.decode("utf-8", errors="replace")
-        if not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
+        # Match against both the full repo-relative path and the bare basename:
+        # the default patterns are recursive globs like ``**/*.py`` and
+        # ``fnmatch`` (unlike pathlib) does not treat ``**`` as "zero or more
+        # dirs", so ``fnmatch("run.py", "**/*.py")`` is False and root-level
+        # source files would be silently dropped from the git-visible index.
+        name = rel.rsplit("/", 1)[-1]
+        if not any(
+            fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(name, pattern.rsplit("/", 1)[-1]) for pattern in patterns
+        ):
             continue
         path = (repo_root / rel).resolve()
         if not path.is_file():
