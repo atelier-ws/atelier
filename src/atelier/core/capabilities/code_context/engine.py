@@ -4662,6 +4662,10 @@ class CodeContextEngine:
         # — saving its ~HTTP round-trip — and let FTS symbols + the targeted
         # per-anchor Zoekt channel carry the query.
         _broad_admit = (not _zoekt_gate_enforced()) or _zoekt_broad_gate(query)[0]
+        # {file_path: best cosine} from the semantic channel; used both as recall
+        # anchors AND (the fix) as a ranking signal below so semantic-surfaced
+        # files aren't scored ~0 on lexical/centrality and buried.
+        _sem_scores: dict[str, float] = {}
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
             from concurrent.futures import ThreadPoolExecutor
 
@@ -4710,7 +4714,8 @@ class CodeContextEngine:
                 # Minimum 50ms floor so the common small-repo case (5ms ANN) never
                 # waits unnecessarily.
                 _sem_remaining = max(0.05, 0.5 - (time.monotonic() - _sem_t0))
-                for _f in _sem.result(timeout=_sem_remaining):
+                _sem_scores = _sem.result(timeout=_sem_remaining)
+                for _f in _sem_scores:
                     _seen_anchors.setdefault(_f, None)
             except Exception:
                 pass
@@ -4727,7 +4732,8 @@ class CodeContextEngine:
             # Limit baseline anchors to anchor_budget (same as V6 capturing_zoekt behaviour).
             _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 30)) if _broad_admit else []
             _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
-            for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
+            _sem_scores = self._semantic_candidate_files(query, max_files=anchor_budget)
+            for _f in _sem_scores:
                 _seen_anchors_s.setdefault(_f, None)
             anchor_candidates = list(_seen_anchors_s)
         # Single-file scope: restrict results to that file only.
@@ -4915,6 +4921,22 @@ class CodeContextEngine:
                         if _fp:
                             _fp_terms.setdefault(_fp, set()).add(_w)
             _file_pipe_coverage = {fp: len(ws) for fp, ws in _fp_terms.items()}
+        # ── Semantic score fusion (the fix) ──────────────────────────────────
+        # Give every symbol in a semantically-matched file a rank boost
+        # proportional to that file's cosine, so a file the embedder ranked #1
+        # competes in the final ordering instead of sinking to the tail. Before
+        # this, semantic contributed recall only: the file was added to the
+        # candidate pool but scored ~0 on lexical/centrality and lost the
+        # -(score) sort. Purely additive -- never demotes a strong lexical hit,
+        # only lifts semantic-surfaced files. Weight tunable for calibration.
+        if _sem_scores:
+            _sem_w = float(os.environ.get("ATELIER_SEMANTIC_RANK_WEIGHT", "120"))
+            raw_symbols = [
+                record.model_copy(update={"score": (record.score or 0.0) + _sem_scores[record.file_path] * _sem_w})
+                if record.file_path in _sem_scores
+                else record
+                for record in raw_symbols
+            ]
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
@@ -7895,30 +7917,38 @@ class CodeContextEngine:
             return list(seen)
         return []
 
-    def _semantic_candidate_files(self, query: str, *, max_files: int = 40) -> set[str]:
+    def _semantic_candidate_files(self, query: str, *, max_files: int = 40) -> dict[str, float]:
         """Files whose symbols are the nearest semantic (embedding) neighbours of the
         query -- an additive recall channel for the explore fusion, mirroring
         _zoekt_candidate_files.  Fuses ONLY when an embedder is configured and
         available: the embedder is the gated provider, so with none configured this
         is a silent no-op (never an error or a "pro-gated" notice).  Graceful --
-        returns an empty set when embeddings are not indexed or the search fails.
+        returns an empty dict when embeddings are not indexed or the search fails.
         Opt out with ATELIER_EXPLORE_SEMANTIC=0.
+
+        Returns ``{file_path: best_cosine}`` (the max cosine over the file's
+        symbols). The caller uses the keys as recall anchors AND the scores as a
+        ranking signal, so a file the embedder ranked highest is promoted rather
+        than scored ~0 on lexical/centrality.
         """
         normalized_query = query.strip()
         if os.environ.get("ATELIER_EXPLORE_SEMANTIC", "1") == "0":
-            return set()
+            return {}
         if not normalized_query or not getattr(self._semantic_ranker, "available", False):
-            return set()
-        # Cosine threshold: only use semantic anchors that are clearly similar
-        # (score >= threshold).  Without a floor the bottom-ranked neighbours
-        # are noise that displaces correct lexical/zoekt results.
-        min_score = float(os.environ.get("ATELIER_SEMANTIC_MIN_SCORE", "0.55"))
-        files: set[str] = set()
+            return {}
+        # Cosine floor: drop clearly-dissimilar neighbours that would be noise.
+        # Default 0.35, not 0.55: BGE-code is an asymmetric (query-prefix vs
+        # document) model whose correct matches land at ~0.4-0.55 cosine, so a
+        # 0.55 floor discarded nearly every true semantic anchor before fusion.
+        min_score = float(os.environ.get("ATELIER_SEMANTIC_MIN_SCORE", "0.35"))
+        files: dict[str, float] = {}
         with contextlib.suppress(Exception):
             for symbol in self._search_symbols_semantic_local(normalized_query, limit=max(8, max_files)):
                 if (symbol.score or 0.0) < min_score:
                     break  # results are score-sorted; no point continuing
-                files.add(symbol.file_path)
+                fp = symbol.file_path
+                if fp not in files:  # first occurrence is the file's best (score-desc order)
+                    files[fp] = float(symbol.score or 0.0)
                 if len(files) >= max_files:
                     break
         return files
