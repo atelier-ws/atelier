@@ -11,70 +11,70 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782879380.2179368,
-            "stop": 1782879380.2534435
+            "start": 1782920512.3178651,
+            "stop": 1782920512.3564596
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_recovered_json_exists",
                 "status": "passed",
-                "duration": 0.0001899330090964213,
-                "start": 1782879380.2516208,
-                "stop": 1782879380.251911,
+                "duration": 0.00036750800791196525,
+                "start": 1782920512.3530557,
+                "stop": 1782920512.3535912,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_recovered_json_is_valid",
                 "status": "passed",
-                "duration": 0.00015755499771330506,
-                "start": 1782879380.251999,
-                "stop": 1782879380.2522125,
+                "duration": 0.0002902160049416125,
+                "start": 1782920512.3537402,
+                "stop": 1782920512.3541217,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_recovered_data_structure",
                 "status": "passed",
-                "duration": 0.0001331690145889297,
-                "start": 1782879380.2522786,
-                "stop": 1782879380.2524586,
+                "duration": 0.0002594230172690004,
+                "start": 1782920512.3542333,
+                "stop": 1782920512.3545744,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_recovered_data_sorted",
                 "status": "passed",
-                "duration": 0.0001316350098932162,
-                "start": 1782879380.2525196,
-                "stop": 1782879380.2527013,
+                "duration": 0.00025195897615049034,
+                "start": 1782920512.3546815,
+                "stop": 1782920512.355019,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_recovered_data_completeness",
                 "status": "passed",
-                "duration": 0.00012801001139450818,
-                "start": 1782879380.2527642,
-                "stop": 1782879380.2529376,
+                "duration": 0.0002533029910409823,
+                "start": 1782920512.3551257,
+                "stop": 1782920512.3554587,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_no_duplicate_ids",
                 "status": "passed",
-                "duration": 0.00012241800141055137,
-                "start": 1782879380.2529964,
-                "stop": 1782879380.2531617,
+                "duration": 0.00024812400806695223,
+                "start": 1782920512.355563,
+                "stop": 1782920512.3558903,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_wal_was_decrypted",
                 "status": "passed",
-                "duration": 0.00012001700815744698,
-                "start": 1782879380.253219,
-                "stop": 1782879380.2533782,
+                "duration": 0.00026347000675741583,
+                "start": 1782920512.3559995,
+                "stop": 1782920512.356341,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

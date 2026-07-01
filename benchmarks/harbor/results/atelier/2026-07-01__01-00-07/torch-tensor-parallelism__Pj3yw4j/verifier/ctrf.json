@@ -11,25 +11,25 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782862702.6836343,
-            "stop": 1782862738.808011
+            "start": 1782912738.273714,
+            "stop": 1782912774.6693704
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_parallel_linear_exists",
                 "status": "passed",
-                "duration": 0.0003844660022878088,
-                "start": 1782862705.063391,
-                "stop": 1782862705.0639513,
+                "duration": 0.00021723601093981415,
+                "start": 1782912739.6794305,
+                "stop": 1782912739.679765,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_column_parallel_linear",
                 "status": "passed",
-                "duration": 1.3024589599881438,
-                "start": 1782862705.064086,
-                "stop": 1782862706.3667412,
+                "duration": 0.8306954550207593,
+                "start": 1782912739.6798525,
+                "stop": 1782912740.5106812,
                 "retries": 5,
                 "file_path": "test_outputs.py",
                 "tags": [
@@ -40,9 +40,9 @@
             {
                 "name": "test_outputs.py::test_row_parallel_linear",
                 "status": "passed",
-                "duration": 0.8167397360084578,
-                "start": 1782862724.4949703,
-                "stop": 1782862725.3118782,
+                "duration": 1.3065613490180112,
+                "start": 1782912756.5646188,
+                "stop": 1782912757.8713098,
                 "retries": 5,
                 "file_path": "test_outputs.py",
                 "tags": [

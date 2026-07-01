@@ -11,34 +11,34 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782867557.1021223,
-            "stop": 1782867564.0106518
+            "start": 1782924605.7824707,
+            "stop": 1782924612.611365
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_illum1_render_and_verify",
                 "status": "passed",
-                "duration": 4.028274556992983,
-                "start": 1782867559.9801328,
-                "stop": 1782867564.0085957,
+                "duration": 6.017270088006626,
+                "start": 1782924606.591579,
+                "stop": 1782924612.6090465,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_povray_version",
                 "status": "passed",
-                "duration": 0.001027339996653609,
-                "start": 1782867564.0087392,
-                "stop": 1782867564.0098808,
+                "duration": 0.000994480011286214,
+                "start": 1782924612.6092007,
+                "stop": 1782924612.6103272,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_povray_built_from_correct_source",
                 "status": "passed",
-                "duration": 0.0003497689904179424,
-                "start": 1782867564.0101473,
-                "stop": 1782867564.0105684,
+                "duration": 0.000642593004158698,
+                "start": 1782924612.6104972,
+                "stop": 1782924612.6112366,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

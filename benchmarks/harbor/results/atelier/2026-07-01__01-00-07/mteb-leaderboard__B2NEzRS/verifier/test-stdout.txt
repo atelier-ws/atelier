@@ -23,7 +23,7 @@ Downloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)
  Downloading cpython-3.13.9-linux-x86_64-gnu (download)
 Downloading pygments (1.2MiB)
  Downloading pygments
-Installed 6 packages in 5ms
+Installed 6 packages in 10ms
 ============================= test session starts ==============================
 platform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0
 rootdir: /tests
@@ -36,4 +36,4 @@ collected 2 items
 =========================== short test summary info ============================
 PASSED ../tests/test_outputs.py::test_result_exists
 PASSED ../tests/test_outputs.py::test_data_matches
-============================== 2 passed in 0.03s ===============================
+============================== 2 passed in 0.05s ===============================

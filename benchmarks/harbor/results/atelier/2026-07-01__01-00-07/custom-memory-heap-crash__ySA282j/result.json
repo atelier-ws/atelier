@@ -1,5 +1,5 @@
 {
-    "id": "a5dcd781-c44c-4b67-a75e-c573defa3bdd",
+    "id": "80430993-c556-495b-833c-212603dfb1f5",
     "task_name": "terminal-bench/custom-memory-heap-crash",
     "trial_name": "custom-memory-heap-crash__ySA282j",
     "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07/custom-memory-heap-crash__ySA282j",
@@ -24,7 +24,7 @@
         "trial_name": "custom-memory-heap-crash__ySA282j",
         "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
         "timeout_multiplier": 1.0,
-        "agent_timeout_multiplier": 6.0,
+        "agent_timeout_multiplier": null,
         "verifier_timeout_multiplier": null,
         "agent_setup_timeout_multiplier": null,
         "environment_build_timeout_multiplier": null,
@@ -88,10 +88,10 @@
         "model_info": null
     },
     "agent_result": {
-        "n_input_tokens": 4592,
-        "n_cache_tokens": 1717577,
-        "n_output_tokens": 29263,
-        "cost_usd": 2.1747734999999992,
+        "n_input_tokens": 2795,
+        "n_cache_tokens": 570321,
+        "n_output_tokens": 10642,
+        "cost_usd": 0.9486455,
         "rollout_details": null,
         "metadata": null
     },
@@ -101,23 +101,23 @@
         }
     },
     "exception_info": null,
-    "started_at": "2026-07-01T04:54:07.813661Z",
-    "finished_at": "2026-07-01T05:03:43.833283Z",
+    "started_at": "2026-07-01T15:38:35.754708Z",
+    "finished_at": "2026-07-01T15:43:33.064871Z",
     "environment_setup": {
-        "started_at": "2026-07-01T04:54:07.815678Z",
-        "finished_at": "2026-07-01T04:54:32.840354Z"
+        "started_at": "2026-07-01T15:38:35.756441Z",
+        "finished_at": "2026-07-01T15:38:59.356689Z"
     },
     "agent_setup": {
-        "started_at": "2026-07-01T04:54:32.840375Z",
-        "finished_at": "2026-07-01T04:54:57.393837Z"
+        "started_at": "2026-07-01T15:38:59.356702Z",
+        "finished_at": "2026-07-01T15:39:24.212788Z"
     },
     "agent_execution": {
-        "started_at": "2026-07-01T04:54:57.393957Z",
-        "finished_at": "2026-07-01T05:03:24.782204Z"
+        "started_at": "2026-07-01T15:39:24.212846Z",
+        "finished_at": "2026-07-01T15:43:13.354107Z"
     },
     "verifier": {
-        "started_at": "2026-07-01T05:03:25.007852Z",
-        "finished_at": "2026-07-01T05:03:31.827143Z"
+        "started_at": "2026-07-01T15:43:13.575618Z",
+        "finished_at": "2026-07-01T15:43:20.935102Z"
     },
     "step_results": null
 }

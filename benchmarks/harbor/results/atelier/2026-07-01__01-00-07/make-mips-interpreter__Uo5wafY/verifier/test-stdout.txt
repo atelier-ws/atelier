@@ -1,7 +1,8 @@
 Hit:1 http://deb.debian.org/debian bookworm InRelease
-Hit:2 http://deb.debian.org/debian bookworm-updates InRelease
-Hit:3 http://deb.debian.org/debian-security bookworm-security InRelease
+Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
 Hit:4 https://deb.nodesource.com/node_20.x nodistro InRelease
+Fetched 103 kB in 0s (510 kB/s)
 Reading package lists...
 Reading package lists...
 Building dependency tree...
@@ -48,7 +49,7 @@ Get:20 http://deb.debian.org/debian bookworm/main amd64 python3-pil amd64 9.4.0-
 Get:21 http://deb.debian.org/debian bookworm/main amd64 shared-mime-info amd64 2.2-1 [729 kB]
 Get:22 http://deb.debian.org/debian bookworm/main amd64 xdg-user-dirs amd64 0.18-1 [54.4 kB]
 debconf: delaying package configuration, since apt-utils is not installed
-Fetched 7607 kB in 0s (28.2 MB/s)
+Fetched 7607 kB in 0s (31.3 MB/s)
 Selecting previously unselected package bzip2.
 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 30595 files and directories currently installed.)
 Preparing to unpack .../00-bzip2_1.0.8-5+b1_amd64.deb ...
@@ -168,7 +169,7 @@ Downloading numpy (15.9MiB)
  Downloading pygments
  Downloading pillow
  Downloading numpy
-Installed 8 packages in 23ms
+Installed 8 packages in 15ms
 ============================= test session starts ==============================
 platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0
 rootdir: /tests
@@ -182,4 +183,4 @@ collected 3 items
 PASSED ../tests/test_outputs.py::test_vm_execution
 PASSED ../tests/test_outputs.py::test_frame_bmp_exists
 PASSED ../tests/test_outputs.py::test_frame_bmp_similar_to_reference
-============================== 3 passed in 1.12s ===============================
+============================== 3 passed in 1.13s ===============================

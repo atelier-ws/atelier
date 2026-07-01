@@ -1,9 +1,8 @@
-Get:1 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease
 Hit:2 http://archive.ubuntu.com/ubuntu noble InRelease
 Hit:3 https://deb.nodesource.com/node_20.x nodistro InRelease
-Get:4 http://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Hit:4 http://archive.ubuntu.com/ubuntu noble-updates InRelease
 Hit:5 http://archive.ubuntu.com/ubuntu noble-backports InRelease
-Fetched 252 kB in 0s (810 kB/s)
 Reading package lists...
 Reading package lists...
 Building dependency tree...
@@ -25,7 +24,7 @@ Downloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)
  Downloading cpython-3.13.9-linux-x86_64-gnu (download)
 Downloading pygments (1.2MiB)
  Downloading pygments
-Installed 6 packages in 10ms
+Installed 6 packages in 7ms
 ============================= test session starts ==============================
 platform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0
 rootdir: /tests

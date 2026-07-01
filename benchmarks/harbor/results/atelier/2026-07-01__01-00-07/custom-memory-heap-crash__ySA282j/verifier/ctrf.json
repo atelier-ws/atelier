@@ -11,61 +11,61 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782882208.940445,
-            "stop": 1782882211.7945218
+            "start": 1782920597.7557027,
+            "stop": 1782920600.9017434
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_protected_files_not_modified",
                 "status": "passed",
-                "duration": 0.00023994300863705575,
-                "start": 1782882208.9733593,
-                "stop": 1782882208.9737074,
+                "duration": 0.0002164730103686452,
+                "start": 1782920597.7878318,
+                "stop": 1782920597.7881513,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_program_compiles_debug",
                 "status": "passed",
-                "duration": 0.41167038098501507,
-                "start": 1782882208.973794,
-                "stop": 1782882209.385587,
+                "duration": 0.4968702689948259,
+                "start": 1782920597.7882357,
+                "stop": 1782920598.2852335,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_program_compiles_release",
                 "status": "passed",
-                "duration": 0.4195444969955133,
-                "start": 1782882209.3857043,
-                "stop": 1782882209.8053632,
+                "duration": 0.5783599329879507,
+                "start": 1782920598.2853613,
+                "stop": 1782920598.8638387,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_debug_build_runs_without_crash",
                 "status": "passed",
-                "duration": 0.5488946320110699,
-                "start": 1782882209.805484,
-                "stop": 1782882210.354497,
+                "duration": 0.5522704910108587,
+                "start": 1782920598.8639565,
+                "stop": 1782920599.4163537,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_release_build_runs_without_crash",
                 "status": "passed",
-                "duration": 0.4514959880034439,
-                "start": 1782882210.3546197,
-                "stop": 1782882210.8062654,
+                "duration": 0.4455991189897759,
+                "start": 1782920599.41648,
+                "stop": 1782920599.8621933,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_no_memory_leaks_with_valgrind",
                 "status": "passed",
-                "duration": 0.9878475739824353,
-                "start": 1782882210.8064435,
-                "stop": 1782882211.7944155,
+                "duration": 1.039214674005052,
+                "start": 1782920599.8623118,
+                "stop": 1782920600.9016387,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

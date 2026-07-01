@@ -11,70 +11,70 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782884717.7411554,
-            "stop": 1782884719.0608892
+            "start": 1782924734.1457758,
+            "stop": 1782924747.3033497
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_import",
                 "status": "passed",
-                "duration": 0.014121576998149976,
-                "start": 1782884717.8655314,
-                "stop": 1782884717.8799217,
+                "duration": 0.009090288978768513,
+                "start": 1782924734.223082,
+                "stop": 1782924734.2323523,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_send_non_interactive_command",
                 "status": "passed",
-                "duration": 0.12723995398846455,
-                "start": 1782884717.8801384,
-                "stop": 1782884718.0077126,
+                "duration": 1.0018971020035679,
+                "start": 1782924734.2324946,
+                "stop": 1782924735.2346296,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_send_interactive_command",
                 "status": "passed",
-                "duration": 0.42630105500575155,
-                "start": 1782884718.0080137,
-                "stop": 1782884718.4346275,
+                "duration": 4.552504055012832,
+                "start": 1782924735.2348192,
+                "stop": 1782924739.7875342,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_cancel_command",
                 "status": "passed",
-                "duration": 0.183610669002519,
-                "start": 1782884718.4351463,
-                "stop": 1782884718.6190796,
+                "duration": 1.0019174320041202,
+                "start": 1782924739.7878597,
+                "stop": 1782924740.7900186,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_startup_files",
                 "status": "passed",
-                "duration": 0.125128779996885,
-                "start": 1782884718.6193118,
-                "stop": 1782884718.7447543,
+                "duration": 0.5025252560008084,
+                "start": 1782924740.790249,
+                "stop": 1782924741.2930012,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_shell_state_persists_between_commands",
                 "status": "passed",
-                "duration": 0.1836437140009366,
-                "start": 1782884718.7450995,
-                "stop": 1782884718.9290192,
+                "duration": 1.0021015189850004,
+                "start": 1782924741.293212,
+                "stop": 1782924742.2955422,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_background_commands",
                 "status": "passed",
-                "duration": 0.1310607280174736,
-                "start": 1782884718.9292746,
-                "stop": 1782884719.0606027,
+                "duration": 5.007219505001558,
+                "start": 1782924742.2957666,
+                "stop": 1782924747.3031728,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

@@ -24,7 +24,7 @@ Downloading cpython-3.13.9-linux-x86_64-gnu (download) (32.0MiB)
  Downloading cpython-3.13.9-linux-x86_64-gnu (download)
 Downloading pygments (1.2MiB)
  Downloading pygments
-Installed 6 packages in 8ms
+Installed 6 packages in 10ms
 ============================= test session starts ==============================
 platform linux -- Python 3.13.9, pytest-8.4.1, pluggy-1.6.0
 rootdir: /tests
@@ -41,4 +41,4 @@ PASSED ../tests/test_outputs.py::test_program_compiles_release
 PASSED ../tests/test_outputs.py::test_debug_build_runs_without_crash
 PASSED ../tests/test_outputs.py::test_release_build_runs_without_crash
 PASSED ../tests/test_outputs.py::test_no_memory_leaks_with_valgrind
-============================== 6 passed in 2.85s ===============================
+============================== 6 passed in 3.15s ===============================

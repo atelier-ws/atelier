@@ -11,52 +11,52 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782865528.5240426,
-            "stop": 1782865534.1129727
+            "start": 1782921210.5617,
+            "stop": 1782921216.006999
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_image_c_exists",
                 "status": "passed",
-                "duration": 0.000199344998691231,
-                "start": 1782865528.556621,
-                "stop": 1782865528.5569243,
+                "duration": 0.00020157200924586505,
+                "start": 1782921210.593793,
+                "stop": 1782921210.5941005,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_image_compiles",
                 "status": "passed",
-                "duration": 0.05482909699640004,
-                "start": 1782865528.5570147,
-                "stop": 1782865528.6119642,
+                "duration": 0.04115676099900156,
+                "start": 1782921210.5941842,
+                "stop": 1782921210.63547,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_no_deps",
                 "status": "passed",
-                "duration": 0.036611815994547214,
-                "start": 1782865528.6120896,
-                "stop": 1782865528.64885,
+                "duration": 0.032584158005192876,
+                "start": 1782921210.635594,
+                "stop": 1782921210.6683047,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_runs_and_produces_output",
                 "status": "passed",
-                "duration": 0.26436084900342394,
-                "start": 1782865528.649028,
-                "stop": 1782865528.913557,
+                "duration": 0.287855230999412,
+                "start": 1782921210.668429,
+                "stop": 1782921210.9563978,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_image_similarity",
                 "status": "passed",
-                "duration": 5.198972448000859,
-                "start": 1782865528.913723,
-                "stop": 1782865534.1128483,
+                "duration": 5.050240112992469,
+                "start": 1782921210.9565077,
+                "stop": 1782921216.006879,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

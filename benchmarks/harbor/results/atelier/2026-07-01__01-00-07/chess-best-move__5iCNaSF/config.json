@@ -12,7 +12,7 @@
     "trial_name": "chess-best-move__5iCNaSF",
     "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
     "timeout_multiplier": 1.0,
-    "agent_timeout_multiplier": 6.0,
+    "agent_timeout_multiplier": null,
     "verifier_timeout_multiplier": null,
     "agent_setup_timeout_multiplier": null,
     "environment_build_timeout_multiplier": null,

@@ -1,5 +1,5 @@
 {
-    "id": "47c4dc48-0e40-4ae2-8848-0407058b7a99",
+    "id": "6dd582d8-8ec9-4c1d-9f0b-281f16518d62",
     "task_name": "terminal-bench/feal-differential-cryptanalysis",
     "trial_name": "feal-differential-cryptanalysis__MmnVqt6",
     "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07/feal-differential-cryptanalysis__MmnVqt6",
@@ -24,7 +24,7 @@
         "trial_name": "feal-differential-cryptanalysis__MmnVqt6",
         "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
         "timeout_multiplier": 1.0,
-        "agent_timeout_multiplier": 6.0,
+        "agent_timeout_multiplier": null,
         "verifier_timeout_multiplier": null,
         "agent_setup_timeout_multiplier": null,
         "environment_build_timeout_multiplier": null,
@@ -88,10 +88,10 @@
         "model_info": null
     },
     "agent_result": {
-        "n_input_tokens": 4000,
-        "n_cache_tokens": 303191,
-        "n_output_tokens": 22268,
-        "cost_usd": 1.0129555000000001,
+        "n_input_tokens": 2503,
+        "n_cache_tokens": 69553,
+        "n_output_tokens": 15248,
+        "cost_usd": 0.6150015,
         "rollout_details": null,
         "metadata": null
     },
@@ -101,23 +101,23 @@
         }
     },
     "exception_info": null,
-    "started_at": "2026-07-01T03:00:13.835813Z",
-    "finished_at": "2026-07-01T03:06:28.618555Z",
+    "started_at": "2026-07-01T16:46:28.782145Z",
+    "finished_at": "2026-07-01T16:50:59.621768Z",
     "environment_setup": {
-        "started_at": "2026-07-01T03:00:13.837355Z",
-        "finished_at": "2026-07-01T03:00:17.761690Z"
+        "started_at": "2026-07-01T16:46:28.783922Z",
+        "finished_at": "2026-07-01T16:46:34.313081Z"
     },
     "agent_setup": {
-        "started_at": "2026-07-01T03:00:17.761711Z",
-        "finished_at": "2026-07-01T03:00:48.164820Z"
+        "started_at": "2026-07-01T16:46:34.313128Z",
+        "finished_at": "2026-07-01T16:47:10.716793Z"
     },
     "agent_execution": {
-        "started_at": "2026-07-01T03:00:48.164857Z",
-        "finished_at": "2026-07-01T03:06:01.181617Z"
+        "started_at": "2026-07-01T16:47:10.716831Z",
+        "finished_at": "2026-07-01T16:50:26.246924Z"
     },
     "verifier": {
-        "started_at": "2026-07-01T03:06:01.407935Z",
-        "finished_at": "2026-07-01T03:06:17.496143Z"
+        "started_at": "2026-07-01T16:50:26.567158Z",
+        "finished_at": "2026-07-01T16:50:48.549242Z"
     },
     "step_results": null
 }

@@ -11,43 +11,43 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782885138.8330107,
-            "stop": 1782885175.1681447
+            "start": 1782915897.8206592,
+            "stop": 1782915934.337189
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_c_extension_exists",
                 "status": "passed",
-                "duration": 0.2855717630009167,
-                "start": 1782885138.846111,
-                "stop": 1782885139.1318583,
+                "duration": 0.3274289150140248,
+                "start": 1782915897.834639,
+                "stop": 1782915898.1622512,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_baseline_functionality",
                 "status": "passed",
-                "duration": 0.00021990200912114233,
-                "start": 1782885139.132013,
-                "stop": 1782885139.132309,
+                "duration": 0.00021685300453100353,
+                "start": 1782915898.1623945,
+                "stop": 1782915898.162684,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_correctness_small",
                 "status": "passed",
-                "duration": 0.0009388309990754351,
-                "start": 1782885139.1323926,
-                "stop": 1782885139.1334078,
+                "duration": 0.0009355380170745775,
+                "start": 1782915898.1627653,
+                "stop": 1782915898.1637866,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_performance_and_scalability",
                 "status": "passed",
-                "duration": 6.131474926005467,
-                "start": 1782885139.133506,
-                "stop": 1782885145.2651072,
+                "duration": 6.264387618997716,
+                "start": 1782915898.163893,
+                "stop": 1782915904.4284174,
                 "retries": 2,
                 "file_path": "test_outputs.py",
                 "tags": [
