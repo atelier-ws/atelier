@@ -225,10 +225,19 @@ result = SearchService(ctx).search_code(
 print(json.dumps(result, ensure_ascii=False))
 """
 
-    def start(self) -> None:
+    def start(self, *, python_bin: Path | None = None) -> None:
         tool_workspace = external_workspace_root(self.workspace_root)
-        self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
-        self.python_bin = ensure_code_index_runtime(self.code_index_repo)
+        # When the caller already wired ensure_code_index_checkout +
+        # ensure_code_index_runtime externally, don't redo the work (and
+        # keep python_bin exactly as given -- it's already absolute, and
+        # .venv/bin/python is a symlink to the shared uv-managed interpreter,
+        # so .resolve() would follow it straight past the venv and lose its
+        # site-packages, breaking every dependency uv sync installed there).
+        if python_bin is not None:
+            self.python_bin = python_bin
+        else:
+            self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
+            self.python_bin = ensure_code_index_runtime(self.code_index_repo)
         self.project_root = prepare_repo_snapshot(self.repo_root, tool_workspace, "code-index-target")
         proc = run_cmd(
             [
