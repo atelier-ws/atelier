@@ -1,5 +1,5 @@
 {
-    "id": "aaf94f94-41ce-47fe-aca9-c165c11266cd",
+    "id": "a31c9c4e-5669-4110-a9b8-477274df2627",
     "task_name": "terminal-bench/adaptive-rejection-sampler",
     "trial_name": "adaptive-rejection-sampler__TooShLQ",
     "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07/adaptive-rejection-sampler__TooShLQ",
@@ -24,7 +24,7 @@
         "trial_name": "adaptive-rejection-sampler__TooShLQ",
         "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
         "timeout_multiplier": 1.0,
-        "agent_timeout_multiplier": 6.0,
+        "agent_timeout_multiplier": null,
         "verifier_timeout_multiplier": null,
         "agent_setup_timeout_multiplier": null,
         "environment_build_timeout_multiplier": null,
@@ -88,10 +88,10 @@
         "model_info": null
     },
     "agent_result": {
-        "n_input_tokens": 4149,
-        "n_cache_tokens": 1011260,
-        "n_output_tokens": 67896,
-        "cost_usd": 2.9636350000000005,
+        "n_input_tokens": 2636,
+        "n_cache_tokens": 117284,
+        "n_output_tokens": 28884,
+        "cost_usd": 1.143422,
         "rollout_details": null,
         "metadata": null
     },
@@ -101,23 +101,23 @@
         }
     },
     "exception_info": null,
-    "started_at": "2026-07-01T01:16:19.015580Z",
-    "finished_at": "2026-07-01T01:30:02.309727Z",
+    "started_at": "2026-07-01T15:24:45.869070Z",
+    "finished_at": "2026-07-01T15:32:39.317172Z",
     "environment_setup": {
-        "started_at": "2026-07-01T01:16:19.017344Z",
-        "finished_at": "2026-07-01T01:16:22.110076Z"
+        "started_at": "2026-07-01T15:24:45.900500Z",
+        "finished_at": "2026-07-01T15:24:50.324451Z"
     },
     "agent_setup": {
-        "started_at": "2026-07-01T01:16:22.110096Z",
-        "finished_at": "2026-07-01T01:16:51.480987Z"
+        "started_at": "2026-07-01T15:24:50.324495Z",
+        "finished_at": "2026-07-01T15:25:29.897435Z"
     },
     "agent_execution": {
-        "started_at": "2026-07-01T01:16:51.481028Z",
-        "finished_at": "2026-07-01T01:29:44.846587Z"
+        "started_at": "2026-07-01T15:25:29.897490Z",
+        "finished_at": "2026-07-01T15:32:22.104050Z"
     },
     "verifier": {
-        "started_at": "2026-07-01T01:29:45.071511Z",
-        "finished_at": "2026-07-01T01:29:51.098056Z"
+        "started_at": "2026-07-01T15:32:22.308598Z",
+        "finished_at": "2026-07-01T15:32:28.147037Z"
     },
     "step_results": null
 }

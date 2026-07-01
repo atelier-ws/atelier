@@ -11,34 +11,34 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782883793.4923482,
-            "stop": 1782883793.9362462
+            "start": 1782916946.978708,
+            "stop": 1782916947.3418221
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_opponents_integrity",
                 "status": "passed",
-                "duration": 0.00031892501283437014,
-                "start": 1782883793.5045002,
-                "stop": 1782883793.5049367,
+                "duration": 0.00032649599597789347,
+                "start": 1782916946.9902954,
+                "stop": 1782916946.9907453,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_warrior_exists",
                 "status": "passed",
-                "duration": 0.0001739470026222989,
-                "start": 1782883793.5050428,
-                "stop": 1782883793.5052896,
+                "duration": 0.00015386598533950746,
+                "start": 1782916946.9908395,
+                "stop": 1782916946.9910686,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_warrior_performance",
                 "status": "passed",
-                "duration": 0.43063881499983836,
-                "start": 1782883793.5053728,
-                "stop": 1782883793.9361274,
+                "duration": 0.35035934000916313,
+                "start": 1782916946.9911454,
+                "stop": 1782916947.3416524,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }

@@ -20,12 +20,12 @@ To add $HOME/.local/bin to your PATH, either restart your shell or run:
     source $HOME/.local/bin/env (sh, bash, zsh)
     source $HOME/.local/bin/env.fish (fish)
 Downloading pygments (1.2MiB)
-Downloading numpy (15.9MiB)
 Downloading setuptools (1.2MiB)
+Downloading numpy (15.9MiB)
  Downloading pygments
  Downloading setuptools
  Downloading numpy
-Installed 8 packages in 27ms
+Installed 8 packages in 24ms
 ============================= test session starts ==============================
 platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0
 rootdir: /tests
@@ -42,4 +42,4 @@ PASSED ../tests/test_outputs.py::test_correctness_small
 PASSED ../tests/test_outputs.py::test_performance_and_scalability[5000]
 PASSED ../tests/test_outputs.py::test_performance_and_scalability[6000]
 PASSED ../tests/test_outputs.py::test_performance_and_scalability[8000]
-============================== 6 passed in 36.34s ==============================
+============================== 6 passed in 36.52s ==============================

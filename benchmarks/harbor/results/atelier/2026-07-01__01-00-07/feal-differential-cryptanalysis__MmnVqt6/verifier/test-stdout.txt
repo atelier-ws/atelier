@@ -101,7 +101,7 @@ Get:60 http://deb.debian.org/debian bookworm/main amd64 rpcsvc-proto amd64 1.4.3
 Get:61 http://deb.debian.org/debian bookworm/main amd64 libc6-dev amd64 2.36-9+deb12u14 [1904 kB]
 Get:62 http://deb.debian.org/debian bookworm/main amd64 manpages-dev all 6.03-2 [2030 kB]
 debconf: delaying package configuration, since apt-utils is not installed
-Fetched 68.9 MB in 1s (62.6 MB/s)
+Fetched 68.9 MB in 1s (96.9 MB/s)
 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 16719 files and directories currently installed.)
 Preparing to unpack .../libc6_2.36-9+deb12u14_amd64.deb ...
 debconf: unable to initialize frontend: Dialog
@@ -385,9 +385,9 @@ Downloading pygments (1.2MiB)
 Downloading setuptools (1.1MiB)
  Downloading pygments
  Downloading setuptools
-Installed 7 packages in 13ms
+Installed 7 packages in 17ms
 ============================= test session starts ==============================
-platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/Zrs8Nconk3O1hRmg68-vX/bin/python
+platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0 -- /root/.cache/uv/archive-v0/sIB3IgxETH6rei0jg-jOb/bin/python
 cachedir: .pytest_cache
 rootdir: /tests
 plugins: json-ctrf-0.3.5
@@ -401,12 +401,12 @@ _________________ test_feal_differential_cryptanalysis_attack __________________
 running build_ext
 building 'feal_in_c' extension
 creating build/temp.linux-x86_64-cpython-313
-gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/Zrs8Nconk3O1hRmg68-vX/include -I/usr/local/include/python3.13 -c feal.c -o build/temp.linux-x86_64-cpython-313/feal.o
-gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/Zrs8Nconk3O1hRmg68-vX/include -I/usr/local/include/python3.13 -c feal_module.c -o build/temp.linux-x86_64-cpython-313/feal_module.o
+gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/sIB3IgxETH6rei0jg-jOb/include -I/usr/local/include/python3.13 -c feal.c -o build/temp.linux-x86_64-cpython-313/feal.o
+gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/sIB3IgxETH6rei0jg-jOb/include -I/usr/local/include/python3.13 -c feal_module.c -o build/temp.linux-x86_64-cpython-313/feal_module.o
 creating build/lib.linux-x86_64-cpython-313
 gcc -shared build/temp.linux-x86_64-cpython-313/feal.o build/temp.linux-x86_64-cpython-313/feal_module.o -L/usr/local/lib -o build/lib.linux-x86_64-cpython-313/feal_in_c.cpython-313-x86_64-linux-gnu.so
 copying build/lib.linux-x86_64-cpython-313/feal_in_c.cpython-313-x86_64-linux-gnu.so -> 
 
 =========================== short test summary info ============================
 PASSED ../tests/test_outputs.py::test_feal_differential_cryptanalysis_attack
-============================== 1 passed in 0.42s ===============================
+============================== 1 passed in 0.28s ===============================

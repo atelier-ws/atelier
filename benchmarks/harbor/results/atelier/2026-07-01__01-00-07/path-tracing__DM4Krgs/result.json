@@ -1,5 +1,5 @@
 {
-    "id": "36d528ff-d93b-4367-be36-ee32428f5163",
+    "id": "b3874f03-a012-45fe-a0d9-420c329162aa",
     "task_name": "terminal-bench/path-tracing",
     "trial_name": "path-tracing__DM4Krgs",
     "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07/path-tracing__DM4Krgs",
@@ -24,7 +24,7 @@
         "trial_name": "path-tracing__DM4Krgs",
         "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
         "timeout_multiplier": 1.0,
-        "agent_timeout_multiplier": 6.0,
+        "agent_timeout_multiplier": null,
         "verifier_timeout_multiplier": null,
         "agent_setup_timeout_multiplier": null,
         "environment_build_timeout_multiplier": null,
@@ -88,10 +88,10 @@
         "model_info": null
     },
     "agent_result": {
-        "n_input_tokens": 5238,
-        "n_cache_tokens": 7529200,
-        "n_output_tokens": 128814,
-        "cost_usd": 8.57067,
+        "n_input_tokens": 3395,
+        "n_cache_tokens": 3864552,
+        "n_output_tokens": 96722,
+        "cost_usd": 5.5067010000000005,
         "rollout_details": null,
         "metadata": null
     },
@@ -101,23 +101,23 @@
         }
     },
     "exception_info": null,
-    "started_at": "2026-06-30T23:46:33.931642Z",
-    "finished_at": "2026-07-01T00:25:45.796578Z",
+    "started_at": "2026-07-01T15:24:45.899186Z",
+    "finished_at": "2026-07-01T15:53:48.076430Z",
     "environment_setup": {
-        "started_at": "2026-06-30T23:46:33.933038Z",
-        "finished_at": "2026-06-30T23:46:45.567522Z"
+        "started_at": "2026-07-01T15:24:45.931618Z",
+        "finished_at": "2026-07-01T15:24:57.675235Z"
     },
     "agent_setup": {
-        "started_at": "2026-06-30T23:46:45.567542Z",
-        "finished_at": "2026-06-30T23:47:13.501333Z"
+        "started_at": "2026-07-01T15:24:57.675257Z",
+        "finished_at": "2026-07-01T15:25:28.826294Z"
     },
     "agent_execution": {
-        "started_at": "2026-06-30T23:47:13.501396Z",
-        "finished_at": "2026-07-01T00:25:23.436338Z"
+        "started_at": "2026-07-01T15:25:28.826358Z",
+        "finished_at": "2026-07-01T15:53:25.507593Z"
     },
     "verifier": {
-        "started_at": "2026-07-01T00:25:23.702017Z",
-        "finished_at": "2026-07-01T00:25:34.157197Z"
+        "started_at": "2026-07-01T15:53:25.772380Z",
+        "finished_at": "2026-07-01T15:53:36.049883Z"
     },
     "step_results": null
 }

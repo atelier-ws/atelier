@@ -1,14 +1,14 @@
 {
-    "id": "687bfbc3-c269-439d-8fce-02f5bd86e59f",
+    "id": "9fee7848-6ac4-488c-8757-f715cdff60fc",
     "task_name": "terminal-bench/portfolio-optimization",
     "trial_name": "portfolio-optimization__VEMUf6D",
     "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07/portfolio-optimization__VEMUf6D",
     "task_id": {
         "org": "terminal-bench",
         "name": "portfolio-optimization",
-        "ref": "sha256:d112f8945600f18ec47bbbe76935dc05953173cc3d0a375a7aa2712b091584e4"
+        "ref": "latest"
     },
-    "source": "terminal-bench/terminal-bench-2-1",
+    "source": null,
     "task_checksum": "43497eefff71e8fe8730c3e3e97d29cd9720123be046b9722a7c538bf8a67255",
     "config": {
         "task": {
@@ -16,15 +16,15 @@
             "git_url": null,
             "git_commit_id": null,
             "name": "terminal-bench/portfolio-optimization",
-            "ref": "sha256:d112f8945600f18ec47bbbe76935dc05953173cc3d0a375a7aa2712b091584e4",
+            "ref": "latest",
             "overwrite": false,
             "download_dir": null,
-            "source": "terminal-bench/terminal-bench-2-1"
+            "source": null
         },
         "trial_name": "portfolio-optimization__VEMUf6D",
         "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-01__01-00-07",
         "timeout_multiplier": 1.0,
-        "agent_timeout_multiplier": 6.0,
+        "agent_timeout_multiplier": null,
         "verifier_timeout_multiplier": null,
         "agent_setup_timeout_multiplier": null,
         "environment_build_timeout_multiplier": null,
@@ -88,10 +88,10 @@
         "model_info": null
     },
     "agent_result": {
-        "n_input_tokens": 4143,
-        "n_cache_tokens": 396036,
-        "n_output_tokens": 11199,
-        "cost_usd": 1.56087275,
+        "n_input_tokens": 2642,
+        "n_cache_tokens": 126786,
+        "n_output_tokens": 3144,
+        "cost_usd": 0.292363,
         "rollout_details": null,
         "metadata": null
     },
@@ -101,23 +101,23 @@
         }
     },
     "exception_info": null,
-    "started_at": "2026-07-01T05:45:31.224431Z",
-    "finished_at": "2026-07-01T05:53:06.366992Z",
+    "started_at": "2026-07-01T14:22:05.005988Z",
+    "finished_at": "2026-07-01T14:25:45.617291Z",
     "environment_setup": {
-        "started_at": "2026-07-01T05:45:31.235408Z",
-        "finished_at": "2026-07-01T05:45:38.562681Z"
+        "started_at": "2026-07-01T14:22:05.018790Z",
+        "finished_at": "2026-07-01T14:22:12.155135Z"
     },
     "agent_setup": {
-        "started_at": "2026-07-01T05:45:38.562700Z",
-        "finished_at": "2026-07-01T05:46:06.679388Z"
+        "started_at": "2026-07-01T14:22:12.155164Z",
+        "finished_at": "2026-07-01T14:22:35.950852Z"
     },
     "agent_execution": {
-        "started_at": "2026-07-01T05:46:06.679431Z",
-        "finished_at": "2026-07-01T05:52:15.766767Z"
+        "started_at": "2026-07-01T14:22:35.950953Z",
+        "finished_at": "2026-07-01T14:24:54.342064Z"
     },
     "verifier": {
-        "started_at": "2026-07-01T05:52:15.995953Z",
-        "finished_at": "2026-07-01T05:52:55.221472Z"
+        "started_at": "2026-07-01T14:24:54.579642Z",
+        "finished_at": "2026-07-01T14:25:34.389248Z"
     },
     "step_results": null
 }

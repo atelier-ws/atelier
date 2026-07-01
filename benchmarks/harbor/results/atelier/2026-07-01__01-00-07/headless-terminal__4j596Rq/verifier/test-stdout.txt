@@ -22,7 +22,7 @@ Get:4 http://deb.debian.org/debian bookworm/main amd64 vim-runtime all 2:9.0.137
 Get:5 http://deb.debian.org/debian bookworm/main amd64 vim amd64 2:9.0.1378-2+deb12u2 [1568 kB]
 Get:6 http://deb.debian.org/debian bookworm/main amd64 xxd amd64 2:9.0.1378-2+deb12u2 [84.1 kB]
 debconf: delaying package configuration, since apt-utils is not installed
-Fetched 8980 kB in 0s (32.8 MB/s)
+Fetched 8980 kB in 0s (35.7 MB/s)
 Selecting previously unselected package vim-common.
 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 17141 files and directories currently installed.)
 Preparing to unpack .../0-vim-common_2%3a9.0.1378-2+deb12u2_all.deb ...
@@ -128,7 +128,7 @@ Downloading certifi-2026.6.17-py3-none-any.whl (133 kB)
 Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
 Downloading packaging-26.2-py3-none-any.whl (100 kB)
 Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 17.9 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 23.6 MB/s  0:00:00
 Installing collected packages: urllib3, pygments, pluggy, packaging, iniconfig, idna, charset_normalizer, certifi, requests, pytest, pytest-json-ctrf
 
 Successfully installed certifi-2026.6.17 charset_normalizer-3.4.7 idna-3.18 iniconfig-2.3.0 packaging-26.2 pluggy-1.6.0 pygments-2.20.0 pytest-8.4.1 pytest-json-ctrf-0.3.5 requests-2.32.5 urllib3-2.7.0
@@ -150,7 +150,7 @@ test_outputs.py::test_cancel_command
 test_outputs.py::test_startup_files
 test_outputs.py::test_shell_state_persists_between_commands
 test_outputs.py::test_background_commands
-  /usr/local/lib/python3.13/pty.py:95: DeprecationWarning: This process (pid=2473) is multi-threaded, use of forkpty() may lead to deadlocks in the child.
+  /usr/local/lib/python3.13/pty.py:95: DeprecationWarning: This process (pid=2235) is multi-threaded, use of forkpty() may lead to deadlocks in the child.
     pid, fd = os.forkpty()
 
 test_outputs.py::test_send_interactive_command
@@ -163,9 +163,9 @@ test_outputs.py::test_send_interactive_command
     File "/usr/local/lib/python3.13/threading.py", line 994, in run
       self._target(*self._args, **self._kwargs)
       ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    File "/app/headless_terminal.py", line 237, in _read_loop
-      self._stream.feed(chunk)
-      ~~~~~~~~~~~~~~~~~^^^^^^^
+    File "/app/headless_terminal.py", line 118, in _read_loop
+      self.stream.feed(data)
+      ~~~~~~~~~~~~~~~~^^^^^^
     File "/usr/local/lib/python3.13/site-packages/pyte/streams.py", line 424, in feed
       super(ByteStream, self).feed(data_str)
       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
@@ -177,6 +177,8 @@ test_outputs.py::test_send_interactive_command
     File "/usr/local/lib/python3.13/site-packages/pyte/streams.py", line 353, in _parser_fsm
       csi_dispatch[char](*params, private=True)
       ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+    File "/usr/local/lib/python3.13/site-packages/pyte/screens.py", line 1153, in inner
+      result = handler(*args, **kwargs)
   TypeError: Screen.select_graphic_rendition() got an unexpected keyword argument 'private'
   
   Enable tracemalloc to get traceback where the object was allocated.
@@ -193,4 +195,4 @@ PASSED ../tests/test_outputs.py::test_cancel_command
 PASSED ../tests/test_outputs.py::test_startup_files
 PASSED ../tests/test_outputs.py::test_shell_state_persists_between_commands
 PASSED ../tests/test_outputs.py::test_background_commands
-======================== 7 passed, 6 warnings in 1.32s =========================
+======================== 7 passed, 6 warnings in 13.16s ========================

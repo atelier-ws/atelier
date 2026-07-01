@@ -11,34 +11,34 @@
             "skipped": 0,
             "pending": 0,
             "other": 0,
-            "start": 1782874653.2226026,
-            "stop": 1782874653.3482645
+            "start": 1782916529.0623498,
+            "stop": 1782916529.1700816
         },
         "tests": [
             {
                 "name": "test_outputs.py::test_removal_of_secret_information",
                 "status": "passed",
-                "duration": 0.0006175539747346193,
-                "start": 1782874653.3387175,
-                "stop": 1782874653.3395286,
+                "duration": 0.0006777919916203246,
+                "start": 1782916529.154598,
+                "stop": 1782916529.1554778,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_correct_replacement_of_secret_information",
                 "status": "passed",
-                "duration": 0.0004930760042043403,
-                "start": 1782874653.3396828,
-                "stop": 1782874653.3402896,
+                "duration": 0.0005288520187605172,
+                "start": 1782916529.1556401,
+                "stop": 1782916529.15629,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             },
             {
                 "name": "test_outputs.py::test_no_other_files_changed",
                 "status": "passed",
-                "duration": 0.007580339006381109,
-                "start": 1782874653.3404267,
-                "stop": 1782874653.3481278,
+                "duration": 0.013315015006810427,
+                "start": 1782916529.1564324,
+                "stop": 1782916529.1699092,
                 "retries": 0,
                 "file_path": "test_outputs.py"
             }
