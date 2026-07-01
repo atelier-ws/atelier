@@ -19,7 +19,7 @@ from pathlib import Path
 GOLD_FILES = [
     "benchmarks/codebench/data/bench_pairs_def_gold.json",
     "benchmarks/codebench/data/bench_pairs_content_gold.json",
-    "benchmarks/codebench/data/bench_pairs_semantic_gold.json",
+    "benchmarks/codebench/data/bench_pairs_qwen_gold.json",
 ]
 EMBEDDER_NAME = "bge:BAAI/bge-code-v1"
 MODEL_NAME = "BAAI/bge-code-v1"
