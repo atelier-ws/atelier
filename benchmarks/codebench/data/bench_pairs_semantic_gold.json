@@ -10415,8 +10415,8 @@
   },
   "repos": {
     "django__django": {
-      "ws": "/tmp/codebench_workspaces/cg_full_20260618T235417Z-cf8a52a44f31/cg_django_atelier_rep2",
-      "db": "/tmp/chanx_django5.db",
+      "ws": "/tmp/idx_ws_django__django",
+      "db": "/tmp/idx_django__django.db",
       "anchor": "django__django-15957",
       "base_commit": "f387d024fc75569d2a4a338bfda76cc2f328f627"
     },
