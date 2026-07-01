@@ -31,7 +31,6 @@ import sqlite3
 import sys
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # DB path resolution (mirrors fitness_explore_mrr._db_path_for)
 # ---------------------------------------------------------------------------
