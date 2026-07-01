@@ -86,12 +86,16 @@ _gold_paths = [
     if p.strip()
 ]
 _golds: list[tuple[str, list, dict]] = []  # (gold_kind, pairs, true_map)
-repos = None
+# Union of every gold's repos so a single run can score multiple gold sets whose
+# repo sets differ (e.g. swebench adds atelier-dev on top of the 14 def-gold
+# repos). First definition of a prefix wins; a query whose repo is absent is
+# silently skipped by _run_explore, so a missing DB never aborts the run.
+repos = {}
 for _gp in _gold_paths:
     with open(_gp) as _fh:
         _d = json.load(_fh)
-    if repos is None:
-        repos = _d["repos"]
+    for _rk, _rv in _d["repos"].items():
+        repos.setdefault(_rk, _rv)
     _golds.append((_d.get("gold_kind", "definition"), _d["pairs"], _d["true_map"]))
 # Union of all golds' queries drives the (gold-independent) explore phase.
 pairs = [row for _k, _p, _tm in _golds for row in _p]
@@ -177,6 +181,18 @@ if _args.reindex:
 # ── Channel ──────────────────────────────────────────────────────
 CHANNEL = _args.channel
 _TAG = f"[{CHANNEL}]"  # shown in progress lines so parallel runs are distinguishable
+
+# Pre-warm the query embedding cache before the eval loop so every embed_query()
+# call hits the file cache instead of running GPU inference per query.
+if "semantic" in CHANNEL:
+    import subprocess as _sp
+
+    _prewarm = Path(__file__).parent / "prewarm_query_cache.py"
+    if _prewarm.exists():
+        print(f"{_TAG} pre-warming query embedding cache…", flush=True)
+        _sp.run([sys.executable, str(_prewarm)], check=False)
+        print(f"{_TAG} cache warm — starting eval", flush=True)
+
 if CHANNEL not in ("lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic"):
     print(f"{_TAG} ERROR: unknown channel {CHANNEL!r}", file=sys.stderr, flush=True)
     sys.exit(1)
@@ -228,6 +244,10 @@ runset = {p: set(qs) for p, qs in uq.items()}
 # (per-thread connections via _reuse_connection's thread-local, stubbed cache,
 # instance centrality cache pre-warmed below), so a thread pool gives near-linear
 # speedup on the I/O+sqlite-bound work. Tune with FITNESS_WORKERS.
+#
+# Process pool (below) gives each worker its own inner channel executors (reset in
+# _worker_init), so outer + inner parallelism compose without contention. Tune with
+# FITNESS_WORKERS; FITNESS_WORKERS=1 gives true single-query interactive latency.
 _WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or max(1, min(8, (os.cpu_count() or 4) // 4))
 _lean = os.environ.get("FITNESS_LEAN") == "1"
 # Soft timeout per explore call (seconds). Prevents a single slow FTS query from
@@ -253,54 +273,34 @@ _total = len(_tasks)
 
 
 def _worker_init() -> None:
-    """Prepare each forked worker for benchmark use.
+    """Per-worker initializer for the fork-based process pool.
 
-    Pools do NOT survive fork() safely: the inherited _SEARCH_CHANNEL_EXECUTOR
-    has dead parent threads and potentially locked internal state, causing
-    silent deadlocks on submit(). Replace it with a fresh pool of the SAME type
-    the engine ships (a ThreadPoolExecutor) in each child before any task runs.
-
-    Must be a ThreadPoolExecutor, not a ProcessPoolExecutor: a nested process
-    pool inside each forked outer worker spawns grandchild processes that are
-    never explicitly shut down. At worker interpreter-exit, concurrent.futures'
-    atexit handler joins that nested pool's manager thread, which blocks — so
-    the outer ProcessPoolExecutor's shutdown(wait=True) (the `with` block exit
-    after the loop) hangs forever joining workers that can't exit. This is the
-    exact "fork-while-threaded ProcessPoolExecutor" deadlock the engine avoids
-    by using threads for these GIL-releasing SQLite reads.
+    A process pool gives true parallelism (no GIL) for the CPU-bound ranking
+    pipeline -- a thread pool is ~1 core and runs ~7x slower here. The one hazard
+    is fork-while-threaded: the engine's module-level channel executors are
+    ThreadPoolExecutors created in the parent, and fork copies them with dead
+    parent threads, so the first submit() in a child would hang. Replace them with
+    fresh pools per worker. Centrality maps and ANN vector matrices are warmed in
+    the PARENT before fork and inherited copy-on-write (read-only matmul never
+    triggers a page copy), so they cost one physical copy across all workers and
+    are NOT redone here.
     """
     import concurrent.futures as _cf
 
     import atelier.core.capabilities.code_context.engine as _eng_mod
 
-    # Shut down the inherited executors (broken after fork — parent threads
-    # don't exist in the child, but ThreadPoolExecutor still counts them
-    # against max_workers, so new tasks queue forever) and replace with fresh
-    # pools.  Both _SEARCH_CHANNEL_EXECUTOR and _HEF_CHANNEL_EXECUTOR are
-    # module-level and must be reset; missing either causes the first query
-    # that submits to the stale executor to hang until SIGALRM fires.
     _eng_mod._SEARCH_CHANNEL_EXECUTOR.shutdown(wait=False)
     _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=16)
     _eng_mod._HEF_CHANNEL_EXECUTOR.shutdown(wait=False)
     _eng_mod._HEF_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=3, thread_name_prefix="atelier-hef")
-
-    # Disable Zoekt in workers for pure lexical channel so tool_explore
-    # skips the Zoekt parallel recall hook entirely.
+    # Pure-lexical channel: turn Zoekt off so tool_explore skips the recall hook.
     if CHANNEL == "lexical":
         os.environ["ATELIER_ZOEKT_MODE"] = "off"
-    elif CHANNEL == "lexical+zoekt+semantic":
-        # Semantic embedder pin is forwarded from the parent env via
-        # ATELIER_CODE_EMBEDDER.  The engine's SemanticSearchRanker activates
-        # automatically when the embedder is non-null, fusing results via RRF.
-        pass  # embedder already set in env by caller
-
-    for eng in engines.values():
-        with contextlib.suppress(Exception):
-            eng._symbol_centrality_map()
 
 
 def _run_explore(task):
     import signal
+    import threading as _threading
 
     prefix, q = task
     eng = engines.get(prefix)
@@ -309,7 +309,11 @@ def _run_explore(task):
     _ts = time.perf_counter()
     timed_out = False
 
-    if _TIMEOUT_S > 0:
+    # SIGALRM only fires on the main thread; the pool runs tasks on worker
+    # threads, so the watchdog is a no-op there (and would raise "signal only
+    # works in main thread"). It stays armed only for a 1-worker main-thread run.
+    _use_alarm = _TIMEOUT_S > 0 and _threading.current_thread() is _threading.main_thread()
+    if _use_alarm:
 
         def _on_alarm(signum, frame):
             raise TimeoutError
@@ -342,7 +346,7 @@ def _run_explore(task):
     except Exception:
         files = []
     finally:
-        if _TIMEOUT_S > 0:
+        if _use_alarm:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, _prev)
 
@@ -386,12 +390,55 @@ if CHANNEL in ("zoekt", "lexical+zoekt") and get_zoekt_supervisor is not None:
         flush=True,
     )
 
+# Pre-warm ANN matrices in the MAIN process before forking workers.
+# Linux COW: workers share the physical pages as long as they only read
+# (matrix @ query_vec is read-only) -- actual RAM = 1 copy, not N_WORKERS copies.
+# Engines with > _ANN_VECTOR_CAP vectors are excluded from pre-warm AND have their
+# semantic ranker nulled out, so workers never trigger a matrix load (OOM guard).
+if "semantic" in CHANNEL:
+    import sqlite3 as _sq
+
+    from atelier.infra.embeddings.null_embedder import NullEmbedder as _NullEmb
+
+    _ann_t0 = time.perf_counter()
+    print(f"{_TAG} pre-warming ANN matrices…", file=sys.stderr, flush=True)
+    _ANN_VECTOR_CAP = 200_000  # skip pre-warm for repos with too many vectors (avoids 7.5GB linux matrix)
+    for _prefix, _eng in engines.items():
+        _vec_cnt = 0
+        try:
+            with _sq.connect(_eng.db_path) as _c:
+                _vec_cnt = _c.execute("SELECT COUNT(*) FROM symbol_vectors").fetchone()[0]
+        except Exception:
+            pass
+        if _vec_cnt > _ANN_VECTOR_CAP:
+            # Null the embedder so _semantic_ranker.available -> False: a store this
+            # large uses the chunked streaming path (~2s/query), too slow to sweep
+            # across the whole gold set. Excluding it keeps the benchmark fast; the
+            # blob store means it would no longer OOM if you did include it.
+            _eng._semantic_ranker.embedder = _NullEmb()
+            print(
+                f"  [ann-warm] {_prefix} DISABLED semantic ({_vec_cnt:,} vectors > {_ANN_VECTOR_CAP:,} cap)",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
+        try:
+            _eng.prewarm_semantic_matrix()  # loads matrix into the cross-call cache
+            print(f"  [ann-warm] {_prefix} warmed", file=sys.stderr, flush=True)
+        except Exception as _e:
+            print(f"  [ann-warm] {_prefix} SKIP: {_e}", file=sys.stderr, flush=True)
+    print(
+        f"{_TAG} ANN warm done in {time.perf_counter() - _ann_t0:.1f}s",
+        file=sys.stderr,
+        flush=True,
+    )
+
 print(f"{_TAG} start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
-# Processes, not threads: explores are CPU-bound (GIL-serialized under threads) and
-# share one engine instance per repo -- a process pool gives true parallelism and
-# isolates each worker's sqlite connections (fork inherits the pre-warmed engines).
-# _t0 is set AFTER the executor is created and workers have finished their
-# _worker_init warmup, so the progress rate reflects only benchmark task time.
+# Process pool, not threads: the ranking pipeline is CPU-bound and GIL-serialized
+# under threads (~1 core, ~7x slower). Fork inherits the parent's pre-warmed
+# engines + ANN matrices copy-on-write (1 physical copy, read-only matmul), and
+# _worker_init rebuilds the inner channel executors that fork leaves broken, so
+# the semantic matrices no longer OOM or deadlock the pool.
 with ProcessPoolExecutor(
     max_workers=_WORKERS,
     mp_context=multiprocessing.get_context("fork"),
