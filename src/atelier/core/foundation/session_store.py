@@ -125,8 +125,23 @@ class SessionStore:
         self.index_path = self.sessions_dir / "index.db"
 
     # ----- paths -----------------------------------------------------------
-    def session_dir(self, session_id: str) -> Path:
-        return self.sessions_dir / session_id
+    def session_dir(self, session_id: str, host: str | None = None) -> Path:
+        """Canonical per-session directory (see atelier.core.foundation.paths.session_dir).
+
+        Host-segregated so trace data from different hosts can never collide
+        on the same session_id. ``host`` is only consulted when MINTING a new
+        session directory (an existing one, regardless of which host created
+        it, is found via a host-agnostic glob); callers that don't know the
+        host yet (most readers) can omit it and get "claude" as the default
+        for a brand-new dir, matching the pre-migration default.
+        """
+        from atelier.core.foundation.paths import find_session_dir
+        from atelier.core.foundation.paths import session_dir as _canonical_session_dir
+
+        existing = find_session_dir(self.root, session_id)
+        if existing is not None:
+            return existing
+        return _canonical_session_dir(self.root, host or "claude", session_id)
 
     def _traces_path(self, session_id: str) -> Path:
         return self.session_dir(session_id) / "traces.jsonl"
@@ -205,7 +220,7 @@ class SessionStore:
         (re-recording replaces the prior line for that id in the session file).
         """
         session_id = _session_id_of(trace)
-        self.session_dir(session_id).mkdir(parents=True, exist_ok=True)
+        self.session_dir(session_id, host=trace.get("host")).mkdir(parents=True, exist_ok=True)
         self._append_trace_line(session_id, trace)
         self._update_meta(session_id, trace)
         with closing(self._connect_index()) as conn:
@@ -397,7 +412,7 @@ class SessionStore:
         # ``sessions_dir`` BEFORE creating it so a dot-dot/absolute session id
         # cannot mkdir or write metadata outside the sessions tree.
         try:
-            session_path = confine_to_root(self.session_dir(session_id), self.sessions_dir)
+            session_path = confine_to_root(self.session_dir(session_id, host=artifact.source), self.sessions_dir)
         except ValueError as exc:
             raise ValueError(f"raw artifact session id escapes session dir: {session_id}") from exc
         session_path.mkdir(parents=True, exist_ok=True)
@@ -565,14 +580,19 @@ class SessionStore:
         return [dict(row) for row in rows]
 
     def rebuild_index(self) -> int:
-        """Rebuild the index from the session files (the source of truth)."""
+        """Rebuild the index from the session files (the source of truth).
+
+        Session dirs live at ``sessions/YYYY/MM/DD/<host>/<session_id>/`` (see
+        atelier.core.foundation.paths.session_dir) -- five levels under
+        ``sessions_dir``, not direct children of it.
+        """
         with closing(self._connect_index()) as conn:
             conn.execute("DELETE FROM trace_index")
             conn.execute("DELETE FROM trace_search")
             conn.execute("DELETE FROM raw_artifacts")
             count = 0
             if self.sessions_dir.exists():
-                for session_path in self.sessions_dir.iterdir():
+                for session_path in self.sessions_dir.glob("*/*/*/*/*"):
                     if not session_path.is_dir():
                         continue
                     for trace in self._read_jsonl(session_path / "traces.jsonl"):

@@ -18,8 +18,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
+from atelier.core.foundation.paths import session_dir
 from atelier.gateway.cli import cli
-from atelier.infra.runtime.run_ledger import RunLedger, session_run_dir
+from atelier.infra.runtime.run_ledger import RunLedger
 from tests.helpers import init_store_at
 
 
@@ -106,7 +107,7 @@ def test_ledger_update_field(tmp_path: Path) -> None:
     assert res.exit_code == 0
     assert "updated task" in res.output
 
-    snap = json.loads((session_run_dir(root, "run1") / "run.json").read_text(encoding="utf-8"))
+    snap = json.loads((session_dir(root, "codex", "run1") / "run.json").read_text(encoding="utf-8"))
     assert snap["task"] == "updated task text"
 
 
@@ -125,7 +126,7 @@ def test_ledger_update_json_value(tmp_path: Path) -> None:
         '["blocker one", "blocker two"]',
     )
     assert res.exit_code == 0
-    snap = json.loads((session_run_dir(root, "run1") / "run.json").read_text(encoding="utf-8"))
+    snap = json.loads((session_dir(root, "codex", "run1") / "run.json").read_text(encoding="utf-8"))
     assert snap["current_blockers"] == ["blocker one", "blocker two"]
 
 
@@ -133,7 +134,7 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     init_store_at(str(root))
     _seed_ledger(root)
-    ledger_path = session_run_dir(root, "run1") / "run.json"
+    ledger_path = session_dir(root, "codex", "run1") / "run.json"
     assert ledger_path.exists()
 
     res = _invoke(root, "ledger", "reset", input="y\n")

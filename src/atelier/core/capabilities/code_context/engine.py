@@ -34,7 +34,10 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
 
-from atelier.core.capabilities.code_context.ann_symbol_index import SymbolAnnIndex
+from atelier.core.capabilities.code_context.ann_symbol_index import (
+    SymbolAnnIndex,
+    ensure_symbol_vector_schema,
+)
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
     BudgetPacker,
@@ -122,11 +125,12 @@ def _query_is_natural_language(query: str) -> bool:
     # in definition-gold queries but don't make them natural language.
     for _kw in ("async def ", "def ", "class "):
         if stripped.lower().startswith(_kw):
-            stripped = stripped[len(_kw):]
+            stripped = stripped[len(_kw) :]
             break
     words = stripped.split()
     # >= 4 words after stripping the keyword -> treat as natural-language query
     return len(words) >= 4
+
 
 _MAX_FILE_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
@@ -797,6 +801,32 @@ def _repo_id(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
 
 
+# Above this many bytes, skip vector_quantize_preload and let the TurboQuant scan
+# read the quantized data via mmap (reclaimable, file-backed) instead of pinning it
+# in anonymous RAM. ~960 MB for linux's 1.24M×1536 store stays under the cap.
+_SQLITE_VEC_PRELOAD_MAX_BYTES = 2 * 1024**3
+
+# One-element memo: [] = not probed yet, [path|None] = resolved once per process.
+_sqlite_vector_ext_memo: list[str | None] = []
+
+
+def _sqlite_vector_extension_path() -> str | None:
+    """Path to the sqlite_vector loadable extension, or None when the optional
+    ``sqliteai-vector`` package is absent. SQLite appends the platform shared-lib
+    suffix to the bare 'vector' stem at load time."""
+    if _sqlite_vector_ext_memo:
+        return _sqlite_vector_ext_memo[0]
+    path: str | None
+    try:
+        import importlib.resources
+
+        path = str(importlib.resources.files("sqlite_vector.binaries") / "vector")
+    except (ImportError, OSError):
+        path = None
+    _sqlite_vector_ext_memo.append(path)
+    return path
+
+
 def _default_db_path(repo_root: Path) -> Path:
     from atelier.core.foundation.paths import workspace_key
 
@@ -838,6 +868,11 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
 # present in only 2-3 symbols (breaking recall on small indexes).
 _FTS_COMMON_TERM_DF_FRACTION = 0.10
 _FTS_COMMON_TERM_DF_FLOOR = 1500
+# "Semantic additive only" fusion gate for the hybrid symbol-search path: freeze
+# the top-K lexical(+graph) hits so the semantic channel can only surface symbols
+# lexical missed -- it never demotes a symbol lexical already ranked in the top-K.
+# 0 disables the gate (prior RRF behaviour); see SemanticSearchRanker.reciprocal_rank_fuse.
+_SEMANTIC_ADDITIVE_TOP_K = 5
 # Cap the FTS OR/prefix query to the rarest few discriminative terms.  The most
 # selective tokens carry the match; extra mid-frequency tokens ("data", "set")
 # only enlarge the bm25 posting-list scan.  Bounds FTS latency regardless of how
@@ -2508,6 +2543,15 @@ class CodeContextEngine:
         # store on every semantic query is the dominant hot-path cost otherwise; a
         # reindex bumps index_version and invalidates this.
         self._ann_vectors_cache: tuple[tuple[str, int, int], list[str], Any] | None = None
+        # sqlite-vector TurboQuant in-DB ANN: replaces the numpy matrix scan on
+        # large corpora (linux: 1.24M×1536 = 7.5 GB matrix → OOM). The extension
+        # only operates on a connection's *main* schema, so a dedicated per-thread
+        # direct connection to vectors.sqlite is used (bare 'symbol_vectors')
+        # rather than the engine's attached-vectors connection. Falls back to the
+        # numpy path transparently when the extension is unavailable.
+        self._sqlite_vec_tls = threading.local()
+        self._sqlite_vec_lock = threading.Lock()
+        self._sqlite_vec_disabled = False
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -4133,23 +4177,26 @@ class CodeContextEngine:
     ) -> tuple[list[str], dict[str, dict[str, Any]]]:
         if not plan.anchors:
             return [], {}
-        from concurrent.futures import ThreadPoolExecutor as _AnchorThreadPool
-
         cache: dict[str, list[str]] = self.__dict__.setdefault("_hef_anchor_cache", {})
         uncached_anchors = [a for a in plan.anchors if a not in cache]
         if uncached_anchors:
             # Run all cache-missing anchor searches concurrently — each is an
             # independent Zoekt HTTP call; parallelism collapses N sequential
-            # round-trips to one wall-clock slot.
+            # round-trips to one wall-clock slot.  Reuse the module-level
+            # _HEF_CHANNEL_EXECUTOR (already running this method's caller) to
+            # avoid the 10-30 ms per-query ThreadPoolExecutor create/destroy cost.
             def _fetch(anchor: str) -> list[str]:
                 try:
-                    return self._zoekt_candidate_files(anchor, path=".", max_files=40)
+                    return self._zoekt_candidate_files(anchor, path=".", max_files=30)
                 except Exception:  # noqa: BLE001
                     return []
 
-            with _AnchorThreadPool(max_workers=min(len(uncached_anchors), 4)) as _pool:
-                for anchor, files in zip(uncached_anchors, _pool.map(_fetch, uncached_anchors), strict=True):
-                    cache[anchor] = files
+            anchor_futs = [_HEF_CHANNEL_EXECUTOR.submit(_fetch, a) for a in uncached_anchors]
+            for anchor, fut in zip(uncached_anchors, anchor_futs, strict=True):
+                try:
+                    cache[anchor] = fut.result(timeout=0.15)
+                except Exception:  # noqa: BLE001
+                    cache[anchor] = []
         per_file: dict[str, dict[str, Any]] = {}
         for anchor in plan.anchors:
             files = cache.get(anchor, [])
@@ -4624,9 +4671,10 @@ class CodeContextEngine:
             # threads drain in the background (they terminate within 2 s once
             # the HTTP timeout fires in _WEBSERVER_REQUEST_TIMEOUT_SECONDS).
             _pool = ThreadPoolExecutor(max_workers=2)
+            _sem_t0 = time.monotonic()  # stamp before submitting so deadline is from T=0
             # Fetch up to 96 files so _fused_explore_hybrid can reuse this
             # list without a redundant second search call on the same query.
-            _zk_fetch_limit = max(anchor_budget, 96)
+            _zk_fetch_limit = max(anchor_budget, 30)
             _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=_zk_fetch_limit) if _broad_admit else None
             _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
             # Pass _candidate_files=set() to skip the duplicate zoekt call inside
@@ -4655,9 +4703,14 @@ class CodeContextEngine:
             # calibrated while the fusion channel still sees the full 96.
             _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
             try:
-                # _sem has been running in parallel since T=0; by the time we
-                # reach here it is almost certainly done.  50 ms is enough.
-                for _f in _sem.result(timeout=0.05):
+                # _sem has been running since T=0 in parallel with search_symbols
+                # (~100ms) and zoekt (~20-50ms).  Give it a total budget of 500ms
+                # from submission: enough for cached-embed + linux TurboQuant ANN
+                # (~200ms), while still bounding worst-case interactive latency.
+                # Minimum 50ms floor so the common small-repo case (5ms ANN) never
+                # waits unnecessarily.
+                _sem_remaining = max(0.05, 0.5 - (time.monotonic() - _sem_t0))
+                for _f in _sem.result(timeout=_sem_remaining):
                     _seen_anchors.setdefault(_f, None)
             except Exception:
                 pass
@@ -4671,9 +4724,8 @@ class CodeContextEngine:
                 auto_index=False,
             )
             # Preserve zoekt's score-ranked order; append semantic-only files at the end.
-            # Fetch up to 96 so _fused_explore_hybrid can reuse without re-searching.
             # Limit baseline anchors to anchor_budget (same as V6 capturing_zoekt behaviour).
-            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 96)) if _broad_admit else []
+            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 30)) if _broad_admit else []
             _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
             for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
                 _seen_anchors_s.setdefault(_f, None)
@@ -6187,7 +6239,10 @@ class CodeContextEngine:
                     hits = (semantic_hits + commit_hits)[:rerank_limit]
                 else:
                     hits = self._semantic_ranker.reciprocal_rank_fuse(
-                        lexical_hits, semantic_hits + commit_hits, limit=rerank_limit
+                        lexical_hits,
+                        semantic_hits + commit_hits,
+                        limit=rerank_limit,
+                        semantic_additive_k=_SEMANTIC_ADDITIVE_TOP_K,
                     )
         if file_glob:
             hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
@@ -6734,12 +6789,28 @@ class CodeContextEngine:
     ) -> list[SymbolRecord]:
         """Opt-in semantic search over the persistent per-symbol vector store.
 
-        Ranks the whole store with a single vectorised cosine product over a
-        cached, unit-normalised matrix (the ``model.similarity()`` path), then
-        hydrates ONLY the winning rows -- the 40k+ non-winners are never turned
-        into records. N5 (model-id/dim drift) and N16 (index_version staleness)
-        are enforced by :class:`SymbolAnnIndex` when the vectors are loaded.
+        Exact brute-force cosine over packed float32 blobs -- no JSON parsing and
+        no approximate index. The blob store reconstructs with np.frombuffer
+        (~100x faster than json.loads: 2s vs 218s for linux's 1.24M vectors) and
+        the matmul itself is memory-bandwidth-bound (~141ms at linux scale).
+
+        Small repos (≤ _ANN_CACHE_LIMIT vectors): load once, cache as a numpy
+        matrix, rank with a single ``matrix @ query_vec`` product (<10ms warm).
+
+        Large repos (> _ANN_CACHE_LIMIT): stream in _ANN_CHUNK_SIZE rows at a
+        time, frombuffer each chunk, keep a rolling top-K heap -- peak RAM ≈ one
+        chunk (~300 MB at dim=1536, chunk=50k) instead of the full matrix (7.5 GB
+        for linux). No matrix cache in this path.
+
+        N5 (model-id/dim drift) and N16 (index_version staleness) are enforced
+        in both paths via the embedder_name + embedding_dim filters.
         """
+        # Rows below this threshold are loaded into a cached matrix (fast repeat
+        # queries); above it, chunked streaming avoids OOM on large corpora.
+        # Overridable so memory-constrained hosts can lower the matrix-cache cap.
+        _ANN_CACHE_LIMIT = int(os.environ.get("ATELIER_ANN_CACHE_LIMIT", "200000"))
+        _ANN_CHUNK_SIZE = 50_000  # rows/chunk ≈ 300 MB peak at dim=1536
+
         embedder = self._semantic_ranker.embedder
         embedding_dim = embedder.dim
         if embedding_dim <= 0:
@@ -6748,49 +6819,112 @@ class CodeContextEngine:
         if not query_vector:
             return []
         index_version = self._current_index_version()
-        # Read-only hot path: vectors are built at index time
-        # (_build_symbol_embeddings) -- we never embed documents here, only the query
-        # (above). Load + JSON-decode the store ONCE per (model, dim, index_version)
-        # and cache it as a numpy matrix; a reindex bumps index_version -> cache miss.
         try:
             import numpy as np
         except ModuleNotFoundError:
-            # numpy absent (e.g. atelier source mounted into a container without its
-            # deps installed) -- skip the ANN matrix path and return no semantic hits
-            # so code_search degrades to lexical instead of failing the whole call.
             return []
+
+        qvec = np.asarray(query_vector, dtype=np.float32)
+        # Hydration window: over-fetch to survive kind/language filters.
+        window = limit if (kind is None and language is None) else max(limit * 20, 200)
 
         cache_key = (embedder.name, embedding_dim, index_version)
         cached = self._ann_vectors_cache
+
+        # ── small-repo fast path: cached matrix ──────────────────────────────
         if cached is not None and cached[0] == cache_key:
             ids, matrix = cached[1], cached[2]
         else:
+            # Count vectors to choose load strategy without loading data yet. The
+            # store lives in the connection's main schema (an unqualified name
+            # resolves there even with the empty vectors.sqlite attached).
             with self._connect() as conn:
                 self._init_schema(conn)
-                stored = self._ann_symbol_index.load_current_vectors(
-                    conn,
-                    embedder_name=embedder.name,
-                    embedding_dim=embedding_dim,
-                )
-            ids = [sv.symbol_id for sv in stored]
-            matrix = (
-                np.asarray([sv.vector for sv in stored], dtype=np.float32)
-                if stored
-                else np.zeros((0, embedding_dim), dtype=np.float32)
-            )
-            self._ann_vectors_cache = (cache_key, ids, matrix)
-        if not ids:
+                try:
+                    vec_count: int = conn.execute(
+                        "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
+                        (self._ann_symbol_index.repo_id, embedder.name, embedding_dim),
+                    ).fetchone()[0]
+                except Exception:
+                    vec_count = 0
+
+            if vec_count > _ANN_CACHE_LIMIT:
+                # ── large-repo chunked path (bounded RAM, exact) ──────────────
+                # Stream _ANN_CHUNK_SIZE rows at a time; each chunk's packed blobs
+                # reconstruct with one np.frombuffer (no json.loads, no per-row
+                # Python lists), so peak RAM ≈ one chunk (~300 MB at dim=1536)
+                # instead of the full matrix (7.5 GB for linux). A rolling
+                # min-heap keeps the top-window without a full-corpus sort.
+                import heapq
+
+                _bytes_per_vec = embedding_dim * 4
+                heap: list[tuple[float, str]] = []  # min-heap by score
+                offset = 0
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    while True:
+                        rows = conn.execute(
+                            "SELECT symbol_id, vector_blob FROM symbol_vectors"
+                            " WHERE repo_id=? AND embedder_name=? AND embedding_dim=?"
+                            " LIMIT ? OFFSET ?",
+                            (self._ann_symbol_index.repo_id, embedder.name, embedding_dim, _ANN_CHUNK_SIZE, offset),
+                        ).fetchall()
+                        if not rows:
+                            break
+                        offset += _ANN_CHUNK_SIZE
+                        chunk_ids: list[str] = []
+                        buf = bytearray()
+                        for r in rows:
+                            blob = r[1]
+                            if not isinstance(blob, (bytes, bytearray, memoryview)) or len(blob) != _bytes_per_vec:
+                                continue
+                            chunk_ids.append(str(r[0]))
+                            buf += bytes(blob)
+                        if not chunk_ids:
+                            continue
+                        chunk_vecs = np.frombuffer(bytes(buf), dtype=np.float32).reshape(len(chunk_ids), embedding_dim)
+                        chunk_scores = chunk_vecs @ qvec
+                        for i, score in enumerate(chunk_scores):
+                            if score <= 0:
+                                continue
+                            entry = (float(score), chunk_ids[i])
+                            if len(heap) < window:
+                                heapq.heappush(heap, entry)
+                            elif score > heap[0][0]:
+                                heapq.heapreplace(heap, entry)
+                # Sort heap descending, hydrate.
+                top = sorted(heap, key=lambda x: -x[0])
+                top_ids = [t[1] for t in top]
+                top_scores = {t[1]: t[0] for t in top}
+                hydrated = self._hydrate_symbols_by_id(top_ids, kind=kind, language=language)
+                results: list[SymbolRecord] = []
+                for sid in top_ids:
+                    rec = hydrated.get(sid)
+                    if rec is None:
+                        continue
+                    results.append(rec.model_copy(update={"score": top_scores[sid]}))
+                    if len(results) >= limit:
+                        break
+                return results
+            else:
+                # small repo: load all + cache matrix. load_current_matrix does a
+                # single np.frombuffer over the concatenated blobs, so a cold load
+                # is ms even for tens of thousands of vectors.
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    ids, matrix = self._ann_symbol_index.load_current_matrix(
+                        conn,
+                        embedder_name=embedder.name,
+                        embedding_dim=embedding_dim,
+                    )
+                self._ann_vectors_cache = (cache_key, ids, matrix)
+
+        if len(ids) == 0:
             return []
-        # Vectorised cosine: index-time and query vectors are unit-normalised, so a
-        # single matrix-vector product scores every symbol at once (~ms for
-        # 40k x 1536) -- the model.similarity() path, not a per-vector Python loop.
-        scores = matrix @ np.asarray(query_vector, dtype=np.float32)
+        # Vectorised cosine: unit-normalised vectors → single matrix product.
+        scores = matrix @ qvec
         order = np.argsort(-scores)
-        # Hydrate only the winners. With no metadata filter the top `limit` rows
-        # are the answer; with a filter, walk the ranking in windows (over-fetching
-        # to absorb rejects) until `limit` survivors are found or it is exhausted.
-        window = limit if (kind is None and language is None) else max(limit * 20, 200)
-        results: list[SymbolRecord] = []
+        results = []
         pos = 0
         total = int(order.shape[0])
         while len(results) < limit and pos < total:
@@ -6805,6 +6939,228 @@ class CodeContextEngine:
                 results.append(rec.model_copy(update={"score": float(scores[int(i)])}))
                 if len(results) >= limit:
                     break
+        return results
+
+    def prewarm_semantic_matrix(self) -> bool:
+        """Load the ANN vector matrix into the in-memory cache ahead of the first
+        query so it never pays the cold load (matrix read + unpack: ~200 ms for a
+        24k-vector repo). Returns True when the matrix is resident afterwards.
+
+        No-op (returns False) when no embedder is configured, nothing is stored,
+        or the store exceeds the matrix-cache cap -- those repos use the chunked
+        streaming path, which holds no cached matrix by design. Safe to call from
+        a background thread at index-ready time; idempotent within an index
+        version (the cache key carries index_version, so a reindex re-warms).
+        """
+        ranker = self._semantic_ranker
+        if not getattr(ranker, "available", False):
+            return False
+        embedder = ranker.embedder
+        dim = int(getattr(embedder, "dim", 0))
+        if dim <= 0:
+            return False
+        index_version = self._current_index_version()
+        cache_key = (embedder.name, dim, index_version)
+        cached = self._ann_vectors_cache
+        if cached is not None and cached[0] == cache_key:
+            return True
+        cap = int(os.environ.get("ATELIER_ANN_CACHE_LIMIT", "200000"))
+        with self._connect() as conn:
+            self._init_schema(conn)
+            try:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
+                    (self._ann_symbol_index.repo_id, embedder.name, dim),
+                ).fetchone()[0]
+            except sqlite3.Error:
+                return False
+            if count == 0 or count > cap:
+                return False
+            ids, matrix = self._ann_symbol_index.load_current_matrix(
+                conn, embedder_name=embedder.name, embedding_dim=dim
+            )
+        # Set directly (not inside _reuse_connection) so the cache is not dropped
+        # on scope exit -- the next semantic query finds it warm.
+        self._ann_vectors_cache = (cache_key, ids, matrix)
+        return len(ids) > 0
+
+    def _sqlite_vector_conn(self) -> sqlite3.Connection | None:
+        """Cached per-thread direct connection to vectors.sqlite with the
+        sqlite_vector extension loaded, or None when it is unavailable.
+
+        The extension only operates on a connection's *main* schema, so the vectors
+        DB is opened directly (bare ``symbol_vectors``) instead of via the attached
+        ``vectors`` alias used elsewhere. Kept open for the engine's lifetime so the
+        TurboQuant data stays resident. A missing package or a failed load sets a
+        permanent flag so the numpy fallback is used without re-probing; a merely
+        absent DB file is transient (retried on the next query).
+        """
+        if self._sqlite_vec_disabled:
+            return None
+        conn = getattr(self._sqlite_vec_tls, "conn", None)
+        if conn is not None:
+            return conn
+        ext_path = _sqlite_vector_extension_path()
+        if ext_path is None:
+            self._sqlite_vec_disabled = True
+            return None
+        vpath = self.vectors_db_path
+        if not vpath.exists():
+            return None
+        conn = None
+        try:
+            conn = sqlite3.connect(vpath, timeout=30.0)
+            conn.enable_load_extension(True)
+            conn.load_extension(ext_path)
+            conn.enable_load_extension(False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.execute("PRAGMA mmap_size = 268435456")
+            # Adds vector_blob + backfills from JSON on stores that predate it, so
+            # the scan works without waiting for a full reindex.
+            ensure_symbol_vector_schema(conn)
+        except (sqlite3.Error, AttributeError):
+            # AttributeError: a Python build compiled without enable_load_extension.
+            logger.debug("sqlite-vector unavailable; using numpy path", exc_info=True)
+            if conn is not None:
+                with contextlib.suppress(sqlite3.Error):
+                    conn.close()
+            self._sqlite_vec_disabled = True
+            return None
+        self._sqlite_vec_tls.conn = conn
+        return conn
+
+    def _ensure_sqlite_vector_index(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        embedder_name: str,
+        embedding_dim: int,
+        index_version: int,
+    ) -> bool:
+        """Make ``conn`` ready to TurboQuant-scan symbol_vectors; False → fall back.
+
+        ``vector_init`` is required on every connection. The quantization itself is
+        one-time and persisted in the DB, keyed by ``index_version`` via a small
+        marker table: a reindex re-quantizes exactly once and separate CLI
+        processes reuse a prior build instead of re-quantizing on every invocation.
+        ``preload`` is a per-connection RAM speedup, capped so a huge corpus stays
+        mmap-backed. Readiness is memoised on the thread-local, so the steady state
+        is a single key comparison per query.
+        """
+        tls = self._sqlite_vec_tls
+        key = (embedder_name, embedding_dim, index_version)
+        if getattr(tls, "ready_key", None) == key:
+            return True
+        spec = f"type=FLOAT32,dimension={embedding_dim},distance=COSINE"
+        try:
+            conn.execute("SELECT vector_init('symbol_vectors', 'vector_blob', ?)", (spec,))
+        except sqlite3.Error:
+            logger.debug("sqlite-vector vector_init failed; using numpy path", exc_info=True)
+            return False
+        with self._sqlite_vec_lock:
+            try:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS _sqliteai_quant_state ("
+                    " embedder_name TEXT NOT NULL, embedding_dim INTEGER NOT NULL,"
+                    " index_version INTEGER NOT NULL,"
+                    " PRIMARY KEY (embedder_name, embedding_dim))"
+                )
+                row = conn.execute(
+                    "SELECT index_version FROM _sqliteai_quant_state WHERE embedder_name = ? AND embedding_dim = ?",
+                    (embedder_name, embedding_dim),
+                ).fetchone()
+                if row is None or int(row[0]) != index_version:
+                    # Fully (re)quantize the column for this index version — the
+                    # extension re-quantizes all rows, folding in any added since
+                    # the previous build. Raises (caught below) on a heterogeneous
+                    # column during a model-drift window → numpy fallback.
+                    conn.execute("SELECT vector_quantize('symbol_vectors', 'vector_blob', 'qtype=TURBO4')")
+                    conn.execute(
+                        "INSERT INTO _sqliteai_quant_state (embedder_name, embedding_dim, index_version)"
+                        " VALUES (?, ?, ?)"
+                        " ON CONFLICT(embedder_name, embedding_dim)"
+                        " DO UPDATE SET index_version = excluded.index_version",
+                        (embedder_name, embedding_dim, index_version),
+                    )
+                    conn.commit()
+            except sqlite3.Error:
+                logger.debug("sqlite-vector quantize failed; using numpy path", exc_info=True)
+                return False
+        # Preload the quantized data into RAM once per connection, under the cap
+        # (the scan works without preload, reading the quantized rows via mmap).
+        try:
+            mem_row = conn.execute("SELECT vector_quantize_memory('symbol_vectors', 'vector_blob')").fetchone()
+            mem_bytes = int(mem_row[0]) if mem_row and mem_row[0] is not None else 0
+            if 0 < mem_bytes <= _SQLITE_VEC_PRELOAD_MAX_BYTES:
+                conn.execute("SELECT vector_quantize_preload('symbol_vectors', 'vector_blob')")
+        except sqlite3.Error:
+            logger.debug("sqlite-vector preload skipped", exc_info=True)
+        tls.ready_key = key
+        return True
+
+    def _search_symbols_sqlite_vector(
+        self,
+        query_vector: list[float],
+        *,
+        embedder_name: str,
+        embedding_dim: int,
+        index_version: int,
+        limit: int,
+        window: int,
+        kind: str | None,
+        language: str | None,
+    ) -> list[SymbolRecord] | None:
+        """In-DB TurboQuant ANN over symbol_vectors, replacing the numpy matrix scan.
+
+        Returns ranked records on success, or None to signal the caller to fall
+        back to the numpy path (extension unavailable, not quantizable, or a query
+        error). ``distance`` is cosine distance in [0, 2]; similarity is
+        ``1 - distance``. The scan over-fetches (``window``) so the N5 drift filter
+        and the kind/language hydration filter have candidates to spare.
+        """
+        import struct
+
+        conn = self._sqlite_vector_conn()
+        if conn is None:
+            return None
+        if not self._ensure_sqlite_vector_index(
+            conn,
+            embedder_name=embedder_name,
+            embedding_dim=embedding_dim,
+            index_version=index_version,
+        ):
+            return None
+        try:
+            qblob = struct.pack(f"{embedding_dim}f", *query_vector)
+        except (struct.error, TypeError, ValueError):
+            return None
+        scan_k = max(window, 200)
+        try:
+            rows = conn.execute(
+                "SELECT sv.symbol_id AS sid, v.distance AS dist "
+                "FROM vector_quantize_scan('symbol_vectors', 'vector_blob', ?, ?) AS v "
+                "JOIN symbol_vectors sv ON sv.rowid = v.rowid "
+                "WHERE sv.repo_id = ? AND sv.embedder_name = ? AND sv.embedding_dim = ? "
+                "ORDER BY v.distance",
+                (qblob, scan_k, self.repo_id, embedder_name, embedding_dim),
+            ).fetchall()
+        except sqlite3.Error:
+            logger.debug("sqlite-vector scan failed; using numpy path", exc_info=True)
+            return None
+        if not rows:
+            return []
+        top_ids = [str(r["sid"]) for r in rows]
+        scores = {str(r["sid"]): 1.0 - float(r["dist"]) for r in rows}
+        hydrated = self._hydrate_symbols_by_id(top_ids, kind=kind, language=language)
+        results: list[SymbolRecord] = []
+        for sid in top_ids:
+            rec = hydrated.get(sid)
+            if rec is None:
+                continue
+            results.append(rec.model_copy(update={"score": scores[sid]}))
+            if len(results) >= limit:
+                break
         return results
 
     def _hydrate_symbols_by_id(
@@ -8109,6 +8465,7 @@ class CodeContextEngine:
                     embedding_dim  INTEGER NOT NULL,
                     index_version  INTEGER NOT NULL,
                     vector_json    TEXT NOT NULL,
+                    vector_blob    BLOB,
                     PRIMARY KEY (repo_id, symbol_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance
@@ -8196,10 +8553,20 @@ class CodeContextEngine:
         finally:
             self._scoped_conn_tls.conn = None
             self._file_cache_tls.cache = None  # clear file cache
-            # Drop the in-memory vector cache so embeddings aren't held across
-            # tool calls.  Re-reading from vectors.sqlite is cheap (the file is
-            # tiny) and avoids pinning 50–200 MB of embedding data permanently.
-            self._ann_vectors_cache = None
+            # Keep the in-memory vector matrix across tool calls when it is small
+            # enough: re-reading + unpacking the blob store is NOT cheap (317 ms
+            # for a 42k-vector repo, seconds at linux scale), so dropping it made
+            # every interactive semantic query pay a full reload. Retain up to
+            # ATELIER_ANN_CACHE_MAX_MB (default 512) of matrix so the common
+            # single-repo session stays warm; drop anything larger so a giant
+            # corpus never pins RAM (those use the chunked path anyway). The
+            # cache key carries index_version, so a reindex still invalidates it.
+            _cache = self._ann_vectors_cache
+            if _cache is not None:
+                _mtx = _cache[2]
+                _cap_mb = int(os.environ.get("ATELIER_ANN_CACHE_MAX_MB", "512"))
+                if getattr(_mtx, "nbytes", 0) > _cap_mb * 1024 * 1024:
+                    self._ann_vectors_cache = None
             with contextlib.suppress(Exception):
                 conn.commit()
             with contextlib.suppress(Exception):
@@ -8222,9 +8589,11 @@ class CodeContextEngine:
         No-op (silently) on non-Linux where ``malloc_trim`` is unavailable.
         """
         import gc
+
         gc.collect()
         try:
             import ctypes as _ct
+
             _ct.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
         except Exception:  # noqa: BLE001 -- non-Linux / libc unavailable
             pass

@@ -101,47 +101,27 @@ def _bound_payload(payload: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def session_run_dir(root: str | Path, session_id: str) -> Path:
-    """Per-session folder: sessions/YYYY/MM/DD/<session_id>/ for new sessions.
-
-    The date partition keeps each day's sessions in one directory so scans
-    only need to touch today's subtree instead of a flat list of hundreds of
-    sessions. Old sessions under sessions/<id>/ are still found by the
-    recursive glob in savings_summary.
-    """
-    from datetime import date as _date
-
-    today = _date.today()
-    return Path(root) / "sessions" / today.strftime("%Y/%m/%d") / session_id
+# session_run_dir/run_file_path were removed: every per-session path (this
+# ledger's own run.json included) now goes through the single canonical
+# atelier.core.foundation.paths.session_dir(root, host, session_id), which is
+# host-segregated (see paths.detect_host) and resolves a session's date
+# instead of recomputing "today" on every call.
 
 
-def run_file_path(root: str | Path, session_id: str) -> Path:
-    """Run-ledger snapshot: ``sessions/YYYY/MM/DD/<session_id>/run.json``."""
-    return session_run_dir(root, session_id) / "run.json"
+def outcomes_path(root: str | Path, host: str, session_id: str) -> Path:
+    """Captured route/compact outcomes: ``session_dir(...)/outcomes.json``."""
+    from atelier.core.foundation.paths import session_dir
 
-
-def outcomes_path(root: str | Path, session_id: str) -> Path:
-    """Captured route/compact outcomes: ``sessions/YYYY/MM/DD/<session_id>/outcomes.json``."""
-    return session_run_dir(root, session_id) / "outcomes.json"
+    return session_dir(root, host, session_id) / "outcomes.json"
 
 
 def iter_run_files(root: str | Path) -> list[Path]:
-    """All run-ledger snapshots across global and workspace-scoped session dirs."""
+    """All run-ledger snapshots under the canonical sessions/YYYY/MM/DD/<host>/<id>/ tree."""
     base = Path(root)
-    results: list[Path] = []
-    # Global sessions (legacy fallback — sessions without a known workspace)
-    global_sessions = base / "sessions"
-    if global_sessions.is_dir():
-        results.extend(sorted(global_sessions.glob("**/run.json")))
-    # Per-workspace sessions (new location)
-    workspaces_dir = base / "workspaces"
-    if workspaces_dir.is_dir():
-        for ws_dir in sorted(workspaces_dir.iterdir()):
-            if ws_dir.is_dir():
-                ws_sessions = ws_dir / "sessions"
-                if ws_sessions.is_dir():
-                    results.extend(sorted(ws_sessions.glob("**/run.json")))
-    return results
+    sessions_root = base / "sessions"
+    if sessions_root.is_dir():
+        return sorted(sessions_root.glob("*/*/*/*/*/run.json"))
+    return []
 
 
 class RunLedger:
@@ -612,7 +592,9 @@ class RunLedger:
         target_root = root or self._root
         if target_root is None:
             raise ValueError("RunLedger.persist requires a root directory.")
-        path = run_file_path(target_root, self.session_id)
+        from atelier.core.foundation.paths import session_dir
+
+        path = session_dir(target_root, self.agent or "claude", self.session_id) / "run.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         # Write to a sibling temp file then atomically rename, so a crash
         # mid-write can never leave a truncated run.json behind.

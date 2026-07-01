@@ -49,11 +49,9 @@ def test_content_and_metadata_live_under_session_dir(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     art = _artifact("claude-ws-sess1")
     store.record_raw_artifact(art, "body")
-
-    session_dir = tmp_path / "sessions" / "sess1"
+    session_dir = store.session_dir("sess1")
     assert (session_dir / "raw" / "claude" / "sess1" / "claude-ws-sess1.jsonl").read_text() == "body"
     assert (session_dir / "raw_artifacts.jsonl").exists()
-    # nothing is written to a top-level root/raw dir anymore
     assert not (tmp_path / "raw").exists()
 
 
@@ -63,9 +61,7 @@ def test_record_is_idempotent_per_id(tmp_path: Path) -> None:
     store.record_raw_artifact(_artifact("a1"), "v2")  # same id; appends a newer line
     assert store.read_raw_artifact_content(store.get_raw_artifact("a1")) == "v2"
     meta_lines = [
-        line
-        for line in (tmp_path / "sessions" / "sess1" / "raw_artifacts.jsonl").read_text().splitlines()
-        if line.strip()
+        line for line in (store.session_dir("sess1") / "raw_artifacts.jsonl").read_text().splitlines() if line.strip()
     ]
     assert len(meta_lines) == 2  # append-only file keeps both physical lines
     assert len(store.list_raw_artifacts(source_session_id="sess1")) == 1  # reader dedupes by id
@@ -95,7 +91,10 @@ def test_rebuild_index_repopulates_raw_artifacts(tmp_path: Path) -> None:
 
 def test_path_escape_is_rejected(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
-    art = _artifact("evil", content_path="../../escape.txt")
+    # Session dirs now nest 5 levels under sessions_dir (YYYY/MM/DD/host/id,
+    # see paths.session_dir) instead of 1 (the old flat sessions/<id>/), so the
+    # payload needs enough ".." to escape past all of them.
+    art = _artifact("evil", content_path="../../../../../../../../escape.txt")
     with pytest.raises(ValueError, match="escapes session dir"):
         store.record_raw_artifact(art, "nope")
 
@@ -103,9 +102,11 @@ def test_path_escape_is_rejected(tmp_path: Path) -> None:
 def test_path_escape_via_source_session_id_is_rejected(tmp_path: Path) -> None:
     # A dot-dot in source_session_id must not escape the sessions tree: the base
     # dir is built from the (untrusted) session id, so confinement is checked
-    # against the sessions root, not the attacker-built per-session base.
+    # against the sessions root, not the attacker-built per-session base. Needs
+    # enough ".." to escape the 5-level-deep canonical session dir (see
+    # paths.session_dir: YYYY/MM/DD/host/id), not just the old flat one level.
     store = SessionStore(tmp_path)
-    art = _artifact("evil", source_session_id="../../escape")
+    art = _artifact("evil", source_session_id="../../../../../../../../escape")
     with pytest.raises(ValueError, match="escapes session dir"):
         store.record_raw_artifact(art, "nope")
 
@@ -123,4 +124,4 @@ def test_context_store_keeps_raw_artifacts_out_of_atelier_db(tmp_path: Path) -> 
     with sqlite3.connect(str(tmp_path / "atelier.db")) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "raw_artifacts" not in tables
-    assert (store.session_store.root / "sessions" / "sess1" / "raw").exists()
+    assert (store.session_store.session_dir("sess1") / "raw").exists()

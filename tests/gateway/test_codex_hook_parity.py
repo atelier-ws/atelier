@@ -311,14 +311,10 @@ def test_user_prompt_banks_pending_compaction_credit(tmp_path: Path, monkeypatch
 
     plugin_runtime._codex_enrich_user_prompt(root, payload)
 
-    from atelier.infra.runtime.run_ledger import session_run_dir
+    from atelier.core.foundation.paths import session_dir
 
-    sidecar = session_run_dir(root, session_id) / "savings.jsonl"
-    rows = [
-        json.loads(line)
-        for line in sidecar.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    sidecar = session_dir(root, "codex", session_id) / "savings.jsonl"
+    rows = [json.loads(line) for line in sidecar.read_text(encoding="utf-8").splitlines() if line.strip()]
     comp = [r for r in rows if r.get("kind") == "compaction"]
     assert len(comp) == 1
     assert comp[0]["tokens"] == 120_000
@@ -336,11 +332,7 @@ def test_user_prompt_banks_pending_compaction_credit(tmp_path: Path, monkeypatch
 
     # A second prompt does not double-credit (no pending compaction left).
     plugin_runtime._codex_enrich_user_prompt(root, payload)
-    rows2 = [
-        json.loads(line)
-        for line in sidecar.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    rows2 = [json.loads(line) for line in sidecar.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len([r for r in rows2 if r.get("kind") == "compaction"]) == 1
 
 
@@ -376,7 +368,9 @@ def test_user_prompt_skips_compaction_credit_when_delta_not_visible(
     for _ in range(3):
         plugin_runtime._codex_enrich_user_prompt(root, payload)
 
-    savings = root / "sessions" / session_id / "savings.jsonl"
+    from atelier.core.foundation.paths import session_dir
+
+    savings = session_dir(root, "codex", session_id) / "savings.jsonl"
     assert not savings.exists()
     # After 3 unresolved attempts the pending state is cleared (stop trying).
     state = json.loads(plugin_runtime._codex_session_state_path(root, payload).read_text(encoding="utf-8"))

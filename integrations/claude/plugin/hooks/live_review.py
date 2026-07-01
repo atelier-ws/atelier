@@ -98,6 +98,7 @@ def main() -> int:
     try:
         from atelier.core.capabilities.live_reviewer.edit_counter import count_file_edits
         from atelier.core.capabilities.live_reviewer.settings import load_reviewer_settings
+        from atelier.core.foundation.paths import session_dir
 
         root = _atelier_root()
         settings = load_reviewer_settings(root)
@@ -106,7 +107,7 @@ def main() -> int:
         session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             return 0
-        count = count_file_edits(root / "sessions" / session_id / "run.json")
+        count = count_file_edits(session_dir(root, "claude", session_id) / "run.json")
         if settings.deep_edit_count_reviewer and count > 0 and count % settings.deep_edit_count_interval == 0:
             _spawn(session_id, "deep", edited, root)
         elif settings.live_reviewer:

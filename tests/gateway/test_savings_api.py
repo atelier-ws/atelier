@@ -170,8 +170,10 @@ def _write_context_budget(
 
 
 def _write_run_ledger_snapshot(root: Path, *, session_id: str, tool_name: str) -> None:
+    from atelier.core.foundation.paths import session_dir
+
     now = datetime.now(UTC).isoformat()
-    runs_dir = root / "sessions" / session_id
+    runs_dir = session_dir(root, "codex", session_id)
     runs_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "session_id": session_id,
@@ -201,8 +203,10 @@ def _write_run_ledger_snapshot_with_events(
     events: list[dict[str, object]],
     tools_called: list[str] | None = None,
 ) -> None:
+    from atelier.core.foundation.paths import session_dir
+
     now = datetime.now(UTC).isoformat()
-    runs_dir = root / "sessions" / session_id
+    runs_dir = session_dir(root, "codex", session_id)
     runs_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "session_id": session_id,

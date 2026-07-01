@@ -30,6 +30,11 @@ def _run_hook(
             "ATELIER_ROOT": str(root),
             "ATELIER_VERSION": version,
             "ATELIER_CTX_NUDGE_TOKENS": "999999999",
+            # These are Codex hooks: pin detect_host()'s explicit override so
+            # every per-session path lands under host "codex" regardless of
+            # the ambient test-runner environment (e.g. a stray CLAUDE_CODE
+            # or ATELIER_AGENT=claude leaking in from the outer harness).
+            "ATELIER_AGENT": "codex",
         }
     )
     return subprocess.run(
@@ -116,6 +121,8 @@ def test_codex_user_prompt_emits_high_context_nudge_once(tmp_path: Path, monkeyp
 
 
 def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
+    from atelier.core.foundation.paths import session_dir
+
     root = tmp_path / ".atelier"
     result = _run_hook(
         "savings_reporter.py",
@@ -128,7 +135,7 @@ def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
         },
     )
 
-    stats = json.loads((root / "sessions" / "c1" / "stats.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(root, "codex", "c1") / "stats.json").read_text(encoding="utf-8"))
     assert result.stdout == ""
     assert stats["total_tool_calls"] == 1
     assert stats["tools_used"]["mcp__plugin_atelier_atelier__Edit"] == 1
@@ -179,7 +186,9 @@ def test_codex_savings_reporter_records_loop_state_without_output(tmp_path: Path
     )
 
     assert result.stdout == ""
-    stats = json.loads((root / "sessions" / "c1" / "stats.json").read_text(encoding="utf-8"))
+    from atelier.core.foundation.paths import session_dir
+
+    stats = json.loads((session_dir(root, "codex", "c1") / "stats.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
 
 
@@ -216,7 +225,9 @@ def test_codex_subagent_hook_tracks_start_and_stop(tmp_path: Path) -> None:
     start = _run_hook("subagent.py", root, start_payload)
     stop = _run_hook("subagent.py", root, stop_payload)
 
-    stats = json.loads((root / "sessions" / "c1" / "stats.json").read_text(encoding="utf-8"))
+    from atelier.core.foundation.paths import session_dir
+
+    stats = json.loads((session_dir(root, "codex", "c1") / "stats.json").read_text(encoding="utf-8"))
     assert start.stdout == ""
     assert stop.stdout == ""
     assert stats["subagents_started"] == 1
@@ -255,9 +266,11 @@ def test_codex_stop_hook_emits_session_summary(tmp_path: Path) -> None:
             "tool_input": {"edits": [{"file_path": "a.py"}, {"file_path": "b.py"}]},
         },
     )
-    session_dir = root / "sessions" / "c1"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "savings.jsonl").write_text(
+    from atelier.core.foundation.paths import session_dir
+
+    sess_dir = session_dir(root, "codex", "c1")
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    (sess_dir / "savings.jsonl").write_text(
         json.dumps({"tokens": 500, "calls": 2, "model": "gpt-5"}) + "\n",
         encoding="utf-8",
     )

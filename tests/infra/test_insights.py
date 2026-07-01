@@ -533,7 +533,11 @@ def test_build_insights_outcomes_summary(tmp_path: Path) -> None:
             {"outcome_window": {"outcome_score": 0.7, "extra_read_rate": 0.1}},
         ],
     }
-    (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
+    from atelier.core.foundation.paths import session_dir
+
+    outcomes_dir = session_dir(runs_dir.parent, "claude", "s1")
+    outcomes_dir.mkdir(parents=True, exist_ok=True)
+    (outcomes_dir / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),
@@ -552,7 +556,11 @@ def test_build_insights_high_extra_reads_flagged(tmp_path: Path) -> None:
         "route_outcomes": [],
         "compact_outcomes": [{"outcome_window": {"outcome_score": 0.5, "extra_read_rate": 0.35}}],
     }
-    (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
+    from atelier.core.foundation.paths import session_dir
+
+    outcomes_dir = session_dir(runs_dir.parent, "claude", "s1")
+    outcomes_dir.mkdir(parents=True, exist_ok=True)
+    (outcomes_dir / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),

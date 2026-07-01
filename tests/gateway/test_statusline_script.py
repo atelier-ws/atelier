@@ -35,6 +35,19 @@ def _run_statusline(root: Path, payload: dict[str, object], *, env_extra: dict[s
     return result.stdout.strip()
 
 
+def _seed_savings_sidecar(root: Path, session_id: str, row: dict[str, object]) -> Path:
+    """Seed savings.jsonl at the canonical (dated + host) session dir the
+    statusline script's reader (savings_summary._find_savings_sidecar)
+    actually looks under."""
+    from atelier.core.foundation.paths import session_dir
+
+    sidecar_dir = session_dir(root, "claude", session_id)
+    sidecar_dir.mkdir(parents=True, exist_ok=True)
+    path = sidecar_dir / "savings.jsonl"
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    return path
+
+
 def _payload() -> dict[str, object]:
     return {
         "session_id": "s1",
@@ -52,13 +65,8 @@ def _payload() -> dict[str, object]:
 
 
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
-    # MCP dispatcher writes one row per tool call to sessions/<session_id>/savings.jsonl.
-    sidecar = tmp_path / "sessions" / "s1"
-    sidecar.mkdir(parents=True)
-    (sidecar / "savings.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    # MCP dispatcher writes one row per tool call to the canonical session dir.
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
 
     # Savings at Sonnet 4.6 rate ($3/MTok x 12k = $0.036).
     # The payload has no model.id so compute_savings_summary falls back to
@@ -77,12 +85,7 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     tmp_path: Path,
 ) -> None:
     # Write session sidecar with token counts.
-    sidecar = tmp_path / "sessions" / "s1"
-    sidecar.mkdir(parents=True)
-    (sidecar / "savings.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     home = tmp_path / "home"
     transcript_dir = home / ".claude" / "projects" / "workspace"
     transcript_dir.mkdir(parents=True)
@@ -145,12 +148,7 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
     # Savings are keyed under "s1" (the real session id from session_state.json).
-    sidecar = tmp_path / "sessions" / "s1"
-    sidecar.mkdir(parents=True)
-    (sidecar / "savings.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
 
     payload = _payload()
@@ -172,12 +170,7 @@ def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
-    sidecar = tmp_path / "sessions" / "s1"
-    sidecar.mkdir(parents=True)
-    (sidecar / "savings.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
 
     payload = _payload()
@@ -192,12 +185,7 @@ def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path)
 
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
     # Session sidecar has the real per-session data.
-    sidecar = tmp_path / "sessions" / "s1"
-    sidecar.mkdir(parents=True)
-    (sidecar / "savings.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 2_000, "calls": 2}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 2_000, "calls": 2})
     # Lifetime / global files should NOT be summed into session savings.
     (tmp_path / "smart_state.json").write_text(
         json.dumps({"savings": {"calls_avoided": 99, "tokens_saved": 999_999_999}}),

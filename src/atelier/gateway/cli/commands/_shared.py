@@ -126,7 +126,8 @@ def _parse_duration(value: str) -> timedelta:
 
 
 def _ledger_dir(root: Path) -> Path:
-    # Run ledgers now live in sessions/<id>/run.json alongside the trace files.
+    # Run ledgers live in the canonical sessions/YYYY/MM/DD/<host>/<id>/run.json
+    # tree alongside the trace files -- see atelier.core.foundation.paths.session_dir.
     return Path(root) / "sessions"
 
 
@@ -134,29 +135,18 @@ def _latest_ledger_path(root: Path) -> Path | None:
     runs = _ledger_dir(root)
     if not runs.is_dir():
         return None
-    # Use ** to find sessions in both the legacy flat layout (sessions/<id>/)
-    # and the new date-partitioned layout (sessions/YYYY/MM/DD/<id>/).
-    paths = sorted(runs.glob("**/run.json"))
+    paths = sorted(runs.glob("*/*/*/*/*/run.json"))
     return paths[-1] if paths else None
 
 
 def _ledger_path(root: Path, session_id: str | None) -> Path:
     if session_id:
-        # Try the new date-partitioned path first (today's date), then the
-        # legacy flat path; fall back to new-style so callers get a clear
-        # FileNotFoundError on the canonical location.
-        try:
-            from atelier.infra.runtime.run_ledger import session_run_dir
+        from atelier.core.foundation.paths import find_session_dir
 
-            new_path = session_run_dir(root, session_id) / "run.json"
-        except ImportError:
-            new_path = _ledger_dir(root) / session_id / "run.json"
-        old_path = _ledger_dir(root) / session_id / "run.json"
-        if new_path.exists():
-            return new_path
-        if old_path.exists():
-            return old_path
-        return new_path
+        session_dir = find_session_dir(root, session_id)
+        if session_dir is None:
+            raise click.ClickException(f"no run ledger found for session {session_id}.")
+        return session_dir / "run.json"
     latest = _latest_ledger_path(root)
     if latest is None:
         raise click.ClickException("no run ledger found. Pass --session-id or record one first.")

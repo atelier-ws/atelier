@@ -96,8 +96,12 @@ def _atelier_root() -> Path:
 
 
 def _append_failure_event(session_id: str, command: str, error: str, repeat: int) -> None:
-    """Append a note event for the command failure to runs/<session_id>.json."""
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    """Append a note event for the command failure to the session's run.json."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
     try:

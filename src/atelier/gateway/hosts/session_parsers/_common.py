@@ -417,7 +417,9 @@ def persist_imported_run_snapshot(
     started_at: datetime,
     ended_at: datetime,
 ) -> Path:
-    run_dir = store.root / "sessions" / (trace.session_id or trace.id)
+    from atelier.core.foundation.paths import session_dir
+
+    run_dir = session_dir(store.root, trace.host or "claude", trace.session_id or trace.id)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     calls: list[dict[str, Any]] = []

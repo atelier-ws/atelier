@@ -112,8 +112,12 @@ def _append_command_result_event(
     stderr: str,
     return_code: int | None,
 ) -> None:
-    """Append a command_result event to runs/<session_id>.json atomically."""
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    """Append a command_result event to the session's run.json atomically."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 

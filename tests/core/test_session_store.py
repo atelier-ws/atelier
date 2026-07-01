@@ -29,8 +29,7 @@ def test_record_writes_file_meta_and_index(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     sid = store.record(_trace("t1", "sess1"))
     assert sid == "sess1"
-    # file is the source of truth
-    traces_file = tmp_path / "sessions" / "sess1" / "traces.jsonl"
+    traces_file = store.session_dir("sess1") / "traces.jsonl"
     assert traces_file.exists()
     assert len(store.traces_for("sess1")) == 1
     meta = store.meta("sess1")
@@ -95,7 +94,7 @@ def test_orphan_session_id_falls_back_to_trace_id(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     sid = store.record({"id": "loose", "task": "x", "created_at": "2026-06-10T00:00:00+00:00"})
     assert sid == "loose"
-    assert (tmp_path / "sessions" / "loose" / "traces.jsonl").exists()
+    assert (store.session_dir("loose") / "traces.jsonl").exists()
 
 
 def test_delete_prunes_meta_trace_ids(tmp_path: Path) -> None:
@@ -113,6 +112,6 @@ def test_traces_jsonl_is_valid_jsonl(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record(_trace("t1", "s1"))
     store.record(_trace("t2", "s1"))
-    lines = (tmp_path / "sessions" / "s1" / "traces.jsonl").read_text("utf-8").strip().splitlines()
+    lines = (store.session_dir("s1") / "traces.jsonl").read_text("utf-8").strip().splitlines()
     assert len(lines) == 2
     assert all(json.loads(line)["id"] for line in lines)

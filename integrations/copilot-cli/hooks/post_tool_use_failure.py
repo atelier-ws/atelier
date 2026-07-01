@@ -10,9 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_GUIDANCE = (
-    "This command failed twice with the same error. " "Call 'rescue' before any retry; do not repeat the same fix."
-)
+_GUIDANCE = "This command failed twice with the same error. Call 'rescue' before any retry; do not repeat the same fix."
 
 
 def _atelier_root() -> Path:
@@ -20,9 +18,23 @@ def _atelier_root() -> Path:
 
 
 def _state_path(payload: dict[str, Any]) -> Path:
+    """Per-session failure-signature counts.
+
+    Folded into the canonical `session_dir()` layout (`copilot` host,
+    hardcoded since this hook is only ever invoked by copilot-cli) instead of
+    the old bespoke `copilot-cli/failure-state/<sha256(session_id)>.json`
+    scheme, which was the only place in the codebase that already namespaced
+    by host -- just via its own incompatible convention. session_id is a
+    host-issued high-entropy id, so using it directly as the directory name
+    (rather than hashing it) is safe and consistent with every other writer.
+    """
     session_id = str(payload.get("sessionId") or payload.get("session_id") or "default")
-    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
-    return _atelier_root() / "copilot-cli" / "failure-state" / f"{digest}.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+        return _atelier_root() / "copilot-cli" / "failure-state" / f"{digest}.json"
+    return session_dir(_atelier_root(), "copilot", session_id) / "failure_state.json"
 
 
 def _signature(payload: dict[str, Any]) -> str:

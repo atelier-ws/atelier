@@ -146,7 +146,12 @@ def _active_session_id() -> str | None:
 def _ensure_compact_manifest(session_id: str) -> Path:
     """Ensure manifest file exists. Return the path."""
     atelier_root = _atelier_root()
-    run_dir = atelier_root / "sessions" / session_id
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_dir = session_dir(atelier_root, "claude", session_id)
+    except ImportError:
+        return atelier_root / "sessions" / session_id / "compact_manifest.json"
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "compact_manifest.json"
 
@@ -181,13 +186,15 @@ def _ensure_compact_manifest(session_id: str) -> Path:
 def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
     """Read compact_manifest.json from the run directory."""
     try:
+        from atelier.core.foundation.paths import session_dir
+
         atelier_root = _atelier_root()
-        manifest_path = atelier_root / "sessions" / session_id / "compact_manifest.json"
+        manifest_path = session_dir(atelier_root, "claude", session_id) / "compact_manifest.json"
         if manifest_path.exists():
             data = json.loads(manifest_path.read_text("utf-8"))
             if isinstance(data, dict):
                 return data
-    except (OSError, json.JSONDecodeError):
+    except (ImportError, OSError, json.JSONDecodeError):
         pass
     return None
 
@@ -200,8 +207,11 @@ def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
 def _append_compact_event(
     session_id: str, hook_event: str, trigger: str, payload: dict[str, Any] | None = None
 ) -> None:
-    atelier_root = _atelier_root()
-    run_file = atelier_root / "sessions" / session_id / "run.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -272,8 +282,10 @@ def _checkpoint_pre_compact_usage(session_id: str, transcript_path: str) -> None
         if not (stats.input_tokens or stats.output_tokens or stats.cache_read_tokens or stats.cache_write_tokens):
             return
 
+        from atelier.core.foundation.paths import session_dir
+
         atelier_root = _atelier_root()
-        stats_path = atelier_root / "sessions" / session_id / "stats.json"
+        stats_path = session_dir(atelier_root, "claude", session_id) / "stats.json"
         try:
             existing: dict[str, Any] = json.loads(stats_path.read_text("utf-8")) if stats_path.exists() else {}
         except (OSError, json.JSONDecodeError):
@@ -284,7 +296,7 @@ def _checkpoint_pre_compact_usage(session_id: str, transcript_path: str) -> None
         # Why max, not sum: Claude Code preserves the full transcript after each
         # /compact (old turns remain below compact_boundary markers), so
         # read_transcript_stats() already counts every token once via msg_id
-        # dedup.  Summing N growing snapshots inflated cost by up to N× in
+        # dedup.  Summing N growing snapshots inflated cost by up to Nx in
         # heavy-compact sessions.  With max, pre_compact holds the full session
         # state at the most recent compact; stop.py then adds only the delta
         # above what the post-compact transcript already shows (≈ 0 when the

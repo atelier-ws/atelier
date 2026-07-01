@@ -64,7 +64,14 @@ def sync_usage(
             chunk_sessions = []
             for sid in chunk_ids:
                 # Try live stats first
-                stats_path = root_path / "sessions" / sid / "stats.json"
+                from atelier.core.foundation.paths import find_session_dir
+
+                _existing = find_session_dir(root_path, sid)
+                stats_path = (
+                    (_existing / "stats.json")
+                    if _existing is not None
+                    else (root_path / "sessions" / sid / "stats.json")
+                )
                 if stats_path.exists():
                     try:
                         chunk_sessions.append(json.loads(stats_path.read_text(encoding="utf-8")))

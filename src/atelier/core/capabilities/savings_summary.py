@@ -686,39 +686,20 @@ def _price_savings_row(ev: dict[str, Any]) -> tuple[int, float, int, float, int]
 
 
 def _find_savings_sidecar(session_id: str, root: Path) -> Path:
-    """Locate savings.jsonl for *session_id*, handling both path layouts.
+    """Locate savings.jsonl for *session_id* under the canonical session dir.
 
-    Checks the legacy flat layout (``sessions/<id>/savings.jsonl``) first so
-    existing sessions are found with a single ``stat()`` call.  For sessions
-    created after the date-partition migration the file is at
-    ``sessions/YYYY/MM/DD/<id>/savings.jsonl``; we try today's partition next
-    (covers the common case: current session, same calendar day).  A glob
-    fallback handles the rare cross-day case (session started yesterday, still
-    running today) without breaking the fast path.  Returns the
-    date-partitioned path as a default when no file exists yet so that
-    ``path.parent.mkdir(parents=True, exist_ok=True)`` creates the right tree
-    for first-time writes.
+    Host-agnostic: :func:`~atelier.core.foundation.paths.find_session_dir`
+    globs by session id alone. When no directory exists yet (first write for
+    a brand-new session), falls back to today's dir for the detected host so
+    the caller's ``path.parent.mkdir(parents=True, exist_ok=True)`` creates
+    the right tree.
     """
-    flat = root / "sessions" / session_id / "savings.jsonl"
-    if flat.exists():
-        return flat
-    try:
-        from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+    from atelier.core.foundation.paths import detect_host, find_session_dir, session_dir
 
-        dated = _srd(root, session_id) / "savings.jsonl"
-    except ImportError:
-        return flat
-    if dated.exists():
-        return dated
-    # Cross-day fallback: session may be at a partition other than today's.
-    sessions_dir = root / "sessions"
-    try:
-        found = next(sessions_dir.glob(f"**/{session_id}/savings.jsonl"), None)
-        if found is not None:
-            return found
-    except OSError:
-        pass
-    return dated  # default: caller does parent.mkdir + open for new session
+    existing = find_session_dir(root, session_id)
+    if existing is not None:
+        return existing / "savings.jsonl"
+    return session_dir(root, detect_host(), session_id) / "savings.jsonl"
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -1417,17 +1398,7 @@ def _session_windowed_spend(session_id: str, root: Path, cutoff: float) -> float
     except OSError:
         return None
     now = time.time()
-    # Check both the new date-partitioned path (sessions/YYYY/MM/DD/<id>/) and
-    # the old flat path (sessions/<id>/), using whichever already exists so
-    # cached per-turn costs survive across Atelier upgrades.
-    try:
-        from atelier.infra.runtime.run_ledger import session_run_dir as _session_run_dir
-
-        _new_cache = _session_run_dir(root, session_id) / "spend_cache.json"
-    except ImportError:
-        _new_cache = root / "sessions" / session_id / "spend_cache.json"
-    _old_cache = root / "sessions" / session_id / "spend_cache.json"
-    cache_path = _new_cache if _new_cache.exists() else (_old_cache if _old_cache.exists() else _new_cache)
+    cache_path = _find_savings_sidecar(session_id, root).with_name("spend_cache.json")
     turns: list[Any] | None = None
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))

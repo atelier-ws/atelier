@@ -157,7 +157,11 @@ def _append_session_start_event(
     cwd: str,
     transcript_path: str,
 ) -> None:
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 

@@ -103,7 +103,7 @@ def test_owned_route_tier_tracks_task_weight_across_workflow_steps(workflow_env:
 
 def test_route_outcome_calibration_uses_session_outcomes(workflow_env: Path) -> None:
     led = RunLedger(root=workflow_env)
-    path = outcomes_path(workflow_env, led.session_id)
+    path = outcomes_path(workflow_env, led.agent or "claude", led.session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
