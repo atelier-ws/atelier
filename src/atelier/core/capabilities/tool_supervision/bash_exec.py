@@ -156,6 +156,35 @@ def _head_tail_lines(lines: list[str], head: int, tail: int) -> tuple[str, int, 
     return "\n".join(parts), omitted, omitted_chars
 
 
+def _bash_spill_enabled() -> bool:
+    """Mirrors the MCP dispatch layer's T7 kill switch (``ATELIER_TOOL_OUTPUT_SPILL``)."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _spill_hint(full_text: str) -> str:
+    """Persist the full pre-compaction *full_text* and return a recovery-hint suffix.
+
+    Head+tail compaction below (``_head_tail_lines``) keeps a "(N lines
+    omitted)" marker but discards the omitted lines for good -- there was no way
+    to recover them without re-running the (often expensive, non-idempotent)
+    command. Mirrors ``web_fetch._truncate_with_spill``: persist the untouched
+    original to the shared T7 spill store first and name the path in the
+    truncation notice. Returns "" when spill is disabled, *full_text* is empty,
+    or the write fails, so the caller falls back to the bare marker.
+    """
+    if not full_text or not _bash_spill_enabled():
+        return ""
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    record = tool_output_spill.spill(full_text, tool_name="bash", kind="original")
+    if record is None:
+        return ""
+    return (
+        f"; full output ({record.original_bytes}B) spilled to {record.path}; "
+        f"read {record.path} to recover (:L1-L200, :L201-L400 … to page)"
+    )
+
+
 @dataclass
 class RunResult:
     stdout: str
@@ -172,6 +201,7 @@ class RunResult:
     rewrite_target: str | None = None
     rewrite_payload: dict[str, Any] | None = None
     discipline: str = ""
+    spill_hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -1264,6 +1294,7 @@ def _compact_result(
         head = max(20, max_lines // 4)
         tail = max(max_lines - head, 0)
     clean_stdout = _strip_ansi(raw_stdout)
+    clean_stderr = _strip_ansi(raw_stderr)
     budget = max_chars if max_chars is not None else _bash_output_budget(command)
     if _TEST_CMD_RE.search(command):
         compact = _extract_test_output(clean_stdout, max_chars=budget)
@@ -1282,9 +1313,17 @@ def _compact_result(
             if capped != stdout_compact:
                 stdout_chars += len(stdout_compact) - len(capped)
                 stdout_compact = capped
-    stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
+    stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(clean_stderr.splitlines(), 100, 100)
     lines_omitted = stdout_omitted + stderr_omitted
     chars_omitted = stdout_chars + stderr_chars
+    spill_hint = ""
+    if lines_omitted > 0:
+        # The head+tail markers above are lossy; spill the untouched raw
+        # stdout/stderr so the omitted lines stay recoverable via `read`.
+        full_text = clean_stdout
+        if clean_stderr.strip():
+            full_text = f"{full_text}\n\n--- stderr ---\n{clean_stderr}" if full_text else clean_stderr
+        spill_hint = _spill_hint(full_text)
     # Live tool-output redaction (G8): scrub secrets from command output
     # before it reaches the model. Honors the ATELIER_OUTPUT_REDACTION
     # kill-switch and is a no-op on already-clean text.
@@ -1297,6 +1336,7 @@ def _compact_result(
         lines_omitted=lines_omitted,
         chars_omitted=chars_omitted,
         command=command,
+        spill_hint=spill_hint,
     )
 
 
@@ -1545,6 +1585,7 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         "truncated": result.truncated or output_byte_capped,
         "lines_omitted": result.lines_omitted,
         "chars_omitted": result.chars_omitted,
+        "spill_hint": result.spill_hint,
     }
     if managed.discipline_warning:
         payload["discipline"] = managed.discipline_warning

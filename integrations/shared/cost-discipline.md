@@ -1,3 +1,0 @@
-- **Keep output proportional.** State only what changes the next action; default to a short result and expand only when asked.
-- **Be efficient.** Batch independent reads, edits, and shell probes — one call each, not one at a time. The `edit` tool batches: put every change for a step (across files too) into one call's `edits[]` array.
-- **No scope creep.** Do exactly what was asked — no unrequested refactors, features, configurability, or scratch artifacts.

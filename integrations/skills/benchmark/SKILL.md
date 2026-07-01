@@ -8,24 +8,24 @@ allowed-tools: Bash(atelier *), Bash(uv run atelier *), Bash(git *)
 
 Two modes:
 
-| Mode | What it measures | Cost |
-|------|------------------|------|
-| **Offline** (`atelier eval sessions`) | How many `grep` calls Atelier's `explore` collapses in YOUR session history | Free (reads local session files) |
-| **Online** (`atelier benchmark local`) | Side-by-side A/B cost + quality delta on YOUR prompts | Real API spend |
+| Mode                                   | What it measures                                                            | Cost                             |
+| -------------------------------------- | --------------------------------------------------------------------------- | -------------------------------- |
+| **Offline** (`atelier eval sessions`)  | How many `grep` calls Atelier's `code_search` collapses in YOUR session history | Free (reads local session files) |
+| **Online** (`atelier benchmark local`) | Side-by-side A/B cost + quality delta on YOUR prompts                       | Real API spend                   |
 
 ---
 
 ## Offline mode — session history analysis
 
 Reads your Claude Code session files from `~/.claude/projects/`, extracts every
-`mcp__atelier__grep`, `mcp__atelier__explore`, and `ToolSearch` call, groups
+`mcp__atelier__grep`, `mcp__atelier__code_search`, and `ToolSearch` call, groups
 them into "search episodes" between your prompts, and shows:
 
 - How many individual `grep` calls per episode (avg = **3.8** in atelier sessions)
-- How often `explore` was used instead (in our data: 11 of 772 episodes)
-- Estimated turn savings if more episodes used `explore`
+- How often `code_search` was used instead (in our data: 11 of 772 episodes)
+- Estimated turn savings if more episodes used `code_search`
 - Generates query pairs from the grep patterns and optionally runs the retrieval
-  MRR benchmark against Atelier's `explore` or CodeGraph
+  MRR benchmark against Atelier's `code_search` or CodeGraph
 
 ```bash
 # Analyze your atelier sessions and show savings
@@ -44,17 +44,17 @@ uv run atelier eval sessions --run-eval --channel cg --full
 OFFLINE SESSION ANALYSIS
   Total search tool calls: 3400
     - mcp__atelier__grep calls:  2953
-    - mcp__atelier__explore calls: 14
+    - mcp__atelier__code_search calls: 14
     - ToolSearch calls:           433
   Search episodes: 772
-  Episodes WITH explore: 11
-  Episodes WITHOUT explore (grep-only): 761
+  Episodes WITH code_search: 11
+  Episodes WITHOUT code_search (grep-only): 761
   Avg greps per episode: 3.8
   Generated 5783 query pairs from grep result files
 ```
 
 The takeaway: **761 of 772 search episodes used only grep**. If those switched
-to `explore`, the agent would save ~3 grep calls per episode = ~2,200 fewer
+to `code_search`, the agent would save ~3 grep calls per episode = ~2,200 fewer
 turns across these sessions alone.
 
 With `--run-eval`, it also generates a pairs JSON from your real grep patterns
@@ -84,6 +84,7 @@ asks to confirm before spending anything.
 through to the terminal (the Stop hook will intercept it).**
 
 **Phase A — estimate only:**
+
 ```bash
 uv run atelier benchmark local --repo . \
   --prompt "<prompt 1>" [--prompt "<prompt 2>" ...] \
@@ -110,6 +111,7 @@ echo "PID=$! log=$LOG"
 ```
 
 After launching:
+
 1. Tell the user the PID and log path.
 2. Tell them the Atelier arm pre-indexes the codebase first, and to follow progress with `tail -f <log>`.
 3. Estimate total wall time: baseline arm + indexing + Atelier arm ≈ **10–30 min** for a single prompt on a medium repo.
@@ -152,10 +154,10 @@ uv run atelier eval retrieval --channel semantic
 
 Latest results (n=2306, 10 repos):
 
-| Channel | MRR | hit@1 | Latency |
-|---------|-----|-------|---------|
-| Atelier lexical (sampled n=537) | 0.690 | 0.678 | 364 ms |
-| CodeGraph | 0.600 | 0.547 | 129 ms |
+| Channel                         | MRR   | hit@1 | Latency |
+| ------------------------------- | ----- | ----- | ------- |
+| Atelier lexical (sampled n=537) | 0.690 | 0.678 | 364 ms  |
+| CodeGraph                       | 0.600 | 0.547 | 129 ms  |
 
 ---
 

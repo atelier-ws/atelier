@@ -39,7 +39,6 @@ from atelier.core.environment import skill_visible
 CODING_GUIDELINES_PATH = ROOT / "integrations/shared/coding-guidelines.md"
 CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
 CHANGE_DISCIPLINE_PATH = ROOT / "integrations/shared/change-discipline.md"
-COST_DISCIPLINE_PATH = ROOT / "integrations/shared/cost-discipline.md"
 TOOL_DISCIPLINE_PATH = ROOT / "integrations/shared/tool-discipline.md"
 AGENTS_GUIDE_PATH = ROOT / "integrations/AGENTS.atelier.md"
 
@@ -50,7 +49,6 @@ SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
     "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
     "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
     "{{CHANGE_DISCIPLINE}}": ("Change discipline", CHANGE_DISCIPLINE_PATH),
-    "{{COST_DISCIPLINE}}": ("Cost discipline", COST_DISCIPLINE_PATH),
     "{{TOOL_DISCIPLINE}}": ("Tool discipline", TOOL_DISCIPLINE_PATH),
 }
 HOST_SKILL_DIRS = {
@@ -308,8 +306,8 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
 _INLINE_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "codemod",
+        "code_search",
         "edit",
-        "explore",
         "glob",
         "grep",
         "memory",

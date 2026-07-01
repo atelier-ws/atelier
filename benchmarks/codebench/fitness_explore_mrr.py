@@ -313,6 +313,13 @@ def _worker_init() -> None:
     # Pure-lexical channel: turn Zoekt off so tool_explore skips the recall hook.
     if CHANNEL == "lexical":
         os.environ["ATELIER_ZOEKT_MODE"] = "off"
+    # Non-semantic channels: turn the embedding recall hook OFF. Without this, a
+    # channel like "lexical" silently fused semantic scores whenever
+    # ATELIER_CODE_EMBEDDER was set (contaminating the pure-lexical measurement)
+    # AND cold-loaded the repo's full vector matrix on every worker -- e.g.
+    # linux's multi-GB matrix at ~11s/query -- on a channel that must not use it.
+    if "semantic" not in CHANNEL:
+        os.environ["ATELIER_EXPLORE_SEMANTIC"] = "0"
 
 
 def _run_explore(task):

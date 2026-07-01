@@ -123,7 +123,7 @@ def _make_golds(pairs: Path | None) -> list[Path]:
     names = [
         "bench_pairs_def_gold.json",
         "bench_pairs_content_gold.json",
-        "bench_pairs_semantic_gold.json",
+        "bench_pairs_qwen_gold.json",
         "bench_pairs_swebench_gold.json",
         "bench_pairs_atelier_sessions_gold.json",
     ]
@@ -198,7 +198,7 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
     """
     channels = list(channel_results.keys())
     # Collect every gold_kind present across any channel result.
-    _all_gks = ["definition", "content", "swebench", "atelier_sessions"]
+    _all_gks = ["definition", "content", "qwen_semantic", "swebench", "atelier_sessions"]
     gold_kinds = [gk for gk in _all_gks if any(gk in r.get("golds", {}) for r in channel_results.values())]
     if not gold_kinds:
         gold_kinds = ["definition"]

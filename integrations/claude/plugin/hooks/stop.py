@@ -113,28 +113,13 @@ def _atelier_root() -> Path:
 
 
 def _sessions_root() -> Path:
-    """Per-workspace store root for sessions — falls back to atelier root."""
-    import re
-
-    root = _atelier_root()
-    workspace = os.environ.get("ATELIER_WORKSPACE_ROOT") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or ""
-    if not workspace:
-        return root
-
-    resolved = Path(workspace).expanduser().resolve()
-    home = Path.home().resolve()
-    try:
-        parts = resolved.relative_to(home).parts
-    except ValueError:
-        parts = [p for p in resolved.parts if p and p != "/"]
-    sanitized = [re.sub(r"[^a-zA-Z0-9._\-]", "-", p) for p in parts if p]
-    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
-    if len(label) > 120:
-        from hashlib import sha256
-
-        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
-    key = label or __import__("hashlib").sha256(str(resolved).encode()).hexdigest()[:12]
-    return root / "workspaces" / key
+    """Session store root -- the plain atelier root, matching the MCP writer and the
+    sibling hooks (session_start / post_tool_use). Sessions are keyed by a globally
+    unique id, so they are NOT workspace-scoped: the previous ``workspaces/<key>``
+    path silently missed the canonical run.json (its ``if not exists: return`` guards
+    no-op'd) whenever ATELIER_WORKSPACE_ROOT/CLAUDE_WORKSPACE_ROOT was set, dropping
+    the session-end token event, cost row, and enrichment writes."""
+    return _atelier_root()
 
 
 def _write_token_event(stats: dict[str, Any], session_id: str | None = None) -> None:

@@ -33,7 +33,7 @@ _READ_TOOLS: frozenset[str] = frozenset(
         "mcp__atelier__callers",
         "mcp__atelier__callees",
         "mcp__atelier__usages",
-        "mcp__atelier__explore",
+        "mcp__atelier__code_search",
         "atelier_smart_read",
         "atelier_smart_search",
         "atelier_get_reasoning_context",
@@ -47,7 +47,7 @@ _READ_TOOLS: frozenset[str] = frozenset(
         "callers",
         "callees",
         "usages",
-        "explore",
+        "code_search",
     }
 )
 

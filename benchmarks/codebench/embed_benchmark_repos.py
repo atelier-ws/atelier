@@ -16,7 +16,7 @@ from pathlib import Path
 GOLD_FILES = [
     "benchmarks/codebench/data/bench_pairs_def_gold.json",
     "benchmarks/codebench/data/bench_pairs_content_gold.json",
-    "benchmarks/codebench/data/bench_pairs_semantic_gold.json",
+    "benchmarks/codebench/data/bench_pairs_qwen_gold.json",
 ]
 
 MAX_CHARS = 4000
@@ -81,7 +81,11 @@ def _init_model() -> None:
         f"  device={device}  free_vram={free_gb:.1f}GB  model={_MODEL_NAME}  dim={_EMBED_DIM}  batch={_BATCH_SIZE}",
         flush=True,
     )
-    _model = SentenceTransformer(_MODEL_NAME, device=device)
+    # bge-code-v1 ships custom modeling code; without trust_remote_code the default
+    # loader mis-parses its tokenizer.json (tokenizers version skew -> "did not match
+    # any variant of untagged enum ModelWrapper"). Matches the query-embed path.
+    _model = SentenceTransformer(_MODEL_NAME, trust_remote_code=True, device=device)
+    _model.max_seq_length = 2048
     if device == "cuda":
         _model = _model.half()
 
@@ -261,8 +265,15 @@ def main() -> None:
             if prefix not in all_repos:
                 all_repos[prefix] = meta
 
-    print(f"Found {len(all_repos)} repos", flush=True)
+    import os
+
+    # EMBED_REPOS="django,atelier" -> only embed repos whose prefix contains one of
+    # these substrings (default: all). Lets us backfill just the broken repos.
+    _filter = [s for s in os.environ.get("EMBED_REPOS", "").split(",") if s]
+    print(f"Found {len(all_repos)} repos" + (f"; filter={_filter}" if _filter else ""), flush=True)
     for prefix, meta in sorted(all_repos.items()):
+        if _filter and not any(f in prefix for f in _filter):
+            continue
         embed_repo(prefix, meta)
     print("All done.", flush=True)
 

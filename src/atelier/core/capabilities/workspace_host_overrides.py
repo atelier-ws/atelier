@@ -491,10 +491,6 @@ def _render_codex_mode_body(body: str, repo_root: Path) -> str:
             "Change discipline",
             repo_root / "integrations" / "shared" / "change-discipline.md",
         ),
-        "{{COST_DISCIPLINE}}": (
-            "Cost discipline",
-            repo_root / "integrations" / "shared" / "cost-discipline.md",
-        ),
         "{{CODING_GUIDELINES}}": (
             "Coding Guidelines",
             repo_root / "integrations" / "shared" / "coding-guidelines.md",

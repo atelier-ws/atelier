@@ -175,7 +175,6 @@ def mine_pairs(
 GOLD_FILES = [
     ("def", args.target, DATA / "bench_pairs_def_gold.json"),
     ("content", args.target, DATA / "bench_pairs_content_gold.json"),
-    ("semantic", args.sem_target, DATA / "bench_pairs_semantic_gold.json"),
 ]
 
 for gold_kind, target, gold_path in GOLD_FILES:
