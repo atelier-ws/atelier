@@ -37,7 +37,6 @@ from atelier.core.capabilities.cross_vendor_routing.configuration import RouteCo
 from atelier.core.capabilities.default_definitions import DefaultRegistry, build_default_registry
 from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     extract_grounding_targets,
-    missing_grounding_targets,
     record_grounding_evidence,
 )
 from atelier.core.capabilities.host_runners import resolve_swarm_runner_command

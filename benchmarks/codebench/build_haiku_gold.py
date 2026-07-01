@@ -12,7 +12,15 @@ Usage:
         --per-repo 12
 """
 from __future__ import annotations
-import argparse, json, os, re, sqlite3, subprocess, sys, hashlib, textwrap, random
+
+import argparse
+import hashlib
+import json
+import os
+import random
+import sqlite3
+import sys
+import textwrap
 
 _SYSTEM = textwrap.dedent("""\
     You are building a CODE RETRIEVAL benchmark. Given a code snippet, write ONE
@@ -25,6 +33,7 @@ _SYSTEM = textwrap.dedent("""\
 """).strip()
 
 import urllib.request as _u
+
 _OLLAMA_MODEL = os.environ.get("HAIKU_OLLAMA_MODEL", "qwen2.5-coder:7b")
 def haiku_query(code: str, name: str, kind: str) -> str:
     prompt = f"{_SYSTEM}\n\nCode ({kind}):\n```\n{code[:2000]}\n```\n\nOne search query:"
