@@ -106,24 +106,28 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     click.echo(f"Results: {run_dir}")
 
 
-_ATELIER_CHANNELS = ["lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic", "cmm"]
-_EXTERNAL_CHANNELS = ["cg", "ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "rg"]
+_ATELIER_CHANNELS = ["lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic"]
+_EXTERNAL_CHANNELS = ["cg", "ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "rg", "cmm"]
 _RETRIEVAL_CHANNELS = _ATELIER_CHANNELS + _EXTERNAL_CHANNELS
 _ALL_CHANNEL = "all"
 
 
 def _make_golds(pairs: Path | None) -> list[Path]:
-    return (
-        [pairs]
-        if pairs is not None
-        else [
-            *(
-                [Path("benchmarks/codebench/data/bench_pairs_swebench_gold.json")]
-                if Path("benchmarks/codebench/data/bench_pairs_swebench_gold.json").exists()
-                else []
-            ),
-        ]
-    )
+    if pairs is not None:
+        return [pairs]
+    # Default: every gold set that exists, so a bare `eval retrieval` scores the
+    # full ~7.5k-query suite (def + content + semantic + swebench + sessions)
+    # across all channels, not just a swebench+sessions subset. Narrow with
+    # --pairs <file> (single gold) or --sample N when a quick run is wanted.
+    base = Path("benchmarks/codebench/data")
+    names = [
+        "bench_pairs_def_gold.json",
+        "bench_pairs_content_gold.json",
+        "bench_pairs_semantic_gold.json",
+        "bench_pairs_swebench_gold.json",
+        "bench_pairs_atelier_sessions_gold.json",
+    ]
+    return [base / n for n in names if (base / n).exists()]
 
 
 def _channel_cmd_env(
@@ -145,7 +149,7 @@ def _channel_cmd_env(
     env["EVAL_PAIRS"] = str(golds[0])
 
     if channel in _EXTERNAL_CHANNELS:
-        # External provider: delegate to eval_external_provider_mrr.py
+        # External provider (incl. cmm): delegate to eval_external_provider_mrr.py
         cmd: list[str] = [
             sys.executable,
             "benchmarks/codebench/eval_external_provider_mrr.py",
@@ -158,13 +162,6 @@ def _channel_cmd_env(
             cmd += ["--sample", str(sample)]
         if repo:
             cmd += ["--repo", repo]
-    elif channel == "cmm":
-        # codebase-memory-mcp (eval_cmm_mrr.py). Same env contract as cg.
-        cmd = [sys.executable, "benchmarks/codebench/eval_cmm_mrr.py"]
-        if not full and sample:
-            env["FITNESS_SAMPLE"] = str(sample)
-        if repo:
-            env["FITNESS_REPO"] = repo
     else:
         env["FITNESS_WORKERS"] = str(workers)
         if channel == "zoekt":
@@ -201,7 +198,7 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
     """
     channels = list(channel_results.keys())
     # Collect every gold_kind present across any channel result.
-    _all_gks = ["definition", "content", "swebench"]
+    _all_gks = ["definition", "content", "swebench", "atelier_sessions"]
     gold_kinds = [gk for gk in _all_gks if any(gk in r.get("golds", {}) for r in channel_results.values())]
     if not gold_kinds:
         gold_kinds = ["definition"]
@@ -584,6 +581,38 @@ def eval_fitness(
     r2 = subprocess.run(syn_cmd, cwd=bench_root, env=env, check=False)
     if r2.returncode != 0:
         click.echo("[eval fitness] synthetic mining failed (continuing without it)", err=True)
+
+    # Step 2.5: augment with semantic queries (docstring + intent-based) from the project.
+    click.echo("[eval fitness] generating semantic pairs ...", err=True)
+    # Re-read session count (may have changed after synthetic merge)
+    try:
+        _pd = _json.loads(out.read_text())
+        _session_count = len(_pd.get("pairs", []))
+        _session_prefix = next(iter(_pd.get("repos", {})), "")
+    except Exception:
+        pass
+    sem_cmd = [
+        *_bm._python_cmd(bench_root),
+        "benchmarks/codebench/semantic_pair_miner.py",
+        "--repo-dir",
+        str(Path(".").resolve()),
+        "--merge",
+        str(out),
+        "--out",
+        str(out),
+    ]
+    if _session_prefix:
+        sem_cmd += ["--repo-prefix", _session_prefix]
+    # Similar 50/50 cap: semantic fills up to session_count (≤50% of total)
+    if _session_count == 0:
+        sem_cmd += ["--max-pairs", "200"]  # pure semantic fallback
+    elif _session_count < _MIN_TOTAL // 2:
+        sem_cmd += ["--max-pairs", str(_MIN_TOTAL - _session_count)]
+    else:
+        sem_cmd += ["--max-pairs", str(_session_count)]
+    r3 = subprocess.run(sem_cmd, cwd=bench_root, env=env, check=False)
+    if r3.returncode != 0:
+        click.echo("[eval fitness] semantic mining failed (continuing without it)", err=True)
 
     if no_eval:
         click.echo(f"[eval fitness] pairs written -> {out}", err=True)
