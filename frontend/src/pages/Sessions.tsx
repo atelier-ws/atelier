@@ -211,10 +211,30 @@ export default function Sessions() {
     fetchTracesPage((page + 1) * 50);
   };
 
+  // Auto-refresh must replace the currently loaded range in place —
+  // appending via fetchTracesPage's offset paging (meant for user-initiated
+  // Load More) would duplicate the last page's items on every 30s tick.
+  const refreshTraces = useCallback(() => {
+    const requestSeq = ++tracesRequestSeq.current;
+    const loadedCount = (page + 1) * 50;
+    setErr(null);
+    api
+      .traces(loadedCount, 0, "all", "all", query)
+      .then((res) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setTraces(res.items);
+        setHasMore(res.items.length >= loadedCount);
+      })
+      .catch((e) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setErr(String(e));
+      });
+  }, [query, page]);
+
   const refresh = useCallback(() => {
-    fetchTracesPage(page * 50);
+    refreshTraces();
     fetchSummaries();
-  }, [fetchTracesPage, fetchSummaries, page]);
+  }, [refreshTraces, fetchSummaries]);
 
   // Periodically refresh data every 30 seconds
   useEffect(() => {

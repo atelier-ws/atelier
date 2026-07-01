@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { TimeRangeProvider } from "../lib/TimeRangeContext";
 import Sessions from "./Sessions";
@@ -69,9 +69,44 @@ const sampleSessions: SessionSummary[] = [
   },
 ];
 
-function mockFetch(responses: Record<string, Response | (() => Promise<never>)>) {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(
-    (input: RequestInfo | URL, _init?: RequestInit) => {
+function tracesPageResponse(start: number, count: number): Response {
+  const items = Array.from({ length: count }, (_, i) => {
+    const n = start + i;
+    return {
+      id: `s-${n}`,
+      session_id: `s-${n}`,
+      agent: "anthropic",
+      model: "claude-3-5-sonnet",
+      task: `Task ${n}`,
+      status: "completed",
+      files_touched: [],
+      tools_called: [],
+      commands_run: [],
+      errors_seen: [],
+      repeated_failures: [],
+      validation_results: [],
+      created_at: new Date(2024, 0, 1, 0, 0, n).toISOString(),
+      input_tokens: 1,
+      output_tokens: 1,
+      cached_input_tokens: 0,
+    };
+  });
+  return jsonResponse({
+    items,
+    metrics: {
+      stats: { total: count, success: count, failed: 0, partial: 0 },
+      hosts: [],
+      domains: [],
+    },
+  });
+}
+
+function mockFetch(
+  responses: Record<string, Response | (() => Promise<never>)>
+) {
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       for (const [key, response] of Object.entries(responses).sort(
         ([a], [b]) => b.length - a.length
@@ -82,8 +117,7 @@ function mockFetch(responses: Record<string, Response | (() => Promise<never>)>)
         }
       }
       return Promise.resolve(new Response("not found", { status: 404 }));
-    }
-  );
+    });
 }
 
 function renderSessions(initialEntry = "/sessions") {
@@ -328,8 +362,57 @@ describe("Sessions page", () => {
 
     renderSessions();
 
-    const rows = await screen.findAllByText(/(Older started session|Newer mtime session)/);
+    const rows = await screen.findAllByText(
+      /(Older started session|Newer mtime session)/
+    );
     expect(rows[0]).toHaveTextContent("Newer mtime session");
     expect(rows[1]).toHaveTextContent("Older started session");
+  });
+
+  it("auto-refresh replaces the loaded range instead of appending duplicates after Load More", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/v1/sessions"))
+          return Promise.resolve(jsonResponse([]));
+        if (!url.includes("/api/traces")) {
+          return Promise.resolve(new Response("not found", { status: 404 }));
+        }
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("offset") === "0" && params.get("limit") === "100") {
+          // Refresh must ask for the whole loaded range from offset 0.
+          return Promise.resolve(tracesPageResponse(0, 100));
+        }
+        if (params.get("offset") === "50") {
+          return Promise.resolve(tracesPageResponse(50, 50));
+        }
+        return Promise.resolve(tracesPageResponse(0, 50));
+      });
+
+    renderSessions();
+    await screen.findByText("Task 0");
+
+    fireEvent.click(await screen.findByText(/Load More/i));
+    await screen.findByText("Task 50");
+
+    fetchSpy.mockClear();
+    fireEvent.click(screen.getByTitle("Refresh sessions"));
+
+    // The refresh request must replace (offset=0, limit=100), not append
+    // (offset=page*50) — the pre-fix request shape here was offset=50,
+    // limit=50, which appends another copy of the last page every tick.
+    const refreshCall = fetchSpy.mock.calls.find(([reqInput]) =>
+      String(reqInput).includes("/api/traces")
+    );
+    expect(refreshCall).toBeDefined();
+    const refreshParams = new URL(String(refreshCall![0]), "http://localhost")
+      .searchParams;
+    expect(refreshParams.get("offset")).toBe("0");
+    expect(refreshParams.get("limit")).toBe("100");
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/^Task \d+$/).length).toBe(100);
+    });
   });
 });

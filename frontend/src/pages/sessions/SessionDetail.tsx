@@ -12,6 +12,7 @@ import {
   fmtTok,
   fmtDate,
   fmtDuration,
+  parseAt,
   parseInspectorData,
   groupTurns,
 } from "./helpers";
@@ -288,22 +289,26 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     ) {
       return report?.duration_seconds || 0;
     }
-    let ms = 0;
+    let secs = 0;
     let currentStart: number | null = null;
     for (const turn of inspectorData.conversations) {
-      const at = new Date(turn.at || 0).getTime();
+      // Missing/unparseable timestamps must not collapse to epoch (1970) or
+      // NaN — skip them rather than corrupting the running chunk baseline.
+      const at = parseAt(turn.at)?.getTime();
+      if (at === undefined) continue;
       if (turn.kind === "user_message") {
         currentStart = at;
+      } else if (currentStart !== null) {
+        const chunk = (at - currentStart) / 1000;
+        // Mirror the backend's active-duration guard: only count positive
+        // gaps under an hour as "active" time between turns.
+        if (chunk > 0 && chunk < 3600) secs += chunk;
+        currentStart = at;
       } else {
-        if (currentStart !== null) {
-          ms += at - currentStart;
-          currentStart = at;
-        } else {
-          currentStart = at;
-        }
+        currentStart = at;
       }
     }
-    return ms / 1000;
+    return secs;
   }, [inspectorData, report]);
 
   const startedModel = useMemo(() => {
@@ -344,12 +349,22 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       const shortName = parts[parts.length - 1];
       const rows = queue.get(shortName);
       if (!rows) return turn;
-      const i = ptr.get(shortName) ?? 0;
+      let i = ptr.get(shortName) ?? 0;
+      const turnMs = new Date(turn.at || 0).getTime();
+      // A savings row that's more than 2s older than this turn can never
+      // match a later turn either — advance past it so a stale first event
+      // doesn't permanently stall the queue for every turn that follows.
+      while (
+        i < rows.length &&
+        new Date(rows[i].at).getTime() < turnMs - 2000
+      ) {
+        i++;
+      }
+      ptr.set(shortName, i);
       if (i >= rows.length) return turn;
       // Savings timestamp is slightly after the tool call — allow up to 60 s.
-      const turnMs = new Date(turn.at || 0).getTime();
       const savMs = new Date(rows[i].at).getTime();
-      if (savMs >= turnMs - 2000 && savMs <= turnMs + 60000) {
+      if (savMs <= turnMs + 60000) {
         ptr.set(shortName, i + 1);
         return {
           ...turn,
@@ -725,7 +740,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     value={report ? fmtUsd(report.output_token_cost_usd) : "—"}
                   />
                   <SidebarMetric
-                    label="Cache Savings"
+                    label="Cache Read Cost"
                     value={report ? fmtUsd(report.cache_read_cost_usd) : "—"}
                   />
                 </div>

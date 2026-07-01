@@ -12,9 +12,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any, ClassVar
 
+import pytest
 import yaml
 
-from atelier.core.foundation.models import Trace
+from atelier.core.foundation.models import CommandRecord, Trace
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers.antigravity import AntigravityImporter
 from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter
@@ -202,6 +203,96 @@ class TestClaudeImporterTokens:
         assert trace.output_tokens == 40
         assert trace.cached_input_tokens == 20
         assert trace.cache_creation_input_tokens == 5
+
+    def test_claude_redacts_and_truncates_bash_tool_result(self, store: ContextStore, tmp_path: Path) -> None:
+        """Regression test: the tool_result handler used to REPLACE the
+        redacted tool_use command with an unredacted, untruncated
+        CommandRecord built from raw stdout/stderr — landing raw secrets in
+        atelier.db/FTS plus unbounded bloat. Command and streams must stay
+        redacted, and streams must be capped like codex's 1024-byte cap.
+        """
+        secret_stdout = "ghp_" + "b" * 36 + (" filler" * 400)
+        assert len(secret_stdout) > 1024
+        fixture_events = [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-bash-1",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Bash",
+                            "id": "tu-bash-1",
+                            "input": {"command": "echo ghp_" + "c" * 36},
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tu-bash-1",
+                            "content": secret_stdout,
+                            "is_error": False,
+                        }
+                    ]
+                },
+            },
+        ]
+        jsonl_path = tmp_path / "test-session-bash-redact.jsonl"
+        jsonl_path.write_text("\n".join(json.dumps(e, ensure_ascii=False) for e in fixture_events))
+
+        importer = ClaudeImporter(store)
+        result = importer.import_session("test-slug", jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "claude")
+        assert len(trace.commands_run) == 1
+        record = trace.commands_run[0]
+        assert isinstance(record, CommandRecord)
+        assert "ghp_" not in record.command
+        assert "<redacted-github-token>" in record.command
+        assert len(record.stdout) <= 1024
+        assert "ghp_" not in record.stdout
+        assert "<redacted-github-token>" in record.stdout
+
+    def test_claude_does_not_record_raw_artifact_on_mid_parse_failure(
+        self, store: ContextStore, tmp_path: Path
+    ) -> None:
+        """Regression test: the raw artifact used to be recorded (bumping
+        source_file_mtime) BEFORE the JSONL was fully parsed into a Trace. A
+        mid-parse exception then left the mtime bumped, so the session was
+        silently skipped forever on later non-force imports. Parsing must
+        complete before anything is written to the store.
+        """
+        fixture_events = [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-crash",
+                    "model": "claude-sonnet-4-6",
+                    # A non-dict usage blows up `usage.get(...)` deep in the
+                    # per-line parse loop, well after the raw artifact used
+                    # to be recorded.
+                    "usage": "not-a-dict",
+                    "content": [],
+                },
+            },
+        ]
+        jsonl_path = tmp_path / "test-session-crash.jsonl"
+        jsonl_path.write_text("\n".join(json.dumps(e, ensure_ascii=False) for e in fixture_events))
+
+        importer = ClaudeImporter(store)
+        with pytest.raises(AttributeError):
+            importer.import_session("test-slug", jsonl_path, force=True)
+
+        artifact_id = f"claude-test-slug-{jsonl_path.stem}"
+        assert store.get_raw_artifact(artifact_id) is None
 
 
 # =========================================================================
@@ -456,6 +547,67 @@ class TestCodexImporterTokens:
         assert trace.output_tokens == 90
         assert usage_by_model["gpt-5.4"].input_tokens == 200
         assert usage_by_model["gpt-5.4-mini"].output_tokens == 30
+
+    def test_codex_dedupes_paired_exec_command_and_exec_command_end(self, store: ContextStore, tmp_path: Path) -> None:
+        """Regression test: newer Format-A rollouts persist BOTH
+        response_item.function_call(exec_command) AND
+        event_msg.exec_command_end for the SAME call — every shell command
+        used to be counted twice (a duplicate commands_run entry, plus two
+        separate tool-count keys "exec_command" and "shell"). The pair must
+        collapse into a single commands_run entry / tool count, correlated
+        by call_id.
+        """
+        fixture_lines = [
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "test-session-id", "timestamp": "2026-05-09T12:00:00Z"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "arguments": '{"cmd": "pytest -q"}',
+                        "call_id": "call_abc123",
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "exec_command_end",
+                        "call_id": "call_abc123",
+                        "command": ["/usr/bin/zsh", "-lc", "pytest -q"],
+                        "exit_code": 0,
+                        "stdout": "5 passed",
+                        "stderr": "",
+                    },
+                }
+            ),
+        ]
+        jsonl_path = tmp_path / "rollout-2026-05-09T15-00-00-dedup-session.jsonl"
+        jsonl_path.write_text("\n".join(fixture_lines))
+
+        importer = CodexImporter(store)
+        result = importer.import_session(jsonl_path, force=True)
+        assert result is not None
+
+        trace = _get_trace(store, "codex")
+
+        assert len(trace.commands_run) == 1
+        record = trace.commands_run[0]
+        assert isinstance(record, CommandRecord)
+        assert record.command == "pytest -q"
+        assert record.exit_code == 0
+        assert record.stdout == "5 passed"
+
+        tool_counts = {t.name: t.count for t in trace.tools_called}
+        assert tool_counts.get("exec_command") == 1
+        assert "shell" not in tool_counts
 
 
 # =========================================================================
@@ -1105,12 +1257,122 @@ class TestCursorImporterTokens:
 
         trace = _get_trace(store, "cursor")
 
-        assert trace.model == "claude-sonnet-4-5"
-        assert trace.output_tokens > 0
+        # Cursor omitted both modelInfo.modelName (a placeholder) and
+        # tokenCount for this bubble. The model is namespaced under
+        # "cursor/" rather than resolved to a real billable model id, and no
+        # token count is fabricated from the response text -- so no dollar
+        # cost is invented for usage Cursor never actually reported.
+        assert trace.model == "cursor/composer-2"
+        assert trace.output_tokens == 0
         assert trace.user_prompt_tokens > 0
         assert len(trace.usage_entries) == 1
-        assert trace.usage_entries[0].model == "claude-sonnet-4-5"
+        assert trace.usage_entries[0].model == "cursor/composer-2"
         assert trace.usage_entries[0].source_id == "a-assistant-bubble"
+        assert trace.usage_entries[0].cost_usd == 0.0
+
+    def test_cursor_does_not_fabricate_cost_from_long_response_text(self, store: ContextStore, tmp_path: Path) -> None:
+        """A long assistant reply with no tokenCount must not turn into a
+        non-trivial char/4 token estimate billed at a real model's rate."""
+        db_path = tmp_path / "state.vscdb"
+        long_text = "x " * 5000  # would be ~2500 char_tokens() if fabricated
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE cursorDiskKV (key TEXT, value TEXT)")
+            conn.execute(
+                "INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)",
+                (
+                    "bubbleId:long-composer:assistant-bubble",
+                    json.dumps(
+                        {
+                            "type": 2,
+                            "createdAt": "2026-05-14T09:01:00Z",
+                            "text": long_text,
+                            "tokenCount": {"inputTokens": 0, "outputTokens": 0},
+                            "codeBlocks": [],
+                        }
+                    ),
+                ),
+            )
+            conn.commit()
+
+        importer = CursorImporter(store)
+        results = importer.import_all(root=db_path, force=True)
+        assert len(results) == 1
+
+        trace = _get_trace(store, "cursor")
+        assert trace.output_tokens == 0
+        assert trace.usage_entries[0].cost_usd == 0.0
+
+    def test_cursor_import_all_limit_returns_newest_sessions_first(self, store: ContextStore, tmp_path: Path) -> None:
+        db_path = tmp_path / "state.vscdb"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE cursorDiskKV (key TEXT, value TEXT)")
+            for composer_id, created_at in (
+                ("composer-old", "2026-01-01T00:00:00Z"),
+                ("composer-mid", "2026-03-01T00:00:00Z"),
+                ("composer-new", "2026-05-01T00:00:00Z"),
+            ):
+                conn.execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)",
+                    (
+                        f"bubbleId:{composer_id}:assistant-bubble",
+                        json.dumps(
+                            {
+                                "type": 2,
+                                "createdAt": created_at,
+                                "text": "done",
+                                "tokenCount": {"inputTokens": 10, "outputTokens": 5},
+                            }
+                        ),
+                    ),
+                )
+            conn.commit()
+
+        importer = CursorImporter(store)
+        results = importer.import_all(root=db_path, force=True, limit=2)
+
+        assert results == ["cursor-composer-new", "cursor-composer-mid"]
+
+    def test_cursor_sets_workspace_path_from_workspace_storage(self, store: ContextStore, tmp_path: Path) -> None:
+        cursor_root = tmp_path / "Cursor"
+        global_storage = cursor_root / "User" / "globalStorage"
+        global_storage.mkdir(parents=True)
+        db_path = global_storage / "state.vscdb"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE cursorDiskKV (key TEXT, value TEXT)")
+            conn.execute(
+                "INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)",
+                (
+                    "bubbleId:ws-composer:assistant-bubble",
+                    json.dumps(
+                        {
+                            "type": 2,
+                            "createdAt": "2026-05-14T09:01:00Z",
+                            "text": "done",
+                            "tokenCount": {"inputTokens": 5, "outputTokens": 5},
+                        }
+                    ),
+                ),
+            )
+            conn.commit()
+
+        workspace_dir = cursor_root / "User" / "workspaceStorage" / "hash123"
+        workspace_dir.mkdir(parents=True)
+        (workspace_dir / "workspace.json").write_text(json.dumps({"folder": "file:///home/user/myproject"}))
+        with sqlite3.connect(workspace_dir / "state.vscdb") as wconn:
+            wconn.execute("CREATE TABLE ItemTable (key TEXT, value TEXT)")
+            wconn.execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?, ?)",
+                ("composer.composerData", json.dumps({"allComposers": [{"composerId": "ws-composer"}]})),
+            )
+            wconn.commit()
+
+        importer = CursorImporter(store)
+        results = importer.import_all(root=db_path, force=True)
+        assert results == ["cursor-ws-composer"]
+
+        trace = store.get_trace("cursor-ws-composer")
+        assert trace is not None
+        assert trace.workspace_path == "/home/user/myproject"
 
 
 # =========================================================================
@@ -1279,3 +1541,69 @@ class TestOpenCodeImporterTokens:
         #   tool.input_tokens (Bash) = dist_out = 50 // 1 = 50
         #   tool.output_tokens (Bash) = dist_in = 130 // 1 = 130
         _assert_tool_tokens(trace, "Bash", input_t=50, output_t=130)
+
+    def test_opencode_reimport_uses_time_updated_not_time_created(self, store: ContextStore, tmp_path: Path) -> None:
+        """An active session keeps landing new turns under the same id with a
+        bumped time_updated but an unchanged (immutable) time_created.
+        import_session must treat that as new content, not silently skip it
+        as unchanged."""
+        db_path = tmp_path / "opencode.db"
+        self._create_db(db_path)
+
+        base_row = {"id": "test-session", "title": "test opencode session", "time_created": self.TS_MS}
+        importer = OpenCodeImporter(store)
+        first = importer.import_session(base_row, db_path, force=True)
+        assert first is not None
+
+        # Simulate a new turn landing on an already-imported session: only
+        # time_updated changes. force=False must NOT skip this.
+        updated_row = {**base_row, "time_updated": self.TS_MS + 5000}
+        second = importer.import_session(updated_row, db_path, force=False)
+        assert second is not None
+
+        # With time_updated unchanged, a repeat import IS a no-op skip.
+        third = importer.import_session(updated_row, db_path, force=False)
+        assert third is None
+
+    def test_opencode_import_all_limit_returns_newest_sessions_first(self, store: ContextStore, tmp_path: Path) -> None:
+        db_path = tmp_path / "opencode.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE session (
+                id TEXT PRIMARY KEY, title TEXT, directory TEXT,
+                time_created INTEGER, time_updated INTEGER
+            );
+            CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+            CREATE TABLE part (
+                id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT
+            );
+            """)
+        base = self.TS_MS
+        # s-old: created first, never updated. s-mid: created after s-old.
+        # s-active: created before both, but updated most recently -- must
+        # rank newest despite its old time_created.
+        rows = [
+            ("s-old", base, None, "/repo/old"),
+            ("s-mid", base + 1000, None, "/repo/mid"),
+            ("s-active", base - 100_000, base + 5000, "/repo/active"),
+        ]
+        for session_id, created, updated, directory in rows:
+            conn.execute(
+                "INSERT INTO session (id, title, directory, time_created, time_updated) VALUES (?, ?, ?, ?, ?)",
+                (session_id, session_id, directory, created, updated),
+            )
+            conn.execute(
+                "INSERT INTO message (id, session_id, time_created, data) VALUES (?, ?, ?, ?)",
+                (f"msg-{session_id}", session_id, created, json.dumps({"role": "assistant", "modelID": "m"})),
+            )
+        conn.commit()
+        conn.close()
+
+        importer = OpenCodeImporter(store)
+        result = importer.import_all(db_path, force=True, limit=2)
+
+        assert result == ["opencode-s-active", "opencode-s-mid"]
+
+        active_trace = store.get_trace("opencode-s-active")
+        assert active_trace is not None
+        assert active_trace.workspace_path == "/repo/active"

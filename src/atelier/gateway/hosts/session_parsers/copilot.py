@@ -391,7 +391,13 @@ class CopilotImporter:
 
         # Helper to sort by mtime descending and take top N if limit is provided
         def get_newest(paths: list[Path], n: int | None) -> list[Path]:
-            sorted_paths = sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
+            stamped: list[tuple[float, Path]] = []
+            for p in paths:
+                try:
+                    stamped.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
+            sorted_paths = [p for _, p in sorted(stamped, key=lambda x: x[0], reverse=True)]
             return sorted_paths[:n] if n is not None else sorted_paths
 
         all_sessions = get_newest(list(find_copilot_sessions(root)), limit)
@@ -531,7 +537,9 @@ class CopilotImporter:
 
             sid = self._materialize_transcript_trace(
                 session_id=session_id,
-                redacted_events=redacted_events,
+                # Only the redacted copy survives once the source transcript
+                # is gone (see the OSError branch above) — best-effort parse.
+                raw_events=redacted_events,
                 artifact_id=artifact.id,
                 parent_index=p_index,
             )
@@ -540,8 +548,15 @@ class CopilotImporter:
 
         return imported_ids
 
-    def _parse_events_to_trace_state(self, redacted_events: str, initial_task: str = "") -> dict[str, Any]:
-        """Parse event JSONL text and return accumulated state for building a Trace."""
+    def _parse_events_to_trace_state(self, raw_events: str, initial_task: str = "") -> dict[str, Any]:
+        """Parse event JSONL text and return accumulated state for building a Trace.
+
+        Takes RAW (pre-redaction) content — redaction.py's credential regex
+        consumes to end-of-line and its DOTALL patterns can span records,
+        corrupting JSONL and silently dropping whole events if applied to the
+        whole file first (see claude.py for the same documented hazard).
+        Extracted text fields are redact()ed individually below instead.
+        """
         tools_called: dict[str, int] = {}
         tool_args: dict[str, dict[str, Any] | None] = {}
         tool_results: dict[str, str] = {}
@@ -568,7 +583,7 @@ class CopilotImporter:
         seen_event_ids: set[str] = set()
         previous_unidentified_event = ""
 
-        for line in redacted_events.splitlines():
+        for line in raw_events.splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -614,7 +629,7 @@ class CopilotImporter:
                 if text:
                     user_prompt_tokens += max(1, len(text) // 4)
                     if task == "untitled copilot session" or (task.startswith("Read and follow") and len(text) > 20):
-                        task = text[:200]
+                        task = redact(text[:200])
 
             if etype == "assistant.message":
                 data = ev.get("data") or {}
@@ -626,7 +641,7 @@ class CopilotImporter:
                 )
                 reasoning = data.get("reasoningText") or data.get("reasoningOpaque") or ""
                 if reasoning and len(str(reasoning)) > 10:
-                    reasoning_snippets.append(str(reasoning)[:500])
+                    reasoning_snippets.append(redact(str(reasoning)[:500]))
                 out_t = int(data.get("outputTokens", 0) or 0)
                 assistant_output_tokens += out_t
                 # Emit a per-turn LLM usage entry so the trace records *which* model
@@ -830,14 +845,17 @@ class CopilotImporter:
         actual_session_id = str(workspace_data.get("mc_session_id") or filename_session_id)
         workspace_cwd = _text_from_value(workspace_data.get("cwd")) or None
 
-        # ── Step 1: write redacted raw artifacts ─────────────────────────────
-        artifact_ids: list[str] = []
-
+        # ── Step 1: prepare redacted raw artifacts (write is deferred until the
+        # trace below has parsed successfully — writing first bumps
+        # source_file_mtime before a mid-parse exception can be raised, and
+        # the mtime-based dedup check then sees "unchanged" on the next
+        # non-force import and skips the session forever; see claude.py) ──
         events_raw = events_path.read_text(encoding="utf-8", errors="replace")
         redacted_events = redact(events_raw)
         workspace_raw = workspace_path.read_text(encoding="utf-8", errors="replace")
         redacted_workspace = redact(workspace_raw)
 
+        pending_artifacts: list[tuple[RawArtifact, str]] = []
         for filename, raw_content, redacted_content in (
             ("events.jsonl", events_raw, redacted_events),
             ("workspace.yaml", workspace_raw, redacted_workspace),
@@ -860,14 +878,21 @@ class CopilotImporter:
                 source_file_mtime=file_mtime,
                 source_path=str(session_dir / filename),
             )
-            self.store.record_raw_artifact(artifact, redacted_content)
-            artifact_ids.append(artifact.id)
+            pending_artifacts.append((artifact, redacted_content))
+        artifact_ids = [artifact.id for artifact, _ in pending_artifacts]
 
-        # ── Step 2: build curated Trace from redacted events ─────────────────
+        # ── Step 2: build curated Trace from RAW events. Parsing the
+        # already-redacted text here would corrupt JSONL and silently drop
+        # whole events (redaction.py's credential regex consumes to
+        # end-of-line and its DOTALL patterns can span records) — parse raw
+        # and redact() each extracted text field instead (see claude.py).
         state = self._parse_events_to_trace_state(
-            redacted_events,
+            events_raw,
             initial_task=str(workspace_data.get("summary") or ""),
         )
+
+        for artifact, redacted_content in pending_artifacts:
+            self.store.record_raw_artifact(artifact, redacted_content)
 
         telemetry = {
             "compaction_count": state["compaction_count"],
@@ -978,45 +1003,55 @@ class CopilotImporter:
             file_mtime = datetime.fromtimestamp(transcript_path.stat().st_mtime, tz=UTC)
         except OSError:
             file_mtime = _utcnow()
-        redacted_events: str | None = None
+        events_raw: str | None = None
         if not force and existing and existing.source_file_mtime and file_mtime <= existing.source_file_mtime:
             # File unchanged — skip join entirely if the trace is already linked.
             if self.store.trace_exists(artifact_id):
                 return artifact_id
+            # Trace missing but the source is present and unchanged — re-read
+            # RAW rather than the previously-redacted artifact, so task/tool
+            # extraction below isn't corrupted by cross-record redaction.
             try:
-                redacted_events = self.store.read_raw_artifact_content(existing)
+                events_raw = transcript_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
-                redacted_events = None
+                events_raw = None
 
-        if redacted_events is None:
+        if events_raw is None:
             if not transcript_path.exists():
-                return None
+                # Source deleted — the only surviving copy is the previously
+                # redacted artifact content: degraded, but better than nothing.
+                if existing is None:
+                    return None
+                try:
+                    events_raw = self.store.read_raw_artifact_content(existing)
+                except OSError:
+                    return None
+            else:
+                events_raw = transcript_path.read_text(encoding="utf-8", errors="replace")
+                redacted_events = redact(events_raw)
+                raw_bytes = events_raw.encode("utf-8")
+                redacted_bytes = redacted_events.encode("utf-8")
 
-            events_raw = transcript_path.read_text(encoding="utf-8", errors="replace")
-            redacted_events = redact(events_raw)
-            raw_bytes = events_raw.encode("utf-8")
-            redacted_bytes = redacted_events.encode("utf-8")
-
-            artifact = RawArtifact(
-                id=artifact_id,
-                source="copilot",
-                source_session_id=session_id,
-                kind="events.jsonl",
-                relative_path=transcript_path.name,
-                content_path=f"raw/copilot/transcripts/{session_id}.jsonl",
-                sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
-                sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
-                byte_count_original=len(raw_bytes),
-                byte_count_redacted=len(redacted_bytes),
-                created_at=_utcnow(),
-                source_file_mtime=file_mtime,
-                source_path=str(transcript_path),
-            )
-            self.store.record_raw_artifact(artifact, redacted_events)
+                artifact = RawArtifact(
+                    id=artifact_id,
+                    source="copilot",
+                    source_session_id=session_id,
+                    kind="events.jsonl",
+                    relative_path=transcript_path.name,
+                    content_path=f"raw/copilot/transcripts/{session_id}.jsonl",
+                    sha256_original=hashlib.sha256(raw_bytes).hexdigest(),
+                    sha256_redacted=hashlib.sha256(redacted_bytes).hexdigest(),
+                    byte_count_original=len(raw_bytes),
+                    byte_count_redacted=len(redacted_bytes),
+                    created_at=_utcnow(),
+                    source_file_mtime=file_mtime,
+                    source_path=str(transcript_path),
+                )
+                self.store.record_raw_artifact(artifact, redacted_events)
 
         return self._materialize_transcript_trace(
             session_id=session_id,
-            redacted_events=redacted_events,
+            raw_events=events_raw,
             artifact_id=artifact_id,
             parent_index=parent_index,
         )
@@ -1217,11 +1252,11 @@ class CopilotImporter:
         self,
         *,
         session_id: str,
-        redacted_events: str,
+        raw_events: str,
         artifact_id: str,
         parent_index: list[dict[str, Any]] | None = None,
     ) -> str | None:
-        transcript_paths, transcript_started_at = _extract_transcript_linkage(redacted_events)
+        transcript_paths, transcript_started_at = _extract_transcript_linkage(raw_events)
         parent_match = self._find_parent_trace_for_transcript(
             transcript_paths, transcript_started_at, parent_index=parent_index
         )
@@ -1231,7 +1266,7 @@ class CopilotImporter:
 
         parent_trace, workspace_path = parent_match
 
-        state = self._parse_events_to_trace_state(redacted_events)
+        state = self._parse_events_to_trace_state(raw_events)
 
         trace = Trace(
             id=artifact_id,
@@ -1317,7 +1352,7 @@ class CopilotImporter:
                         )
                         files_touched[path_str] = FileEditRecord(
                             path=path_str,
-                            diff=diff_text,
+                            diff=redact(diff_text),
                             event="create" if name.startswith("create") else "edit",
                         )
                         tool_results[name] = (
@@ -1334,7 +1369,7 @@ class CopilotImporter:
                     if cmd:
                         display_cmd = cmd[:200]
                         idx = len(commands_run)
-                        commands_run.append(display_cmd)
+                        commands_run.append(redact(display_cmd))
                         indices = command_indices.setdefault(cmd, [])
                         if cmd != display_cmd:
                             command_indices.setdefault(display_cmd, indices)
@@ -1365,10 +1400,10 @@ class CopilotImporter:
                 if exit_code is None:
                     exit_code = data.get("code")
                 record = CommandRecord(
-                    command=cmd,
+                    command=redact(cmd),
                     exit_code=_int_or_none(exit_code),
-                    stdout=stdout,
-                    stderr=stderr,
+                    stdout=redact(stdout),
+                    stderr=redact(stderr),
                 )
                 command_match_indices = command_indices.get(cmd)
                 if not command_match_indices:
@@ -1391,7 +1426,7 @@ class CopilotImporter:
             if not data.get("ok"):
                 sig = data.get("error_signature")
                 if sig:
-                    errors_seen.add(str(sig))
+                    errors_seen.add(redact(str(sig)[:200]))
 
         elif etype in ("file_edit", "file_revert"):
             path = data.get("path")
@@ -1414,7 +1449,7 @@ class CopilotImporter:
                 )
                 files_touched[path_str] = FileEditRecord(
                     path=path_str,
-                    diff=diff_text,
+                    diff=redact(diff_text),
                     event="revert" if etype == "file_revert" else "edit",
                 )
 

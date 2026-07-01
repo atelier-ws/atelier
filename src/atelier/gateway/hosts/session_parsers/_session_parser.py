@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from atelier.gateway.hosts.session_parsers._common import _SYSTEM_PREFIXES_CLAUDE
+
 _NORMALIZED_SESSION_SOURCES = {
     "antigravity",
     "crush",
@@ -37,16 +39,9 @@ _NORMALIZED_SESSION_SOURCES = {
 # Maximum number of turns to return
 _MAX_TURNS = 1000
 
-# System-message prefixes to skip in user blocks (Claude + Codex)
-_SYSTEM_PREFIXES_CLAUDE = (
-    "<local-command",
-    "<ide_",
-    "<command-",
-    "<thinking>",
-    "I have been initialized",
-    "Environment context:",
-)
-
+# System-message prefixes to skip in user blocks (Codex). The Claude
+# equivalent lives in _common.py, shared with claude.py's own user-text
+# extraction so the two lists can't drift apart.
 _SYSTEM_PREFIXES_CODEX = (
     "<user_instructions>",
     "<environment_context>",
@@ -1109,6 +1104,13 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
     # Store global metadata to yield if no messages exist
     meta: dict[str, Any] = {}
 
+    # A single logical assistant message is often split across multiple
+    # JSONL lines sharing the same message.id (one line per content block),
+    # each repeating that message's usage. Track which turn already carries
+    # a msg_id's tokens so later lines enrich it (max-merge, matching
+    # _summarize_claude_usage) instead of tallying a fresh turn each time.
+    assistant_token_state: dict[str, dict[str, Any]] = {}
+
     for line in content.splitlines():
         try:
             ev = json.loads(line)
@@ -1285,7 +1287,26 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
                     )
 
             if blocks:
-                messages.setdefault(msg_id, []).extend(_apply_tokens_once(blocks, tokens))
+                if msg_id and msg_id in assistant_token_state:
+                    state = assistant_token_state[msg_id]
+                    normalized = _normalize_turn_tokens(tokens)
+                    merged = {
+                        key: max(state["tokens"].get(key) or 0, normalized.get(key) or 0)
+                        for key in set(state["tokens"]) | set(normalized)
+                    }
+                    if merged != state["tokens"]:
+                        state["turn"]["tokens"] = merged
+                        state["tokens"] = merged
+                    for block in blocks:
+                        block["tokens"] = {}
+                    messages.setdefault(msg_id, []).extend(blocks)
+                else:
+                    toked = _apply_tokens_once(blocks, tokens)
+                    messages.setdefault(msg_id, []).extend(toked)
+                    if msg_id:
+                        target = next((t for t in toked if t.get("tokens")), None)
+                        if target is not None:
+                            assistant_token_state[msg_id] = {"turn": target, "tokens": target["tokens"]}
 
         elif et == "attachment":
             attachment = ev.get("attachment") or {}

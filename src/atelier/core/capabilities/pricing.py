@@ -192,6 +192,15 @@ _PREVIEW_SUFFIX_RE = re.compile(r"-preview(?:-[a-z0-9.]+)*$", re.IGNORECASE)
 _ANTHROPIC_VERSION_RE = re.compile(r"^(claude-(?:opus|sonnet|haiku)-\d+)-\d+$")
 _TIER_SUFFIX_RE = re.compile(r"_above_(\d+)k_tokens$")
 
+# Vendor prefixes that denote flat-rate subscription usage rather than a real
+# provider/model namespace. The tail after the slash is frequently a real,
+# separately-billable model id (e.g. "copilot/gpt-5" -> "gpt-5"); generating
+# that as an alias would resolve straight through to the underlying model's
+# real per-token API rate and massively overbill usage that GitHub Copilot's
+# flat subscription fee already covers. See copilot.py's ``copilot/<model>``
+# namespacing.
+_SUBSCRIPTION_VENDOR_PREFIXES = frozenset({"copilot"})
+
 
 @dataclass(frozen=True)
 class PricingTier:
@@ -493,8 +502,9 @@ def _alias_candidates(model_id: str) -> set[str]:
         _add(anthropic_match.group(1))
 
     if "/" in model_id and model_id.count("/") == 1:
-        _, tail = model_id.split("/", 1)
-        _add(tail)
+        vendor, tail = model_id.split("/", 1)
+        if vendor not in _SUBSCRIPTION_VENDOR_PREFIXES:
+            _add(tail)
 
     return aliases
 
@@ -643,7 +653,9 @@ def get_model_pricing(model_id: str) -> ModelPricing:
     if hit := _lookup(model_id):
         return hit
 
-    # 2. Alias candidates on the raw id (strips "copilot/" prefix etc.)
+    # 2. Alias candidates on the raw id (strips vendor prefixes, e.g. "openai/"
+    #    -- but NOT subscription-only prefixes like "copilot/", see
+    #    _SUBSCRIPTION_VENDOR_PREFIXES)
     for alias in _alias_candidates(model_id):
         if hit := _lookup(alias):
             return hit

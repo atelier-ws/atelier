@@ -105,7 +105,10 @@ export function groupTurns(turns: any[]): any[] {
 
     if (prev && isTool && prev.kind === turn.kind) {
       const prevToolName = getNormName(prev);
-      if (prevToolName === toolName) {
+      // Same tool + kind can still target a different file (e.g. two
+      // consecutive file_edit turns) — only collapse when the path matches
+      // too, otherwise we'd drop all but the first turn's path/diff.
+      if (prevToolName === toolName && prev.path === turn.path) {
         prev.count = (prev.count || 1) + 1;
         prev.cost = (prev.cost || 0) + (turn.cost || 0);
         // Sum per-call Atelier savings across grouped turns so the badge

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -236,10 +235,13 @@ def _estimated_trace_cost_usd(trace: Trace) -> float:
     from atelier.core.capabilities.pricing import usage_cost_usd
     from atelier.core.capabilities.savings_summary import resolve_model_id
 
+    # No cross-host fallback model: a session with no recorded model prices at
+    # $0/unknown (get_model_pricing("") already returns a zero-cost sentinel)
+    # rather than being fabricated at another host's rate card.
     estimated = 0.0
     if trace.model_usages:
         for usage in trace.model_usages:
-            model = resolve_model_id(usage.model or trace.model or "claude-sonnet-4-5")
+            model = resolve_model_id(usage.model or trace.model)
             estimated += usage_cost_usd(
                 model,
                 input_tokens=int(usage.input_tokens or 0),
@@ -250,7 +252,7 @@ def _estimated_trace_cost_usd(trace: Trace) -> float:
             )
         return round(estimated, 6)
 
-    model = resolve_model_id(trace.model or "claude-sonnet-4-5")
+    model = resolve_model_id(trace.model)
     estimated = usage_cost_usd(
         model,
         input_tokens=int(trace.input_tokens or 0),
@@ -266,10 +268,11 @@ def _estimated_trace_cost_breakdown(trace: Trace) -> dict[str, float]:
     from atelier.core.capabilities.pricing import usage_cost_breakdown_usd
     from atelier.core.capabilities.savings_summary import resolve_model_id
 
+    # See _estimated_trace_cost_usd: no cross-host fallback model.
     breakdown = {"input": 0.0, "cache_read": 0.0, "cache_write": 0.0, "output": 0.0}
     if trace.model_usages:
         for usage in trace.model_usages:
-            model = resolve_model_id(usage.model or trace.model or "claude-sonnet-4-5")
+            model = resolve_model_id(usage.model or trace.model)
             part = usage_cost_breakdown_usd(
                 model,
                 input_tokens=int(usage.input_tokens or 0),
@@ -283,7 +286,7 @@ def _estimated_trace_cost_breakdown(trace: Trace) -> dict[str, float]:
             breakdown["cache_write"] += float(part.get("cache_write") or 0.0)
             breakdown["output"] += float(part.get("output") or 0.0)
     else:
-        model = resolve_model_id(trace.model or "claude-sonnet-4-5")
+        model = resolve_model_id(trace.model)
         part = usage_cost_breakdown_usd(
             model,
             input_tokens=int(trace.input_tokens or 0),
@@ -336,7 +339,7 @@ def _claude_subagent_cost_usd(session_id: str) -> float:
                 continue
             subagent_dir = candidate.parent / session_id / "subagents"
             if not subagent_dir.is_dir():
-                return 0.0
+                continue
             total = 0.0
             for subagent_file in subagent_dir.glob("*.jsonl"):
                 stats = read_transcript_stats(subagent_file)
@@ -415,6 +418,7 @@ def _live_sidecar_savings(
     pricing_model: str,
     breakdown: dict[str, float],
     input_tokens: int,
+    root: Path,
 ) -> tuple[float, int, int]:
     """Realized savings from the local MCP sidecar (sessions/<id>/savings.jsonl).
 
@@ -422,16 +426,15 @@ def _live_sidecar_savings(
     session's last Stop event, unlike the stop-hook block embedded in the
     transcript. Returns ``(saved_usd, saved_tokens, calls_avoided)`` - all zero
     when no local sidecar exists (e.g. a transcript imported from another
-    machine), so callers fall back to the portable transcript block.
+    machine), so callers fall back to the portable transcript block. *root* is
+    the CLI's ``--root`` (not env vars) so this looks in the same store the
+    rest of the command is reading from.
     """
     if not session_id:
         return 0.0, 0, 0
     try:
         from atelier.core.capabilities.savings_summary import _read_claude_session_savings
 
-        root = Path(
-            os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or (Path.home() / ".atelier")
-        )
         priced_tokens, calls, usd, unpriced = _read_claude_session_savings(session_id, root)
     except Exception:
         logging.exception("failed to read sidecar savings for session=%s", session_id)
@@ -544,15 +547,20 @@ def _emit_tree_rows_rich(rows: list[tuple[str, str]], console: RichConsole) -> N
             console.print(f"{prefix}  {' ' * 10} {value}")
 
 
-def _render_host_header_rich(host_name: str, scan_count: int) -> None:
-    """Rich-styled host section header for session hosts."""
+def _render_host_header_rich(host_name: str, imported_count: int) -> None:
+    """Rich-styled host section header for session hosts.
+
+    *imported_count* is the number of sessions actually imported for this
+    host this run -- the same count the rows printed below and the footer
+    totals reflect, so the three numbers agree.
+    """
     from rich.console import Console
 
     console = Console(highlight=False)
     console.print()
-    if scan_count > 0:
+    if imported_count > 0:
         console.rule(
-            f"[bold bright_magenta]{host_name}[/]  [dim]scanned this run: {scan_count}[/]",
+            f"[bold bright_magenta]{host_name}[/]  [dim]imported this run: {imported_count}[/]",
             style="dim",
         )
     else:
@@ -983,7 +991,7 @@ def _trace_model(trace: Trace) -> str:
     return "-"
 
 
-def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dict[str, Any]:
+def _build_session_row(trace: Trace, store: ContextStore, host_name: str, root: Path) -> dict[str, Any]:
     """Build a display row dict from a single imported trace."""
     sid = (trace.session_id or trace.id or "").strip()
     input_tokens = int(trace.input_tokens or 0)
@@ -1012,7 +1020,12 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
             carry_usd = float(block.carry_usd)
             carry_tokens = int(block.carry_tokens)
             block_tool_calls = int(block.tool_calls)
-            if block.est_cost_usd > 0:
+            # The block freezes at the session's last clean Stop event, so a
+            # resumed/interrupted session can under-report cost there even
+            # though the full-transcript estimate keeps counting past it —
+            # take whichever is larger (mirrors the savings max() below)
+            # instead of always trusting the block.
+            if block.est_cost_usd > total_cost_usd:
                 total_cost_usd = block.est_cost_usd
                 estimated_cost_usd = block.est_cost_usd
                 bucket_sum = sum(breakdown.values())
@@ -1027,12 +1040,13 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
         # another machine) yield zeros here, leaving the portable block/potential
         # path untouched.
         live_saved_usd, live_saved_tokens, live_calls = _live_sidecar_savings(
-            sid, pricing_model, breakdown, input_tokens
+            sid, pricing_model, breakdown, input_tokens, root
         )
         if live_saved_tokens > saved_tokens or live_calls > calls_avoided:
-            saved_usd = max(saved_usd, live_saved_usd)
-            saved_tokens = max(saved_tokens, live_saved_tokens)
-            calls_avoided = max(calls_avoided, live_calls)
+            # Take all three fields from the winning source together — mixing
+            # saved_usd from one source with saved_tokens from the other would
+            # produce a $/token ratio that matches neither.
+            saved_usd, saved_tokens, calls_avoided = live_saved_usd, live_saved_tokens, live_calls
     elif int(potential["atelier_calls"]) > 0:
         # Estimate actual savings for non-Claude hosts that routed work through
         # Atelier: fleet rate (tokens saved per routed call) x routed calls.
@@ -1189,11 +1203,13 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
         )
     )
 
-    if row.get("source") == "trace_fallback":
-        est = float(row["estimated_cost_usd"])
-        rep = float(row["reported_cost_usd"])
-        if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
-            detail.append(("cost-check", f"[yellow]estimated ${est:.4f} vs host-reported ${rep:.4f}[/]"))
+    # Flag a large estimated-vs-host-reported cost gap regardless of source:
+    # "trace_fallback" was never a value _build_session_row produces (always
+    # "host_sessions"), which made this check unreachable dead code.
+    est = float(row["estimated_cost_usd"])
+    rep = float(row["reported_cost_usd"])
+    if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
+        detail.append(("cost-check", f"[yellow]estimated ${est:.4f} vs host-reported ${rep:.4f}[/]"))
 
     # subagents
     if int(row["subagents"]) > 0:
@@ -1283,34 +1299,6 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
     _emit_tree_rows_rich(detail, console)
 
 
-def _sync_hosts_from_source(
-    *,
-    store_root: Path,
-    selected_hosts: list[str],
-    force: bool,
-    path: Path | None,
-) -> dict[str, int]:
-    from atelier.gateway.cli.commands.hosts import _ensure_import_progress_logging
-    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
-
-    _ensure_import_progress_logging()
-    store = _load_store(store_root)
-    store.init()
-    counts: dict[str, int] = {}
-    host_set = set(selected_hosts)
-    for host_name, importer_cls in iter_importer_classes():
-        if host_set and host_name not in host_set:
-            continue
-        try:
-            importer = importer_cls(store)
-            ids = importer.import_all(path, force=force) if path is not None else importer.import_all(force=force)
-            counts[host_name] = len(ids)
-        except Exception:
-            logging.exception("session hosts sync failed for host=%s", host_name)
-            counts[host_name] = 0
-    return counts
-
-
 def _path_mtime(path: Path) -> float:
     try:
         return float(path.stat().st_mtime)
@@ -1352,6 +1340,178 @@ def _pick_live_sessions(
     return picked
 
 
+def _import_live_host_sessions(
+    *,
+    host_name: str,
+    importer_cls: type[Any],
+    store: ContextStore,
+    path: Path | None,
+    force: bool,
+    max_per_host: int,
+    limit: int,
+    session_filter: str = "",
+    cutoff: datetime | None = None,
+) -> list[str]:
+    """Discover, filter, and import one host's live sessions into *store*.
+
+    Single source of truth for which sessions a live scan surfaces: both the
+    JSON presenter (``_scan_hosts_live``) and the text presenter
+    (``_stream_hosts_live``) call this, so --since/--id/--scan/--limit can
+    never disagree between them (previously JSON pre-filtered every host via
+    find_*()+pick while text special-cased a narrower host set — e.g. copilot
+    transcripts/debug-logs were only ever live-imported for JSON, and --since
+    was silently ignored for generic hosts in text mode).
+
+    Returns imported trace ids, newest-first.
+    """
+    if host_name == "codex":
+        from atelier.gateway.hosts.session_parsers.codex import CodexImporter, find_codex_sessions
+
+        codex_importer = CodexImporter(store)
+        picked = _pick_live_sessions(
+            list(find_codex_sessions(path)),
+            path_of=lambda p: p,
+            limit=limit,
+            scan=max_per_host,
+            session_filter=session_filter,
+            cutoff=cutoff,
+        )
+        imported: list[str] = []
+        for session_path in picked:
+            tid = codex_importer.import_session(session_path, force=force)
+            if tid:
+                imported.append(tid)
+        return imported
+
+    if host_name == "claude":
+        from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter, find_claude_sessions
+
+        claude_importer = ClaudeImporter(store)
+        claude_root = path if path is not None else None
+        picked_sessions = _pick_live_sessions(
+            list(find_claude_sessions(claude_root)),
+            path_of=lambda item: item[1],
+            limit=limit,
+            scan=max_per_host,
+            session_filter=session_filter,
+            cutoff=cutoff,
+        )
+        imported = []
+        for workspace_slug, session_path in picked_sessions:
+            tid = claude_importer.import_session(workspace_slug, session_path, force=force)
+            if tid:
+                imported.append(tid)
+        return imported
+
+    if host_name == "copilot":
+        from atelier.gateway.hosts.session_parsers.copilot import (
+            CopilotImporter,
+            find_copilot_debug_log_dirs,
+            find_copilot_sessions,
+            find_copilot_transcript_files,
+        )
+
+        copilot_importer = CopilotImporter(store)
+        imported = []
+        picked_sessions = _pick_live_sessions(
+            list(find_copilot_sessions(path)),
+            path_of=lambda p: p,
+            limit=limit,
+            scan=max_per_host,
+            session_filter=session_filter,
+            cutoff=cutoff,
+        )
+        for session_dir in picked_sessions:
+            tid = copilot_importer.import_session(session_dir, force=force)
+            if tid:
+                imported.append(tid)
+        # Transcript files and debug-log directories are copilot's other two
+        # session sources (CopilotImporter.import_all imports all three) --
+        # apply the same since/--id/--scan filters so text and JSON agree.
+        picked_transcripts = _pick_live_sessions(
+            list(find_copilot_transcript_files(path)),
+            path_of=lambda p: p,
+            limit=limit,
+            scan=max_per_host,
+            session_filter=session_filter,
+            cutoff=cutoff,
+        )
+        for transcript_path in picked_transcripts:
+            tid = copilot_importer.import_transcript_file(transcript_path, force=force)
+            if tid:
+                imported.append(tid)
+        picked_debug = _pick_live_sessions(
+            list(find_copilot_debug_log_dirs(path)),
+            path_of=lambda p: p,
+            limit=limit,
+            scan=max_per_host,
+            session_filter=session_filter,
+            cutoff=cutoff,
+        )
+        for debug_log_dir in picked_debug:
+            tid = copilot_importer.import_debug_log_dir(debug_log_dir, force=force)
+            if tid:
+                imported.append(tid)
+        return imported
+
+    if host_name == "opencode":
+        from atelier.gateway.hosts.session_parsers.opencode import (
+            OpenCodeImporter,
+            find_opencode_sessions,
+        )
+        from atelier.gateway.hosts.session_parsers.opencode import (
+            _ms_to_dt as _oc_ms_to_dt,
+        )
+
+        oc_db = path or (Path.home() / ".local/share/opencode/opencode.db")
+        if not oc_db.exists():
+            return []
+        opencode_importer = OpenCodeImporter(store)
+        all_oc = find_opencode_sessions(oc_db)  # already newest-first (ORDER BY time_created DESC)
+        if cutoff is not None:
+            all_oc = [r for r in all_oc if _oc_ms_to_dt(r.get("time_created")) >= cutoff]
+        if session_filter:
+            all_oc = [r for r in all_oc if session_filter in str(r.get("id") or "").lower()]
+        picked_oc = all_oc[:max_per_host][:limit]
+        imported = []
+        for session_row in picked_oc:
+            tid = opencode_importer.import_session(session_row, oc_db, force=force)
+            if tid:
+                imported.append(tid)
+        return imported
+
+    # Generic importers (antigravity, cursor, ...): no per-file discovery is
+    # exposed at this layer to pre-filter before import, so when there's
+    # nothing to filter by, import exactly `limit` newest sessions (cheap
+    # path, matches the other hosts' picked count). Only pay for scanning up
+    # to `max_per_host` when --since/--id require looking past the newest
+    # `limit` sessions for a match -- contract: import_all(limit=N) returns
+    # the N newest sessions, newest-first.
+    import_cap = max_per_host if (cutoff is not None or session_filter) else limit
+    generic_importer: Any = importer_cls(store)
+    imported_ids = list(
+        generic_importer.import_all(path, force=force, limit=import_cap)
+        if path is not None
+        else generic_importer.import_all(force=force, limit=import_cap)
+    )
+    if cutoff is None and not session_filter:
+        return imported_ids[:limit]
+    filtered: list[str] = []
+    for tid in imported_ids:
+        trace = store.get_trace(tid)
+        if trace is None:
+            continue
+        if cutoff is not None and trace.created_at < cutoff:
+            continue
+        sid = (trace.session_id or trace.id or "").strip().lower()
+        if session_filter and session_filter not in sid:
+            continue
+        filtered.append(tid)
+        if len(filtered) >= limit:
+            break
+    return filtered
+
+
 def _scan_hosts_live(
     *,
     selected_hosts: list[str],
@@ -1361,15 +1521,16 @@ def _scan_hosts_live(
     limit: int,
     session_filter: str = "",
     cutoff: datetime | None = None,
-) -> tuple[dict[str, int], ContextStore, tempfile.TemporaryDirectory[str]]:
-    from atelier.gateway.hosts.session_parsers.claude import (
-        ClaudeImporter,
-        find_claude_sessions,
-    )
-    from atelier.gateway.hosts.session_parsers.codex import (
-        CodexImporter,
-        find_codex_sessions,
-    )
+) -> tuple[dict[str, int], dict[str, list[str]], ContextStore, tempfile.TemporaryDirectory[str]]:
+    """JSON presenter: live-import each selected host via ``_import_live_host_sessions``.
+
+    Returns ``(counts, imported_ids_by_host, store, tmp)``. Callers should
+    build display rows from ``imported_ids_by_host`` directly rather than
+    re-querying ``store.list_traces(since=cutoff, ...)``: the picking above
+    already filtered by --since against file mtime / session activity, and a
+    second created_at-based filter can disagree with it (e.g. an active,
+    long-running session whose first event predates the window).
+    """
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     tmp = tempfile.TemporaryDirectory(prefix="atelier-session-hosts-")
@@ -1378,58 +1539,30 @@ def _scan_hosts_live(
     store.init()
 
     counts: dict[str, int] = {}
+    imported_by_host: dict[str, list[str]] = {}
     host_set = set(selected_hosts)
     for host_name, importer_cls in iter_importer_classes():
         if host_set and host_name not in host_set:
             continue
         try:
-            # Lazy fast-path: pick only the newest sessions the display can
-            # actually show (limit rows, pre-filtered), never the full scan.
-            if host_name == "codex":
-                codex_importer = CodexImporter(store)
-                imported = 0
-                picked_paths = _pick_live_sessions(
-                    list(find_codex_sessions(path)),
-                    path_of=lambda p: p,
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                for session_path in picked_paths:
-                    if codex_importer.import_session(session_path, force=force):
-                        imported += 1
-                counts[host_name] = imported
-                continue
-            if host_name == "claude":
-                claude_importer = ClaudeImporter(store)
-                imported = 0
-                claude_root = path if path is not None else None
-                picked_sessions = _pick_live_sessions(
-                    list(find_claude_sessions(claude_root)),
-                    path_of=lambda item: item[1],
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                for workspace_slug, session_path in picked_sessions:
-                    if claude_importer.import_session(workspace_slug, session_path, force=force):
-                        imported += 1
-                counts[host_name] = imported
-                continue
-
-            generic_importer: Any = importer_cls(store)
-            imported_ids = list(
-                generic_importer.import_all(path, force=force, limit=limit)
-                if path is not None
-                else generic_importer.import_all(force=force, limit=limit)
+            imported_ids = _import_live_host_sessions(
+                host_name=host_name,
+                importer_cls=importer_cls,
+                store=store,
+                path=path,
+                force=force,
+                max_per_host=max_per_host,
+                limit=limit,
+                session_filter=session_filter,
+                cutoff=cutoff,
             )
             counts[host_name] = len(imported_ids)
+            imported_by_host[host_name] = imported_ids
         except Exception:
             logging.exception("session hosts live scan failed for host=%s", host_name)
             counts[host_name] = 0
-    return counts, store, tmp
+            imported_by_host[host_name] = []
+    return counts, imported_by_host, store, tmp
 
 
 def _stream_hosts_live(
@@ -1439,27 +1572,17 @@ def _stream_hosts_live(
     path: Path | None,
     max_per_host: int,
     limit: int,
+    root: Path,
     session_filter: str = "",
     cutoff: datetime | None = None,
     verbose: bool = False,
 ) -> list[dict[str, Any]]:
-    """Scan host session files and stream-display each session as it's imported.
+    """Text presenter: live-import each selected host and stream-print rows.
 
-    For claude/codex/copilot/opencode: per-session streaming (each session
-    appears immediately after it's parsed).
-    For other generic importers (antigravity, cursor): per-host streaming
-    (sessions appear together after import_all completes for that host).
+    Delegates discovery/filtering/import to ``_import_live_host_sessions`` --
+    the same routine ``_scan_hosts_live`` (JSON) uses -- so text and JSON
+    output can never diverge on which sessions get shown.
     """
-    from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter, find_claude_sessions
-    from atelier.gateway.hosts.session_parsers.codex import CodexImporter, find_codex_sessions
-    from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter, find_copilot_sessions
-    from atelier.gateway.hosts.session_parsers.opencode import (  # type: ignore[attr-defined]
-        OpenCodeImporter,
-        find_opencode_sessions,
-    )
-    from atelier.gateway.hosts.session_parsers.opencode import (
-        _ms_to_dt as _oc_ms_to_dt,
-    )
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     tmp = tempfile.TemporaryDirectory(prefix="atelier-session-hosts-")
@@ -1475,126 +1598,34 @@ def _stream_hosts_live(
         if host_set and host_name not in host_set:
             continue
         try:
-            if host_name == "codex":
-                importer_c = CodexImporter(store)
-                picked = _pick_live_sessions(
-                    list(find_codex_sessions(path)),
-                    path_of=lambda p: p,
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                if not picked:
-                    continue
-                any_found = True
-                _render_host_header_rich(host_name, len(picked))
-                for session_path in picked:
-                    tid = importer_c.import_session(session_path, force=force)
-                    if tid:
-                        trace = store.get_trace(tid)
-                        if trace:
-                            row = _build_session_row(trace, store, host_name)
-                            collected_rows.append(row)
-                            _print_session_row(row, verbose)
-                continue
-
-            if host_name == "claude":
-                claude_imp = ClaudeImporter(store)
-                claude_root = path if path is not None else None
-                picked_cl = _pick_live_sessions(
-                    list(find_claude_sessions(claude_root)),
-                    path_of=lambda item: item[1],
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                if not picked_cl:
-                    continue
-                any_found = True
-                _render_host_header_rich(host_name, len(picked_cl))
-                for workspace_slug, session_path in picked_cl:
-                    tid = claude_imp.import_session(workspace_slug, session_path, force=force)
-                    if tid:
-                        trace = store.get_trace(tid)
-                        if trace:
-                            row = _build_session_row(trace, store, host_name)
-                            collected_rows.append(row)
-                            _print_session_row(row, verbose)
-                continue
-
-            if host_name == "copilot":
-                importer_cop = CopilotImporter(store)
-                picked_cop = _pick_live_sessions(
-                    list(find_copilot_sessions(path)),
-                    path_of=lambda p: p,
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                if not picked_cop:
-                    continue
-                any_found = True
-                _render_host_header_rich(host_name, len(picked_cop))
-                for session_dir in picked_cop:
-                    tid = importer_cop.import_session(session_dir, force=force)
-                    if tid:
-                        trace = store.get_trace(tid)
-                        if trace:
-                            row = _build_session_row(trace, store, host_name)
-                            collected_rows.append(row)
-                            _print_session_row(row, verbose)
-                continue
-
-            if host_name == "opencode":
-                importer_oc = OpenCodeImporter(store)
-                oc_db = path or (Path.home() / ".local/share/opencode/opencode.db")
-                if oc_db.exists():
-                    all_oc = find_opencode_sessions(oc_db)
-                    if cutoff is not None:
-                        all_oc = [r for r in all_oc if _oc_ms_to_dt(r.get("time_created")) >= cutoff]
-                    picked_oc = all_oc[:limit]
-                    if picked_oc:
-                        any_found = True
-                        _render_host_header_rich(host_name, len(picked_oc))
-                        for session_row in picked_oc:
-                            tid = importer_oc.import_session(session_row, oc_db, force=force)
-                            if tid:
-                                trace = store.get_trace(tid)
-                                if trace:
-                                    row = _build_session_row(trace, store, host_name)
-                                    collected_rows.append(row)
-                                    _print_session_row(row, verbose)
-                continue
-
-            # Generic importer: batch import_all then stream display
-            generic_importer: Any = importer_cls(store)
-            imported_ids = list(
-                generic_importer.import_all(path, force=force, limit=limit)
-                if path is not None
-                else generic_importer.import_all(force=force, limit=limit)
+            imported_ids = _import_live_host_sessions(
+                host_name=host_name,
+                importer_cls=importer_cls,
+                store=store,
+                path=path,
+                force=force,
+                max_per_host=max_per_host,
+                limit=limit,
+                session_filter=session_filter,
+                cutoff=cutoff,
             )
-            if not imported_ids:
-                continue
-            any_found = True
-            _render_host_header_rich(host_name, len(imported_ids))
-            displayed = 0
-            for sid in imported_ids:
-                trace = store.get_trace(sid)
-                if trace is None:
-                    continue
-                row = _build_session_row(trace, store, host_name)
-                if session_filter and session_filter not in (row.get("session_id") or "").lower():
-                    continue
-                _print_session_row(row, verbose)
-                collected_rows.append(row)
-                displayed += 1
-                if displayed >= limit:
-                    break
         except Exception:
             logging.exception("session hosts live scan failed for host=%s", host_name)
+            continue
+        if not imported_ids:
+            continue
+        any_found = True
+        # Header count is the actual imported/displayed count for this host
+        # (not a pre-import "picked" estimate), so it agrees with what's
+        # printed below and with the footer totals.
+        _render_host_header_rich(host_name, len(imported_ids))
+        for tid in imported_ids:
+            trace = store.get_trace(tid)
+            if trace is None:
+                continue
+            row = _build_session_row(trace, store, host_name, root)
+            collected_rows.append(row)
+            _print_session_row(row, verbose)
 
     tmp.cleanup()
 
@@ -1666,9 +1697,10 @@ def session_list_cmd(
     if as_json:
         # Batch mode for JSON output: scan all hosts, collect rows, then dump.
         sync_counts: dict[str, int] = {}
+        live_ids: dict[str, list[str]] = {}
         temp_handle: tempfile.TemporaryDirectory[str] | None = None
         if source_mode == "live":
-            sync_counts, store, temp_handle = _scan_hosts_live(
+            sync_counts, live_ids, store, temp_handle = _scan_hosts_live(
                 selected_hosts=selected_hosts,
                 force=force,
                 path=path,
@@ -1683,15 +1715,26 @@ def session_list_cmd(
         grouped: dict[str, list[dict[str, Any]]] = {}
         try:
             for host_name in selected_hosts:
-                traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
                 rows: list[dict[str, Any]] = []
-                for trace in traces:
-                    sid = (trace.session_id or trace.id or "").strip()
-                    if session_filter and session_filter not in sid.lower():
-                        continue
-                    rows.append(_build_session_row(trace, store, host_name))
-                    if len(rows) >= limit:
-                        break
+                if source_mode == "live":
+                    # Live picks are already filtered by since/--id/--scan at
+                    # import time against file mtime / session activity;
+                    # re-filtering by created_at here would disagree with that
+                    # (see _scan_hosts_live docstring) and is why text/JSON
+                    # used to show different sessions for the same query.
+                    for tid in live_ids.get(host_name, []):
+                        trace = store.get_trace(tid)
+                        if trace is not None:
+                            rows.append(_build_session_row(trace, store, host_name, root))
+                else:
+                    traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
+                    for trace in traces:
+                        sid = (trace.session_id or trace.id or "").strip()
+                        if session_filter and session_filter not in sid.lower():
+                            continue
+                        rows.append(_build_session_row(trace, store, host_name, root))
+                        if len(rows) >= limit:
+                            break
                 if rows:
                     grouped[host_name] = rows
 
@@ -1719,7 +1762,7 @@ def session_list_cmd(
                 sid = (trace.session_id or trace.id or "").strip()
                 if session_filter and session_filter not in sid.lower():
                     continue
-                rows_store.append(_build_session_row(trace, store, host_name))
+                rows_store.append(_build_session_row(trace, store, host_name, root))
                 if len(rows_store) >= limit:
                     break
             if rows_store:
@@ -1741,13 +1784,16 @@ def session_list_cmd(
         path=path,
         max_per_host=scan,
         limit=limit,
+        root=root,
         session_filter=session_filter,
         cutoff=cutoff,
         verbose=verbose,
     )
-    active_rows = [r for r in displayed_rows if int(r["tool_calls"]) > 0 or int(r["input_tokens"]) > 0]
-    if active_rows:
-        _render_hosts_footer_rich(active_rows, since or f"{limit} sessions")
+    # Every row here was already successfully imported and printed above, so
+    # the footer total agrees with the per-host header counts and the rows
+    # the user just saw (no separate "active-only" re-filter to disagree).
+    if displayed_rows:
+        _render_hosts_footer_rich(displayed_rows, since or f"{limit} sessions")
 
 
 # ---------------------------------------------------------------------------
@@ -1931,10 +1977,22 @@ def _print_stats(
 @session_group.command("stats")
 @click.option("--since", "since_str", default=None, help="Time window, e.g. 1d, 7d, 30d. Default: 7d.")
 @click.option("--limit", default=None, type=int, help="Most-recent N sessions (alternative to --since).")
-@click.option("--host", "hosts_filter", multiple=True, help="Filter by host (can repeat).")
+@click.option(
+    "--host",
+    "hosts_filter",
+    multiple=True,
+    type=click.Choice(list(SUPPORTED_SESSION_IMPORT_HOSTS)),
+    help="Filter by host (can repeat).",
+)
 @click.option("--source", type=click.Choice(["live", "store"]), default="live", show_default=True)
 @click.option("--top", default=5, show_default=True, type=int, help="Top sessions by cost to list.")
-@click.option("--path", "data_path", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--path",
+    "data_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override source path for the selected host (requires exactly one --host).",
+)
 @click.pass_context
 def session_stats_cmd(
     ctx: click.Context,
@@ -1952,26 +2010,32 @@ def session_stats_cmd(
     root = Path(ctx.obj["root"])
     selected_hosts = list(hosts_filter) if hosts_filter else list(SUPPORTED_SESSION_IMPORT_HOSTS)
 
+    if data_path is not None and len(selected_hosts) != 1:
+        raise click.ClickException("--path requires exactly one --host")
+
     if limit:
         cutoff: datetime | None = None
         scan_cap = limit
         label = f"{limit} sessions"
+        since_mode = False
     else:
         since_str = since_str or "7d"
         cutoff = datetime.now(UTC) - _parse_duration(since_str)
         scan_cap = 15  # practical limit per host; active large sessions can be slow to parse
         label = since_str
+        since_mode = True
 
     all_rows: list[dict[str, Any]] = []
+    truncated = False
 
     if source == "store":
         store = _load_store(root)
         for hn in selected_hosts:
             for trace in store.list_traces(host=hn, since=cutoff, limit=scan_cap):
-                all_rows.append(_build_session_row(trace, store, hn))
+                all_rows.append(_build_session_row(trace, store, hn, root))
     else:
         click.echo(f"Scanning last {label} across {len(selected_hosts)} host(s)…", err=True)
-        _sync_counts, store, tmp_handle = _scan_hosts_live(
+        _sync_counts, live_ids, store, tmp_handle = _scan_hosts_live(
             selected_hosts=selected_hosts,
             force=False,
             path=data_path,
@@ -1981,8 +2045,17 @@ def session_stats_cmd(
         )
         try:
             for hn in selected_hosts:
-                for trace in store.list_traces(host=hn, since=cutoff, limit=scan_cap):
-                    all_rows.append(_build_session_row(trace, store, hn))
+                # Live picks are already filtered by --since against file
+                # mtime / session activity; use them directly rather than
+                # re-querying the temp store by created_at (see
+                # _scan_hosts_live docstring for why the two can disagree).
+                ids = live_ids.get(hn, [])
+                if since_mode and len(ids) >= scan_cap:
+                    truncated = True
+                for tid in ids:
+                    trace = store.get_trace(tid)
+                    if trace is not None:
+                        all_rows.append(_build_session_row(trace, store, hn, root))
         finally:
             tmp_handle.cleanup()
 
@@ -1991,6 +2064,12 @@ def session_stats_cmd(
     if not all_rows:
         click.echo(f"No sessions found in the last {label}.")
         return
+
+    if truncated:
+        # scan_cap is a per-host parse-cost cap, not a claim about the full
+        # window -- say so explicitly instead of a header that implies
+        # completeness ("Last 7d") while silently dropping older matches.
+        label = f"{label} (capped at {scan_cap}/host, more may exist)"
 
     _render_stats_rich(all_rows, label, top)
 

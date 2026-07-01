@@ -15,6 +15,7 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_session_line,
     make_tool_call,
     make_user_message,
+    parse_datetime,
     record_normalized_session,
 )
 
@@ -68,9 +69,24 @@ class AntigravityImporter:
     ) -> str | None:
         if not calls:
             return None
-        first_timestamp = str(
-            calls[0].get("timestamp") or datetime.fromtimestamp(cache_path.stat().st_mtime, tz=UTC).isoformat()
-        )
+        cache_mtime = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=UTC)
+        first_timestamp = str(calls[0].get("timestamp") or cache_mtime.isoformat())
+        # Per-cascade recency: the shared cache file's mtime bumps on every
+        # cascade in the file, so keying dedup on it re-imports every
+        # cascade whenever any one of them gets a new call. Use this
+        # cascade's own newest call timestamp instead (parsed, not compared
+        # as raw strings, since the source format isn't guaranteed to be a
+        # lexicographically-sortable ISO string).
+        session_mtime: datetime | None = None
+        for call in calls:
+            raw_ts = call.get("timestamp")
+            if not raw_ts:
+                continue
+            parsed_ts = parse_datetime(raw_ts, default=cache_mtime)
+            if session_mtime is None or parsed_ts > session_mtime:
+                session_mtime = parsed_ts
+        if session_mtime is None:
+            session_mtime = cache_mtime
         events: list[dict[str, Any]] = [make_session_line(cascade_id, timestamp=first_timestamp, title="antigravity")]
         seen_call_ids: set[str] = set()
         previous_unidentified_call = ""
@@ -126,7 +142,7 @@ class AntigravityImporter:
             relative_path=f"{cache_path.name}:{cascade_id}",
             content_path=f"raw/antigravity/{cascade_id}.jsonl",
             raw_content=raw_content,
-            source_mtime=datetime.fromtimestamp(cache_path.stat().st_mtime, tz=UTC),
+            source_mtime=session_mtime,
             force=force,
             task="antigravity",
         )

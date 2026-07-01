@@ -3,7 +3,10 @@
 #
 # DESIGN PHILOSOPHY:
 # 1. Models known to LiteLLM (like gpt-5.5) are automatically resolved via alias
-#    stripping (e.g. "copilot/gpt-5.5" -> "gpt-5.5").
+#    stripping (e.g. "openai/gpt-5.5" -> "gpt-5.5"). Subscription-only vendor
+#    prefixes (e.g. "copilot/gpt-5.5") are exempt from this stripping -- see
+#    _SUBSCRIPTION_VENDOR_PREFIXES in pricing.py -- so they fall through to the
+#    zero-cost default instead of billing the underlying model's real rate.
 # 2. This file contains entries for models that are either:
 #    a) Missing from LiteLLM (like internal host aliases).
 #    b) Subscription-covered but deserve a "market value" proxy to show

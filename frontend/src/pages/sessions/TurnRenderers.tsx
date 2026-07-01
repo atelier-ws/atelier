@@ -817,7 +817,10 @@ export function CommandDetail({
   const isObj = typeof command !== "string";
   const text = isObj ? command.command : command;
   const rc = isObj ? command.exit_code : null;
-  const ok = rc === 0 || rc === null;
+  // Omitted exit_code (undefined) is exactly as unknown as an explicit
+  // null — neither means failure, so neither should render red.
+  const unknownExit = rc === null || rc === undefined;
+  const ok = unknownExit || rc === 0;
 
   return (
     <div className="overflow-hidden rounded-none border border-neutral-800 bg-surface-raised group/cmd">
@@ -839,7 +842,11 @@ export function CommandDetail({
               <span
                 className={cx(
                   "text-[10px] font-black tracking-widest font-mono",
-                  ok ? "text-emerald-600" : "text-red-600"
+                  unknownExit
+                    ? "text-neutral-400"
+                    : ok
+                      ? "text-emerald-600"
+                      : "text-red-600"
                 )}
               >
                 EXIT_{rc ?? "?"}
