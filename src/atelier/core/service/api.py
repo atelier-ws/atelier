@@ -5470,8 +5470,16 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         trace_usage_entries = _trace_usage_entries(trace_payload)
         trace_model_usages = _trace_model_usages(trace_payload)
 
-        started_at = trace.created_at
-        ended_at = trace.created_at
+        # Seed from the real conversation timestamps, not trace.created_at:
+        # that field is when this trace record was written (import/ingest
+        # time), which — for a session imported after it finished — is at or
+        # after every real turn. Seeding both bounds with it and only ever
+        # raising ended_at (never lowering it) pins ended_at at import time
+        # forever even though the true last turn is earlier. Track the real
+        # min/max across turns instead and fall back to trace.created_at only
+        # when no turn has a parseable timestamp at all.
+        started_at: datetime | None = None
+        ended_at: datetime | None = None
         active_duration_seconds = 0.0
         current_active_start: datetime | None = None
 
@@ -5491,9 +5499,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         for turn in conversations:
             parsed_at = _parse_session_datetime(turn.get("at"))
             if parsed_at is not None:
-                if parsed_at < started_at:
+                if started_at is None or parsed_at < started_at:
                     started_at = parsed_at
-                if parsed_at > ended_at:
+                if ended_at is None or parsed_at > ended_at:
                     ended_at = parsed_at
                 if turn.get("kind") == "user_message":
                     current_active_start = parsed_at
@@ -5550,6 +5558,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 bucket["calls"] += 1
                 bucket["cost_usd"] += turn_total_cost
 
+        if started_at is None:
+            started_at = trace.created_at
+        if ended_at is None:
+            ended_at = trace.created_at
         duration_seconds = max(0.0, (ended_at - started_at).total_seconds())
         if active_duration_seconds <= 0:
             active_duration_seconds = duration_seconds
@@ -5930,6 +5942,17 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             try:
                 snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
                 report = build_report(snap, root)
+                # build_report()'s started_at prefers the oldest *surviving*
+                # ledger event, but RunLedger.events is a bounded/evicted list
+                # (see run_ledger.py _MAX_RETAINED_EVENTS) — for a long
+                # session the true first event can be evicted, drifting
+                # started_at forward until it looks like processing time. The
+                # ledger's own created_at is written once at session start
+                # and is never evicted, so it's always <= the true first
+                # event and is the authoritative floor.
+                snap_created_at = _parse_session_datetime(snap.get("created_at"))
+                if snap_created_at is not None and snap_created_at < report.started_at:
+                    report.started_at = snap_created_at
                 payload = _build_session_payload(report)
                 payload["updated_at"] = datetime.fromtimestamp(f.stat().st_mtime, tz=UTC).isoformat()
                 results.append(payload)
@@ -5944,7 +5967,13 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 continue
             try:
                 payload = _build_imported_session_payload(sid, trace, store_inst, root=root)
-                payload["updated_at"] = trace.created_at.isoformat()
+                # trace.created_at is when this trace record was ingested
+                # (import time), not the session's real last activity — use
+                # the payload's own ended_at (the real last turn timestamp,
+                # or trace.created_at when no turn has a parseable one) so a
+                # session that finished long before it was imported doesn't
+                # sort as if it just happened.
+                payload["updated_at"] = payload.get("ended_at") or trace.created_at.isoformat()
                 results.append(payload)
                 seen_session_ids.add(sid)
             except Exception:

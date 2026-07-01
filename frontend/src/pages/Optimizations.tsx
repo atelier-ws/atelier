@@ -11,6 +11,7 @@ import {
   type OptimizationAdvisorCompactionPolicy,
   type OptimizationAdvisorHistoryEntry,
   type OptimizationImpactValidation,
+  type OutcomesSummary,
 } from "../api";
 import {
   Chip,
@@ -22,13 +23,7 @@ import {
   cx,
 } from "../components/WorkbenchUI";
 import { useTimeRange } from "../lib/TimeRangeContext";
-
-const usdFmt = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { fmtUsd } from "../lib/format";
 
 const COMPACTION_LABELS: Record<string, string> = {
   prompt_cache_reorder: "Prompt-cache reorder",
@@ -52,12 +47,6 @@ function fmtTokens(value: number): string {
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toLocaleString();
-}
-
-function fmtUsd(value: number): string {
-  if (value === 0) return "$0.00";
-  if (Math.abs(value) < 0.01) return `$${value.toFixed(4)}`;
-  return usdFmt.format(value);
 }
 
 function fmtDeltaPercent(value: number): string {
@@ -108,7 +97,8 @@ function deltaTone(
 }
 
 function collectSessionEvidence(
-  recommendations: OptimizationRecommendation[]
+  recommendations: OptimizationRecommendation[],
+  highExtraReadSessionIds: string[] = []
 ): SessionEvidence[] {
   const byTrace = new Map<string, SessionEvidence>();
   recommendations.forEach((recommendation) => {
@@ -124,6 +114,22 @@ function collectSessionEvidence(
           estimatedTokensSaved: recommendation.estimated_tokens_saved,
         });
       }
+    });
+  });
+  // Outcomes sessions with elevated post-compaction re-read rates join this
+  // list too — they're evidence the current policy is losing context, same
+  // as the token/cost-driven recommendations above.
+  highExtraReadSessionIds.forEach((sessionId) => {
+    if (byTrace.has(sessionId)) return;
+    byTrace.set(sessionId, {
+      trace_id: sessionId,
+      reason: "Elevated re-read rate after compaction (outcomes tracker).",
+      recommendationId: "outcomes-high-extra-reads",
+      recommendationTitle: "High extra reads after compaction",
+      recommendationSeverity: "medium",
+      recommendationAction: "Review compaction retention for this session.",
+      estimatedUsdSaved: 0,
+      estimatedTokensSaved: 0,
     });
   });
   return Array.from(byTrace.values());
@@ -951,10 +957,57 @@ function OptimizationComparison({
   );
 }
 
-function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
+function SupportingEvidence({
+  summary,
+  outcomes,
+}: {
+  summary: OptimizationsSummary;
+  outcomes: OutcomesSummary | null;
+}) {
   return (
     <section className="space-y-4">
       <SectionHeader eyebrow="Supporting evidence" title="Evidence" />
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard
+          label="Route decisions"
+          value={outcomes ? outcomes.route_decisions.toLocaleString() : "—"}
+          detail={
+            outcomes && outcomes.route_decisions > 0
+              ? `avg score ${outcomes.route_avg_score.toFixed(3)}`
+              : "no routing decisions observed"
+          }
+          tone="cyan"
+        />
+        <MetricCard
+          label="Route avg score"
+          value={
+            outcomes && outcomes.route_decisions > 0
+              ? outcomes.route_avg_score.toFixed(3)
+              : "—"
+          }
+          tone={qualityTone(outcomes?.route_avg_score ?? 0)}
+        />
+        <MetricCard
+          label="Compact events"
+          value={outcomes ? outcomes.compact_events.toLocaleString() : "—"}
+          detail={
+            outcomes && outcomes.compact_events > 0
+              ? `avg score ${outcomes.compact_avg_score.toFixed(3)}`
+              : "no compaction events observed"
+          }
+          tone="violet"
+        />
+        <MetricCard
+          label="Compact avg score"
+          value={
+            outcomes && outcomes.compact_events > 0
+              ? outcomes.compact_avg_score.toFixed(3)
+              : "—"
+          }
+          tone={qualityTone(outcomes?.compact_avg_score ?? 0)}
+        />
+      </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <MetricCard
@@ -1097,7 +1150,8 @@ function SupportingEvidence({ summary }: { summary: OptimizationsSummary }) {
 
 export default function Optimizations() {
   const [summary, setSummary] = useState<OptimizationsSummary | null>(null);
-  const { days } = useTimeRange();
+  const [outcomes, setOutcomes] = useState<OutcomesSummary | null>(null);
+  const { days, range } = useTimeRange();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
@@ -1114,6 +1168,13 @@ export default function Optimizations() {
       .catch((error) => setErr(String(error)))
       .finally(() => setLoading(false));
   }, [days]);
+
+  useEffect(() => {
+    api
+      .outcomesSummary(range)
+      .then(setOutcomes)
+      .catch(() => setOutcomes(null));
+  }, [range]);
 
   useEffect(() => {
     if (!summary) return;
@@ -1174,9 +1235,12 @@ export default function Optimizations() {
   const sessionEvidence = useMemo(
     () =>
       summary
-        ? collectSessionEvidence(summary.recommendations.recommendations)
+        ? collectSessionEvidence(
+            summary.recommendations.recommendations,
+            outcomes?.sessions_with_high_extra_reads ?? []
+          )
         : [],
-    [summary]
+    [summary, outcomes]
   );
 
   if (err) return <div className="p-6 text-red-300">Error: {err}</div>;
@@ -1352,7 +1416,7 @@ export default function Optimizations() {
 
       <SessionsBehindRecommendation evidence={sessionEvidence} />
 
-      <SupportingEvidence summary={summary} />
+      <SupportingEvidence summary={summary} outcomes={outcomes} />
     </div>
   );
 }

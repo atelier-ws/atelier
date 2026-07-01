@@ -182,23 +182,20 @@ describe("Sessions page", () => {
     ).toBe(true);
   });
 
-  it("falls back to trace token counts when summary tokens are zero", async () => {
+  it("prefixes the session-row cost with ~ for estimated costs, and offers host/workspace filters", async () => {
     mockFetch({
       "/api/traces": jsonResponse(sampleTraces),
-      "/api/v1/sessions": jsonResponse([
-        {
-          ...sampleSessions[0],
-          input_tokens: 0,
-          output_tokens: 0,
-          cached_input_tokens: 0,
-        },
-      ]),
+      "/api/v1/sessions": jsonResponse(sampleSessions),
     });
     renderSessions();
     expect(await screen.findByText("Fix login bug")).toBeInTheDocument();
-    expect(screen.getAllByText("500").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("200").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("100").length).toBeGreaterThanOrEqual(1);
+    // sampleSessions[0].cost_status is "estimated" — the row's Cost cell
+    // (the token grid was cut down to Cost + Saved only) must show the ~
+    // prefix that distinguishes it from a recorded cost.
+    expect(screen.getByText("~$0.420")).toBeInTheDocument();
+    expect(screen.getAllByText("$0.100").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Filter by host")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by workspace")).toBeInTheDocument();
   });
 
   it("shows empty state when no sessions", async () => {

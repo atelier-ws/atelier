@@ -663,6 +663,158 @@ class TestListSessions:
         running_item = next(item for item in data if item["session_id"] == "sess-running")
         assert running_item["ended_at"] is None
 
+    def test_running_session_started_at_uses_real_created_at_not_evicted_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root-cause regression: build_report()'s started_at prefers the
+        oldest *surviving* ledger event, but RunLedger.events is a bounded,
+        evicted list for long sessions — the true first event can be evicted,
+        drifting started_at forward until it looks like processing time
+        instead of the session's real start. The ledger's own created_at is
+        recorded once at session start and is never evicted, so /v1/sessions
+        must prefer it whenever it is earlier than the reconstructed
+        started_at. A running session must also still surface ended_at: null
+        and sort above an older, fully completed session.
+        """
+        now = datetime.now(UTC)
+        real_start = now - timedelta(hours=2)
+
+        def write_run(session_id: str, *, status: str, created_at: datetime, event_at: datetime, mtime: float) -> None:
+            runs_dir = tmp_path / "sessions" / session_id
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            snap = _run_snapshot(session_id)
+            snap["status"] = status
+            snap["created_at"] = created_at.isoformat()
+            snap["updated_at"] = event_at.isoformat()
+            # Simulate a bounded/evicted events list: only a recent event
+            # survived, well after the ledger's real created_at.
+            snap["events"] = [{"kind": "tool_call", "at": event_at.isoformat(), "tool": "Bash"}]
+            path = runs_dir / "run.json"
+            path.write_text(json.dumps(snap))
+            os.utime(path, (mtime, mtime))
+
+        # Older, fully completed session.
+        write_run(
+            "sess-completed-old",
+            status="done",
+            created_at=now - timedelta(days=1),
+            event_at=now - timedelta(days=1) + timedelta(minutes=5),
+            mtime=(now - timedelta(days=1)).timestamp(),
+        )
+        # Running session: real start 2h ago, but only a recent surviving
+        # event remains in the bounded ledger events list.
+        write_run(
+            "sess-running",
+            status="running",
+            created_at=real_start,
+            event_at=now - timedelta(minutes=1),
+            mtime=now.timestamp(),
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        data = listing.json()
+
+        session_ids = [item["session_id"] for item in data]
+        assert session_ids.index("sess-running") < session_ids.index("sess-completed-old")
+
+        running_item = next(item for item in data if item["session_id"] == "sess-running")
+        assert running_item["ended_at"] is None
+        assert datetime.fromisoformat(running_item["started_at"]) == real_start
+
+    def test_completed_session_keeps_real_ended_at_after_started_at(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A completed session must never invert started_at/ended_at: ended_at
+        must reflect the real last activity and stay after started_at."""
+        now = datetime.now(UTC)
+        started = now - timedelta(hours=1)
+        ended = now - timedelta(minutes=10)
+
+        runs_dir = tmp_path / "sessions" / "sess-done"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        snap = _run_snapshot("sess-done")
+        snap["status"] = "done"
+        snap["created_at"] = started.isoformat()
+        snap["updated_at"] = ended.isoformat()
+        snap["events"] = [
+            {"kind": "tool_call", "at": started.isoformat(), "tool": "Bash"},
+            {"kind": "tool_call", "at": ended.isoformat(), "tool": "Bash"},
+        ]
+        (runs_dir / "run.json").write_text(json.dumps(snap))
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        item = next(row for row in listing.json() if row["session_id"] == "sess-done")
+
+        assert item["ended_at"] is not None
+        started_dt = datetime.fromisoformat(item["started_at"])
+        ended_dt = datetime.fromisoformat(item["ended_at"])
+        assert ended_dt > started_dt
+
+    def test_imported_session_ended_at_reflects_real_last_turn_not_import_time(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root-cause regression: _build_imported_session_payload used to seed
+        both started_at and ended_at from trace.created_at (import/ingest
+        time) and only ever *raise* ended_at from there — for a session
+        imported after it finished (trace.created_at is always >= every real
+        turn), ended_at stayed pinned at import time forever instead of the
+        real last turn. The fixture's turn is dated 2026-05-16; trace.created_at
+        defaults to "now" (test run time), which is always later —
+        reproducing the real-world import-after-the-fact case.
+        """
+        session_id = "claude-import-ts"
+        artifact_id = "artifact-import-ts"
+        content, _ = _build_imported_host_fixture("claude")
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            source="claude",
+            content=content,
+        )
+        _write_imported_trace(
+            tmp_path,
+            session_id,
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=100,
+            output_tokens=50,
+            raw_artifact_ids=[artifact_id],
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        item = next(row for row in listing.json() if row["session_id"] == session_id)
+
+        real_turn_at = datetime.fromisoformat("2026-05-16T00:00:05+00:00")
+        assert datetime.fromisoformat(item["started_at"]) == real_turn_at
+        assert datetime.fromisoformat(item["ended_at"]) == real_turn_at
+        # updated_at must track the real last activity, not import time.
+        assert datetime.fromisoformat(item["updated_at"]) == real_turn_at
+
     def test_naive_turn_timestamp_does_not_500(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regression for finding 4: an offset-less ISO turn timestamp used to
         parse as a naive datetime and raise (TypeError: can't compare

@@ -42,21 +42,6 @@ async function getText(path: string): Promise<string> {
   return res.text();
 }
 
-export interface OverviewStats {
-  total_traces: number;
-  total_blocks: number;
-  total_rubrics: number;
-  total_clusters: number;
-  total_raw_tokens_estimate: number;
-  total_saved_tokens_estimate: number;
-  total_compressed_tokens_estimate: number;
-  average_compression_ratio: number;
-  estimated_total_cost_usd: number;
-  estimated_saved_cost_usd: number;
-  usd_per_1k_tokens: number;
-  is_estimate: boolean;
-}
-
 export interface SwarmArtifactRef {
   kind: string;
   label: string;
@@ -613,29 +598,6 @@ export interface Cluster {
   severity: string;
 }
 
-export interface SavingsPerOp {
-  op_key: string;
-  domain?: string;
-  task_sample?: string;
-  baseline_cost_usd: number;
-  last_cost_usd: number;
-  current_cost_usd: number;
-  delta_vs_last_usd: number;
-  delta_vs_base_usd: number;
-  pct_vs_base: number;
-  calls_count: number;
-}
-
-export interface SavingsSummary {
-  operations_tracked: number;
-  total_calls: number;
-  would_have_cost_usd: number;
-  actually_cost_usd: number;
-  saved_usd: number;
-  saved_pct: number;
-  per_operation: SavingsPerOp[];
-}
-
 export interface SavingsByDay {
   day: string;
   naive: number;
@@ -1149,21 +1111,6 @@ export interface OptimizationsSummary {
     label: string;
     detail: string;
   }>;
-}
-
-export interface CallEntry {
-  session_id: string;
-  domain?: string;
-  task?: string;
-  operation: string;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cost_usd: number;
-  lessons_used: string[];
-  op_key: string;
-  at: string;
 }
 
 export interface Rubric {
@@ -1702,12 +1649,6 @@ export interface TraceListResponse {
 }
 
 export const api = {
-  overview: (days?: number) => {
-    const params = new URLSearchParams();
-    if (days) params.set("days", String(days));
-    const suffix = params.size ? `?${params.toString()}` : "";
-    return get<OverviewStats>(`/overview${suffix}`);
-  },
   granularAnalytics: (
     agent?: string,
     category?: string,
@@ -1782,7 +1723,6 @@ export const api = {
   clusters: () => get<Cluster[]>("/clusters"),
   blocks: () => get<Playbook[]>("/blocks"),
   block: (id: string) => get<Playbook>(`/blocks/${id}`),
-  savings: () => get<SavingsSummary>("/savings"),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
   optimizationsSummary: (windowDays = 14) =>
@@ -1826,7 +1766,6 @@ export const api = {
     post<WorkflowCurrentDetail>("/v1/workflow/current/stop", {
       reason: reason || null,
     }),
-  calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
   mcp_status: () => get<MCPStatus[]>("/mcp/status"),

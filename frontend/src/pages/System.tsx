@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState, type ElementType } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
+  Activity,
   Archive,
   Bot,
   Brain,
@@ -11,18 +12,24 @@ import {
   ChevronRight,
   ChevronUp,
   Command,
+  Flag,
   HardDrive,
   Heart,
+  HeartPulse,
+  Hexagon,
+  Layers,
   Microscope,
   Minus,
   Plus,
   Search,
+  Sparkles,
   Terminal,
   Wrench,
 } from "lucide-react";
 import {
   api,
   type Agent,
+  type HealthResponse,
   type HostAdapter,
   type MCPStatus,
   type Skill,
@@ -34,7 +41,14 @@ import {
   DisclosureCard,
   EmptyState,
   FieldLabel,
+  MetricCard,
+  SectionHeader,
+  ToggleGroup,
 } from "../components/WorkbenchUI";
+import { fmtDate } from "../lib/format";
+import Telemetry from "./Telemetry";
+import Watchdogs from "./Watchdogs";
+import ProjectionInspector from "./ProjectionInspector";
 
 // ---------------------------------------------------------------------------
 // Hosts section
@@ -309,9 +323,7 @@ function AgentCard({
                   size={14}
                   className={`transition-transform ${expanded ? "rotate-90" : ""}`}
                 />
-                <span className="font-bold text-sm">
-                  {agent.name}
-                </span>
+                <span className="font-bold text-sm">{agent.name}</span>
               </span>
               {agent.model && (
                 <Chip
@@ -786,96 +798,142 @@ export function ToolsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Main System page: Host → Agents → Skills → Tools
+// Health section — daemon health + per-host adapter status. Also surfaced
+// as a compact strip on Overview (see components/HealthStrip.tsx); this is
+// the only other place it appears, per the approved IA.
 // ---------------------------------------------------------------------------
 
-function SystemPageFrame({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
+function HealthSection() {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthErr, setHealthErr] = useState(false);
+  const [hosts, setHosts] = useState<HostAdapter[] | null>(null);
+
+  useEffect(() => {
+    Promise.allSettled([api.health(), api.hosts()]).then(([h, hs]) => {
+      if (h.status === "fulfilled") setHealth(h.value);
+      else setHealthErr(true);
+      if (hs.status === "fulfilled") setHosts(hs.value);
+    });
+  }, []);
+
+  const activeHosts = (hosts ?? []).filter((h) => h.status === "active");
+
   return (
-    <div className="space-y-8 p-6 text-sm">
-      <section className="border border-neutral-800 bg-neutral-950/70 p-5">
-        <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-neutral-400">
-            System
-          </div>
-          <h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>
-          <p className="max-w-3xl text-sm text-neutral-400">{description}</p>
+    <section className="space-y-3">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
+        Health
+      </h2>
+      <p className="text-xs text-neutral-400">
+        Daemon liveness plus per-host adapter status. Last-import time per host
+        is not tracked yet — `last_seen` reflects host detection, not the most
+        recent import.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <MetricCard
+          label="Daemon"
+          value={health?.status ?? (healthErr ? "unreachable" : "…")}
+          detail={health?.timestamp ? fmtDate(health.timestamp) : undefined}
+          tone={
+            health?.status === "ok" ? "emerald" : healthErr ? "red" : "neutral"
+          }
+        />
+        <MetricCard
+          label="Hosts reporting"
+          value={hosts ? `${activeHosts.length}/${hosts.length}` : "…"}
+          tone="cyan"
+        />
+      </div>
+      {hosts && hosts.length === 0 ? (
+        <EmptyState title="No host adapters found" className="p-4" />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(hosts ?? []).map((host) => (
+            <Card key={host.host_id} className="p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-neutral-200">{host.label}</span>
+                <Chip tone={host.status === "active" ? "emerald" : "neutral"}>
+                  {host.status}
+                </Chip>
+              </div>
+              <div className="mt-1 text-[10px] text-neutral-400">
+                {host.last_seen
+                  ? `Last seen ${fmtDate(host.last_seen)}`
+                  : "No activity recorded yet."}
+              </div>
+            </Card>
+          ))}
         </div>
-      </section>
-      <div className="space-y-10">{children}</div>
-    </div>
+      )}
+    </section>
   );
 }
 
-const LEGACY_TAB_ROUTES: Record<string, string> = {
-  hosts: "/system/hosts",
-  agents: "/system/agents",
-  skills: "/system/skills",
-  mcp: "/system/mcp",
-};
+// ---------------------------------------------------------------------------
+// Main System page: /system/:section — Health → Hosts → Agents → Skills →
+// MCP → Telemetry → Watchdogs → Projection
+// ---------------------------------------------------------------------------
 
-export function SystemHosts() {
-  return (
-    <SystemPageFrame
-      title="Host adapters"
-      description="Installed host integrations and the environments where Atelier is active."
-    >
-      <HostsSection />
-    </SystemPageFrame>
-  );
-}
+type Section =
+  | "health"
+  | "hosts"
+  | "agents"
+  | "skills"
+  | "mcp"
+  | "telemetry"
+  | "watchdogs"
+  | "projection";
 
-export function SystemAgents() {
-  return (
-    <SystemPageFrame
-      title="Agent catalog"
-      description="Available built-in agents, their models, tools, and source definitions."
-    >
-      <AgentsSection />
-    </SystemPageFrame>
-  );
-}
-
-export function SystemSkills() {
-  return (
-    <SystemPageFrame
-      title="Skill catalog"
-      description="Installed skills with descriptions and expandable source content."
-    >
-      <SkillsSection />
-    </SystemPageFrame>
-  );
-}
-
-export function SystemMcp() {
-  return (
-    <SystemPageFrame
-      title="MCP tools"
-      description="Grouped stdio MCP tool availability, descriptions, and runtime mode."
-    >
-      <ToolsSection />
-    </SystemPageFrame>
-  );
-}
+const SECTIONS: { id: Section; label: string; icon: ElementType }[] = [
+  { id: "health", label: "Health", icon: HeartPulse },
+  { id: "hosts", label: "Hosts", icon: Hexagon },
+  { id: "agents", label: "Agents", icon: Bot },
+  { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "mcp", label: "MCP", icon: Command },
+  { id: "telemetry", label: "Telemetry", icon: Activity },
+  { id: "watchdogs", label: "Watchdogs", icon: Flag },
+  { id: "projection", label: "Projection", icon: Layers },
+];
 
 export default function System() {
-  const [searchParams] = useSearchParams();
-  const legacyTab = searchParams.get("tab");
+  const { section } = useParams<{ section?: string }>();
+  const navigate = useNavigate();
+  const active = (section as Section) || "health";
+
+  const setSection = (s: Section) =>
+    navigate(`/system/${s}`, { replace: true });
+
   return (
-    <Navigate
-      to={
-        legacyTab && LEGACY_TAB_ROUTES[legacyTab]
-          ? LEGACY_TAB_ROUTES[legacyTab]
-          : "/system/hosts"
-      }
-      replace
-    />
+    <div className="space-y-8 p-6 text-sm">
+      <SectionHeader
+        eyebrow="System"
+        title="Runtime & host system"
+        description="Daemon health, host adapters, agents, skills, MCP tools, telemetry, watchdogs, and the projection inspector."
+      />
+
+      <ToggleGroup
+        variant="underline"
+        size="sm"
+        options={SECTIONS.map((s) => ({
+          value: s.id,
+          label: (
+            <span className="flex items-center gap-1.5">
+              <s.icon size={14} />
+              <span>{s.label}</span>
+            </span>
+          ),
+        }))}
+        value={active}
+        onChange={(value) => setSection(value as Section)}
+      />
+
+      {active === "health" && <HealthSection />}
+      {active === "hosts" && <HostsSection />}
+      {active === "agents" && <AgentsSection />}
+      {active === "skills" && <SkillsSection />}
+      {active === "mcp" && <ToolsSection />}
+      {active === "telemetry" && <Telemetry />}
+      {active === "watchdogs" && <Watchdogs />}
+      {active === "projection" && <ProjectionInspector />}
+    </div>
   );
 }

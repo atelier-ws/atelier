@@ -2,18 +2,14 @@ import { useEffect, useState } from "react";
 import { useTimeRange } from "../lib/TimeRangeContext";
 import LeverBar from "../components/LeverBar";
 import SavingsTimeChart from "../components/SavingsTimeChart";
+import { EmptyState } from "../components/WorkbenchUI";
+import { fmtUsd } from "../lib/format";
 import type {
   SavingsProofSession,
   SavingsSummaryV2,
   SavingsVerificationSummary,
 } from "../api";
 import { api } from "../api";
-
-const usdFmt = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 4,
-});
 
 const fmt = new Intl.NumberFormat();
 
@@ -59,21 +55,6 @@ function Sparkline({ values }: { values: number[] }) {
     >
       <polyline fill="none" stroke="#06b6d4" strokeWidth="3" points={points} />
     </svg>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="border border-neutral-800 bg-neutral-950/70 p-6 text-neutral-300">
-      <h2 className="font-mono text-lg text-neutral-100 mb-2">
-        No savings telemetry yet
-      </h2>
-      <p className="text-sm text-neutral-400">
-        Run any task with{" "}
-        <code className="bg-neutral-900 px-1">atelier mcp</code> enabled to
-        start collecting savings telemetry.
-      </p>
-    </div>
   );
 }
 
@@ -153,9 +134,9 @@ export default function Savings() {
               {data.reduction_pct.toFixed(1)}%
             </div>
             <p className="text-sm text-neutral-400 mt-3">
-              {usdFmt.format(data.saved_usd ?? 0)} saved of{" "}
-              {usdFmt.format(data.would_have_cost_usd ?? 0)} would-have-cost
-              over the last {data.window_days} days —{" "}
+              {fmtUsd(data.saved_usd ?? 0)} saved of{" "}
+              {fmtUsd(data.would_have_cost_usd ?? 0)} would-have-cost over the
+              last {data.window_days} days —{" "}
               {fmt.format(data.total_naive_tokens)} tokens kept out of the model
               across {fmt.format(data.live_calls_saved ?? 0)} avoided calls.
             </p>
@@ -180,7 +161,7 @@ export default function Savings() {
             Cost Saved
           </div>
           <div className="text-2xl font-semibold text-emerald-300">
-            {usdFmt.format(data.saved_usd ?? 0)}
+            {fmtUsd(data.saved_usd ?? 0)}
           </div>
           {(data.saved_pct ?? 0) > 0 && (
             <div className="text-xs text-emerald-300 mt-1">
@@ -193,14 +174,14 @@ export default function Savings() {
             Actual Cost
           </div>
           <div className="text-2xl font-semibold text-neutral-200">
-            {usdFmt.format(data.actually_cost_usd ?? 0)}
+            {fmtUsd(data.actually_cost_usd ?? 0)}
           </div>
           <div className="text-xs text-neutral-400 mt-1">
             {data.cost_basis === "session_ledger"
-              ? `realized session spend (${usdFmt.format(data.saved_usd ?? 0)} saved)`
+              ? `realized session spend (${fmtUsd(data.saved_usd ?? 0)} saved)`
               : data.cost_basis === "context_budget"
-                ? `tracked from context-budget rows (${usdFmt.format(data.tracked_actual_cost_usd ?? 0)} actual / ${usdFmt.format(data.tracked_baseline_cost_usd ?? 0)} baseline)`
-                : `live estimate ${usdFmt.format(data.live_saved_usd ?? 0)}`}
+                ? `tracked from context-budget rows (${fmtUsd(data.tracked_actual_cost_usd ?? 0)} actual / ${fmtUsd(data.tracked_baseline_cost_usd ?? 0)} baseline)`
+                : `live estimate ${fmtUsd(data.live_saved_usd ?? 0)}`}
           </div>
         </div>
         <div className="border border-neutral-800 bg-neutral-950/50 p-4">
@@ -247,7 +228,16 @@ export default function Savings() {
       )}
 
       {!hasData ? (
-        <EmptyState />
+        <EmptyState
+          title="No savings telemetry yet"
+          description={
+            <>
+              Run any task with{" "}
+              <code className="bg-neutral-900 px-1">atelier mcp</code> enabled
+              to start collecting savings telemetry.
+            </>
+          }
+        />
       ) : (
         <>
           <section className="border border-neutral-800 bg-neutral-950/70 p-5">
@@ -287,7 +277,7 @@ export default function Savings() {
                     Cost saved
                   </div>
                   <div className="text-2xl font-semibold text-emerald-300">
-                    {usdFmt.format(latestBenchmark.cost_saved_usd)}
+                    {fmtUsd(latestBenchmark.cost_saved_usd)}
                   </div>
                 </div>
                 <div>
@@ -351,7 +341,7 @@ export default function Savings() {
                           {fmt.format(source.tokens_saved)}
                         </td>
                         <td className="py-2 text-right text-emerald-300">
-                          {usdFmt.format(source.cost_saved_usd)}
+                          {fmtUsd(source.cost_saved_usd)}
                         </td>
                       </tr>
                     ))}
@@ -404,13 +394,13 @@ export default function Savings() {
                           {fmt.format(tool.session_count)}
                         </td>
                         <td className="py-2 pr-4 text-right text-neutral-200">
-                          {usdFmt.format(tool.actual_cost_usd)}
+                          {fmtUsd(tool.actual_cost_usd)}
                         </td>
                         <td className="py-2 pr-4 text-right text-neutral-400">
-                          {usdFmt.format(tool.baseline_cost_usd)}
+                          {fmtUsd(tool.baseline_cost_usd)}
                         </td>
                         <td className="py-2 pr-4 text-right text-emerald-300">
-                          {usdFmt.format(tool.saved_cost_usd)}
+                          {fmtUsd(tool.saved_cost_usd)}
                         </td>
                         <td className="py-2 text-right">
                           {fmt.format(tool.saved_tokens)}
@@ -489,25 +479,6 @@ export default function Savings() {
           )}
         </>
       )}
-
-      <section className="border border-neutral-800 bg-neutral-950/60 p-5">
-        <h2 className="text-xs uppercase tracking-widest font-mono text-neutral-400 mb-2">
-          Why this matters
-        </h2>
-        <p className="text-sm text-neutral-300 leading-relaxed">
-          This view breaks savings down by lever so regressions are visible
-          immediately, not hidden in a single aggregate metric. See the
-          <a
-            className="text-cyan-300 hover:text-cyan-200 ml-1"
-            href="/docs/architecture/IMPLEMENTATION_PLAN_V2.md"
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            V2 implementation plan
-          </a>{" "}
-          for the methodology.
-        </p>
-      </section>
     </div>
   );
 }
@@ -741,10 +712,7 @@ function SessionProofCard({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs min-w-[280px]">
-          <Metric
-            label="Saved Cost"
-            value={usdFmt.format(session.saved_cost_usd)}
-          />
+          <Metric label="Saved Cost" value={fmtUsd(session.saved_cost_usd)} />
           <Metric
             label="Saved Tokens"
             value={fmt.format(session.saved_tokens)}
@@ -798,7 +766,7 @@ function SessionProofCard({
                   {fmt.format(item.saved_tokens)}
                 </td>
                 <td className="py-2 text-right text-emerald-300">
-                  {usdFmt.format(item.saved_cost_usd)}
+                  {fmtUsd(item.saved_cost_usd)}
                 </td>
               </tr>
             ))}

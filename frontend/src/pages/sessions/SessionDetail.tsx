@@ -13,9 +13,8 @@ import {
   fmtDate,
   fmtDuration,
   parseAt,
-  parseInspectorData,
-  groupTurns,
-} from "./helpers";
+} from "../../lib/format";
+import { parseInspectorData, groupTurns } from "./helpers";
 import { StatusDot } from "./StatusBadge";
 import { FileDetail, getFileEditInfo, type FileEditInfo } from "./DiffView";
 import {
@@ -220,29 +219,72 @@ function SidebarList({
   );
 }
 
+function truncateMiddle(value: string, keepEach = 6): string {
+  if (value.length <= keepEach * 2 + 1) return value;
+  return `${value.slice(0, keepEach)}…${value.slice(-keepEach)}`;
+}
+
 function MetaPill({
   label,
   value,
   tone = "neutral",
+  copyValue,
 }: {
   label: string;
   value: string;
   tone?: "neutral" | "violet" | "amber";
+  /** When set, the pill truncates `value` and copies this on click. */
+  copyValue?: string;
 }) {
+  const [copied, setCopied] = useState(false);
+  const toneClass =
+    tone === "violet"
+      ? "border-violet-900/30 bg-violet-950/25 text-violet-200"
+      : tone === "amber"
+        ? "border-amber-900/30 bg-amber-950/25 text-amber-200"
+        : "border-neutral-800 bg-black/20 text-neutral-400";
+
+  if (copyValue === undefined) {
+    return (
+      <span
+        className={cx(
+          "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em]",
+          toneClass
+        )}
+      >
+        <span className="text-neutral-400">{label}</span>
+        <span className="normal-case tracking-normal text-current">
+          {value}
+        </span>
+      </span>
+    );
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyValue);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard may be disabled */
+    }
+  };
+
   return (
-    <span
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Copy: ${copyValue}`}
       className={cx(
-        "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em]",
-        tone === "violet"
-          ? "border-violet-900/30 bg-violet-950/25 text-violet-200"
-          : tone === "amber"
-            ? "border-amber-900/30 bg-amber-950/25 text-amber-200"
-            : "border-neutral-800 bg-black/20 text-neutral-400"
+        "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em] transition hover:border-neutral-600",
+        toneClass
       )}
     >
       <span className="text-neutral-400">{label}</span>
-      <span className="normal-case tracking-normal text-current">{value}</span>
-    </span>
+      <span className="normal-case tracking-normal text-current">
+        {copied ? "Copied" : truncateMiddle(value)}
+      </span>
+    </button>
   );
 }
 
@@ -256,6 +298,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
   const [inspectorData, setInspectorData] = useState<RunInspectorData | null>(
     null
   );
+  const [outcomes, setOutcomes] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [allExpanded, setAllExpanded] = useState(false);
@@ -269,11 +312,13 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       api.sessionReport(sessionId).catch(() => null),
       api.trace(sessionId).catch(() => null),
       api.ledger(sessionId).catch(() => null),
+      api.outcomesForSession(sessionId).catch(() => []),
     ])
-      .then(([rep, tr, led]) => {
+      .then(([rep, tr, led, outcomeEntries]) => {
         setReport(rep);
         setTrace(tr);
         if (led) setInspectorData(parseInspectorData(sessionId, led));
+        setOutcomes(outcomeEntries);
         setLoading(false);
       })
       .catch((e) => {
@@ -281,6 +326,27 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
         setLoading(false);
       });
   }, [sessionId]);
+
+  // Average outcome_window.outcome_score across all entries of one kind
+  // ("route" | "compact") returned by api.outcomesForSession.
+  const outcomeScore = useMemo(() => {
+    return (kind: string): number | null => {
+      const scores = outcomes
+        .filter((entry) => entry.kind === kind)
+        .map((entry) => {
+          const window = entry.outcome_window as
+            | Record<string, unknown>
+            | undefined;
+          const score = window?.outcome_score;
+          return typeof score === "number" ? score : null;
+        })
+        .filter((value): value is number => value !== null);
+      if (scores.length === 0) return null;
+      return scores.reduce((a, b) => a + b, 0) / scores.length;
+    };
+  }, [outcomes]);
+  const routeScore = outcomeScore("route");
+  const compactScore = outcomeScore("compact");
 
   const activeDurationSecs = useMemo(() => {
     if (
@@ -436,7 +502,11 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 {trace?.task || "Execution Detail"}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
-                <MetaPill label="Session" value={sessionId} />
+                <MetaPill
+                  label="Session"
+                  value={sessionId}
+                  copyValue={sessionId}
+                />
                 <MetaPill
                   label="Started"
                   value={fmtDate(report?.started_at || trace?.created_at)}
@@ -486,7 +556,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-5 gap-1.5">
             <HeaderStat
               label="Cost"
               value={
@@ -504,7 +574,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
               tone="emerald"
             />
             <HeaderStat
-              label="Input"
+              label="Tokens"
               value={
                 report || trace || inspectorData
                   ? (() => {
@@ -523,51 +593,18 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                         report?.cache_write_tokens ??
                         trace?.cache_creation_input_tokens ??
                         0;
-                      return fmtTok(newIn + cw);
-                    })()
-                  : "—"
-              }
-              title={
-                report
-                  ? `${fmtTok(report.input_tokens)} new + ${fmtTok(report.cache_write_tokens)} cache-write`
-                  : undefined
-              }
-            />
-            <HeaderStat
-              label="Output"
-              value={
-                report || trace || inspectorData
-                  ? fmtTok(
-                      report?.output_tokens ??
+                      const out =
+                        report?.output_tokens ??
                         trace?.output_tokens ??
                         inspectorData?.tokens_post ??
-                        0
-                    )
-                  : "—"
-              }
-            />
-            <HeaderStat
-              label="Cache"
-              value={
-                report || trace
-                  ? (() => {
-                      const cr =
-                        report?.cache_read_tokens ??
-                        trace?.cached_input_tokens ??
                         0;
-                      const cw =
-                        report?.cache_write_tokens ??
-                        trace?.cache_creation_input_tokens ??
-                        0;
-                      return cw > 0
-                        ? `${fmtTok(cr)} / ${fmtTok(cw)}`
-                        : fmtTok(cr);
+                      return `${fmtTok(newIn + cw)} / ${fmtTok(out)}`;
                     })()
                   : "—"
               }
               title={
                 report
-                  ? `${fmtTok(report.cache_read_tokens)} cache-read · ${fmtTok(report.cache_write_tokens)} cache-write`
+                  ? `in: ${fmtTok(report.input_tokens)} new + ${fmtTok(report.cache_write_tokens)} cache-write · out: ${fmtTok(report.output_tokens)} · cache-read: ${fmtTok(report.cache_read_tokens)}`
                   : undefined
               }
             />
@@ -707,31 +744,6 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 </h3>
                 <div className="grid gap-4">
                   <SidebarMetric
-                    label="Total cost"
-                    value={report ? fmtUsd(report.total_cost_usd) : "—"}
-                    color="text-amber-300"
-                  />
-                  <SidebarMetric
-                    label="Model Savings"
-                    value={
-                      report ? fmtUsd(report.total_atelier_savings_usd) : "—"
-                    }
-                    color="text-emerald-300"
-                  />
-                  <SidebarMetric
-                    label="Started Model"
-                    value={startedModel || "—"}
-                    color="text-violet-300"
-                  />
-                  <SidebarMetric
-                    label="Total Tokens"
-                    value={
-                      report
-                        ? fmtTok(report.input_tokens + report.output_tokens)
-                        : "—"
-                    }
-                  />
-                  <SidebarMetric
                     label="Input Cost"
                     value={report ? fmtUsd(report.input_token_cost_usd) : "—"}
                   />
@@ -744,6 +756,24 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     value={report ? fmtUsd(report.cache_read_cost_usd) : "—"}
                   />
                 </div>
+                {(routeScore !== null || compactScore !== null) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {routeScore !== null && (
+                      <MetaPill
+                        label="Route outcome"
+                        value={routeScore.toFixed(2)}
+                        tone="violet"
+                      />
+                    )}
+                    {compactScore !== null && (
+                      <MetaPill
+                        label="Compact outcome"
+                        value={compactScore.toFixed(2)}
+                        tone="amber"
+                      />
+                    )}
+                  </div>
+                )}
               </section>
 
               {report?.top_tools_by_cost &&

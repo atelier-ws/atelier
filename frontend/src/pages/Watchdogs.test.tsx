@@ -93,63 +93,6 @@ describe("Watchdogs page", () => {
             })
           );
         }
-        if (url.includes("/api/traces")) {
-          return Promise.resolve(
-            jsonResponse({
-              items: [
-                {
-                  id: "t1",
-                  agent: "copilot",
-                  task: "task",
-                  status: "completed",
-                  files_touched: [],
-                  tools_called: [],
-                  commands_run: [],
-                  errors_seen: [],
-                  repeated_failures: [{ signature: "sig", count: 2 }],
-                  validation_results: [{ name: "lint", passed: false }],
-                  created_at: "2026-05-08T00:00:00Z",
-                },
-              ],
-              metrics: {
-                stats: { total: 1, success: 1, failed: 0, partial: 0 },
-                hosts: [],
-                domains: [],
-              },
-            })
-          );
-        }
-        if (url.includes("/api/plans")) {
-          return Promise.resolve(
-            jsonResponse([
-              {
-                trace_id: "t1",
-                domain: "coding",
-                task: "task",
-                status: "blocked",
-                plan_checks: [],
-              },
-            ])
-          );
-        }
-        if (url.includes("/api/clusters")) {
-          return Promise.resolve(
-            jsonResponse([
-              {
-                id: "c1",
-                domain: "coding",
-                fingerprint: "f",
-                trace_ids: [],
-                sample_errors: [],
-                suggested_block_title: "",
-                suggested_rubric_check: "",
-                suggested_eval_case: "",
-                suggested_prompt: "",
-                severity: "medium",
-              },
-            ])
-          );
-        }
         return Promise.resolve(new Response("not found", { status: 404 }));
       }
     );
@@ -158,6 +101,10 @@ describe("Watchdogs page", () => {
 
     expect(await screen.findByText("Watchdog profile")).toBeInTheDocument();
     expect(await screen.findByText("saved to runtime")).toBeInTheDocument();
+    // Guardrail pressure / observed sessions (derived from api.traces /
+    // api.plans / api.clusters) were removed — Watchdogs only loads config.
+    expect(screen.queryByText("Guardrail pressure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Observed sessions")).not.toBeInTheDocument();
 
     const select = await screen.findByRole("combobox", {
       name: "Select watchdog profile",
