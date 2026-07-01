@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pause, RefreshCw, Square } from "lucide-react";
-import { api, type WorkflowCurrentDetail } from "../api";
+import { api, type WorkflowCurrentDetail } from "../../api";
 import {
   Button,
   Card,
@@ -11,25 +11,9 @@ import {
   PageHero,
   SnippetCard,
   cx,
-} from "../components/WorkbenchUI";
-
-function fmtDate(value?: string | null): string {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
-}
-
-function statusTone(
-  value: string
-): "emerald" | "amber" | "red" | "purple" | "neutral" {
-  if (value === "success") return "emerald";
-  if (value === "running" || value === "pending" || value === "awaiting_review")
-    return "amber";
-  if (value === "failed" || value === "stopped") return "red";
-  if (value === "paused" || value === "review_rejected") return "purple";
-  return "neutral";
-}
+} from "../../components/WorkbenchUI";
+import { fmtDate } from "../../lib/format";
+import { statusTone } from "../../lib/status";
 
 function snippet(value: unknown): string {
   if (value == null) return "{}";
@@ -41,7 +25,9 @@ function snippet(value: unknown): string {
   }
 }
 
-export default function Workflow() {
+// Workspace-local `workflow` runtime snapshot, folded into Runs as a
+// collapsed section (see pages/Runs.tsx). Not a historical run ledger.
+export function WorkflowSection() {
   const [detail, setDetail] = useState<WorkflowCurrentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<"pause" | "stop" | null>(null);
@@ -90,7 +76,9 @@ export default function Workflow() {
   const handlePause = async () => {
     setActing("pause");
     try {
-      const payload = await api.pauseWorkflowCurrent(actionReason.trim() || undefined);
+      const payload = await api.pauseWorkflowCurrent(
+        actionReason.trim() || undefined
+      );
       setDetail(payload);
       setError(null);
     } catch (err) {
@@ -105,7 +93,9 @@ export default function Workflow() {
   const handleStop = async () => {
     setActing("stop");
     try {
-      const payload = await api.stopWorkflowCurrent(actionReason.trim() || undefined);
+      const payload = await api.stopWorkflowCurrent(
+        actionReason.trim() || undefined
+      );
       setDetail(payload);
       setError(null);
     } catch (err) {
@@ -122,7 +112,7 @@ export default function Workflow() {
       <PageHero
         eyebrow="Workflow"
         title="Workflow"
-        description="Workspace-local workflow snapshot for the advanced `workflow` runtime. This page shows the current persisted state, not a historical run ledger."
+        description="Workspace-local workflow snapshot for the advanced `workflow` runtime. This section shows the current persisted state, not a historical run ledger."
         tone="purple"
       >
         <div className="flex justify-end">
@@ -189,8 +179,8 @@ export default function Workflow() {
         <div className="space-y-4">
           {!hasSnapshot || !detail || !summary ? (
             <Card className="border-dashed border-neutral-800 bg-neutral-950/60 p-6 text-sm text-slate-500">
-              Run a workflow first, then this page will show its persisted state,
-              route, review metadata, and step outputs.
+              Run a workflow first, then this section will show its persisted
+              state, route, review metadata, and step outputs.
             </Card>
           ) : (
             <>
@@ -198,7 +188,9 @@ export default function Workflow() {
                 <Card className="p-4">
                   <FieldLabel>Status</FieldLabel>
                   <div className="mt-2 flex items-center gap-2">
-                    <Chip tone={statusTone(summary.status)}>{summary.status}</Chip>
+                    <Chip tone={statusTone(summary.status)}>
+                      {summary.status}
+                    </Chip>
                   </div>
                 </Card>
                 <Card className="p-4">
@@ -248,7 +240,9 @@ export default function Workflow() {
                       <Button
                         variant="ghost"
                         onClick={handlePause}
-                        disabled={!detail.available_actions.can_pause || acting !== null}
+                        disabled={
+                          !detail.available_actions.can_pause || acting !== null
+                        }
                       >
                         <Pause className="h-4 w-4" />
                         {acting === "pause" ? "Pausing…" : "Pause snapshot"}
@@ -256,7 +250,9 @@ export default function Workflow() {
                       <Button
                         variant="ghost"
                         onClick={handleStop}
-                        disabled={!detail.available_actions.can_stop || acting !== null}
+                        disabled={
+                          !detail.available_actions.can_stop || acting !== null
+                        }
                       >
                         <Square className="h-4 w-4" />
                         {acting === "stop" ? "Stopping…" : "Stop snapshot"}
@@ -289,7 +285,9 @@ export default function Workflow() {
                         />
                       ) : null}
                     </div>
-                    <p className="text-xs text-slate-500">{detail.notes.summary}</p>
+                    <p className="text-xs text-slate-500">
+                      {detail.notes.summary}
+                    </p>
                   </div>
                 </div>
               </Card>

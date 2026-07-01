@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import Swarm from "./Swarm";
+import Runs from "./Runs";
 
 const NEW_SPEC_CHOICE = "__new_program_md__";
 
@@ -65,7 +65,8 @@ function installSwarmFetchMock(launchBodies: unknown[]) {
                 label: "Claude Code",
                 supports_model: true,
                 model_placeholder: "claude-sonnet-4.5",
-                options_help: "Extra CLI flags appended before the generated swarm prompt.",
+                options_help:
+                  "Extra CLI flags appended before the generated swarm prompt.",
               },
             ],
             defaults: {
@@ -161,7 +162,8 @@ function installSwarmFetchMock(launchBodies: unknown[]) {
             },
             spec: {
               source_path: "PROGRAM.md",
-              copied_path: "/workspace/.atelier/swarm/runs/swarm-123/PROGRAM.md",
+              copied_path:
+                "/workspace/.atelier/swarm/runs/swarm-123/PROGRAM.md",
               resolution: "default",
               used_program_md: true,
               title: "Prompt title",
@@ -212,11 +214,15 @@ function installSwarmFetchMock(launchBodies: unknown[]) {
         );
       }
 
+      if (url.endsWith("/api/v1/workflow/current")) {
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+
       return Promise.resolve(new Response("not found", { status: 404 }));
     });
 }
 
-describe("Swarm page", () => {
+describe("Runs page", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -226,13 +232,17 @@ describe("Swarm page", () => {
     installSwarmFetchMock(launchBodies);
     const { container } = render(
       <MemoryRouter>
-        <Swarm />
+        <Runs />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("button", { name: /^launch swarms$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    ).toBeInTheDocument();
     expect(screen.queryByText(/project directory/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^launch swarms$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    );
     expect(
       await screen.findByRole("heading", { name: /launch swarms/i })
     ).toBeInTheDocument();
@@ -240,15 +250,17 @@ describe("Swarm page", () => {
     expect(
       await screen.findByRole("option", { name: /\/workspace\/project/i })
     ).toBeInTheDocument();
+    expect(screen.getByText(/swarms working directory:/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/swarms working directory:/i)
+      screen.getByText(/project-swarm-worktrees\/<generated-run-id>\//i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/project-swarm-worktrees\/<generated-run-id>\//i)).toBeInTheDocument();
     expect(container.querySelector("#swarm-project-root")).toBeNull();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
     expect(container.querySelector("#swarm-spec-content")).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: /^launch swarms$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    );
 
     await waitFor(() => expect(launchBodies).toHaveLength(1));
     expect(launchBodies[0]).toMatchObject({
@@ -267,16 +279,20 @@ describe("Swarm page", () => {
     installSwarmFetchMock(launchBodies);
     const { container } = render(
       <MemoryRouter>
-        <Swarm />
+        <Runs />
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /^launch swarms$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    );
     expect(
       await screen.findByRole("heading", { name: /launch swarms/i })
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("option", { name: /\+ new file \(program\.md\)/i })
+      await screen.findByRole("option", {
+        name: /\+ new file \(program\.md\)/i,
+      })
     ).toBeInTheDocument();
 
     const specSelect = container.querySelector("#swarm-spec-select");
@@ -322,7 +338,9 @@ describe("Swarm page", () => {
       throw new Error("expected provider base url input");
     }
     await userEvent.type(baseUrlInput, "https://openrouter.example/v1");
-    await userEvent.click(screen.getByRole("button", { name: /^launch swarms$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    );
 
     await waitFor(() => expect(launchBodies).toHaveLength(1));
     expect(launchBodies[0]).toMatchObject({
@@ -348,19 +366,25 @@ describe("Swarm page", () => {
     installSwarmFetchMock([]);
     const { container } = render(
       <MemoryRouter>
-        <Swarm />
+        <Runs />
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /^launch swarms$/i }));
-    const specSelect = await waitFor(() => container.querySelector("#swarm-spec-select"));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^launch swarms$/i })
+    );
+    const specSelect = await waitFor(() =>
+      container.querySelector("#swarm-spec-select")
+    );
     expect(specSelect).not.toBeNull();
     if (!(specSelect instanceof HTMLSelectElement)) {
       throw new Error("expected swarm spec select");
     }
     await userEvent.selectOptions(specSelect, NEW_SPEC_CHOICE);
 
-    const textarea = await waitFor(() => container.querySelector("#swarm-spec-content"));
+    const textarea = await waitFor(() =>
+      container.querySelector("#swarm-spec-content")
+    );
     expect(textarea).not.toBeNull();
     if (!(textarea instanceof HTMLTextAreaElement)) {
       throw new Error("expected swarm spec textarea");
@@ -387,6 +411,110 @@ describe("Swarm page", () => {
 
     expect(textarea.value).toContain("Keep this draft");
     expect(apiKeyInput.value).toBe("draft-key");
-    expect(screen.getByRole("heading", { name: /launch swarms/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /launch swarms/i })
+    ).toBeInTheDocument();
+  });
+
+  it("folds the Workflow runtime snapshot into a collapsed section", async () => {
+    installSwarmFetchMock([]);
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/swarm/launch/options")) {
+          return Promise.resolve(
+            jsonResponse({
+              project_roots: [],
+              selected_project_root: "",
+              files: [],
+              providers: [],
+              runners: [],
+              defaults: {
+                provider: "cli",
+                runner: "claude",
+                runs: 3,
+                continuous: true,
+                max_waves: 5,
+                keep_worktrees: true,
+                effort: "high",
+              },
+              notes: {
+                default_spec: "PROGRAM.md",
+                default_spec_missing: true,
+                effort_behavior: "",
+              },
+            })
+          );
+        }
+        if (url.endsWith("/api/v1/swarm/runs")) {
+          return Promise.resolve(jsonResponse([]));
+        }
+        if (url.endsWith("/api/v1/workflow/current")) {
+          return Promise.resolve(
+            jsonResponse({
+              workspace_root: "/workspace/project",
+              summary: {
+                run_id: "wf-123",
+                workflow_id: "owned-execute-review-loop",
+                status: "awaiting_review",
+                current_step: "execute",
+                session_phase: "review",
+                step_count: 2,
+                completed_steps: 1,
+                paused_step_id: "execute",
+                failed_step_id: "",
+                pause_reason: "",
+                stop_reason: "",
+                review_decision: "pending",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:05:00Z",
+              },
+              workflow: { workflow_id: "owned-execute-review-loop", steps: [] },
+              route: { mode: "native" },
+              current_task: {},
+              plan_review: {},
+              task_outputs: {},
+              step_order: [],
+              available_actions: {
+                can_pause: true,
+                can_resume: true,
+                can_stop: true,
+                resume_requires_host_call: true,
+                pause_is_snapshot_only: true,
+                stop_is_snapshot_only: true,
+              },
+              control_payloads: { status: { op: "status", run_id: "wf-123" } },
+              notes: {
+                snapshot_kind: "workspace-current",
+                live_control: false,
+                summary:
+                  "Workflow state is a workspace-local persisted snapshot.",
+              },
+            })
+          );
+        }
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+    );
+
+    render(
+      <MemoryRouter>
+        <Runs />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Workflow (advanced)")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Workflow" })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Workflow (advanced)"));
+
+    expect(
+      await screen.findByRole("heading", { name: "Workflow" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/owned-execute-review-loop/i)[0]
+    ).toBeInTheDocument();
   });
 });

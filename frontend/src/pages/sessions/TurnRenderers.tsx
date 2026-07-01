@@ -9,13 +9,8 @@ import {
 } from "../../api";
 import { cx } from "../../components/WorkbenchUI";
 import { getFileEditInfo, InlineFileDiff, SideBySideDiff } from "./DiffView";
-import {
-  fmtUsd,
-  fmtTok,
-  parseAt,
-  LONG_OUTPUT_THRESHOLD,
-  getNormName,
-} from "./helpers";
+import { fmtUsd, fmtTok, parseAt } from "../../lib/format";
+import { LONG_OUTPUT_THRESHOLD, getNormName } from "./helpers";
 
 const TEXT_EXTENSIONS = new Set([
   "c",
@@ -533,7 +528,12 @@ export function ConversationTurn({
   const isTool = !isUser && !isAgent && !isThinking;
   const [internalExpanded, setInternalExpanded] = useState(false);
   const isLong = (turn.content?.length || 0) > LONG_OUTPUT_THRESHOLD;
-  const isExpanded = forceExpand || internalExpanded || !isLong;
+  // Reasoning turns default-collapse regardless of length — they're the
+  // noisiest part of the transcript and rarely needed at a glance.
+  const isExpanded = isThinking
+    ? forceExpand || internalExpanded
+    : forceExpand || internalExpanded || !isLong;
+  const showExpandToggle = isThinking ? true : isLong;
   const toolDisplayName = turn.tool_name || getNormName(turn);
   const fileEditInfo = isTool ? getFileEditInfo(turn) : null;
   const showArtifactLabel = shouldShowArtifactLabel(turn);
@@ -704,7 +704,7 @@ export function ConversationTurn({
                 )}
               </div>
             )}
-            {isLong && !forceExpand && (
+            {showExpandToggle && !forceExpand && (
               <button
                 type="button"
                 onClick={() => setInternalExpanded((value) => !value)}

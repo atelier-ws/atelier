@@ -285,4 +285,81 @@ describe("SessionExplorerDetail", () => {
     expect(await screen.findByText("Cache Read Cost")).toBeInTheDocument();
     expect(screen.queryByText("Cache Savings")).not.toBeInTheDocument();
   });
+
+  it("truncates a long session id with copy-on-click, and surfaces route/compact outcome chips", async () => {
+    const longId = "session-2026-05-16-abcdefghijklmnopqrstuvwxyz";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    mockFetch({
+      [`/api/v1/sessions/${longId}`]: jsonResponse({
+        session_id: longId,
+        started_at: "2026-05-16T00:00:00Z",
+        ended_at: "2026-05-16T00:05:00Z",
+        duration_seconds: 300,
+        active_duration_seconds: 240,
+        vendor: "Anthropic",
+        started_model: "claude-sonnet-4-6",
+        cost_status: "recorded",
+        agent_settings: {},
+        skills: [],
+        telemetry: {},
+        raw_artifact_ids: [],
+        total_turns: 1,
+        total_cost_usd: 0.1,
+        total_atelier_savings_usd: 0.01,
+        label: null,
+        models_used: { "claude-sonnet-4-6": 1 },
+        input_tokens: 100,
+        output_tokens: 50,
+        cached_input_tokens: 0,
+        tool_call_count: 0,
+        input_token_cost_usd: 0.05,
+        cache_write_cost_usd: 0,
+        cache_read_cost_usd: 0,
+        output_token_cost_usd: 0.05,
+        cache_write_tokens: 0,
+        cache_read_tokens: 0,
+        routing_downtiered_turns: 0,
+        routing_savings_usd: 0,
+        compact_events: 0,
+        compact_savings_estimate_usd: 0,
+        top_tools_by_cost: [],
+      }),
+      [`/api/v1/traces/${longId}`]: jsonResponse({
+        id: longId,
+        session_id: longId,
+        agent: "copilot",
+        model: "claude-sonnet-4-6",
+        task: "Long id session",
+        status: "success",
+        files_touched: [],
+        tools_called: [],
+        commands_run: [],
+        errors_seen: [],
+        repeated_failures: [],
+        validation_results: [],
+        created_at: "2026-05-16T00:00:00Z",
+      }),
+      [`/api/ledgers/${longId}`]: jsonResponse({ conversations: [] }),
+      [`/api/v1/outcomes/${longId}`]: jsonResponse([
+        { kind: "route", outcome_window: { outcome_score: 0.8 } },
+        { kind: "compact", outcome_window: { outcome_score: 0.6 } },
+      ]),
+    });
+
+    render(<SessionExplorerDetail sessionId={longId} />);
+
+    const sessionPill = await screen.findByTitle(`Copy: ${longId}`);
+    expect(sessionPill.textContent).toMatch(/…/);
+    expect(sessionPill.textContent).not.toBe(`Session${longId}`);
+
+    fireEvent.click(sessionPill);
+    expect(writeText).toHaveBeenCalledWith(longId);
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Toggle Detailed Metrics"));
+    expect(await screen.findByText("0.80")).toBeInTheDocument();
+    expect(await screen.findByText("0.60")).toBeInTheDocument();
+  });
 });

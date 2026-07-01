@@ -13,29 +13,16 @@ import {
   Button,
   Card,
   Chip,
+  DisclosureCard,
   FieldLabel,
   Input,
   Select,
   SnippetCard,
   cx,
 } from "../components/WorkbenchUI";
-
-function fmtDate(value?: string | null): string {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
-}
-
-function statusTone(
-  value: string
-): "emerald" | "amber" | "red" | "purple" | "neutral" {
-  if (value === "success") return "emerald";
-  if (value === "running" || value === "pending") return "amber";
-  if (value === "failed" || value === "stopped") return "red";
-  if (value === "applying") return "purple";
-  return "neutral";
-}
+import { fmtDate } from "../lib/format";
+import { statusTone } from "../lib/status";
+import { WorkflowSection } from "./runs/WorkflowSection";
 
 function planningTone(
   value?: string | null
@@ -195,7 +182,7 @@ function MarkdownSourceEditor({
   );
 }
 
-export default function Swarm() {
+export default function Runs() {
   const [runs, setRuns] = useState<SwarmRunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SwarmRunDetailResponse | null>(null);
@@ -228,6 +215,7 @@ export default function Swarm() {
   const [launching, setLaunching] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [isLaunchPanelOpen, setIsLaunchPanelOpen] = useState(false);
+  const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const launchOptionsRequestRef = useRef(0);
 
@@ -501,7 +489,7 @@ export default function Swarm() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="pl-2 text-xl font-semibold text-white">Swarm</h1>
+          <h1 className="pl-2 text-xl font-semibold text-white">Runs</h1>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -1151,6 +1139,27 @@ export default function Swarm() {
           )}
         </div>
       </div>
+
+      <DisclosureCard
+        open={isWorkflowOpen}
+        onToggle={() => setIsWorkflowOpen((current) => !current)}
+        header={
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Workflow (advanced)
+              </h2>
+              <p className="text-sm text-slate-500">
+                Workspace-local `workflow` runtime snapshot — pause, stop, and
+                inspect step outputs.
+              </p>
+            </div>
+            <Chip tone="neutral">{isWorkflowOpen ? "Hide" : "Show"}</Chip>
+          </div>
+        }
+      >
+        <WorkflowSection />
+      </DisclosureCard>
     </div>
   );
 }

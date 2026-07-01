@@ -3,35 +3,8 @@ import { type Trace, type RunInspectorData } from "../../api";
 // --- Constants ---
 export const LONG_OUTPUT_THRESHOLD = 400; // chars
 
-// --- Formatters ---
-
-export function fmtUsd(v: number): string {
-  return `$${v.toFixed(3)}`;
-}
-
-export function fmtTok(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-export function parseAt(s: string | null | undefined): Date | null {
-  if (!s) return null;
-  // ms-epoch integers arrive as numeric strings from OpenCode
-  const d = /^\d+$/.test(s) ? new Date(parseInt(s, 10)) : new Date(s);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-export function fmtDate(s: string | null | undefined): string {
-  const d = parseAt(s);
-  return d ? d.toLocaleString() : "—";
-}
-
-export function fmtDuration(secs: number): string {
-  if (secs < 60) return `${Math.round(secs)}s`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`;
-  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-}
+// Formatters (fmtUsd, fmtTok, fmtDate, fmtDuration, parseAt) live in
+// lib/format.ts — the one shared implementation for every page.
 
 // --- Host detection ---
 

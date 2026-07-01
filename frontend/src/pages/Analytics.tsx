@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { AlertCircle, CheckCircle2, Info, Search, Zap } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   api,
   type GranularToolUsage,
@@ -9,7 +9,8 @@ import {
   type DashboardTool,
   type DashboardHostModelOverview,
 } from "../api";
-import { MetricCard } from "../components/WorkbenchUI";
+import { EmptyState, MetricCard } from "../components/WorkbenchUI";
+import { fmtTok } from "../lib/format";
 import { useTimeRange } from "../lib/TimeRangeContext";
 
 const TABS = [
@@ -17,7 +18,6 @@ const TABS = [
   "Timeline",
   "Domains",
   "Tool Breakdown",
-  "Analysis",
   "Details",
 ] as const;
 const TIMELINE_BREAKDOWN_OPTIONS = [
@@ -38,12 +38,6 @@ function defaultdict_int() {
 
 function fmt(n: number, decimals = 2) {
   return n.toFixed(decimals);
-}
-
-function fmtM(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-  return String(n);
 }
 
 const EMPTY_SUMMARY: AnalyticsSummary = {
@@ -714,92 +708,6 @@ function ByModelTable({
   );
 }
 
-// ---- Top Sessions ----------------------------------------------------------
-
-function TopSessions({
-  sessions,
-}: {
-  sessions: AnalyticsDashboard["top_sessions"];
-}) {
-  const maxCost = Math.max(...sessions.map((s) => s.cost), 0.0001);
-  return (
-    <section className="border border-neutral-800 bg-neutral-950/40">
-      <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
-          Costliest Sessions
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-400 bg-neutral-900/50">
-              <th className="px-4 py-2">#</th>
-              <th className="px-4 py-2 text-left">Date</th>
-              <th className="px-4 py-2 text-left">Host</th>
-              <th className="px-4 py-2 text-left">Project</th>
-              <th className="px-4 py-2 text-left">Model</th>
-              <th className="px-4 py-2 text-right">Input</th>
-              <th className="px-4 py-2 text-right">Output</th>
-              <th className="px-4 py-2 text-right">Cache</th>
-              <th className="px-4 py-2 text-right">Cost</th>
-              <th className="px-4 py-2 text-right">Saved</th>
-              <th className="px-4 py-2">Rel.</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-900">
-            {sessions.map((s, i) => (
-              <tr key={i} className="hover:bg-neutral-800/20">
-                <td className="px-4 py-2 font-mono text-neutral-400">
-                  {i + 1}
-                </td>
-                <td className="px-4 py-2 font-mono text-neutral-400 text-[10px]">
-                  {s.date}
-                </td>
-                <td className="px-4 py-2 font-mono text-cyan-300 capitalize">
-                  {s.host}
-                </td>
-                <td
-                  className="px-4 py-2 text-neutral-400 max-w-[140px] truncate"
-                  title={s.domain}
-                >
-                  {s.domain}
-                </td>
-                <td className="px-4 py-2 font-mono text-neutral-400 text-[10px]">
-                  {s.model || "—"}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                  {fmtM(s.input_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                  {fmtM(s.output_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-amber-300">
-                  {fmtM(s.cached_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-amber-300 font-bold">
-                  ${fmt(s.cost)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-emerald-300">
-                  {s.atelier_savings_usd && s.atelier_savings_usd > 0
-                    ? `$${fmt(s.atelier_savings_usd)}`
-                    : "—"}
-                </td>
-                <td className="px-4 py-2">
-                  <MiniBar
-                    value={s.cost}
-                    max={maxCost}
-                    color="bg-amber-500/50"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 // ---- By Project ------------------------------------------------------------
 
 function ByProjectTable({
@@ -905,7 +813,7 @@ function ToolTable({
                 {t.calls.toLocaleString()}
               </td>
               <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                {fmtM(t.output_tokens)}
+                {fmtTok(t.output_tokens)}
               </td>
               <td className="px-4 py-2">
                 <MiniBar value={t.calls} max={maxCalls} color={color} />
@@ -915,152 +823,6 @@ function ToolTable({
         </tbody>
       </table>
     </section>
-  );
-}
-
-// ---- Savings Insights ------------------------------------------------------
-
-function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
-  const { top_sessions, by_model, summary } = dashboard;
-  const savedUsd = summary?.total_atelier_savings_usd ?? 0;
-  const savedPct = summary?.savings_pct ?? 0;
-  const totalCost = summary?.total_cost ?? 0;
-
-  const highCostSessions = top_sessions.filter((s) => s.cost > 1.0);
-  const noCacheSessions = top_sessions.filter(
-    (s) =>
-      s.cost > 0.5 &&
-      s.input_tokens > 0 &&
-      s.cached_tokens / (s.input_tokens + s.cached_tokens) < 0.1
-  );
-  const heavyContextSessions = top_sessions.filter(
-    (s) => s.input_tokens > 500_000
-  );
-  const multiModelCount = by_model.filter((m) => m.cost > 0.1).length;
-
-  return (
-    <div className="space-y-4">
-      <section className="border border-neutral-800 bg-neutral-950/40 p-5">
-        <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold mb-4">
-          Atelier Impact
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-          <div className="border border-emerald-900/40 bg-emerald-950/20 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-emerald-300 font-bold mb-1">
-              Total Saved
-            </div>
-            <div className="text-2xl font-bold font-mono text-emerald-300">
-              ${savedUsd.toFixed(2)}
-            </div>
-          </div>
-          <div className="border border-neutral-800 bg-neutral-950/40 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold mb-1">
-              Spend Window
-            </div>
-            <div className="text-2xl font-bold font-mono text-amber-300">
-              ${totalCost.toFixed(2)}
-            </div>
-          </div>
-          <div className="border border-neutral-800 bg-neutral-950/40 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold mb-1">
-              Efficiency
-            </div>
-            <div className="text-2xl font-bold font-mono text-brand-300">
-              {savedPct.toFixed(1)}%
-            </div>
-          </div>
-        </div>
-        <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold mb-4">
-          Session Analysis
-        </div>
-        <div className="space-y-3">
-          {highCostSessions.length > 0 && (
-            <div className="border border-red-900/40 bg-red-950/20 p-3 rounded">
-              <div className="text-[10px] text-red-300 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <AlertCircle size={12} /> {highCostSessions.length} High-Cost
-                Session
-                {highCostSessions.length > 1 ? "s" : ""} (&gt;$1.00 each)
-              </div>
-              <div className="text-[10px] text-red-300 space-y-0.5">
-                {highCostSessions.slice(0, 3).map((s, i) => (
-                  <div key={i}>
-                    {s.date} · {s.host} · {s.domain} —{" "}
-                    <span className="text-red-300">${fmt(s.cost)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="text-[10px] text-red-300 mt-2">
-                Consider adding context pruning, summarization, or session
-                splitting.
-              </div>
-            </div>
-          )}
-
-          {noCacheSessions.length > 0 && (
-            <div className="border border-amber-900/40 bg-amber-950/20 p-3 rounded">
-              <div className="text-[10px] text-amber-300 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Info size={12} /> {noCacheSessions.length} Session
-                {noCacheSessions.length > 1 ? "s" : ""} with Low Cache
-                Utilization
-              </div>
-              <div className="text-[10px] text-amber-300">
-                These sessions have &lt;10% cache hit rate on expensive prompts.
-              </div>
-              <div className="text-[10px] text-amber-300 mt-2">
-                Use long-lived system prompts and structured prefixes to improve
-                caching.
-              </div>
-            </div>
-          )}
-
-          {heavyContextSessions.length > 0 && (
-            <div className="border border-brand-900/40 bg-brand-950/20 p-3 rounded">
-              <div className="text-[10px] text-brand-400 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Zap size={12} /> {heavyContextSessions.length} Context-Heavy
-                Session
-                {heavyContextSessions.length > 1 ? "s" : ""} (&gt;500k input
-                tokens)
-              </div>
-              <div className="text-[10px] text-brand-300/70 space-y-0.5">
-                {heavyContextSessions.slice(0, 3).map((s, i) => (
-                  <div key={i}>
-                    {s.date} · {s.host} — {fmtM(s.input_tokens)} input tokens
-                  </div>
-                ))}
-              </div>
-              <div className="text-[10px] text-brand-400/50 mt-2">
-                Add file chunking, selective context inclusion, and compact
-                intermediate results.
-              </div>
-            </div>
-          )}
-
-          {multiModelCount > 2 && (
-            <div className="border border-blue-900/40 bg-blue-950/20 p-3 rounded">
-              <div className="text-[10px] text-blue-300 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Info size={12} /> {multiModelCount} Active Models — Consider
-                Consolidation
-              </div>
-              <div className="text-[10px] text-blue-300">
-                You're using {multiModelCount} models with non-trivial cost.
-                Routing cheaper tasks to smaller models could reduce spend.
-              </div>
-            </div>
-          )}
-
-          {highCostSessions.length === 0 &&
-            noCacheSessions.length === 0 &&
-            heavyContextSessions.length === 0 && (
-              <div className="text-neutral-400 italic text-xs flex items-center gap-1.5">
-                <CheckCircle2 size={12} className="text-emerald-300" /> No
-                significant optimization opportunities detected in this period.
-              </div>
-            )}
-        </div>
-      </section>
-
-      {top_sessions.length > 0 && <TopSessions sessions={top_sessions} />}
-    </div>
   );
 }
 
@@ -1132,7 +894,7 @@ function CostDriversChart({
               <div className="flex justify-between text-[10px] gap-4">
                 <span className="text-neutral-300">{item.label}</span>
                 <span className={`font-mono ${item.accent}`}>
-                  {fmtM(item.tokens)} tokens · {share.toFixed(1)}%
+                  {fmtTok(item.tokens)} tokens · {share.toFixed(1)}%
                 </span>
               </div>
               <div className="h-2 bg-neutral-900 overflow-hidden rounded">
@@ -1350,7 +1112,7 @@ export default function Analytics() {
         label: "Top Tool Driver",
         value: topTool?.tool || "—",
         detail: topTool
-          ? `$${fmt(topTool.cost)} · ${topTool.calls.toLocaleString()} calls · ${fmtM(topTool.tokens)} out`
+          ? `$${fmt(topTool.cost)} · ${topTool.calls.toLocaleString()} calls · ${fmtTok(topTool.tokens)} out`
           : "No tool usage found.",
         tone: "amber" as const,
       },
@@ -1392,7 +1154,7 @@ export default function Analytics() {
       label: row.tool,
       sublabel: `${row.calls.toLocaleString()} calls`,
       value: `$${fmt(row.cost)}`,
-      detail: `${fmtM(row.tokens)} out · $${row.costPerCall.toFixed(4)}/call`,
+      detail: `${fmtTok(row.tokens)} out · $${row.costPerCall.toFixed(4)}/call`,
       barValue: row.cost,
     }));
   }, [costDriversData]);
@@ -1416,14 +1178,10 @@ export default function Analytics() {
 
   if (err) return <div className="text-red-300 p-6">Error: {err}</div>;
   if (loading && data.length === 0)
-    return (
-      <div className="text-neutral-400 p-6 italic animate-pulse">
-        Loading analytics...
-      </div>
-    );
+    return <EmptyState title="Loading analytics…" className="m-6" />;
 
   return (
-    <div className="p-6 mx-auto space-y-6 bg-black min-h-screen text-neutral-200 font-sans">
+    <div className="p-6 mx-auto space-y-6 text-neutral-200 font-sans">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
         <div>
@@ -1525,16 +1283,6 @@ export default function Analytics() {
               tone="amber"
             />
             <MetricCard
-              label="Atelier Savings"
-              value={`$${(dashboard?.summary?.total_atelier_savings_usd ?? 0).toFixed(2)}`}
-              detail={
-                (dashboard?.summary?.savings_pct ?? 0) > 0
-                  ? `${(dashboard?.summary?.savings_pct ?? 0).toFixed(1)}% of spend`
-                  : undefined
-              }
-              tone="emerald"
-            />
-            <MetricCard
               label="Total Tool Calls"
               value={stats.tool_calls.toLocaleString()}
               tone="cyan"
@@ -1632,9 +1380,7 @@ export default function Analytics() {
       {activeTab === "Timeline" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-400 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <>
               <SpendTimelineChart
@@ -1660,9 +1406,7 @@ export default function Analytics() {
       {activeTab === "Domains" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-400 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <ByProjectTable domains={dashboard.by_domain} />
           ) : (
@@ -1677,9 +1421,7 @@ export default function Analytics() {
       {activeTab === "Tool Breakdown" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-400 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <>
               <ToolTable
@@ -1697,25 +1439,6 @@ export default function Analytics() {
                 tools={dashboard.tools.mcp}
                 color="bg-brand-500/50"
               />
-            </>
-          ) : (
-            <div className="text-neutral-400 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Analysis tab */}
-      {activeTab === "Analysis" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-400 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <>
-              <SavingsInsights dashboard={dashboard} />
             </>
           ) : (
             <div className="text-neutral-400 italic text-sm">
