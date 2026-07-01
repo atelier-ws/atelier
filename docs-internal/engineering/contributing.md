@@ -21,7 +21,6 @@ The repository-managed pre-push hook runs `make install` before the rest of the 
 
 ```bash
 make sync-agent-context  # Regenerate host instruction artifacts from integrations/shared/
-make check-agent-context # Verify generated host instruction artifacts are current
 make docs-check          # Run docs and repo-governance checks
 make verify        # Full gate: ruff + black --check + mypy strict + pytest
 make pre-commit    # Format, lint, typecheck, tests (run before committing)

@@ -14,7 +14,7 @@ COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
 .PHONY: help install uninstall dev build release/build prod status start restart build-host-skills sync-agent-context mirror release \
-	check-agent-context docs-check worktree-env runtime-evidence \
+	docs-check worktree-env runtime-evidence \
 	test test-fast test-cov test-full lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
 	_ensure_hooks
@@ -92,10 +92,7 @@ build-host-skills: ## Generate Codex/Gemini skill bundles from integrations/skil
 sync-agent-context: ## Regenerate host instruction surfaces from integrations/shared/
 	uv run python scripts/sync_agent_context.py
 
-check-agent-context: ## Verify generated host instruction surfaces are up to date
-	uv run python scripts/sync_agent_context.py --check
-
-docs-check: check-agent-context ## Run docs and repo-governance checks
+docs-check: ## Run docs and repo-governance checks
 	uv run pytest tests/gateway/test_docs.py tests/gateway/test_generated_agent_contexts.py -q
 
 worktree-env: ## Write a per-worktree .env file for local stack bootstraps

@@ -34,7 +34,6 @@ make pre-commit     # format + lint + typecheck + docs + test
 
 # Docs governance
 make sync-agent-context   # regenerate host instruction files from integrations/shared/
-make check-agent-context  # verify generated files are up to date
 
 # Install Claude plugin (after changing integrations/claude/plugin/)
 bash scripts/install_claude.sh

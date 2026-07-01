@@ -24,5 +24,4 @@ This scorecard tracks the repo surfaces that most affect autonomous execution.
 - Keep `docs/plans/tech-debt.md` current as cleanup work lands.
 - Extend evidence capture when UI automation becomes first-class in this repo.
 - Wire `rubric_verification_ladder` into the post-implementation verify step for all coding work.
-- Run `make check-agent-context` in CI to catch generator drift on host instruction files.
 - Wire symbol-first adoption rate into the Insights endpoint (requires per-op granularity in telemetry events).

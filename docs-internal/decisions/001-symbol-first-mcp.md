@@ -12,7 +12,7 @@ Milestones M1–M13 delivered. Phase 6 UAT passed (2026-05-23, commit cc b40764)
 - `code op="symbol"` roundtrip ≤ 2 ms on atelier repo (see `benchmarks/code_intel/bench_cost_discipline.py` baseline).
 - Multi-repo workspace routing verified: `code op="search" repo=<name>` filters correctly.
 - Bootstrap dependency-scope isolation confirmed: external packages (`scope="external"`) excluded from scope=repo queries.
-- Plan verifier passes; `make docs-check && make check-agent-context` exit 0.
+- Plan verifier passes; `make docs-check` exits 0.
 
 Milestones M1–M13 cover all shipped code-intel operations. No further milestones are tracked.
 
