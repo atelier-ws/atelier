@@ -354,22 +354,25 @@ def test_handle_spills_full_untransformed_payload_before_compaction(monkeypatch:
     # Char threshold well below the payload so the char-gated spill fires.
     monkeypatch.setenv("ATELIER_MCP_SPILL_RESULT_CHARS", "2048")
 
-    # web_fetch renders its result as the raw `content` string (no transform),
-    # and is a spill-worthy tool, so it isolates the dispatch ordering cleanly.
+    # `sql` stays in the generic char-capped set (web_fetch is now exempt: it
+    # spills+truncates itself, see web_fetch._truncate_with_spill). A bare string
+    # result bypasses render_tool_result_text's per-tool dict branches entirely
+    # (it early-returns None for non-dict results), so it reaches response_text
+    # byte-identical -- isolating the dispatch ordering cleanly.
     middle_marker = "UNIQUE-MIDDLE-MARKER-THAT-COMPACTION-WOULD-DROP"
     payload = "HEAD" + ("a" * 100_000) + middle_marker + ("b" * 100_000) + "TAIL"
 
-    def _fake_web_fetch(_args: dict) -> dict:  # type: ignore[type-arg]
-        return {"content": payload}
+    def _fake_sql(_args: dict) -> str:  # type: ignore[type-arg]
+        return payload
 
-    monkeypatch.setitem(mcp_server.TOOLS["web_fetch"], "handler", _fake_web_fetch)
+    monkeypatch.setitem(mcp_server.TOOLS["sql"], "handler", _fake_sql)
 
     resp = mcp_server._handle(
         {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "web_fetch", "arguments": {"url": "https://example.test"}},
+            "params": {"name": "sql", "arguments": {"query": "select 1"}},
         }
     )
     assert resp is not None

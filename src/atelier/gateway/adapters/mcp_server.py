@@ -99,8 +99,6 @@ from atelier.infra.runtime.realtime_context import RealtimeContextManager
 from atelier.infra.runtime.run_ledger import (
     RunLedger,
     outcomes_path,
-    run_file_path,
-    session_run_dir,
 )
 from atelier.infra.storage.factory import make_memory_store
 from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySidecarUnavailable
@@ -685,17 +683,17 @@ _DEFAULT_COMPACT_RESULT_CHARS = 256 * 1024
 _DEFAULT_SPILL_RESULT_CHARS = 2 * 1024
 # Per-tool overrides of the recoverable char cap. bash output (test runs, diffs,
 # build logs, git status) is routinely needed inline during the debug loop, so it
-# gets a larger inline budget than web_fetch/sql, whose payloads are rarely needed
-# byte-complete. Tools absent here use _DEFAULT_SPILL_RESULT_CHARS. An explicit
-# ATELIER_MCP_SPILL_RESULT_CHARS env value overrides this map for every tool.
+# gets a larger inline budget than sql, whose payloads are rarely needed
+# byte-complete. Tools absent here use _DEFAULT_SPILL_RESULT_CHARS -- or are
+# exempt from the cap entirely (see _SPILL_CHAR_CAP_TOOLS; e.g. web_fetch, which
+# spills and truncates itself). An explicit ATELIER_MCP_SPILL_RESULT_CHARS env
+# value overrides this map for every tool.
 # Per-tool inline char budget before spill fires. bash stays small (shell output
 # is cheap to re-run); code_search needs more headroom (structured + expensive to
-# regenerate); web_fetch keeps a lean cap -- its payload is rarely needed
-# byte-complete and is recoverable via spill.
+# regenerate).
 _SPILL_RESULT_CHARS_BY_TOOL = {
     "bash": 8 * 1024,
     "code_search": 20 * 1024,
-    "web_fetch": 8 * 1024,
 }
 # Per-read inline budget (bytes). A single file read larger than this is returned
 # as a line-aligned prefix plus an EXACT continuation range, instead of being
@@ -710,64 +708,48 @@ def _service_backed_state() -> bool:
 
 
 def _detect_agent() -> str:
-    """Derive the agent label from the runtime environment.
+    """Derive the agent/host label from the runtime environment.
 
-    Checks, in order:
-    1. ATELIER_AGENT env var (explicit override - any host can set this)
-    2. CLAUDE_CODE -> "claude"
-    3. ANTIGRAVITY_SESSION_ID or AGY_SESSION_ID -> "antigravity"
-    4. CODEX_SESSION_ID -> "codex"
-    5. OPENCODE_SESSION_ID -> "opencode"
-    6. Falls back to "claude" (the MCP wrapper is shipped with the Claude plugin)
+    Thin re-export: the env-var sniffing lives once, canonically, in
+    ``atelier.core.foundation.paths.detect_host`` so every hook script across
+    every integration (not just this MCP server) resolves the identical host
+    label -- the same value that segregates each host's session storage.
     """
-    explicit = os.environ.get("ATELIER_AGENT", "").strip()
-    if explicit:
-        return explicit
-    if os.environ.get("CLAUDE_CODE"):
-        return "claude"
-    if (
-        os.environ.get("ANTIGRAVITY_SESSION_ID")
-        or os.environ.get("AGY_SESSION_ID")
-        or os.environ.get("ANTIGRAVITY_CLI")
-        or os.environ.get("AGY_CLI")
-    ):
-        return "antigravity"
-    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI"):
-        return "codex"
-    if os.environ.get("OPENCODE_SESSION_ID") or os.environ.get("OPENCODE_CLI"):
-        return "opencode"
-    if os.environ.get("CURSOR_SESSION_ID") or os.environ.get("CURSOR_TRACE_ID"):
-        return "cursor"
-    if os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or os.environ.get("HERMES_CLI"):
-        return "hermes"
-    if os.environ.get("COPILOT_CLI") or os.environ.get("GITHUB_COPILOT_SESSION_ID"):
-        return "copilot"
-    # Default: the plugin lives in the Claude Code plugin system
-    return "claude"
+    from atelier.core.foundation.paths import detect_host
+
+    return detect_host()
 
 
 def _ledger_for_session(session_id: str) -> RunLedger:
     """Per-session ledger so concurrent HTTP clients don't co-mingle into the
     process-global ledger. Bounded LRU; the least-recently-used entry is evicted
     past the cap. On a cache miss an existing ``run.json`` is rehydrated so an
-    evicted-then-reused session does not overwrite its own accumulated events."""
-    from atelier.core.foundation.paths import resolve_store_root_for_workspace
+    evicted-then-reused session does not overwrite its own accumulated events.
 
-    root = resolve_store_root_for_workspace()
+    Uses the global store root (not the workspace-scoped one): a session is
+    already globally unique by id and lives under the canonical
+    ``sessions/YYYY/MM/DD/<host>/<id>/`` tree regardless of which workspace
+    happens to be resolved for this request.
+    """
+    from atelier.core.foundation.paths import default_store_root, find_session_dir
+
+    root = default_store_root()
     with _http_session_ledgers_lock:
         led = _http_session_ledgers.get(session_id)
         if led is not None:
             _http_session_ledgers.move_to_end(session_id)
             return led
-        path = run_file_path(root, session_id)
-        if path.exists():
-            try:
-                led = RunLedger.load(path)
-                # load() builds the ledger without a root; restore it so the
-                # rehydrated ledger persists back to the same run.json.
-                led._root = root
-            except ValueError:
-                led = None
+        existing_dir = find_session_dir(root, session_id)
+        if existing_dir is not None:
+            path = existing_dir / "run.json"
+            if path.exists():
+                try:
+                    led = RunLedger.load(path)
+                    # load() builds the ledger without a root; restore it so the
+                    # rehydrated ledger persists back to the same run.json.
+                    led._root = root
+                except ValueError:
+                    led = None
         if led is None:
             led = RunLedger(root=root, agent=_detect_agent(), session_id=session_id)
         if len(_http_session_ledgers) >= _MAX_HTTP_SESSION_LEDGERS:
@@ -798,18 +780,19 @@ def _get_ledger() -> RunLedger:
     if _current_ledger is not None:
         return _current_ledger
     # Bind the ledger to the host session id (Claude Code UUID, etc.) so
-    # run.json lands at sessions/<host-id>/run.json — the same folder the
-    # plugin hooks read and the savings sidecar writes. Computed outside the
-    # lock since _get_claude_session_id touches shared state; non-host runs
-    # fall back to RunLedger's own random uuid4.
+    # run.json lands at sessions/YYYY/MM/DD/<host>/<host-id>/run.json — the
+    # same canonical folder the plugin hooks read and the savings sidecar
+    # writes. The global store root (not workspace-scoped): a session is
+    # already globally unique by id, regardless of which workspace happens to
+    # be resolved for this process. Computed outside the lock since
+    # _get_claude_session_id touches shared state; non-host runs fall back to
+    # RunLedger's own random uuid4.
     host_sid = _get_claude_session_id() or None
     with _STATE_LOCK:
         if _current_ledger is None:
-            from atelier.core.foundation.paths import resolve_store_root_for_workspace
+            from atelier.core.foundation.paths import default_store_root
 
-            _current_ledger = RunLedger(
-                root=resolve_store_root_for_workspace(), agent=_detect_agent(), session_id=host_sid
-            )
+            _current_ledger = RunLedger(root=default_store_root(), agent=_detect_agent(), session_id=host_sid)
     return _current_ledger
 
 
@@ -915,7 +898,7 @@ def _make_outcome_writer(led: RunLedger) -> Any:
 
         root = led._root
         if root is not None:
-            return FileStateWriter(outcomes_path(root, led.session_id))
+            return FileStateWriter(outcomes_path(root, led.agent or "claude", led.session_id))
     return None
 
 
@@ -1287,7 +1270,9 @@ def _workspace_session_state_file() -> Path:
     """
     sid = _resolve_live_session_id()
     if sid:
-        return _atelier_root() / "sessions" / sid / "runtime_state.json"
+        from atelier.core.foundation.paths import session_dir
+
+        return session_dir(_atelier_root(), _detect_agent(), sid) / "runtime_state.json"
     return _workspace_bridge_file()
 
 
@@ -2681,9 +2666,9 @@ def _get_host_session_sidecar_path() -> Path:
     sid = _resolved_host_session_id()
     if sid:
         if sid not in _SAVINGS_SIDECAR_PATH_BY_SID:
-            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+            from atelier.core.foundation.paths import session_dir
 
-            _SAVINGS_SIDECAR_PATH_BY_SID[sid] = _srd(_atelier_root(), sid) / "savings.jsonl"
+            _SAVINGS_SIDECAR_PATH_BY_SID[sid] = session_dir(_atelier_root(), _detect_agent(), sid) / "savings.jsonl"
         return _SAVINGS_SIDECAR_PATH_BY_SID[sid]
     return _workspace_savings_path()
 
@@ -2890,7 +2875,9 @@ def _write_statusline_sidecar() -> None:
     if not sid:
         return
     try:
-        seg_path = _atelier_root() / "sessions" / sid / "statusline_segment"
+        from atelier.core.foundation.paths import session_dir
+
+        seg_path = session_dir(_atelier_root(), _detect_agent(), sid) / "statusline_segment"
         from atelier.core.capabilities.savings_summary import savings_segment
 
         seg = savings_segment(session_id=sid)
@@ -2933,7 +2920,9 @@ def _mcp_debug_path(session_id: str = "") -> Path:
     """
     root = _atelier_root()
     if session_id:
-        return root / "sessions" / session_id / "mcp_debug.jsonl"
+        from atelier.core.foundation.paths import session_dir
+
+        return session_dir(root, _detect_agent(), session_id) / "mcp_debug.jsonl"
     return root / "mcp_debug_unknown.jsonl"
 
 
@@ -6776,10 +6765,11 @@ def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
 
 
 def _write_handover_packet(led: RunLedger, state: Any) -> Path:
+    from atelier.core.foundation.paths import session_dir
     from atelier.infra.runtime.context_compressor import HandoverPacket
 
     root = _atelier_root()
-    run_dir = session_run_dir(root, led.session_id)
+    run_dir = session_dir(root, led.agent or _detect_agent(), led.session_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     handover_path = run_dir / "HANDOVER.md"
     packet = HandoverPacket.from_ledger(led, state, workspace_root=_workspace_root())
@@ -6880,8 +6870,10 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
 
         # Persist manifest to disk
         try:
+            from atelier.core.foundation.paths import session_dir
+
             root = _atelier_root()
-            run_dir = session_run_dir(root, led.session_id)
+            run_dir = session_dir(root, led.agent or _detect_agent(), led.session_id)
             run_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = run_dir / "compact_manifest.json"
             manifest = {
@@ -9609,7 +9601,7 @@ def tool_bash(
         "Fetch a public HTTP/HTTPS page for research. Requests Markdown when available, "
         "converts HTML to clean Markdown by default, blocks private/local URLs, caches 5 minutes."
     ),
-    hidden_params=("max_chars", "timeout_s", "include_meta"),
+    hidden_params=("timeout_s", "include_meta"),
     param_aliases={"output_format": "type"},
 )
 def tool_web_fetch(
@@ -9620,7 +9612,14 @@ def tool_web_fetch(
     ] = "auto",
     max_chars: Annotated[
         int,
-        Field(description="Maximum returned content characters. Clamped to a safe upper bound."),
+        Field(
+            description=(
+                "Maximum returned content characters (clamped 1,000-100,000; default 12,000). "
+                "Raise this up front for a page you already expect to be long (a big table, a "
+                "full spec doc) instead of paying a second `read` round trip on the spill file "
+                "named in the truncation notice."
+            )
+        ),
     ] = 12_000,
     timeout_s: Annotated[
         float,
@@ -9630,6 +9629,19 @@ def tool_web_fetch(
         bool,
         Field(description="Include minimal debug metadata in the internal payload."),
     ] = False,
+    query: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional search term. When the page is too long to return in full, instead of "
+                "a blind head cut, the most relevant sections/table-rows to this term are kept "
+                "(ranked by embedding similarity if a local embedder is configured, else by "
+                "keyword coverage) -- use this to jump straight to a specific row/section in a "
+                "long table or doc instead of paging through it. Omit to keep the default head "
+                "truncation."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any] | _DeferredResult:
     """Fetch a public web page and return coding-agent-friendly content.
 
@@ -9653,6 +9665,7 @@ def tool_web_fetch(
                 max_chars=max_chars,
                 timeout_s=timeout_s,
                 include_meta=include_meta,
+                query=query,
             )
         )
 
@@ -9673,6 +9686,7 @@ def tool_web_fetch(
         max_chars=max_chars,
         timeout_s=timeout_s,
         include_meta=include_meta,
+        query=query,
     )
 
 
@@ -9913,7 +9927,7 @@ def _route_outcome_calibration(tool_name: str, session_state: Mapping[str, Any],
     root = led._root
     if root is None:
         return {}
-    outcomes = load_outcomes_from_state(outcomes_path(root, led.session_id))
+    outcomes = load_outcomes_from_state(outcomes_path(root, led.agent or "claude", led.session_id))
     session_phase = str(session_state.get("session_phase") or "").strip()
     followed: list[float] = []
     unfollowed: list[float] = []
@@ -10726,6 +10740,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 response_text = _truncate_result_text(response_text, _max_result_bytes())
                 with contextlib.suppress(Exception):
                     response_text = _codesearch_outline_transform(name, _spill_args, response_text)
+                    _reset_gather_streaks_on_new_user_message()
                     response_text = _convergence_intervention(name, _spill_args, response_text)
                     response_text = _test_churn_intervention(name, _spill_args, response_text)
                     response_text = _history_archaeology_intervention(name, _spill_args, response_text)
@@ -11020,6 +11035,41 @@ def _codesearch_outline_transform(tool_name: str, args: object, response_text: s
             sec.pop("content", None)
             sec["outline"] = f"{sym}: outline only -- read {path or sec.get('path', '')}:L{start}-L{end}."
     return json.dumps(payload, ensure_ascii=False)
+
+
+_LAST_SEEN_USER_TURNS = [0]
+
+
+def _reset_gather_streaks_on_new_user_message() -> None:
+    """A new user message invalidates the in-flight gather streak.
+
+    The "you are spiraling" premise only holds while the model keeps
+    re-investigating the SAME open question on its own -- a new user message
+    means fresh exploration is legitimately required, so the old count must
+    not carry over and nudge against it. This process's streak counters are
+    in-memory globals invisible to the separate UserPromptSubmit hook
+    (integrations/claude/plugin/hooks/user_prompt.py), so the reset is driven
+    by sessions/<session_id>/stats.json's `turns` counter -- maintained by
+    `update_session_stats` (called by that hook, and already the Codex parity
+    path's own turn counter), keyed by session_id so concurrent sessions in
+    the same workspace can't reset each other's streaks.
+    Fail-open: any read error is a no-op (never blocks the tool call).
+    """
+    try:
+        from atelier.core.capabilities.plugin_runtime import session_stats_path
+        from atelier.core.foundation.paths import default_store_root
+
+        session_id = _get_claude_session_id()
+        if not session_id:
+            return
+        state = json.loads(session_stats_path(default_store_root(), session_id).read_text("utf-8"))
+        turns = int(state.get("turns", 0) or 0)
+    except (OSError, ValueError, TypeError):
+        return
+    if turns > _LAST_SEEN_USER_TURNS[0]:
+        _LAST_SEEN_USER_TURNS[0] = turns
+        _NONEDIT_STREAK[0] = 0
+        _HISTORY_STREAK[0] = 0
 
 
 def _convergence_intervention(tool_name: str, args: object, response_text: str) -> str:
@@ -11386,15 +11436,19 @@ _SPILL_TOOLS = frozenset({"bash", "code_search", "sql", "read", "web_fetch"})
 # spilled output, so capping it would defeat the spill-recovery cycle. read keeps
 # its own inline budget + outline projection and the multi-MB wire backstop, so
 # it is never lossily truncated -- just not force-summarized at 2 KiB.
-# code_search joins the char-capped set (retrieval); read stays EXCLUDED per the
-# rationale above -- it is the incremental-retrieval / spill-recovery surface and
-# must not be force-summarized.
-_SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "code_search", "sql", "web_fetch"})
+# `web_fetch` is EXCLUDED for the same reason: web_fetch.py now spills its own
+# full rendered page on truncation (_truncate_with_spill) and names the spill
+# path directly in the `[truncated ...]` notice, so re-summarizing that notice
+# down to a couple KiB here would just bury the recovery hint under a second,
+# nested head/tail digest. code_search stays char-capped -- its output isn't
+# self-managed the same way.
+_SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "code_search", "sql"})
 
 
 # Redirected bash calls (curl->web_fetch, sed -n / cat -> read) take the TARGET
 # tool's spill identity, not bash's -- a redirected read keeps read's larger
-# incremental-retrieval budget; a redirected fetch keeps web_fetch's lean cap.
+# incremental-retrieval budget; a redirected fetch keeps web_fetch's own
+# self-managed truncation (also exempt from the char cap, like read).
 # grep/find_glob bound their own output in-handler (ranked projection / 300-entry
 # cap) so they keep the generic bash backstop.
 _REWRITE_SPILL_IDENTITY = {
