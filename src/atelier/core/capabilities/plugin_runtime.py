@@ -3198,9 +3198,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/*/*/*/*/stats.json"))
-        if sessions_dir.exists()
-        else []
+        else sorted(sessions_dir.glob("*/*/*/*/*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
