@@ -844,6 +844,7 @@ def test_compact_handover_writes_markdown(store_root: Path) -> None:
     assert payload["handover_file"]
     handover_path = Path(payload["handover_file"])
     from atelier.core.foundation.paths import session_dir
+
     assert handover_path == session_dir(root, "claude", "handover-session") / "HANDOVER.md"
     assert "Session Handover" in handover_path.read_text(encoding="utf-8")
 
@@ -2069,9 +2070,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

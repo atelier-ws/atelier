@@ -146,7 +146,11 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     from atelier.core.foundation.paths import find_session_dir
 
     existing = find_session_dir(atelier_root, session_id)
-    sidecar = (existing / "savings.jsonl") if existing is not None else (atelier_root / "sessions" / session_id / "savings.jsonl")
+    sidecar = (
+        (existing / "savings.jsonl")
+        if existing is not None
+        else (atelier_root / "sessions" / session_id / "savings.jsonl")
+    )
     if not sidecar.is_file():
         return
 
@@ -1233,9 +1237,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
                     kind = (
                         "file_edit"
                         if name in ("Edit", "Write", "MultiEdit")
-                        else "shell_command"
-                        if name == "Bash"
-                        else "tool_call"
+                        else "shell_command" if name == "Bash" else "tool_call"
                     )
 
                     # High-fidelity extraction: use plain string for code/diffs
@@ -1264,9 +1266,7 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
                     summary = (
                         f"{name}({file_path_str or ''})"
                         if kind == "file_edit"
-                        else content_text[:100]
-                        if kind == "shell_command"
-                        else f"{name}(...)"
+                        else content_text[:100] if kind == "shell_command" else f"{name}(...)"
                     )
                     blocks.append(
                         _turn(
@@ -1680,9 +1680,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
             kind = (
                 "file_edit"
                 if name in ("apply_patch", "write_file", "edit_file")
-                else "shell_command"
-                if name == "exec_command"
-                else "tool_call"
+                else "shell_command" if name == "exec_command" else "tool_call"
             )
 
             if kind == "file_edit":
@@ -2029,9 +2027,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
                 kind = (
                     "shell_command"
                     if tool == "bash"
-                    else "file_edit"
-                    if tool in ("edit", "write", "replace")
-                    else "tool_call"
+                    else "file_edit" if tool in ("edit", "write", "replace") else "tool_call"
                 )
 
                 if kind == "file_edit":
