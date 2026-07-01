@@ -251,3 +251,42 @@ def test_harness_measures_a_reweight_against_ground_truth() -> None:
     assert default_f1 == 0.0
     assert lex_f1 == 1.0
     assert lex_f1 > default_f1
+
+
+# --------------------------------------------------------------------------
+# "Semantic additive only" gate (semantic_additive_k)
+# --------------------------------------------------------------------------
+def test_semantic_additive_k_zero_matches_default_rrf() -> None:
+    ranker = _ranker()
+    lexical = [_symbol("a"), _symbol("b"), _symbol("c")]
+    semantic = [_symbol("c"), _symbol("d"), _symbol("a")]
+
+    default = ranker.reciprocal_rank_fuse(lexical, semantic, limit=5)
+    explicit_zero = ranker.reciprocal_rank_fuse(lexical, semantic, limit=5, semantic_additive_k=0)
+
+    # k=0 is the opt-out: identical order AND identical fused scores.
+    assert [s.symbol_id for s in default] == [s.symbol_id for s in explicit_zero]
+    assert [_score(s) for s in default] == [_score(s) for s in explicit_zero]
+
+
+def test_semantic_additive_gate_freezes_lexical_top_and_lifts_semantic_only() -> None:
+    ranker = _ranker()
+    # 'lex1' is lexical rank 1 but semantic rank 3; 'boosted' is lexical rank 3
+    # yet semantic rank 1, so ungated RRF lets the semantic channel demote 'lex1'
+    # below 'boosted'. 'sem_only' lives solely in the semantic channel.
+    lexical = [_symbol("lex1"), _symbol("lex2"), _symbol("boosted")]
+    semantic = [_symbol("boosted"), _symbol("sem_only"), _symbol("lex1")]
+
+    ungated = [s.symbol_id for s in ranker.reciprocal_rank_fuse(lexical, semantic, limit=10)]
+    gated = [s.symbol_id for s in ranker.reciprocal_rank_fuse(lexical, semantic, limit=10, semantic_additive_k=5)]
+
+    # Ungated: semantic pushes the lexical rank-1 hit off the top spot.
+    assert ungated[0] == "boosted"
+    assert ungated.index("lex1") == 1
+
+    # Gated: the lexical rank-1 hit is frozen at rank 1 despite its semantic
+    # rank 3, and the semantic-only candidate rises above the now-unboosted
+    # lexical hits it previously sat below.
+    assert gated[0] == "lex1"
+    assert gated.index("sem_only") < ungated.index("sem_only")
+    assert gated == ["lex1", "sem_only", "lex2", "boosted"]

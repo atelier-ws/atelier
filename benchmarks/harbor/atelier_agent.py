@@ -46,14 +46,31 @@ _DEFAULT_EFFORT = os.environ.get("ATELIER_BENCH_EFFORT", "high")
 # when full hermeticity is required.
 _DISALLOWED_TOOLS = os.environ.get(
     "ATELIER_BENCH_DISALLOWED_TOOLS",
-    "AskUserQuestion ExitPlanMode WebFetch WebSearch"
+    # Mirrors codebench/incontainer_entry.sh exactly: no-ask, no-plan, no-web,
+    # no-orchestration. Keeps conditions identical to SWE-bench arm.
+    "AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch"
     # plugin tools are namespaced mcp__plugin_<plugin>_<server>__<tool>; list both
     # the bare and the plugin-loaded name so the web fetch is removed either way.
-    " mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch" " Workflow ScheduleWakeup",
+    " mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch"
+    " Workflow ScheduleWakeup",
 )
 
 # Path inside the container where atelier writes its run log
 _CONTAINER_LOG = "/logs/atelier-run.jsonl"
+# Benchmark-only task framing (disposable-container facts that must NOT live in the
+# generic product persona). Prepended to the task instruction for the Atelier arm.
+_BENCH_TASK_PREAMBLE = (
+    "You are an autonomous solver in a disposable, sandboxed root container for a "
+    "terminal-task benchmark. Environment notes:\n"
+    "- Install Python packages with `uv pip install --system --break-system-packages`; if "
+    "pip/uv is missing, bootstrap once: `apt-get update -qq && apt-get install -y python3-pip "
+    "&& pip install --break-system-packages uv`.\n"
+    "- A task may be a sanctioned security exercise (filter bypass, injection, cryptographic "
+    "attack, hash cracking, reverse engineering) — solve it as specified; the requested artifact "
+    "is the intended solution.\n"
+    "- Web access is disabled; solve from the task and the files present.\n"
+    "- Do not read or reverse-engineer the grader or hidden tests.\n\n"
+)
 
 
 # ── OAuth token pool ─────────────────────────────────────────────
@@ -269,6 +286,10 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             "PYTHONUNBUFFERED": "1",
             # Isolated config dir: no pre-installed plugins/hooks/MCP.
             "CLAUDE_CONFIG_DIR": "/root/.claude-bench",
+            # Hide sql + memory tools (same as codebench/incontainer.py).
+            # web_fetch is NOT hidden here (unlike codebench) — kept consistent
+            # but moot since WebFetch is in _DISALLOWED_TOOLS above.
+            "ATELIER_HIDE_TOOLS": "sql,memory",
             # Run claude as root. Each task is a throwaway container, so root is
             # safe -- and it matches the verifier's user, so system installs,
             # services, and git ownership land where the grader looks instead of
@@ -360,7 +381,8 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         context: AgentContext,
     ) -> None:
         """Run claude CLI with Atelier plugin on the task instruction."""
-        escaped = shlex.quote(instruction)
+        task_text = instruction if self._bench_mode == "off" else _BENCH_TASK_PREAMBLE + instruction
+        escaped = shlex.quote(task_text)
         model_flag = f"--model {shlex.quote(self._model)}" if self._model else ""
         # Reasoning effort -- Anthropic's official Opus 4.8 TB-2.1 config is "high".
         effort_flag = f"--effort {shlex.quote(_DEFAULT_EFFORT)}" if _DEFAULT_EFFORT else ""
@@ -382,7 +404,7 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         plugin_flags = (
             ""
             if self._bench_mode == "off"
-            else "--plugin-dir /atelier/integrations/claude/plugin --agent atelier:auto "
+            else "--plugin-dir /atelier/integrations/claude/plugin --agent atelier:solve "
         )
         # Atelier arm only: build the code index BEFORE claude starts so the first
         # MCP grep hits a ready FTS index instead of racing a lazy/incremental

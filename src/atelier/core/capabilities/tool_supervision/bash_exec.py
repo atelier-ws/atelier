@@ -1382,7 +1382,7 @@ def start_managed_command(
             "blocked_reason": policy.reason,
         }
 
-    gate = command_discipline.pre_run_gate(command)
+    gate = command_discipline.pre_run_gate(command, cwd=cwd)
     if gate.action == "block":
         return {
             "status": "blocked",
@@ -1627,7 +1627,7 @@ def run_command(
         _result.rewrite_payload = policy.rewrite_payload
         return _result
 
-    gate = command_discipline.pre_run_gate(command)
+    gate = command_discipline.pre_run_gate(command, cwd=cwd)
     if gate.action == "block":
         return RunResult(
             stdout="",

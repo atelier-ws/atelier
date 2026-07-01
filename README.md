@@ -2,42 +2,6 @@
 
 <div align="center">
 
-# 🎨 Atelier
-
-## The honest and efficient runtime that makes AI agents cheaper, faster, and more correct
-
-[![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=flat-square)](https://github.com/atelier-ws/atelier/releases)
-[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/atelier-ws/atelier?style=flat-square)](https://github.com/atelier-ws/atelier)
-
-[![macOS](https://img.shields.io/badge/macOS-supported-blue?style=flat-square)](#)
-[![Linux](https://img.shields.io/badge/Linux-supported-blue?style=flat-square)](#)
-
-[![Claude Code](https://img.shields.io/badge/Claude_Code-supported-CF6D3F?style=flat-square)](https://claude.ai/code)
-[![Codex](https://img.shields.io/badge/Codex-supported-10A37F?style=flat-square)](https://openai.com/codex)
-[![opencode](https://img.shields.io/badge/opencode-supported-7C3AED?style=flat-square)](https://opencode.ai)
-
-<p>
-⚡ <b>92.8% on SWE-bench Verified (50 tasks)</b> &nbsp;·&nbsp;
-💰 <b>29.5% cheaper</b> &nbsp;·&nbsp;
-🔁 <b>37.7% fewer turns</b> &nbsp;·&nbsp;
-🪙 <b>44.1% fewer tokens</b>
-</p>
-
-```bash
-curl -fsSL https://install.atelier.ws | bash
-```
-
-**Live savings across all Atelier sessions** &nbsp;·&nbsp; updates on every session end
-
-Estimated gross savings: input tokens Atelier kept out of context, priced at each model's input / cache-read rates (zero for unknown models). Net end-to-end cost is measured separately under [Benchmarks](#benchmarks).
-
-[![Cost saved](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dsavings&style=for-the-badge&color=04ba0d)](https://atelier.ws)
-[![Tokens less](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dtokens&style=for-the-badge&color=7904b8)](https://atelier.ws)
-[![Calls avoided](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dcalls&style=for-the-badge&color=eae4ed)](https://atelier.ws)
-
-</div>
-
 ---
 
 ## 📊 Results
@@ -91,6 +55,7 @@ Vanilla agents navigate by reading entire files and grepping blindly. Atelier re
 
 Atelier exposes exactly **5 tools** — not because the others don't exist, but because more tools means more decision overhead. Every extra tool the agent sees is a choice it has to make. `grep`, `search`, `memory`, `sql`, `codemod` and others are all registered and callable by name, but hidden from the advertised surface so the agent leads with the right primitive every time.
 
+
 | Tool          | What it does                                                         | Why this and not something else                                                                                                                                                |
 | --------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `code_search` | Symbol lookup + callers, callees, usages + ranked source in one call | `grep` makes agents loop over results and read whole files. `code_search` returns the exact symbol, its call graph, and the relevant source in one shot — no follow-up needed |
@@ -109,6 +74,7 @@ Atelier ships ready-to-use agent personas and skills — drop them into any supp
 
 Packaged agents in [integrations/agents/](integrations/agents/). Each covers a distinct phase of the coding loop — explore → plan → execute for human checkpoints, `code` as the all-in-one interactive default, `solve` for autonomous well-defined tasks, `auto` for fully headless runs, and `review`/`research` as read-only specialists that must never write. Removing any one collapses two phases together; adding more creates overlapping choices.
 
+
 | Agent    | Subagent         | Writes? | Use                                   | Why this and not the default agent                                                                                                             |
 | ---------- | ------------------ | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | auto     | atelier:auto     | Yes     | Fully autonomous unattended mode      | No plan approval, no questions asked. Use for CI, benchmarks, headless runs where interruptions break the pipeline                             |
@@ -125,6 +91,7 @@ Packaged agents in [integrations/agents/](integrations/agents/). Each covers a d
 ### Skills
 
 Packaged skills in [integrations/skills/](integrations/skills/):
+
 
 | Skill         | What it does                                                                                                                                                   | Why                                                                                                                                                                                             |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -145,17 +112,18 @@ Packaged skills in [integrations/skills/](integrations/skills/):
 
 8 open-source codebases · 5 questions each · `claude-opus-4-8` · costs summed across all 5 prompts (5 reps). Sorted by savings. Raw data: [`benchmarks/codebench/results/exploration_2026_06_29/`](benchmarks/codebench/results/exploration_2026_06_29/)
 
-| Codebase                                               | Language                                         |  Atelier |  Baseline | Cost ↓ | Δ Input | Δ Cache W | Δ Cache R | Δ Output |
-| ------------------------------------------------------ | ------------------------------------------------ | -------: | --------: | ------: | ------: | --------: | --------: | -------: |
-| [VS Code](https://github.com/microsoft/vscode)         | TypeScript · 11k files · 3.3M lines · 33M tok  |    $0.85 |     $5.79 | **85%** |   −51k |    −270k |  −2,144k |    −66k |
-| [Django](https://github.com/django/django)             | Python · 3k files · 522k lines · 4.8M tok      |    $0.45 |     $2.85 | **84%** |    −8k |    −136k |  −1,248k |    −22k |
-| [Tokio](https://github.com/tokio-rs/tokio)             | Rust · 784 files · 176k lines · 1.4M tok       |    $0.47 |     $2.15 | **78%** |    −1k |    −121k |    −522k |     −6k |
-| [OkHttp](https://github.com/square/okhttp)             | Java · 596 files · 133k lines · 1.1M tok       |    $0.59 |     $2.23 | **73%** |   −20k |    −102k |    −598k |    −13k |
-| [Linux](https://github.com/torvalds/linux)             | C · 95k files · 30M lines · 300M tok           |    $0.70 |     $1.67 | **58%** |   −11k |     −38k |    −448k |    −19k |
-| [Gin](https://github.com/gin-gonic/gin)                | Go · 99 files · 24k lines · 171k tok           |    $0.53 |     $1.04 | **49%** |      0k |     −45k |    −300k |      0k |
-| [Alamofire](https://github.com/Alamofire/Alamofire)    | Swift · 98 files · 44k lines · 452k tok        |    $1.81 |     $2.41 | **25%** |    −8k |     −49k |      −5k |     +4k |
-| [Excalidraw](https://github.com/excalidraw/excalidraw) | TypeScript · 600 files · 171k lines · 1.7M tok |    $5.54 |     $7.23 | **23%** |    −7k |     −79k |  −1,118k |    −19k |
-| **Total**                                              | **8 repos · 110k files · 34M lines · 342M tok** | **$10.94** | **$25.37** | **57%** | **−107k** | **−840k** | **−6,383k** | **−141k** |
+
+| Codebase                                               | Language                                           |                 Atelier | Baseline |    Cost ↓ |   Δ Input |   Δ Cache W | Δ Cache R | Δ Output |
+| -------------------------------------------------------- | ---------------------------------------------------- | ------------------------: | ---------: | -----------: | -----------: | -------------: | -----------: | ----------: |
+| [VS Code](https://github.com/microsoft/vscode)         | TypeScript · 11k files · 3.3M lines · 33M tok   |       $0.85 |     $5.79 |  **85%** |      −51k |     −270k |     −2,144k |      −66k |           |
+| [Django](https://github.com/django/django)             | Python · 3k files · 522k lines · 4.8M tok       |       $0.45 |     $2.85 |  **84%** |       −8k |     −136k |     −1,248k |      −22k |           |
+| [Tokio](https://github.com/tokio-rs/tokio)             | Rust · 784 files · 176k lines · 1.4M tok        |       $0.47 |     $2.15 |  **78%** |       −1k |     −121k |       −522k |       −6k |           |
+| [OkHttp](https://github.com/square/okhttp)             | Java · 596 files · 133k lines · 1.1M tok        |       $0.59 |     $2.23 |  **73%** |      −20k |     −102k |       −598k |      −13k |           |
+| [Linux](https://github.com/torvalds/linux)             | C · 95k files · 30M lines · 300M tok            |       $0.70 |     $1.67 |  **58%** |      −11k |      −38k |       −448k |      −19k |           |
+| [Gin](https://github.com/gin-gonic/gin)                | Go · 99 files · 24k lines · 171k tok            |       $0.53 |     $1.04 |  **49%** |         0k |      −45k |       −300k |         0k |           |
+| [Alamofire](https://github.com/Alamofire/Alamofire)    | Swift · 98 files · 44k lines · 452k tok         |       $1.81 |     $2.41 |  **25%** |       −8k |      −49k |         −5k |        +4k |           |
+| [Excalidraw](https://github.com/excalidraw/excalidraw) | TypeScript · 600 files · 171k lines · 1.7M tok  |       $5.54 |     $7.23 |  **23%** |       −7k |      −79k |     −1,118k |      −19k |           |
+| **Total**                                              | **8 repos · 110k files · 34M lines · 342M tok** | **$10.94** | **$25.37** |  **57%** | **−107k** | **−840k** | **−6,383k** | **−141k** |           |
 
 <details>
 <summary>All 40 prompts</summary>
@@ -241,15 +209,17 @@ atelier benchmark codebench \
 
 End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — **50 instances** across **12 Python repos**, **5 reps** each, `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run inside the image with the project's conda env activated identically (same setup for both arms). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [benchmarks/codebench/results/swe50_2026_06_30/](benchmarks/codebench/results/swe50_2026_06_30/)
 
+
 |              |        Cost | Input tok | Cache Write |  Cache Read | Output tok |   Total tok |       Turns |        Time |       Resolved       |
 | -------------- | ------------: | ----------: | ------------: | ------------: | -----------: | ------------: | ------------: | ------------: | :---------------------: |
 | **atelier**  | **$165.45** | 1,007,977 |   5,730,565 |  97,238,294 |  2,192,112 |  **106.2M** |   **4,336** |   **10.9h** | **232 / 250 (92.8%)** |
 | **baseline** | **$234.84** | 1,110,596 |   6,904,544 | 178,930,411 |  2,986,079 |  **189.9M** |   **6,963** |   **14.1h** | **202 / 250 (80.8%)** |
-| **delta**    | **−29.5%** |    −9.2% |     −17.0% | **−45.7%** |    −26.6% | **−44.1%** | **−37.7%** | **−22.7%** |     **+12.0 pp**      |
+| **delta**    | **−29.5%** |    −9.2% |     −17.0% | **−45.7%** |    −26.6% | **−44.1%** | **−37.7%** | **−22.7%** |     **+12.0 pp**     |
 
 #### Per-task breakdown (5 reps each)
 
 ✅ = all 5 reps correct · 🟡 = partial · ❌ = none. Rep costs ordered rep 1–5.
+
 
 | Task                               | Baseline (CC) ✓ | Atelier ✓ |       Baseline (CC) total |                                                                Atelier total |                                                                  Save | Baseline (CC) rep costs ($) | Atelier rep costs ($) |  |
 | ------------------------------------ | :----------------: | :-----------: | --------------------------: | -----------------------------------------------------------------------------: | ----------------------------------------------------------------------: | ----------------------------------------------------- | -- |
@@ -276,7 +246,7 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 | `matplotlib__matplotlib-14623`     |      🟡 4/5      |   ✅ 5/5   |             $3.08 | $2.19 |      ![28.8%](https://img.shields.io/badge/28.8%25-yellow?style=flat-square) | $0.63, $0.63, $0.74, $0.35, $0.72 | $0.28, $0.40, $0.46, $0.48, $0.57 |                                                     |  |
 | `matplotlib__matplotlib-24870`     |      🟡 3/5      |   ✅ 5/5   |             $3.95 | $3.55 |      ![10.2%](https://img.shields.io/badge/10.2%25-yellow?style=flat-square) | $0.81, $0.64, $0.86, $0.93, $0.71 | $0.65, $0.67, $0.73, $0.75, $0.75 |                                                     |  |
 | `mwaskom__seaborn-3069`            |      ✅ 5/5      |   ✅ 5/5   |             $7.11 | $3.98 | ![44.0%](https://img.shields.io/badge/44.0%25-brightgreen?style=flat-square) | $1.37, $1.51, $1.52, $1.12, $1.59 | $0.68, $0.77, $0.79, $0.85, $0.90 |                                                     |  |
-| `mwaskom__seaborn-3187`            |      🟡 3/5      |   🟡 4/5   |             $8.05 | $6.89 | ![14.4%](https://img.shields.io/badge/14.4%25-yellow?style=flat-square) | $1.01, $1.63, $1.21, $1.93, $2.27 | $0.77, $1.82, $1.38, $1.25, $1.67 |                                                     |  |
+| `mwaskom__seaborn-3187`            |      🟡 3/5      |   🟡 4/5   |             $8.05 | $6.89 |      ![14.4%](https://img.shields.io/badge/14.4%25-yellow?style=flat-square) | $1.01, $1.63, $1.21, $1.93, $2.27 | $0.77, $1.82, $1.38, $1.25, $1.67 |                                                     |  |
 | `pallets__flask-5014`              |      ✅ 5/5      |   ✅ 5/5   |             $0.62 | $0.66 |     ![-6.7%](https://img.shields.io/badge/--6.7%25-orange?style=flat-square) | $0.16, $0.15, $0.08, $0.13, $0.10 | $0.12, $0.13, $0.14, $0.14, $0.14 |                                                     |  |
 | `psf__requests-2931`               |      🟡 2/5      |   ✅ 5/5   |             $1.10 | $2.41 |    ![-119.6%](https://img.shields.io/badge/--119.6%25-red?style=flat-square) | $0.46, $0.14, $0.10, $0.14, $0.25 | $0.47, $0.47, $0.47, $0.48, $0.53 |                                                     |  |
 | `psf__requests-6028`               |      ✅ 5/5      |   ✅ 5/5   |             $1.86 | $1.46 |      ![21.6%](https://img.shields.io/badge/21.6%25-yellow?style=flat-square) | $0.36, $0.34, $0.48, $0.37, $0.32 | $0.23, $0.27, $0.27, $0.34, $0.34 |                                                     |  |
@@ -298,7 +268,7 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 | `sphinx-doc__sphinx-8548`          |      🟡 3/5      |   ✅ 5/5   |           $10.46 | $10.89 |     ![-4.0%](https://img.shields.io/badge/--4.0%25-orange?style=flat-square) | $1.61, $2.87, $2.41, $2.16, $1.41 | $1.25, $2.16, $2.21, $2.38, $2.88 |                                                     |  |
 | `sphinx-doc__sphinx-8551`          |      ✅ 5/5      |   ✅ 5/5   |             $3.61 | $1.98 | ![45.1%](https://img.shields.io/badge/45.1%25-brightgreen?style=flat-square) | $0.77, $0.93, $0.30, $1.21, $0.39 | $0.33, $0.35, $0.41, $0.41, $0.47 |                                                     |  |
 | `sphinx-doc__sphinx-9461`          |      🟡 2/5      |   🟡 1/5   |             $5.06 | $3.76 |      ![25.7%](https://img.shields.io/badge/25.7%25-yellow?style=flat-square) | $2.32, $1.34, $0.78, $0.63, $0.00 | $1.23, $0.35, $0.67, $0.74, $0.77 |                                                     |  |
-| `sympy__sympy-12489`               |      🟡 2/5      |   🟡 3/5   |             $2.79 | $3.53 | ![-26.8%](https://img.shields.io/badge/--26.8%25-orange?style=flat-square) | $0.28, $0.50, $0.32, $0.81, $0.88 | $0.78, $0.51, $1.01, $0.83, $0.40 |                                                     |  |
+| `sympy__sympy-12489`               |      🟡 2/5      |   🟡 3/5   |             $2.79 | $3.53 |   ![-26.8%](https://img.shields.io/badge/--26.8%25-orange?style=flat-square) | $0.28, $0.50, $0.32, $0.81, $0.88 | $0.78, $0.51, $1.01, $0.83, $0.40 |                                                     |  |
 | `sympy__sympy-13091`               |      🟡 4/5      |   ✅ 5/5   |             $4.63 | $3.98 |      ![14.0%](https://img.shields.io/badge/14.0%25-yellow?style=flat-square) | $1.14, $0.77, $1.23, $0.64, $0.85 | $0.71, $0.73, $0.77, $0.84, $0.94 |                                                     |  |
 | `sympy__sympy-13877`               |      ✅ 5/5      |   ✅ 5/5   |             $2.80 | $1.71 | ![38.8%](https://img.shields.io/badge/38.8%25-brightgreen?style=flat-square) | $0.49, $0.59, $0.53, $0.44, $0.75 | $0.29, $0.33, $0.35, $0.36, $0.38 |                                                     |  |
 | `sympy__sympy-13878`               |      🟡 1/5      |   ✅ 5/5   |             $2.55 | $6.43 |    ![-152.2%](https://img.shields.io/badge/--152.2%25-red?style=flat-square) | $0.00, $0.00, $2.55, $0.00, $0.00 | $0.95, $1.01, $1.37, $1.50, $1.60 |                                                     |  |
@@ -350,20 +320,21 @@ These are deferred-loaded (`ToolSearch`), so disabling them costs **neither arm 
 
 Every tool each arm loads, with schema token counts (cl100k proxy, read from the request flows). `Agent` / `Skill` / `ToolSearch` are **identical** Claude Code natives in both arms; heavier tools load on demand via `ToolSearch`.
 
-| Capability | Vanilla | tok | calls | Atelier | tok | calls |
-| --- | --- | ---: | ---: | --- | ---: | ---: |
-| Shell | `Bash` | 724 | 3,171 | `bash` | 307 | 1,638 |
-| Read file | `Read` | 446 | 1,798 | `read` | 222 | 987 |
-| Edit file | `Edit` | 255 | 1,444 | `edit` (handles both) | 306 | 711 |
-| Create file | `Write` | 173 | — | _(folded into `edit`)_ | — | — |
-| Symbol search + call graph | — | — | — | `code_search` | 280 | 544 |
-| Web fetch | `WebFetch` | — | disabled¹ | `web_fetch` | 131 | disabled¹ |
-| Subagents | `Agent` | 615 | | `Agent` | 615 | |
-| Skills | `Skill` | 492 | | `Skill` | 492 | |
-| Deferred-load | `ToolSearch` | 376 | | `ToolSearch` | 376 | |
-| **Tools total** | | **3,081** | **6,515** | | **2,729** | **3,895** |
-| **System prompt** | | **1,610** | | | **715** | |
-| **Fixed prefix** | | **4,691** | | | **3,444** | |
+
+| Capability                 | Vanilla      |       tok |      calls | Atelier                |       tok |      calls |
+| ---------------------------- | -------------- | ----------: | -----------: | ------------------------ | ----------: | -----------: |
+| Shell                      | `Bash`       |       724 |      3,171 | `bash`                 |       307 |      1,638 |
+| Read file                  | `Read`       |       446 |      1,798 | `read`                 |       222 |        987 |
+| Edit file                  | `Edit`       |       255 |      1,444 | `edit` (handles both)  |       306 |        711 |
+| Create file                | `Write`      |       173 |         — | _(folded into `edit`)_ |        — |         — |
+| Symbol search + call graph | —           |        — |         — | `code_search`          |       280 |        544 |
+| Web fetch                  | `WebFetch`   |        — | disabled¹ | `web_fetch`            |       131 | disabled¹ |
+| Subagents                  | `Agent`      |       615 |            | `Agent`                |       615 |            |
+| Skills                     | `Skill`      |       492 |            | `Skill`                |       492 |            |
+| Deferred-load              | `ToolSearch` |       376 |            | `ToolSearch`           |       376 |            |
+| **Tools total**            |              | **3,081** |  **6,515** |                        | **2,729** |  **3,895** |
+| **System prompt**          |              | **1,610** |            |                        |   **715** |            |
+| **Fixed prefix**           |              | **4,691** |            |                        | **3,444** |            |
 
 ¹ `WebFetch` disabled in this benchmark (both arms) — no fetching answers from the web.
 
@@ -437,6 +408,7 @@ atelier benchmark providers
 
 Provider/read benchmark numbers: triplet is `correctness / median tokens / median ms`; `-` means unsupported or not benchmarked.
 
+
 | Test type         | [atelier](https://github.com/atelier-ws/atelier) | [atelier-zoekt](https://github.com/sourcegraph/zoekt) | [ast-grep](https://github.com/ast-grep/ast-grep) | [code-index-mcp](https://github.com/johnhuang316/code-index-mcp) | [codegraph](https://github.com/colbymchenry/codegraph) | [jcodemunch-mcp](https://github.com/jgravelle/jcodemunch-mcp) | [scip-python](https://github.com/sourcegraph/scip-python) | [serena](https://github.com/oraios/serena) | [universal-ctags](https://github.com/universal-ctags/ctags) | [zoekt](https://github.com/sourcegraph/zoekt) |
 | ------------------- | -------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- |
 | callees           | **1.00 / 78 / 114**                              | -                                                     | -                                                | -                                                                | 0.85 / 112 / 135                                       | 0.97 / 1654 / 283                                             | -                                                         | -                                          | -                                                           | -                                             |
@@ -454,7 +426,8 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 
 Pure retrieval quality across **14 open-source repos**, balanced at **100 queries per repo** per gold type (1,400 def + 1,400 content + 520 semantic = 3,320 total). Each query is embedded and ranked against all symbols in the repo by cosine similarity; MRR = mean reciprocal rank of the correct symbol.
 
-> Atelier ships **BGE-Code-v1** (`BAAI/bge-code-v1`) as the default semantic embedder — best avg MRR at ~1.5B params and 6× faster indexing throughput than the next-closest model.
+> Atelier ships **BGE-Code-v1** (`BAAI/bge-code-v1`) as the default semantic embedder — best avg MRR at ~1.5B params and 6× faster indexing throughput than the next-closest model. Requires ≥ 3.5 GB free VRAM; on CPU or GPUs below that threshold, Atelier automatically falls back to **SFR-Embedding-Code-400M_R** (~800 MB, avg MRR 0.757) — no configuration needed.
+
 
 | Model                      | Params | Def MRR   | Content MRR | Semantic MRR | **Avg**   |
 | ---------------------------- | -------- | ----------- | ------------- | -------------- | ----------- |
@@ -482,6 +455,14 @@ python3 benchmarks/codebench/run_embedder_sweep.py
 
 ---
 
+## 🧱 Built With
+
+Atelier is a single **mypyc-compiled Python** runtime your agent talks to over **MCP** — **tree-sitter** parsing and an in-house call graph for code intelligence, **SQLite + BM25 + BGE-Code-v1** for hybrid search, **OpenTelemetry** + **tiktoken** for cost tracking, and a Cloudflare/Stripe licensing backend. Every dependency earns its place against one rule: spend fewer tokens to reach a more correct answer.
+
+→ **[The full stack and the reasoning behind every choice → Architecture: Technology & Concepts](docs/architecture.md)**
+
+---
+
 ## 📚 Docs
 
 * [Installation](docs/installation.md)
@@ -489,6 +470,7 @@ python3 benchmarks/codebench/run_embedder_sweep.py
 * [Host setup (all agent CLIs)](docs/hosts/all-agent-clis.md)
 * [MCP SDK](docs/sdk/mcp.md)
 * [Troubleshooting](docs/troubleshooting.md)
+* [Architecture — Technology & Concepts](docs/architecture.md)
 
 ---
 

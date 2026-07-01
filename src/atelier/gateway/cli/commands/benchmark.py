@@ -269,124 +269,119 @@ def benchmark_mini_cmd(
 @click.option(
     "--dataset",
     "-d",
-    default="terminal-bench/terminal-bench-2",
+    default="terminal-bench/terminal-bench-2-1",
     show_default=True,
     help="Harbor dataset to run against.",
 )
-@click.option("--limit", default=5, show_default=True, type=int, help="Max tasks to run.")
+@click.option("--limit", default=None, type=int, help="Max tasks to run (default: all).")
 @click.option(
     "--agent",
     "agent_arm",
-    default="atelier",
+    default="atelier-claude-code",
     type=click.Choice(["atelier", "atelier-bedrock", "atelier-claude-code"]),
     show_default=True,
     help="Agent arm: direct API, Bedrock, or Claude Code CLI + Atelier plugin.",
 )
-@click.option("--model", default=None, help="Model to use inside the container.")
-@click.option("--parallel", default=1, show_default=True, type=int, help="Number of parallel trials.")
-@click.option("--output", default=None, help="Output directory for results.")
+@click.option("--baseline", is_flag=True, default=False, help="Run baseline arm (bench_mode=off, no plugin).")
+@click.option("--model", default=None, help="Model override (default: ATELIER_BENCH_MODEL or claude-opus-4-8).")
+@click.option(
+    "--attempts",
+    "-n",
+    default=5,
+    show_default=True,
+    type=int,
+    help="Number of attempts per task (pass@k scoring).",
+)
+@click.option(
+    "--concurrent",
+    "-c",
+    default=None,
+    type=int,
+    help="Max concurrent trials. Default: slots x tokens (2 slots x num_tokens).",
+)
+@click.option(
+    "--slots",
+    default=2,
+    show_default=True,
+    type=int,
+    help="Token slots per OAuth token (ATELIER_BENCH_TOKEN_SLOTS).",
+)
+@click.option(
+    "--bundle",
+    default="/tmp/avbuild/atelier-bundle.tar.gz",
+    show_default=True,
+    help="Path to prebuilt atelier bundle (claude-code arm only).",
+)
+@click.option(
+    "--rebuild-bundle",
+    is_flag=True,
+    default=True,
+    help="Rebuild bundle from current source before a fresh run (default: on).",
+)
+@click.option("--resume", "resume_dir", default=None, help="Resume an existing job dir instead of starting fresh.")
+@click.option("--output", "-o", default=None, help="Output directory for results (default: benchmarks/jobs/harbor/).")
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 @click.pass_context
 def benchmark_harbor_cmd(
     ctx: click.Context,
     dataset: str,
-    limit: int,
+    limit: int | None,
     agent_arm: str,
+    baseline: bool,
     model: str | None,
-    parallel: int,
+    attempts: int,
+    concurrent: int | None,
+    slots: int,
+    bundle: str,
+    rebuild_bundle: bool,
+    resume_dir: str | None,
     output: str | None,
+    yes: bool,
 ) -> None:
     """Run Atelier on a Harbor benchmark dataset.
 
     \b
-    Requires: pip install harbor  (or: uv add harbor in benchmarks/)
     Requires: Docker (for container execution)
+    Reads tokens from benchmarks/harbor/.env (CLAUDE_CODE_OAUTH_TOKEN_1/_2).
 
     \b
     Examples:
-      atelier benchmark harbor --limit 5
-      atelier benchmark harbor --agent atelier-bedrock --limit 10
-      atelier benchmark harbor -d "terminal-bench/terminal-bench-core@0.1.1" --limit 3
+      # Fresh run, all tasks, 5 attempts, 2 slots/token (auto-rebuilds bundle):
+      atelier benchmark harbor -y
 
-    \b
-    To run A/B comparison, run with --agent atelier and then --agent atelier-baseline.
+      # Baseline arm (no Atelier plugin):
+      atelier benchmark harbor --baseline -y
+
+      # Resume a rate-limited job:
+      atelier benchmark harbor --resume benchmarks/jobs/harbor/2026-07-01__12-00-00 -y
+
+      # Quick smoke test (3 tasks, 1 attempt):
+      atelier benchmark harbor --limit 3 --attempts 1 -y
     """
-    try:
-        import harbor  # noqa: F401
-    except ImportError as exc:
-        raise click.ClickException(
-            "harbor package not found.\n"
-            "Install it with:\n"
-            "  pip install harbor\n"
-            "or add it to your benchmarks project:\n"
-            "  uv add harbor --project benchmarks"
-        ) from exc
-
-    # Resolve the agent import path from the agent arm
-    _agent_import_paths = {
-        "atelier": "benchmarks.harbor.atelier_agent:AtelierHarborAgent",
-        "atelier-bedrock": "benchmarks.harbor.atelier_agent:AtelierBedrockHarborAgent",
-        "atelier-claude-code": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
-    }
-    agent_import_path = _agent_import_paths[agent_arm]
-
-    out_dir = output or str(ctx.obj.get("root", ".") / "evals" / "harbor")
-
-    # Load the pre-registered task list to select the first N
+    import json as _json
     import os as _os
     import shutil
     import subprocess as _subprocess
     from pathlib import Path as _Path
 
-    tasks_yaml = _Path(__file__).parents[5] / "benchmarks" / "harbor" / "tasks.yaml"
-    selected_tasks: list[str] = []
-    # tasks.yaml is pinned for terminal-bench-core only; for other datasets
-    # (TB2.0, TB2.1, etc.) use -l to let harbor pick the first N tasks.
-    core_dataset = "terminal-bench-core" in dataset
-    if tasks_yaml.exists() and core_dataset:
-        import yaml as _yaml  # type: ignore[import-untyped]
+    try:
+        import harbor  # noqa: F401
+    except ImportError as exc:
+        raise click.ClickException("harbor package not found. Install: uv add harbor --project benchmarks") from exc
 
-        raw = _yaml.safe_load(tasks_yaml.read_text()) or {}
-        all_tasks: list[str] = raw.get("tasks", [])
-        selected_tasks = all_tasks[:limit]
+    repo_root = _Path(__file__).parents[5]
+    repo_root_str = str(repo_root)
 
-    click.echo(f"◆ Running Harbor eval: dataset={dataset}")
-    click.echo(
-        f"  agent={agent_arm}  model={model or 'default'}  tasks={len(selected_tasks) or limit}  parallel={parallel}"
-    )
-    click.echo(f"  output={out_dir}")
-    if selected_tasks:
-        click.echo(f"  tasks: {', '.join(selected_tasks)}")
-    click.echo("")
-
-    harbor_bin = shutil.which("harbor")
-    if harbor_bin is None:
-        raise click.ClickException(
-            "harbor CLI not found on PATH.\n"
-            "Install it: pip install harbor\n"
-            "Make sure the harbor binary is on your PATH after install."
-        )
-
-    # Ensure the repo root is on PYTHONPATH so harbor can import
-    # benchmarks.harbor.atelier_agent regardless of working directory.
-    repo_root_str = str(_Path(__file__).parents[5])
-    existing_pythonpath = _os.environ.get("PYTHONPATH", "")
-    pythonpath = f"{repo_root_str}:{existing_pythonpath}" if existing_pythonpath else repo_root_str
-    harbor_env = {**_os.environ, "PYTHONPATH": pythonpath}
-
-    def _read_token_from_env_files(key: str) -> str:
-        """Read a token from shell env or .env files in known locations."""
+    # ── helpers ────────────────────────────────────────────────────────────
+    def _read_env(key: str) -> str:
+        """Read key from shell env or benchmarks/harbor/.env."""
         val = _os.environ.get(key, "")
         if val:
             return val
-        for env_file in (
-            _Path(repo_root_str) / ".env",
-            _Path(repo_root_str) / "benchmarks" / ".env",
-            _Path(repo_root_str) / "benchmarks" / "codebench" / ".env",
-        ):
-            if not env_file.is_file():
-                continue
+        env_file = repo_root / "benchmarks" / "harbor" / ".env"
+        if env_file.is_file():
             for line in env_file.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip().lstrip("export ").strip()
+                stripped = line.strip()
                 if stripped.startswith("#") or "=" not in stripped:
                     continue
                 k, _, v = stripped.partition("=")
@@ -394,54 +389,163 @@ def benchmark_harbor_cmd(
                     return v.strip().strip("'\"")
         return ""
 
-    import json as _json
+    harbor_bin = shutil.which("harbor") or shutil.which("uv")
+    if harbor_bin is None:
+        raise click.ClickException("harbor / uv not found on PATH.")
+    # Prefer `uv run --no-sync harbor` so the benchmarks venv is used.
+    harbor_cmd_prefix: list[str] = ["uv", "run", "--no-sync", "harbor"] if shutil.which("uv") else ["harbor"]
 
-    base_cmd = [
-        harbor_bin,
+    # ── OAuth token pool ───────────────────────────────────────────────────
+    tokens = [
+        _read_env("CLAUDE_CODE_OAUTH_TOKEN_1"),
+        _read_env("CLAUDE_CODE_OAUTH_TOKEN_2"),
+    ]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        # Fall back to bare CLAUDE_CODE_OAUTH_TOKEN
+        single = _read_env("CLAUDE_CODE_OAUTH_TOKEN")
+        if single:
+            tokens = [single]
+    if agent_arm == "atelier-claude-code" and not tokens:
+        raise click.ClickException(
+            "No OAuth token found. Set CLAUDE_CODE_OAUTH_TOKEN_1 (and optionally _2) "
+            "in benchmarks/harbor/.env or your shell."
+        )
+    n_concurrent = concurrent if concurrent is not None else slots * max(len(tokens), 1)
+
+    # ── Agent setup ────────────────────────────────────────────────────────
+    _agent_import_paths = {
+        "atelier": "benchmarks.harbor.atelier_agent:AtelierHarborAgent",
+        "atelier-bedrock": "benchmarks.harbor.atelier_agent:AtelierBedrockHarborAgent",
+        "atelier-claude-code": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+    }
+    agent_import_path = _agent_import_paths[agent_arm]
+
+    # ── Output dir ─────────────────────────────────────────────────────────
+    arm_label = "baseline" if baseline else "atelier"
+    out_dir = _Path(output) if output else repo_root / "benchmarks" / "harbor" / "results" / arm_label
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir_str = str(out_dir)
+
+    # ── Resume path ────────────────────────────────────────────────────────
+    if resume_dir:
+        jd = _Path(resume_dir)
+        click.echo(f"Resuming job at: {jd}")
+        if not yes:
+            click.confirm("Proceed?", abort=True)
+        existing_pythonpath = _os.environ.get("PYTHONPATH", "")
+        pythonpath = f"{repo_root_str}:{existing_pythonpath}" if existing_pythonpath else repo_root_str
+        env = {**_os.environ, "PYTHONPATH": pythonpath, "ATELIER_BENCH_TOKEN_SLOTS": str(slots)}
+        for i, tok in enumerate(tokens, 1):
+            env[f"CLAUDE_CODE_OAUTH_TOKEN_{i}"] = tok
+        ret = _subprocess.call(
+            [*harbor_cmd_prefix, "job", "resume", "-p", str(jd), "-y"],
+            env=env,
+        )
+        if ret != 0:
+            raise click.ClickException(f"harbor job resume exited with code {ret}")
+        return
+
+    # ── Bundle handling (claude-code arm only) ─────────────────────────────
+    bundle_path = _Path(bundle)
+    if agent_arm == "atelier-claude-code":
+        if rebuild_bundle:
+            click.echo(f"Rebuilding bundle from current source -> {bundle_path} ...")
+            rebuild_script = repo_root / "benchmarks" / "harbor" / "rebuild_bundle.sh"
+            bundle_path.parent.mkdir(parents=True, exist_ok=True)
+            ret = _subprocess.call(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{repo_root_str}:/atelier:ro",
+                    "-v",
+                    f"{bundle_path.parent}:/out",
+                    "debian:bullseye-slim",
+                    "bash",
+                    f"/atelier/{rebuild_script.relative_to(repo_root)}",
+                ],
+            )
+            if ret != 0:
+                raise click.ClickException("Bundle rebuild failed.")
+            new_bundle = bundle_path.parent / "atelier-bundle-new.tar.gz"
+            if not new_bundle.exists():
+                raise click.ClickException("Bundle rebuild produced no output.")
+            new_bundle.rename(bundle_path)
+            click.echo(f"Bundle rebuilt: {bundle_path} ({bundle_path.stat().st_size // 1024 // 1024} MB)")
+        if not bundle_path.exists():
+            raise click.ClickException(
+                f"Bundle not found: {bundle_path}. Run without --no-rebuild-bundle to build it first."
+            )
+
+    # ── Print plan ─────────────────────────────────────────────────────────
+    click.echo("\n◆ Harbor eval")
+    click.echo(f"  dataset          : {dataset}")
+    click.echo(f"  arm              : {arm_label}")
+    click.echo(f"  model            : {model or _read_env('ATELIER_BENCH_MODEL') or 'claude-opus-4-8'}")
+    click.echo(f"  attempts/task    : {attempts}")
+    click.echo(f"  concurrent       : {n_concurrent}  ({slots} slots x {len(tokens)} token(s))")
+    click.echo(f"  output           : {out_dir_str}")
+    if agent_arm == "atelier-claude-code":
+        click.echo(f"  bundle           : {bundle_path}")
+    click.echo("")
+    if not yes:
+        click.confirm("Start run?", abort=True)
+
+    # ── Build harbor run command ────────────────────────────────────────────
+    mounts = [{"type": "bind", "source": repo_root_str, "target": "/atelier", "read_only": True}]
+    if agent_arm == "atelier-claude-code":
+        mounts.append(
+            {"type": "bind", "source": str(bundle_path), "target": "/atelier-bundle.tar.gz", "read_only": True}
+        )
+
+    cmd = [
+        *harbor_cmd_prefix,
         "run",
         "--dataset",
         dataset,
         "--agent-import-path",
         agent_import_path,
         "--jobs-dir",
-        out_dir,
-        # Mount the repo into the container so atelier can be installed from
-        # source (it is not published to PyPI).
+        out_dir_str,
         "--mounts",
-        _json.dumps([{"type": "bind", "source": repo_root_str, "target": "/atelier"}]),
-        # Collect the claude CLI output log for debugging.
-        "--artifact",
-        "/logs/claude-run.json",
+        _json.dumps(mounts),
+        "-k",
+        "1",
+        "-n",
+        str(attempts),
+        "--n-concurrent",
+        str(n_concurrent),
+        "-y",
     ]
+    if limit is not None:
+        cmd += ["--n-tasks", str(limit)]
     if model:
-        base_cmd += ["--model", model]
-    if parallel > 1:
-        base_cmd += ["--n-concurrent", str(parallel)]
-    # Forward CLAUDE_CODE_OAUTH_TOKEN for the claude-code arm
-    if agent_arm == "atelier-claude-code":
-        token = _read_token_from_env_files("CLAUDE_CODE_OAUTH_TOKEN")
-        if token:
-            base_cmd += ["--ae", f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
-        else:
-            click.echo(
-                "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set. Set it in your shell or in benchmarks/codebench/.env.",
-                err=True,
-            )
+        cmd += ["--model", model]
+    if baseline:
+        cmd += ["--ak", "bench_mode=off"]
 
-    if selected_tasks:
-        # terminal-bench-core: use -i filters (task names match exactly)
-        cmd = [*base_cmd]
-        for task_id in selected_tasks:
-            cmd += ["--include-task-name", task_id]
-    else:
-        # All other datasets: use -l to cap tasks, let harbor pick the first N
-        cmd = [*base_cmd, "--n-tasks", str(limit)]
-    click.echo(f"  Command: {' '.join(cmd)}\n")
-    ret = _subprocess.call(cmd, env=harbor_env)
+    # ── Env: PYTHONPATH + token pool + slots ───────────────────────────────
+    existing_pythonpath = _os.environ.get("PYTHONPATH", "")
+    pythonpath = f"{repo_root_str}:{existing_pythonpath}" if existing_pythonpath else repo_root_str
+    run_env = {**_os.environ, "PYTHONPATH": pythonpath, "ATELIER_BENCH_TOKEN_SLOTS": str(slots)}
+    # Forward all bench env vars from .env
+    for key in ("ATELIER_BENCH_MODEL", "ATELIER_BENCH_EFFORT", "ATELIER_BENCH_DISALLOWED_TOOLS"):
+        val = _read_env(key)
+        if val:
+            run_env[key] = val
+    # Token pool: _1 / _2 for dual-subscription management
+    for i, tok in enumerate(tokens, 1):
+        run_env[f"CLAUDE_CODE_OAUTH_TOKEN_{i}"] = tok
+    if len(tokens) == 1:
+        run_env["CLAUDE_CODE_OAUTH_TOKEN"] = tokens[0]
+
+    click.echo(f"Command: {' '.join(cmd)}\n")
+    ret = _subprocess.call(cmd, env=run_env)
     if ret != 0:
         raise click.ClickException(f"harbor run exited with code {ret}")
-
-    click.echo(f"\n✓ Harbor eval complete. Results in: {out_dir}")
+    click.echo(f"\n✓ Harbor eval complete. Results in: {out_dir_str}")
 
 
 @benchmark_group.command("gate", hidden=True)

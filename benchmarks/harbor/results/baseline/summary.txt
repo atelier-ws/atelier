@@ -1,0 +1,42 @@
+Terminal-Bench 2.1 -- Claude Code 2.1.152 / Claude Opus 4.8 -- Baseline Summary
+==============================================================================
+Source: https://www.tbench.ai/leaderboard/terminal-bench/2.1/claude-code/2.1.152/claude-opus-4-8%40anthropic
+Tasks:            89
+Trials (reps):    440  (expected 445, see README for gaps)
+  pass:           351
+  fail:           88
+  no data:        1  (task ran, but tbench.ai recorded no telemetry)
+  fail w/o cost:  1  (trial errored before any billed API call)
+Overall pass rate (of 439 scored trials): 80.0%
+
+Trials with cost/token data: 438
+------------------------------------------------------------------------------
+                                 total       avg/trial   avg/task (x5)
+Input tokens            281,193,279.00      641,993.79    3,209,968.94
+Output tokens             8,316,849.00       18,988.24       94,941.20
+Cache tokens*           265,158,777.00      605,385.34    3,026,926.68
+Total tokens            554,668,905.00    1,266,367.36    6,331,836.82
+Cost (USD)                      288.15            0.66            3.29
+------------------------------------------------------------------------------
+Duration total:   264,219s  (73.4h)
+Duration average: 602s  (10.0m) per trial
+
+* Cache tokens are combined cache-read + cache-write; tbench.ai does not
+  expose the two separately (see README.md).
+
+Costliest tasks (total cost across their reps):
+  regex-chess                            $    19.4  (5/5 pass)
+  path-tracing-reverse                   $   16.48  (4/5 pass)
+  path-tracing                           $    13.0  (4/5 pass)
+  install-windows-3.11                   $   11.98  (4/5 pass)
+  make-mips-interpreter                  $   11.91  (4/5 pass)
+
+Lowest pass-rate tasks:
+  db-wal-recovery                           0.0  (0/5 pass)
+  dna-insert                                0.0  (0/5 pass)
+  extract-moves-from-video                  0.0  (0/5 pass)
+  make-doom-for-mips                        0.0  (0/5 pass)
+  model-extraction-relu-logits              0.0  (0/5 pass)
+  protein-assembly                          0.0  (0/1 pass)
+  raman-fitting                             0.0  (0/5 pass)
+  train-fasttext                            0.0  (0/5 pass)

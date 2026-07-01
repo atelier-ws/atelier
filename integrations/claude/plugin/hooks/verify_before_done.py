@@ -88,12 +88,13 @@ _TEST_RUN = re.compile(r"""(?xi)
     \b(
         pytest | py\.test | nose2? | tox | nox
       | unittest | runtests
-      | go\s+test | cargo\s+test | dotnet\s+test | mix\s+test | phpunit
+      | go\s+test | cargo\s+test | cargo\s+nextest | dotnet\s+test | mix\s+test | phpunit
       | jest | vitest | mocha | ava | rspec | minitest | ctest
       | bazel\s+test | ([./\w]*gradlew|gradle|mvn)\b[^\n]*\btest
       | (npm|pnpm|yarn|bun)\s+(run\s+\S+|test)
       | (rake|bundle\s+exec)\b[^\n]*\b(test|spec|rspec)
       | manage\.py\s+test
+      | make\s+(?:test|check) | rails\s+test
     )\b
     """)
 
@@ -331,7 +332,24 @@ def detector_b(prompt: str, edited: list[str]) -> tuple[str, list[str]] | None:
     return None
 
 
-_REASON = "FIXME (verify): edited {sample} but ran no tests -- run the suite before finishing."
+_SOURCE_SUFFIXES = {
+    ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java",
+    ".rb", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".swift",
+    ".kt", ".scala", ".sh", ".bash", ".sql",
+}
+
+
+def _is_source_file(path: str) -> bool:
+    return Path(path.split("#")[0]).suffix.lower() in _SOURCE_SUFFIXES
+
+
+_REASON = "FIXME (verify): edited {sample} but ran no tests -- run the tests covering it (or the suite) before finishing."
+
+
+def _bench_mode_on() -> bool:
+    """True only when ATELIER_BENCH_MODE is set to something other than 'off'."""
+    raw = os.environ.get("ATELIER_BENCH_MODE")
+    return raw is not None and raw.strip().lower() != "off"
 
 
 def decide(payload: dict[str, Any]) -> dict[str, str] | None:
@@ -343,7 +361,7 @@ def decide(payload: dict[str, Any]) -> dict[str, str] | None:
     if not edited:
         return None
 
-    if not _completeness_disabled():
+    if _bench_mode_on() and not _completeness_disabled():
         a = detector_a(diffs)
         if a is not None:
             sym, sites = a
@@ -374,7 +392,10 @@ def decide(payload: dict[str, Any]) -> dict[str, str] | None:
 
     if verified:
         return None
-    uniq = sorted({Path(p.split("#")[0]).name for p in edited})
+    source_edited = [p for p in edited if _is_source_file(p)]
+    if not source_edited:
+        return None
+    uniq = sorted({Path(p.split("#")[0]).name for p in source_edited})
     reason = _REASON.format(n=len(uniq), sample=", ".join(uniq[:4]))
     return {"decision": "block", "reason": reason}
 

@@ -66,6 +66,34 @@ _HOST_WORKSPACE_ENV_VARS = (
 )
 
 
+def _git_toplevel(start: Path | None = None) -> Path | None:
+    """Return the git worktree root containing ``start`` (default: cwd), or None.
+
+    Auto-detects the project root so Atelier, run anywhere inside a repository,
+    targets the repo root rather than a (possibly nested) working directory.
+    Returns ``None`` when git is unavailable or ``start`` is not inside a repo.
+    """
+    import subprocess
+
+    cwd = Path(start).expanduser().resolve() if start is not None else Path.cwd()
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5.0,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    top = completed.stdout.strip()
+    if not top:
+        return None
+    return Path(top).resolve()
+
+
 def resolve_workspace_root(root: Path | str | None = None) -> Path:
     """Resolve the active workspace root used for project-local lessons.
 
@@ -73,7 +101,8 @@ def resolve_workspace_root(root: Path | str | None = None) -> Path:
     1. ``ATELIER_WORKSPACE_ROOT`` — explicit, authoritative
     2. Common host workspace env vars (``CLAUDE_WORKSPACE_ROOT``, etc.)
     3. Derive from the *root* path itself (e.g. parent of ``.atelier``)
-    4. Current working directory — last resort
+    4. Git repository root of the current directory (auto-detect)
+    5. Current working directory — last resort
     """
     for env_var in _HOST_WORKSPACE_ENV_VARS:
         configured = os.environ.get(env_var, "").strip()
@@ -83,6 +112,12 @@ def resolve_workspace_root(root: Path | str | None = None) -> Path:
     derived = _derive_workspace_root(root)
     if derived is not None:
         return derived
+    # Auto-detect the repository root of the current directory so Atelier,
+    # run anywhere inside a repo, targets the repo root rather than a nested
+    # subdirectory. Falls through to the bare cwd for non-git trees.
+    git_root = _git_toplevel()
+    if git_root is not None:
+        return git_root
     return Path.cwd().resolve()
 
 

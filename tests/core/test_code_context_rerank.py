@@ -125,7 +125,7 @@ def test_search_symbols_reranks_after_filters_before_final_limit(tmp_path: Path,
     monkeypatch.setattr(
         engine._semantic_ranker,
         "reciprocal_rank_fuse",
-        lambda _lexical, _semantic, limit: [local_hits[0], commit_hit, *local_hits[1:]][:limit],
+        lambda _lexical, _semantic, limit, semantic_additive_k=0: [local_hits[0], commit_hit, *local_hits[1:]][:limit],
     )
 
     class _FakeReranker:

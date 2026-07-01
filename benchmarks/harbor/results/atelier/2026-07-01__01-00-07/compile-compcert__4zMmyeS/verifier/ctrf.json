@@ -1,0 +1,47 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1782875712.6847146,
+            "stop": 1782875712.767551
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_compcert_exists_and_executable",
+                "status": "passed",
+                "duration": 0.00320295401616022,
+                "start": 1782875712.720026,
+                "stop": 1782875712.72336,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_compcert_valid_and_functional",
+                "status": "passed",
+                "duration": 0.03295339101168793,
+                "start": 1782875712.723479,
+                "stop": 1782875712.7565882,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_compcert_rejects_unsupported_feature",
+                "status": "passed",
+                "duration": 0.010517873000935651,
+                "start": 1782875712.7567647,
+                "stop": 1782875712.7674131,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

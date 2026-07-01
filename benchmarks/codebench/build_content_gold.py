@@ -13,7 +13,7 @@ existing harnesses work via ``--pairs`` / ``FITNESS_PAIRS`` / ``EVAL_PAIRS``.
 Usage::
 
     uv run python benchmarks/codebench/build_content_gold.py \\
-        --in benchmarks/codebench/data/bench_pairs_multi.json \\
+        --in benchmarks/codebench/data/bench_pairs_swebench_gold.json \\
         --out benchmarks/codebench/data/bench_pairs_content_gold.json
 """
 
@@ -30,6 +30,14 @@ from pathlib import Path
 
 def _norm(p: str) -> str:
     return p.replace("\\", "/")
+
+
+# Paths to exclude from content gold (benchmark data, not source code).
+_EXCLUDE_PREFIXES = ("benchmarks/codebench/data/",)
+
+
+def _is_excluded(path: str) -> bool:
+    return any(path.startswith(pfx) for pfx in _EXCLUDE_PREFIXES)
 
 
 def _tid(prefix: str, query: str) -> str:
@@ -62,15 +70,18 @@ def _rg_files(pattern: str, ws: Path) -> list[str]:
         if not line:
             continue
         try:
-            out.append(_norm(str(Path(line).resolve().relative_to(ws_abs))))
+            rel = _norm(str(Path(line).resolve().relative_to(ws_abs)))
         except ValueError:
-            out.append(_norm(line))
+            rel = _norm(line)
+        if _is_excluded(rel):
+            continue
+        out.append(rel)
     return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="src", default="benchmarks/codebench/data/bench_pairs_multi.json")
+    ap.add_argument("--in", dest="src", default="benchmarks/codebench/data/bench_pairs_swebench_gold.json")
     ap.add_argument("--out", default="benchmarks/codebench/data/bench_pairs_content_gold.json")
     ap.add_argument("--max-files", type=int, default=10, help="drop queries matching more than this many files")
     ap.add_argument("--workers", type=int, default=16)

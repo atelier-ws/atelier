@@ -470,7 +470,11 @@ def code_group() -> None:
 
 
 @code_group.command("index")
-@click.option("--repo-root", default=".", show_default=True)
+@click.option(
+    "--repo-root",
+    default=None,
+    help="Repository root to index (default: git root of the current directory, else cwd).",
+)
 @click.option("--include", "include_globs", multiple=True)
 @click.option("--exclude", "exclude_globs", multiple=True)
 @click.option("--reindex", is_flag=True, help="Full rebuild from scratch (default: incremental).")
@@ -479,7 +483,7 @@ def code_group() -> None:
 @click.option("--no-stats", is_flag=True, help="Do not print indexing statistics.")
 @click.option("--db-path", default=None, type=click.Path(), help="Override default SQLite DB path.")
 def code_index_cmd(
-    repo_root: str,
+    repo_root: str | None,
     include_globs: tuple[str, ...],
     exclude_globs: tuple[str, ...],
     reindex: bool,
@@ -493,6 +497,13 @@ def code_index_cmd(
     Incremental by default (only re-indexes changed files). Use --reindex
     for a full rebuild from scratch.
     """
+    if repo_root is None:
+        # Resolve the same way the MCP code_search / read tools do
+        # (ATELIER_WORKSPACE_ROOT / host env / git root / cwd) so the index the
+        # CLI builds is keyed to the exact workspace those tools later query.
+        from atelier.core.foundation.paths import resolve_workspace_root
+
+        repo_root = str(resolve_workspace_root())
     engine = _code_context_engine(repo_root, db_path=Path(db_path) if db_path else None)
     force = reindex
     if as_json:

@@ -1,4 +1,4 @@
-"""Reset benchmarks/codebench/data/bench_pairs_multi.json to clean SWE-bench baseline.
+"""Reset /tmp/bench_pairs_multi.json to clean SWE-bench baseline.
 
 Re-mines grep queries from the flow dump files without needing swebench.
 Preserves true_map and repos metadata from the existing file.
@@ -15,7 +15,7 @@ import sys
 RUN = pathlib.Path("reports/benchmark/codebench/swe50_stress_run1")
 TID_RE = re.compile(r"^(.*?)_(?:atelier|baseline)_rep\d+\.flow_dump\.txt$")
 GREP_RE = re.compile(r"mcp__plugin_atelier_atelier__grep\] (\{.*?\})", re.S)
-OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_multi.json")
+OUT = pathlib.Path("/tmp/bench_pairs_multi.json")
 
 PREFIX2REPO = [
     "django__django",

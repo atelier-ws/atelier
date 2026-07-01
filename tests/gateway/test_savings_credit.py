@@ -20,8 +20,10 @@ MODEL = "claude-sonnet-4-5"
 
 
 def _write_sidecar(root: Path, session_id: str, rows: list[dict[str, Any]]) -> None:
-    d = root / "sessions" / session_id
-    d.mkdir(parents=True)
+    from atelier.core.foundation.paths import session_dir
+
+    d = session_dir(root, "claude", session_id)
+    d.mkdir(parents=True, exist_ok=True)
     (d / "savings.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 

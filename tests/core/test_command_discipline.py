@@ -102,6 +102,22 @@ def test_piped_grep_is_not_redirected() -> None:
     assert command_discipline.pre_run_gate("ps aux | grep node").action == "allow"
 
 
+def test_search_redirect_skipped_for_out_of_repo_absolute_path(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    scratch = tmp_path / "scratch.html"
+    scratch.write_text("x")
+    assert command_discipline.pre_run_gate(f"grep -o foo {scratch}", cwd=str(repo)).action == "allow"
+
+
+def test_search_redirect_still_fires_for_in_repo_absolute_path(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "a.py"
+    target.write_text("x")
+    assert command_discipline.pre_run_gate(f"grep foo {target}", cwd=str(repo)).action == "warn"
+
+
 def test_reset_clears_redirect_memory() -> None:
     assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"
     command_discipline.reset()

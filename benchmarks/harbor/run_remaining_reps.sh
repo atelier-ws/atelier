@@ -8,7 +8,7 @@
 #
 # IDEMPOTENT + RE-LAUNCHABLE: a rep already at 89/89 is skipped; a partially-done
 # rep is resumed from its existing job dir. Safe to re-run after any interruption.
-# Locked config: -n 9, agent-timeout-multiplier 6, model opus-4-8, root+IS_SANDBOX,
+# Locked config: -n 4, model opus-4-8, root+IS_SANDBOX,
 # two-subscription token pool (3 on _1 / 6 on _2). 'off' arm drops plugin+prewarm.
 set -u
 cd /home/pankaj/Projects/leanchain/atelier
@@ -24,6 +24,22 @@ cleanup(){
 }
 graded(){ find "$1" -name reward.txt 2>/dev/null | wc -l; }
 
+# Always rebuild the bundle from current source before a fresh run.
+# --resume reuses the bundle the job was started with (intentional).
+rebuild_bundle(){
+  say "Rebuilding atelier bundle from current source..."
+  docker run --rm \
+    -v "$PWD:/atelier:ro" \
+    -v "/tmp/avbuild:/out" \
+    debian:bullseye-slim \
+    bash /atelier/benchmarks/harbor/rebuild_bundle.sh 2>&1 | tee -a "$LOG"
+  if [ ! -f /tmp/avbuild/atelier-bundle-new.tar.gz ]; then
+    say "ERROR: bundle rebuild failed — aborting"; exit 1
+  fi
+  mv /tmp/avbuild/atelier-bundle-new.tar.gz /tmp/avbuild/atelier-bundle.tar.gz
+  say "Bundle rebuilt: $(stat -c%s /tmp/avbuild/atelier-bundle.tar.gz) bytes, $(date)"
+}
+
 run_rep(){
   local label="$1"; local extra="$2"
   local outdir="benchmarks/jobs/final/$label"
@@ -35,11 +51,12 @@ run_rep(){
     say "RESUME-existing $label at $jd ($(graded "$jd")/89)"
   else
     cleanup
+    rebuild_bundle
     say "START $label fresh (extra='$extra')"
     set -a; . benchmarks/harbor/.env; set +a
     uv run --no-sync harbor run -d terminal-bench/terminal-bench-2-1 \
       --agent-import-path "$AIP" --mounts "$MOUNTS" \
-      -k 1 -n 9 -r 2 --agent-timeout-multiplier 6 $extra \
+      -k 1 -n 4 -r 2 $extra \
       -o "$outdir" -y >>"$LOG" 2>&1
     jd=$(ls -dt "$outdir"/*/ 2>/dev/null | head -1)
   fi
@@ -56,14 +73,10 @@ run_rep(){
   say "DONE $label graded=$(graded "$jd")/89"
 }
 
-# Wait out the in-flight Atelier rep1 so cleanup never kills its last trials.
-if kill -0 3872437 2>/dev/null; then
-  say "waiting for Atelier rep1 (pid 3872437) to finish before starting..."
-  while kill -0 3872437 2>/dev/null; do sleep 60; done
-fi
 say "=== driver start: 9 reps remaining ==="
 
 REPS=(
+  "rep1|"
   "base_rep1|--ak bench_mode=off"
   "rep2|"
   "base_rep2|--ak bench_mode=off"

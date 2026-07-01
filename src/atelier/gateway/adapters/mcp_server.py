@@ -702,6 +702,13 @@ _SPILL_RESULT_CHARS_BY_TOOL = {
 # below the host limit (~50KB). Set ATELIER_READ_INLINE_BUDGET_BYTES=0 to disable.
 _DEFAULT_READ_INLINE_BUDGET_BYTES = 40 * 1024
 
+# Per-session count of partial (range) reads per resolved path. Paging one file
+# by hand 3+ times wastes a turn per chunk (and the chunks pile up in context
+# anyway), so the third partial read of a path escalates to a full read. Keyed by
+# resolved path; a full/expand read of that path resets it. See _smart_read_single.
+_READ_PARTIAL_COUNTS: dict[str, int] = {}
+_READ_ITERATIVE_ESCALATE_AT = 3
+
 
 def _service_backed_state() -> bool:
     return True
@@ -2490,33 +2497,6 @@ def _record_grounding_evidence_if_available(tool_name: str, args: dict[str, Any]
             _write_workspace_session_state(updated)
 
 
-def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
-    if not _grounded_benchmark_mode_enabled():
-        return None
-    edits = args.get("edits")
-    if not isinstance(edits, list):
-        return None
-    targets = list(_collect_touched_paths(edits).keys())
-    if not targets:
-        return None
-    state = _read_workspace_session_state()
-    session_id = _workspace_session_id(state)
-    missing = missing_grounding_targets(
-        state,
-        session_id=session_id,
-        targets=targets,
-        workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
-    )
-    if not missing:
-        return None
-    target_list = ", ".join(missing[:4])
-    return (
-        "Benchmark edit gate requires grounding evidence before editing. "
-        f"Ground the target with read, grep, search, node, explore, callers, "
-        f"callees, or usages first: {target_list}"
-    )
-
-
 def _register_mcp_session() -> None:
     """Create this MCP process's registration file if it doesn't exist yet."""
     f = _mcp_session_file()
@@ -3488,6 +3468,12 @@ _tool_call_rendered_text: threading.local = threading.local()
 # `atelier tools call ... --json` CLI to recover the full dict. Never serialized
 # into the host-facing MCP response, so the host's main model only sees `content`.
 _tool_call_raw_result: threading.local = threading.local()
+# Image content blocks produced by reading an image file, drained into the
+# tools/call response `content` so the multimodal model receives the actual image
+# instead of a text description it can't act on. Reset per tools/call; filled by
+# _smart_read_single.
+_tool_call_images: threading.local = threading.local()
+_MAX_INLINE_IMAGE_BYTES = 4 * 1024 * 1024
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -5126,7 +5112,7 @@ def _smart_read_single(
     # handles it uniformly (range read is already bounded and efficient).
     if tail_lines is not None and range is None and not expand:
         try:
-            total = sum(1 for _ in open(_workspace_path(target_path), encoding="utf-8", errors="ignore"))
+            total = sum(1 for _ in open(_workspace_path(target_path), encoding="utf-8", errors="replace"))
             start = max(1, total - tail_lines + 1)
             range = f"{start}-"
         except OSError:
@@ -5137,6 +5123,84 @@ def _smart_read_single(
     # are confined to the workspace (see tool_smart_edit). Relative paths still
     # resolve against the workspace root.
     resolved = _workspace_path(target_path)
+    # 3+ iterative-read escalation: if the model pages the SAME file with partial
+    # (range) reads 3+ times, serve the whole file instead of another chunk. Paging
+    # by hand costs a turn per slice and the slices accumulate in context regardless,
+    # so a full read is strictly cheaper once the intent is clearly "read it all".
+    _read_escalated = False
+    if range is not None and not expand:
+        _rk = str(resolved)
+        _rc = _READ_PARTIAL_COUNTS.get(_rk, 0) + 1
+        _READ_PARTIAL_COUNTS[_rk] = _rc
+        if _rc >= _READ_ITERATIVE_ESCALATE_AT:
+            range = None
+            expand = True
+            _read_escalated = True
+            _READ_PARTIAL_COUNTS[_rk] = 0
+    elif expand:
+        _READ_PARTIAL_COUNTS.pop(str(resolved), None)
+    # Binary / non-text guard: never silently UTF-8-decode a binary file into
+    # mojibake (a PNG used to come back as garbage, which forced agents into
+    # pixel-processing hacks). Sniff the head; if it is not valid UTF-8 text,
+    # return a structured signal instead of decoding. Images especially must be
+    # recognized as such, not mangled into text.
+    if resolved.is_file():
+        try:
+            with open(resolved, "rb") as _bfh:
+                _sniff = _bfh.read(8192)
+        except OSError:
+            _sniff = b""
+        _binary = b"\x00" in _sniff
+        if _sniff and not _binary:
+            try:
+                _sniff.decode("utf-8")
+            except UnicodeDecodeError:
+                # tolerate a multibyte char split at the 8 KiB sniff boundary
+                try:
+                    _sniff[:-4].decode("utf-8")
+                except UnicodeDecodeError:
+                    _binary = True
+        if _binary:
+            import mimetypes
+
+            _mt = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
+            try:
+                _sz = resolved.stat().st_size
+            except OSError:
+                _sz = len(_sniff)
+            if _mt.startswith("image/") and 0 < _sz <= _MAX_INLINE_IMAGE_BYTES:
+                # Hand the actual image to the multimodal model as an MCP image
+                # content block (drained into the response `content` by the
+                # tools/call dispatcher), so it can read the image directly rather
+                # than resorting to pixel-processing hacks.
+                try:
+                    import base64
+
+                    _b64 = base64.b64encode(resolved.read_bytes()).decode("ascii")
+                    _imgs = getattr(_tool_call_images, "value", None)
+                    if not isinstance(_imgs, list):
+                        _imgs = []
+                        _tool_call_images.value = _imgs
+                    _imgs.append({"type": "image", "data": _b64, "mimeType": _mt})
+                    return {
+                        "mode": "image",
+                        "path": str(resolved),
+                        "media_type": _mt,
+                        "bytes_total": _sz,
+                        "message": f"Image ({_mt}, {_sz} bytes) attached for viewing.",
+                    }
+                except OSError:
+                    pass
+            _msg = f"Binary file ({_mt}, {_sz} bytes) — not UTF-8 text, not decoded."
+            if _mt.startswith("image/"):
+                _msg += " Image too large to inline (> " + str(_MAX_INLINE_IMAGE_BYTES) + " bytes)."
+            return {
+                "mode": "binary",
+                "path": str(resolved),
+                "media_type": _mt,
+                "bytes_total": _sz,
+                "message": _msg,
+            }
     if max_lines is not None and range is None and not expand:
         payload = cast(dict[str, Any], _core_runtime().smart_read(str(resolved), max_lines=max_lines))
         payload.setdefault("mode", "summary")
@@ -5186,7 +5250,7 @@ def _smart_read_single(
                 head = fh.read(prefix_bytes)
             return {
                 "mode": "full",
-                "content": head.decode("utf-8", "ignore") + notice,
+                "content": head.decode("utf-8", "replace") + notice,
                 "path": str(target),
                 "projection": SourceProjection.exact().to_dict(),
                 "truncated": True,
@@ -5198,7 +5262,7 @@ def _smart_read_single(
         # plus the EXACT continuation range, so a whole-file read costs at most a
         # couple of clean calls and the bytes are never dumped.
         if inline_budget and total_bytes > inline_budget:
-            text = target.read_text(encoding="utf-8", errors="ignore")
+            text = target.read_text(encoding="utf-8", errors="replace")
             lines = text.splitlines(keepends=True)
             kept: list[str] = []
             used = 0
@@ -5444,6 +5508,9 @@ def _split_file_opts(s: str) -> tuple[str, str | None, bool, int | None, int | N
     description=(
         "Read files or exact symbols. Files over 200 lines default to outline; "
         "use :expand for full source or :Lx-Ly for exact lines. "
+        "To read a whole file, use :expand (or ONE wide range) in a single call — "
+        "never page through it with successive narrow ranges. Batch multiple files/ranges "
+        "into one call's files=[] array. "
         "files=['a.py', 'b.py:L10-L20', 'c.py:expand', "
         "'d.py:head=50', 'e.py:tail=20']. "
         "symbol='name' or ['a', 'b']. Use either files or symbol."
@@ -10426,6 +10493,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
         name = params.get("name") or ""
         if name == "run":
             name = "bash"
+        _tool_call_images.value = []
         args = params.get("arguments") or {}
         # Some MCP clients deliver the whole `arguments` payload as a JSON string
         # instead of an object. mypyc-compiled handlers enforce dict at the boundary
@@ -10790,6 +10858,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                         _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
                 response_payload: dict[str, Any] = {"content": [content_item]}
+                # Attach image content blocks produced by a read of an image file so
+                # the multimodal model receives the image itself alongside the text
+                # metadata (the base64 never rides in response_text/JSON above).
+                _pending_images = getattr(_tool_call_images, "value", None)
+                if isinstance(_pending_images, list) and _pending_images:
+                    response_payload["content"].extend(_pending_images)
+                    _tool_call_images.value = []
                 # Stash the full structured result for the in-process CLI so `tools call
                 # ... --json` returns the dict for EVERY tool -- including the ones whose
                 # host-facing content is rendered text (read, grep, search, shell, ...).
@@ -10825,10 +10900,6 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                     led,
                 )
                 handler: Callable[[dict[str, Any]], Any] = spec["handler"]
-                if name == "edit" and isinstance(args, dict):
-                    blocked_message = _benchmark_edit_block_message(args)
-                    if blocked_message:
-                        return _err(rid, -32000, blocked_message)
                 # Hidden alias: file_paths_with_count → file_paths_with_match_count
                 if name == "grep" and isinstance(args, dict) and args.get("output_mode") == "file_paths_with_count":
                     args["output_mode"] = "file_paths_with_match_count"
@@ -10984,6 +11055,12 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # sees every search/read in the session, it can hand back a CONSOLIDATED list of
 # what the agent already examined.
 _NONEDIT_STREAK = [0]
+# Last escalation band the convergence FIXME has already fired for, so it emits at
+# most ONCE PER TIER: 0 = nudge, 1 = consolidate, 2 = degrade, -1 = nothing emitted.
+# Only a streak that crosses into a HIGHER band re-fires; within a band it stays
+# silent -- so a long read-only/review pass gets one notice per escalation step, not
+# one on every read/search. Resets to -1 when the streak resets (edit / new message).
+_CONVERGENCE_TIER = [-1]
 _INVESTIGATIVE_TOOLS = frozenset({"bash", "read", "code_search", "grep", "search", "explore"})
 _NUDGE_AT = int(os.environ.get("ATELIER_CONVERGENCE_NUDGE_AT", "20"))
 _CONSOLIDATE_AT = int(os.environ.get("ATELIER_CONVERGENCE_CONSOLIDATE_AT", "32"))
@@ -11069,6 +11146,7 @@ def _reset_gather_streaks_on_new_user_message() -> None:
     if turns > _LAST_SEEN_USER_TURNS[0]:
         _LAST_SEEN_USER_TURNS[0] = turns
         _NONEDIT_STREAK[0] = 0
+        _CONVERGENCE_TIER[0] = -1
         _HISTORY_STREAK[0] = 0
 
 
@@ -11076,6 +11154,7 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
     """Escalate from nudge -> consolidate -> degrade as a gather-without-edit streak grows."""
     if tool_name in {"edit", "codemod"}:  # a commit resets the streak
         _NONEDIT_STREAK[0] = 0
+        _CONVERGENCE_TIER[0] = -1
         return response_text
     if tool_name not in _INVESTIGATIVE_TOOLS:
         return response_text
@@ -11083,12 +11162,16 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
     n = _NONEDIT_STREAK[0]
     if n < _NUDGE_AT:
         return response_text
+    # Escalation band the streak is now in (0 nudge, 1 consolidate, 2 degrade). Emit
+    # only when the streak has crossed into a HIGHER band than last time -> one
+    # notice per tier as it escalates, silent within a band.
+    tier = 2 if n >= _DEGRADE_AT else 1 if n >= _CONSOLIDATE_AT else 0
+    if tier <= _CONVERGENCE_TIER[0]:
+        return response_text
+    _CONVERGENCE_TIER[0] = tier
     decision = f"{n} searches/reads, 0 edits. Pick the site and EDIT now."
-    if n >= _DEGRADE_AT:  # firm: suppress the bulky gather output to force an edit
-        return (
-            f"FIXME (convergence): STOP GATHERING -- {decision}\n\n"
-            f"(read-only output suppressed; next action must be an edit or test)\n\n{response_text[:400]}"
-        )
+    if n >= _DEGRADE_AT:  # firm: strongest nudge, but never suppress/truncate output
+        return f"FIXME (convergence): STOP GATHERING -- {decision}\n\n{response_text}"
     if n >= _CONSOLIDATE_AT:  # consolidate: surface the decision list up front
         return f"FIXME (convergence): {decision}\n\n{response_text}"
     return f"{response_text}\n\nFIXME (convergence): {decision}"  # nudge

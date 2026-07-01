@@ -1,6 +1,6 @@
 """Regenerate the retrieval bench gold as a DEFINITION gold.
 
-The shipped ``bench_pairs_multi.json`` gold is the file the SWE-task PR edited
+The shipped ``bench_pairs_swebench_gold.json`` gold is the file the SWE-task PR edited
 (edit-localization). For retrieval/search eval that is mislabeled: measured on
 atelier, ~45%% of golds are test files and ~40%% point to a file that does NOT
 define the symbols the query names, so a definition-retriever structurally cannot
@@ -21,7 +21,7 @@ tid) work unchanged via ``--pairs`` / ``FITNESS_PAIRS`` / ``EVAL_PAIRS``.
 Usage::
 
     uv run --no-sync python benchmarks/codebench/build_definition_gold.py \\
-        --in benchmarks/codebench/data/bench_pairs_multi.json \\
+        --in benchmarks/codebench/data/bench_pairs_swebench_gold.json \\
         --out benchmarks/codebench/data/bench_pairs_def_gold.json
 """
 
@@ -158,7 +158,7 @@ def _tid(prefix: str, query: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="src", default="benchmarks/codebench/data/bench_pairs_multi.json")
+    ap.add_argument("--in", dest="src", default="benchmarks/codebench/data/bench_pairs_swebench_gold.json")
     ap.add_argument("--out", default="benchmarks/codebench/data/bench_pairs_def_gold.json")
     ap.add_argument("--max-def", type=int, default=5, help="identifier must be defined in <= this many files")
     ap.add_argument("--min-len", type=int, default=4, help="minimum identifier length to count")
