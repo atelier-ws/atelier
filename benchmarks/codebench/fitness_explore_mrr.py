@@ -30,6 +30,15 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+# Cap native BLAS/OMP pools to 1 thread BEFORE numpy is imported (via the engine
+# import below). Otherwise each of N process workers spawns ~ncpu OpenBLAS threads
+# for `matrix @ query`, oversubscribing the cores: measured 100-250 runnable
+# threads on 32 cores -> a context-switch storm with near-zero parallel speedup
+# (8 workers ~= 1 worker). Capping these + single-threaded workers (below) gave a
+# 2.4x throughput win. Overridable from the real environment.
+for _thr_var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_thr_var, "1")
+
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
@@ -245,10 +254,18 @@ runset = {p: set(qs) for p, qs in uq.items()}
 # instance centrality cache pre-warmed below), so a thread pool gives near-linear
 # speedup on the I/O+sqlite-bound work. Tune with FITNESS_WORKERS.
 #
-# Process pool (below) gives each worker its own inner channel executors (reset in
-# _worker_init), so outer + inner parallelism compose without contention. Tune with
-# FITNESS_WORKERS; FITNESS_WORKERS=1 gives true single-query interactive latency.
-_WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or max(1, min(8, (os.cpu_count() or 4) // 4))
+# Worker count. The engine's channels and BLAS each spawn their own threads per
+# query, so stacking inner parallelism under many process workers oversubscribes
+# the cores (measured: r=180, cs>1M/s, ~no speedup). For batch throughput we run
+# MANY single-threaded process workers instead -- inner fan-out off (below), BLAS
+# pinned above -- filling the cores cleanly (~2.4x the old 8-worker default). Set
+# FITNESS_WORKERS=1 for true single-query interactive latency (inner fan-out kept).
+_WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or max(1, min(24, int((os.cpu_count() or 4) * 0.6)))
+if _WORKERS > 1:
+    # Outer (process) parallelism instead of inner (thread) parallelism: each
+    # explore runs its channels sequentially so N workers don't each fan out onto
+    # the shared inner pools and thrash. MRR is unchanged (ordering-independent).
+    os.environ.setdefault("ATELIER_EXPLORE_PARALLEL", "0")
 _lean = os.environ.get("FITNESS_LEAN") == "1"
 # Soft timeout per explore call (seconds). Prevents a single slow FTS query from
 # blocking a worker slot. 0 = no timeout. Tune with FITNESS_TIMEOUT.
