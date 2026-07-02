@@ -14,7 +14,7 @@ import Overview from "./pages/Overview";
 import Sessions from "./pages/Sessions";
 import Learnings from "./pages/Learnings";
 import Costs from "./pages/Costs";
-import Runs from "./pages/Runs";
+import Swarms from "./pages/Swarms";
 import System from "./pages/System";
 import { Button, Select, cx } from "./components/WorkbenchUI";
 import { applyTheme, getInitialTheme, type Theme } from "./lib/theme";
@@ -29,7 +29,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/overview", label: "Overview", icon: LayoutGrid },
   { to: "/sessions", label: "Sessions", icon: Play },
-  { to: "/runs", label: "Runs", icon: GitBranch },
+  { to: "/swarms", label: "Swarms", icon: GitBranch },
   { to: "/costs", label: "Costs", icon: Wallet },
   { to: "/knowledge", label: "Knowledge", icon: Brain },
   { to: "/system", label: "System", icon: Settings },
@@ -172,7 +172,7 @@ export default function App() {
               element={<Navigate to="/costs/spend" replace />}
             />
             <Route path="/costs/:section" element={<Costs />} />
-            <Route path="/runs" element={<Runs />} />
+            <Route path="/swarms" element={<Swarms />} />
             <Route
               path="/system"
               element={<Navigate to="/system/health" replace />}
