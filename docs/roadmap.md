@@ -22,7 +22,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 
 ### Cost tracking
 - Per-session cost reports with actual vs counterfactual costs
-- `atelier savings` and `atelier savings-detail` commands
+- `atelier savings` and `atelier dashboard` commands
 - Aggregate cost and token savings with reset support
 - Counterfactual pricing engine
 
