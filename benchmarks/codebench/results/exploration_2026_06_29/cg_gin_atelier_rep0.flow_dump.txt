@@ -1,0 +1,81 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll check whether the gin source is in this workspace or if this is a general question about the framework.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "gin HandlersChain middleware Next context"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/core/capabilities/plugin_runtime.py","src/atelier/sdk/middleware.py","src/atelier/core/capabilities/code_context/engine.py","src/atelier/core/service/api.py","src/atelier/core/service/telemetry/exporters/otel
+[assistant] This workspace is a Python project (Atelier), not the Gin codebase — so this is a general question about Gin, the Go web framework. Here's how it works.
+
+## The core: a flat slice, not a nested stack
+
+Gin doesn't implement middleware as wrapped/nested handler functions the way `net/http` middleware typically does. Instead, every handler — middleware and your final route handler alike — has the same type:
+
+```go
+type HandlerFunc func(*Context)
+type HandlersChain []HandlerFunc
+```
+
+When a request matches a route, Gin assembles **one flat slice** (`HandlersChain`) containing, in order:
+1. The engine's global middleware (added via `engine.Use(...)`)
+2. Any group-level middleware
+3. The route's own handler(s)
+
+This combined slice is stored on the `Context` as `c.handlers`, along with an index cursor `c.index` (an `int8`, initialized to `-1`).
+
+## How a request flows
+
+On a match, `ServeHTTP` grabs a `Context` from a `sync.Pool`, resets it, sets `c.handlers` to the matched chain, and calls `c.Next()`:
+
+```go
+func (c *Context) Next() {
+    c.index++
+    for c.index < int8(len(c.handlers)) {
+        c.handlers[c.index](c)
+        c.index++
+    }
+}
+```
+
+This is the whole mechanism. `Next()` walks the slice by incrementing `c.index` and invoking each handler in turn.
+
+## Why middleware can run code "before and after"
+
+The key trick: a middleware handler can itself **call `c.Next()`**. Because `Next()` is re-entrant and shares the `c.index` cursor, calling it from inside a handler advances the cursor down the rest of the chain synchronously, then returns. So:
+
+```go
+func Logger() gin.HandlerFunc {
+    return func(c *Context) {
+        t := time.Now()
+        c.Next()                 // run all *downstream* handlers now
+        latency := time.Since(t) // resumes here after they finish
+        log.Println(latency)
+    }
+}
+```
+
+Code before `c.Next()` runs on the way in; code after runs on the way out. The call stack naturally nests even though the storage is flat.
+
+A middleware that does **not** call `c.Next()` still works — when it returns, the outer `for` loop in the *first* `Next()` call increments the index and continues to the next handler. So `c.Next()` is only required when you need post-processing logic.
+
+## Aborting the chain
+
+`c.Abort()` sets `c.index = abortIndex` (a large sentinel, `math.MaxInt8 >> 1 = 63`). That makes the `for c.index < len(c.handlers)` condition fail, so no further handlers run. Abort doesn't unwind the stack — handlers already executing above the abort point still finish their post-`Next()` code. Helpers like `c.AbortWithStatus(401)` just set a status then call `Abort()`.
+
+Note the `int8` index is why Gin caps a handler chain at 63 handlers.
+
+## Putting it together
+
+- `Use()` appends to the engine/group's middleware list.
+- At route registration, Gin concatenates middleware + handler into the final `HandlersChain` stored in the radix tree node (so the chain is computed once, at registration, not per request).
+- At request time: pool a `Context` → set `handlers` → `Next()` → iterate.
+- Middleware controls flow with `c.Next()` (descend then resume) and `c.Abort()` (stop descent).
+
+The elegant part is that there's no special "middleware" type or wrapper plumbing — it's just an ordered slice of identical functions sharing a cursor, where any element may recursively drive the cursor forward.
+
+If you actually want this verified against a specific Gin version's source (the `int8` cap and `abortIndex` value have been stable for years but worth confirming), I can fetch `gin/context.go` from GitHub.

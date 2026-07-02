@@ -1,10 +1,10 @@
-"""Persistent storage for ReasonBlocks, traces, and rubrics.
+"""Persistent storage for Playbooks, traces, and rubrics.
 
 Backend: SQLite + FTS5 (no external services).
 
 Design:
 - One table per entity, JSON column for the full payload.
-- A contentless FTS5 mirror table for ReasonBlocks for fast lookup by
+- A contentless FTS5 mirror table for Playbooks for fast lookup by
   title / triggers / situation / dead_ends / procedure.
 - Markdown copies of blocks live under <root>/blocks/ for human review
   and version control. Traces are mirrored under <root>/traces/.
@@ -31,10 +31,10 @@ import yaml
 
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import (
-    BlockStatus,
     ConsolidationCandidate,
+    Playbook,
+    PlaybookStatus,
     RawArtifact,
-    ReasonBlock,
     Rubric,
     Trace,
     coerce_trace_json,
@@ -93,7 +93,7 @@ CREATE VIRTUAL TABLE traces_fts USING fts5(
 # --------------------------------------------------------------------------- #
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS reasonblocks (
+CREATE TABLE IF NOT EXISTS playbooks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     domain TEXT NOT NULL,
@@ -105,10 +105,10 @@ CREATE TABLE IF NOT EXISTS reasonblocks (
     updated_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_reasonblocks_domain ON reasonblocks(domain);
-CREATE INDEX IF NOT EXISTS idx_reasonblocks_status ON reasonblocks(status);
+CREATE INDEX IF NOT EXISTS idx_playbooks_domain ON playbooks(domain);
+CREATE INDEX IF NOT EXISTS idx_playbooks_status ON playbooks(status);
 
-CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
     id UNINDEXED,
     title,
     triggers,
@@ -132,6 +132,9 @@ CREATE TABLE IF NOT EXISTS traces (
 );
 CREATE INDEX IF NOT EXISTS idx_traces_domain ON traces(domain);
 CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+-- get_trace()'s session_id fallback does json_extract(payload, '$.session_id')
+-- per miss; without this expression index that's a full-table scan per call.
+CREATE INDEX IF NOT EXISTS idx_traces_session_id ON traces(json_extract(payload, '$.session_id'));
 
 CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
     id UNINDEXED,
@@ -285,9 +288,15 @@ class ContextStore:
     so they can be reviewed in PRs without running tools.
     """
 
-    def __init__(self, root: Path | str, lessons_root: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        lessons_root: Path | str | None = None,
+        *,
+        db_name: str = "atelier.db",
+    ) -> None:
         self.root = Path(root).resolve()
-        self.db_path = self.root / "atelier.db"
+        self.db_path = self.root / db_name
 
         # Lessons (blocks/rubrics) are project-local by default for Git tracking.
         # History (traces/raw) stays in the primary root.
@@ -308,8 +317,16 @@ class ContextStore:
         Optimized for bulk imports with high-performance PRAGMAs.
         """
         conn = self._connect()
-        # High-performance settings for bulk import (must be outside transaction)
-        conn.execute("PRAGMA synchronous = OFF")
+        # NORMAL, not OFF: this db holds non-derivable state (sync_status, jobs,
+        # lesson candidates), so a bulk import must not risk corrupting it on
+        # power loss. Under WAL, NORMAL still skips the fsync-per-statement that
+        # OFF also skips, but fsyncs the WAL at each checkpoint, so a crash can
+        # only lose the in-flight transaction (rolled back on reopen), never
+        # corrupt the db -- OFF gives no such guarantee. One BEGIN/COMMIT for
+        # the whole batch (see the commit()/rollback() below and _transaction())
+        # already amortizes that fsync across the entire import, so NORMAL costs
+        # far less here than it would per-statement.
+        conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute(f"PRAGMA cache_size = -{512 * 1024}")  # 512MB cache
 
         conn.execute("BEGIN TRANSACTION")
@@ -323,8 +340,6 @@ class ContextStore:
             raise
         finally:
             self._connection = old_conn
-            with contextlib.suppress(sqlite3.Error):
-                conn.execute("PRAGMA synchronous = NORMAL")
             conn.close()
 
     # ----- lifecycle ------------------------------------------------------- #
@@ -335,10 +350,9 @@ class ContextStore:
         self.traces_dir.mkdir(parents=True, exist_ok=True)
         self.rubrics_dir.mkdir(parents=True, exist_ok=True)
         self.raw_dir.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.executescript(SCHEMA)
             # Ensure source_file_mtime column exists (migration for existing DBs)
-            import contextlib
 
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
@@ -396,11 +410,34 @@ class ContextStore:
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
+    @contextlib.contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        """Connection for one read or write; commits/rolls back on exit.
+
+        Outside batch_mode() this is identical to using ``self._connect()``
+        directly -- ``_connect()`` hands back a fresh connection each call, and
+        wrapping it in ``with conn:`` commits (or rolls back, on exception)
+        exactly as before. Inside batch_mode(), though, ``_connect()`` returns
+        the SHARED batch connection for every call, so a per-call ``with conn:``
+        would commit -- and on exception, roll back only the current call, not
+        the batch -- after the very first one, silently splitting "one atomic
+        import" into many small auto-committed transactions. When the
+        connection IS the batch connection we skip the per-call commit/rollback
+        entirely and let batch_mode's own try/except own the transaction
+        boundary for the whole batch.
+        """
+        conn = self._connect()
+        if conn is self._connection:
+            yield conn
+        else:
+            with conn:
+                yield conn
+
     def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
         from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
 
         conn.executescript(
-            "CREATE TABLE IF NOT EXISTS _schema_migrations" " (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS _schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
         )
         applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
         for name in SQLITE_MIGRATIONS:
@@ -416,7 +453,7 @@ class ContextStore:
                     if "duplicate column name" not in msg and "already exists" not in msg:
                         raise
             conn.execute(
-                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at)" " VALUES (?, datetime('now'))",
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES (?, datetime('now'))",
                 (name,),
             )
             conn.commit()
@@ -585,14 +622,14 @@ class ContextStore:
             if owns_connection:
                 active_conn.close()
 
-    # ----- ReasonBlocks ---------------------------------------------------- #
+    # ----- Playbooks ------------------------------------------------------ #
 
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None:
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
         payload = json.dumps(to_jsonable(block), ensure_ascii=False)
-        with self._connect() as conn, closing(conn.cursor()) as cur:
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
             cur.execute(
                 """
-                INSERT INTO reasonblocks (
+                INSERT INTO playbooks (
                     id, title, domain, status,
                     usage_count, success_count, failure_count,
                     created_at, updated_at, payload
@@ -621,10 +658,10 @@ class ContextStore:
                     payload,
                 ),
             )
-            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block.id,))
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block.id,))
             cur.execute(
                 """
-                INSERT INTO reasonblocks_fts (
+                INSERT INTO playbooks_fts (
                     id, title, triggers, situation, dead_ends, procedure, failure_signals
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -642,21 +679,21 @@ class ContextStore:
         if write_markdown:
             self._write_block_markdown(block)
 
-    def get_block(self, block_id: str) -> ReasonBlock | None:
-        with self._connect() as conn:
-            row = conn.execute("SELECT payload FROM reasonblocks WHERE id = ?", (block_id,)).fetchone()
+    def get_block(self, block_id: str) -> Playbook | None:
+        with self._transaction() as conn:
+            row = conn.execute("SELECT payload FROM playbooks WHERE id = ?", (block_id,)).fetchone()
         if row is None:
             return None
-        return ReasonBlock.model_validate_json(row["payload"])
+        return Playbook.model_validate_json(row["payload"])
 
     def list_blocks(
         self,
         *,
         domain: str | None = None,
-        status: BlockStatus | None = "active",
+        status: PlaybookStatus | None = "active",
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
-        sql = "SELECT payload FROM reasonblocks WHERE 1=1"
+    ) -> list[Playbook]:
+        sql = "SELECT payload FROM playbooks WHERE 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = ?"
@@ -667,29 +704,29 @@ class ContextStore:
         elif not include_deprecated:
             sql += " AND status != 'quarantined'"
         sql += " ORDER BY updated_at DESC"
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
 
-    def search_blocks(self, query: str, *, limit: int = 20) -> list[ReasonBlock]:
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
         if not query.strip():
             return self.list_blocks()[:limit]
-        fts_query = self._build_reasonblock_search_query(query)
+        fts_query = self._build_playbook_search_query(query)
         sql = (
-            "SELECT r.payload FROM reasonblocks_fts f "
-            "JOIN reasonblocks r ON r.id = f.id "
-            "WHERE reasonblocks_fts MATCH ? "
+            "SELECT r.payload FROM playbooks_fts f "
+            "JOIN playbooks r ON r.id = f.id "
+            "WHERE playbooks_fts MATCH ? "
             "AND r.status != 'quarantined' "
             "ORDER BY rank LIMIT ?"
         )
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, (fts_query, limit)).fetchall()
-        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
 
-    def _build_reasonblock_search_query(self, query: str) -> str:
-        """Build a robust FTS5 query for reasonblocks.
+    def _build_playbook_search_query(self, query: str) -> str:
+        """Build a robust FTS5 query for playbooks.
 
-        ReasonBlock retrieval should prefer recall over overly strict phrase
+        Playbook retrieval should prefer recall over overly strict phrase
         matching, so this expands input into prefix terms joined by AND.
         """
         clauses: list[str] = []
@@ -708,10 +745,10 @@ class ContextStore:
         escaped = query.strip().replace('"', '""')
         return f'"{escaped}"'
 
-    def update_block_status(self, block_id: str, status: BlockStatus) -> bool:
-        with self._connect() as conn, closing(conn.cursor()) as cur:
+    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE reasonblocks SET status = ?, updated_at = ? WHERE id = ?",
+                "UPDATE playbooks SET status = ?, updated_at = ? WHERE id = ?",
                 (status, datetime.now(UTC).isoformat(), block_id),
             )
             changed = cur.rowcount > 0
@@ -722,11 +759,11 @@ class ContextStore:
         return changed
 
     def delete_block(self, block_id: str) -> bool:
-        """Hard-delete a ReasonBlock from the DB, FTS index, and markdown."""
-        with self._connect() as conn, closing(conn.cursor()) as cur:
-            cur.execute("DELETE FROM reasonblocks WHERE id = ?", (block_id,))
+        """Hard-delete a Playbook from the DB, FTS index, and markdown."""
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM playbooks WHERE id = ?", (block_id,))
             deleted = cur.rowcount > 0
-            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block_id,))
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block_id,))
         markdown = self.blocks_dir / f"{block_id}.md"
         if markdown.exists():
             markdown.unlink()
@@ -738,19 +775,19 @@ class ContextStore:
         *,
         success: bool | None = None,
     ) -> None:
-        with self._connect() as conn, closing(conn.cursor()) as cur:
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE reasonblocks SET usage_count = usage_count + 1 WHERE id = ?",
+                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE id = ?",
                 (block_id,),
             )
             if success is True:
                 cur.execute(
-                    "UPDATE reasonblocks SET success_count = success_count + 1 WHERE id = ?",
+                    "UPDATE playbooks SET success_count = success_count + 1 WHERE id = ?",
                     (block_id,),
                 )
             elif success is False:
                 cur.execute(
-                    "UPDATE reasonblocks SET failure_count = failure_count + 1 WHERE id = ?",
+                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE id = ?",
                     (block_id,),
                 )
 
@@ -764,7 +801,6 @@ class ContextStore:
         results = {"blocks": 0, "rubrics": 0}
 
         if self.blocks_dir.exists():
-            from atelier.core.capabilities.starter_packs import load_template_block
             from atelier.core.foundation.parser import parse_block_markdown
 
             prev = self._load_sync_manifest("blocks")
@@ -778,11 +814,8 @@ class ContextStore:
                     continue  # unchanged — skip read/parse/upsert
 
                 try:
-                    if path.name.startswith("template_"):
-                        block = load_template_block(path)
-                    else:
-                        content = path.read_text(encoding="utf-8")
-                        block = parse_block_markdown(content)
+                    content = path.read_text(encoding="utf-8")
+                    block = parse_block_markdown(content)
                     self.upsert_block(block, write_markdown=False)
                     results["blocks"] += 1
                 except Exception as exc:
@@ -859,7 +892,7 @@ class ContextStore:
 
     def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
         payload = json.dumps(to_jsonable(trace), ensure_ascii=False)
-        with self._connect() as conn, closing(conn.cursor()) as cur:
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
             cur.execute(
                 """
                 INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)
@@ -871,6 +904,7 @@ class ContextStore:
                     status = excluded.status,
                     task = excluded.task,
                     workspace_path = excluded.workspace_path,
+                    created_at = excluded.created_at,
                     payload = excluded.payload
                 """,
                 (
@@ -931,7 +965,7 @@ class ContextStore:
         )
 
     def delete_trace(self, trace_id: str) -> None:
-        with self._connect() as conn, closing(conn.cursor()) as cur:
+        with self._transaction() as conn, closing(conn.cursor()) as cur:
             cur.execute("DELETE FROM traces WHERE id = ?", (trace_id,))
             cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace_id,))
 
@@ -941,12 +975,12 @@ class ContextStore:
 
     def trace_exists(self, trace_id: str) -> bool:
         """Lightweight existence check — no deserialization."""
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT 1 FROM traces WHERE id = ?", (trace_id,)).fetchone()
         return row is not None
 
     def get_trace(self, trace_id: str) -> Trace | None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
             if row is None:
                 # Fallback: check if trace_id was actually a session_id
@@ -961,7 +995,7 @@ class ContextStore:
 
     def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
         """Return IDs of traces that have not been successfully synced."""
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(
                 """
                 SELECT t.id FROM traces t
@@ -977,7 +1011,7 @@ class ContextStore:
     def mark_synced(self, session_id: str, payload_hash: str) -> None:
         """Mark a session as successfully synced."""
         synced_at = datetime.now(UTC).isoformat()
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO sync_status (session_id, synced_at, payload_hash)
@@ -1041,7 +1075,7 @@ class ContextStore:
             params.append(limit)
             params.append(offset)
 
-            with self._connect() as conn:
+            with self._transaction() as conn:
                 rows = conn.execute(sql, params).fetchall()
 
             results = []
@@ -1072,7 +1106,7 @@ class ContextStore:
         sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.append(limit)
         params.append(offset)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [Trace.model_validate_json(coerce_trace_json(r["payload"])) for r in rows]
 
@@ -1131,11 +1165,50 @@ class ContextStore:
             "domains": [r["domain"] for r in domain_rows if r["domain"]],
         }
 
+    def token_rows(self, *, since: datetime | None = None) -> list[dict[str, Any]]:
+        """Lightweight per-trace token/host/model rows for cost aggregates.
+
+        Pulls only the scalar fields a caller needs via ``json_extract`` on the
+        payload column, rather than deserializing every full ``Trace`` payload
+        (reasoning, tool calls, diffs, ...) into Python just to sum token counts.
+        """
+        sql = (
+            "SELECT id, host, "
+            "json_extract(payload, '$.session_id') AS session_id, "
+            "json_extract(payload, '$.model') AS model, "
+            "json_extract(payload, '$.input_tokens') AS input_tokens, "
+            "json_extract(payload, '$.output_tokens') AS output_tokens, "
+            "json_extract(payload, '$.cached_input_tokens') AS cached_input_tokens, "
+            "json_extract(payload, '$.thinking_tokens') AS thinking_tokens "
+            "FROM traces WHERE task != 'session-auto-record'"
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += " AND created_at >= ?"
+            params.append(since.isoformat())
+        with self._transaction() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_trace_payloads(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return raw trace payload dicts (not parsed ``Trace`` models), newest first.
+
+        For consumers (e.g. the runs dashboard) that render directly off the
+        JSON fields a host import wrote, the same shape ``Trace.record`` used to
+        hand back from the now-removed file-based session store.
+        """
+        with self._transaction() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM traces WHERE task != 'session-auto-record' ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
     # ----- Raw artifacts -------------------------------------------------- #
 
     def record_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
         payload = json.dumps(to_jsonable(artifact), ensure_ascii=False)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO raw_artifacts (
@@ -1177,7 +1250,7 @@ class ContextStore:
         self._write_raw_artifact(artifact, content)
 
     def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)).fetchone()
         if row is None:
             return None
@@ -1200,7 +1273,7 @@ class ContextStore:
             params.append(source_session_id)
         sql += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [RawArtifact.model_validate_json(r["payload"]) for r in rows]
 
@@ -1211,7 +1284,7 @@ class ContextStore:
 
     def upsert_rubric(self, rubric: Rubric, *, write_yaml: bool = True) -> None:
         payload = json.dumps(to_jsonable(rubric), ensure_ascii=False)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO rubrics (id, domain, payload)
@@ -1226,7 +1299,7 @@ class ContextStore:
             self._write_rubric_yaml(rubric)
 
     def get_rubric(self, rubric_id: str) -> Rubric | None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT payload FROM rubrics WHERE id = ?", (rubric_id,)).fetchone()
         if row is None:
             return None
@@ -1239,7 +1312,7 @@ class ContextStore:
             sql += " WHERE domain = ?"
             params.append(domain)
         sql += " ORDER BY id"
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [Rubric.model_validate_json(r["payload"]) for r in rows]
 
@@ -1255,7 +1328,7 @@ class ContextStore:
         job_id = uuid4().hex
         now = datetime.now(UTC).isoformat()
         payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO jobs (
@@ -1274,7 +1347,7 @@ class ContextStore:
         lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
         lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
         lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute("BEGIN IMMEDIATE")
             # Reap orphaned jobs before claiming. A worker that crashes mid-job
             # leaves its row stuck in 'running' forever (the lease is never
@@ -1328,7 +1401,7 @@ class ContextStore:
     def complete_job(self, job_id: str, result: dict[str, Any] | None = None) -> bool:
         _ = result
         now = datetime.now(UTC).isoformat()
-        with self._connect() as conn:
+        with self._transaction() as conn:
             res = conn.execute(
                 """
                 UPDATE jobs
@@ -1345,7 +1418,7 @@ class ContextStore:
 
     def fail_job(self, job_id: str, error: str) -> bool:
         now = datetime.now(UTC).isoformat()
-        with self._connect() as conn:
+        with self._transaction() as conn:
             res = conn.execute(
                 """
                 UPDATE jobs
@@ -1377,7 +1450,7 @@ class ContextStore:
             params.append(job_type)
         sql += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_job(row) for row in rows]
 
@@ -1385,7 +1458,7 @@ class ContextStore:
         lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
         lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
         lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute(
                 """
                 SELECT
@@ -1420,90 +1493,6 @@ class ContextStore:
             "active": pending + running + failed,
         }
 
-    # ----- external analytics -------------------------------------------- #
-
-    def record_external_analytics_run(
-        self,
-        *,
-        tool: str,
-        period: str,
-        source: str,
-        ok: bool,
-        command_display: str = "",
-        returncode: int | None = None,
-        summary: dict[str, Any] | None = None,
-        payload: Any | None = None,
-        stdout: str = "",
-        stderr: str = "",
-        collected_at: str | None = None,
-        replace_period_snapshot: bool = False,
-    ) -> str:
-        session_id = uuid4().hex
-        created_at = datetime.now(UTC).isoformat()
-        collected = collected_at or created_at
-        with self._connect() as conn:
-            if replace_period_snapshot:
-                conn.execute(
-                    "DELETE FROM external_analytics_runs WHERE tool = ? AND period = ?",
-                    (tool, period),
-                )
-            conn.execute(
-                """
-                INSERT INTO external_analytics_runs (
-                    id, tool, period, source, command_display,
-                    ok, returncode, summary_json, payload_json,
-                    stdout, stderr, collected_at, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    session_id,
-                    tool,
-                    period,
-                    source,
-                    command_display,
-                    1 if ok else 0,
-                    returncode,
-                    json.dumps(summary or {}, ensure_ascii=False, sort_keys=True),
-                    json.dumps(payload if payload is not None else {}, ensure_ascii=False),
-                    stdout,
-                    stderr,
-                    collected,
-                    created_at,
-                ),
-            )
-        return session_id
-
-    def list_external_analytics_runs(
-        self,
-        *,
-        tool: str | None = None,
-        period: str | None = None,
-        ok: bool | None = None,
-        days: int | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM external_analytics_runs WHERE 1=1"
-        params: list[Any] = []
-        if tool:
-            sql += " AND tool = ?"
-            params.append(tool)
-        if period:
-            sql += " AND period = ?"
-            params.append(period)
-        if ok is not None:
-            sql += " AND ok = ?"
-            params.append(1 if ok else 0)
-        if days is not None:
-            cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-            sql += " AND collected_at >= ?"
-            params.append(cutoff)
-        sql += " ORDER BY collected_at DESC LIMIT ?"
-        params.append(limit)
-        with self._connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
-        return [self._row_to_external_analytics_run(row) for row in rows]
-
     # ----- Lessons --------------------------------------------------------- #
 
     def upsert_lesson_candidate(self, candidate: LessonCandidate) -> None:
@@ -1513,7 +1502,7 @@ class ContextStore:
             else None
         )
         embedding_json = json.dumps(candidate.embedding, ensure_ascii=False) if candidate.embedding else None
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO lesson_candidate (
@@ -1565,7 +1554,7 @@ class ContextStore:
             )
 
     def get_lesson_candidate(self, lesson_id: str) -> LessonCandidate | None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT * FROM lesson_candidate WHERE id = ?", (lesson_id,)).fetchone()
         if row is None:
             return None
@@ -1588,12 +1577,12 @@ class ContextStore:
             params.append(status)
         sql += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_lesson_candidate(r) for r in rows]
 
     def upsert_lesson_promotion(self, promotion: LessonPromotion) -> None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO lesson_promotion (
@@ -1617,7 +1606,7 @@ class ContextStore:
             )
 
     def list_lesson_promotions(self, *, limit: int = 100) -> list[LessonPromotion]:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(
                 "SELECT * FROM lesson_promotion ORDER BY created_at DESC LIMIT ?",
                 (limit,),
@@ -1637,7 +1626,7 @@ class ContextStore:
     # ----- Consolidation candidates -------------------------------------- #
 
     def upsert_consolidation_candidate(self, candidate: ConsolidationCandidate) -> None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO consolidation_candidate (
@@ -1675,12 +1664,12 @@ class ContextStore:
         if pending_only:
             sql += " WHERE decided_at IS NULL"
         sql += " ORDER BY created_at DESC LIMIT ?"
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(sql, (limit,)).fetchall()
         return [self._row_to_consolidation_candidate(row) for row in rows]
 
     def get_consolidation_candidate(self, candidate_id: str) -> ConsolidationCandidate | None:
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute("SELECT * FROM consolidation_candidate WHERE id = ?", (candidate_id,)).fetchone()
         return self._row_to_consolidation_candidate(row) if row is not None else None
 
@@ -1698,31 +1687,6 @@ class ContextStore:
             "error": row["error"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-        }
-
-    def _row_to_external_analytics_run(self, row: sqlite3.Row) -> dict[str, Any]:
-        def _load_json(raw: Any, fallback: Any) -> Any:
-            if isinstance(raw, str):
-                try:
-                    return json.loads(raw)
-                except json.JSONDecodeError:
-                    return fallback
-            return raw if raw is not None else fallback
-
-        return {
-            "id": row["id"],
-            "tool": row["tool"],
-            "period": row["period"],
-            "source": row["source"],
-            "command_display": row["command_display"],
-            "ok": bool(row["ok"]),
-            "returncode": row["returncode"],
-            "summary": _load_json(row["summary_json"], {}),
-            "payload": _load_json(row["payload_json"], {}),
-            "stdout": row["stdout"] or "",
-            "stderr": row["stderr"] or "",
-            "collected_at": row["collected_at"],
-            "created_at": row["created_at"],
         }
 
     def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:
@@ -1743,7 +1707,7 @@ class ContextStore:
         row_keys = set(row.keys())
         proposed_block = None
         if row["proposed_block_json"]:
-            proposed_block = ReasonBlock.model_validate_json(row["proposed_block_json"])
+            proposed_block = Playbook.model_validate_json(row["proposed_block_json"])
         embedding = None
         if row["embedding"]:
             raw_embedding = row["embedding"]
@@ -1774,9 +1738,9 @@ class ContextStore:
 
     # ----- File mirrors ---------------------------------------------------- #
 
-    def _write_block_markdown(self, block: ReasonBlock) -> None:
+    def _write_block_markdown(self, block: Playbook) -> None:
         path = self.blocks_dir / f"{block.id}.md"
-        from atelier.core.foundation.renderer import render_block_markdown
+        from atelier.core.foundation.renderer import render_playbook_markdown as render_block_markdown
 
         path.write_text(render_block_markdown(block), encoding="utf-8")
 
@@ -1807,7 +1771,7 @@ class ContextStore:
 
     # ----- Bulk import ---------------------------------------------------- #
 
-    def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
+    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
         n = 0
         for b in blocks:
             self.upsert_block(b)
@@ -1830,7 +1794,7 @@ class ContextStore:
             record: A ContextBudget instance with session_id, turn_index, model,
                     token counts, lever_savings dict, and tool_calls count.
         """
-        with self._connect() as conn:
+        with self._transaction() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO context_budget (
@@ -1867,7 +1831,7 @@ class ContextStore:
         """
         from atelier.core.foundation.savings_models import ContextBudget
 
-        with self._connect() as conn:
+        with self._transaction() as conn:
             rows = conn.execute(
                 """
                 SELECT id, session_id, turn_index, model, input_tokens,
@@ -1912,7 +1876,7 @@ class ContextStore:
         """
         from atelier.core.foundation.savings_models import ContextBudget
 
-        with self._connect() as conn:
+        with self._transaction() as conn:
             row = conn.execute(
                 """
                 SELECT id, session_id, turn_index, model, input_tokens,

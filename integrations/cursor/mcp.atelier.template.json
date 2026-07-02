@@ -2,9 +2,24 @@
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "cursor"],
-      "alwaysAllow": ["code","compact","context","edit","grep","memory","read","rescue","route","search","shell","sql","trace","verify"]
+      "command": "atelier",
+      "args": ["mcp", "--host", "cursor"],
+      "alwaysAllow": [
+        "code",
+        "compact",
+        "context",
+        "edit",
+        "grep",
+        "memory",
+        "read",
+        "rescue",
+        "route",
+        "search",
+        "bash",
+        "sql",
+        "trace",
+        "verify"
+      ]
     }
   }
 }

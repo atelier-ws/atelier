@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import math
 import re
+from functools import lru_cache
 from typing import Any
 
 import tiktoken
-from datasketch import MinHash, MinHashLSH
+
+from atelier.core.foundation._minhash import MinHash
 
 from .bm25 import bm25_score, build_idf, tokenise
 from .dead_ends import DeadEndTracker
@@ -24,8 +26,13 @@ _MINHASH_PERMUTATIONS = 128
 _MIN_DEDUP_TOKENS = 5
 
 
+@lru_cache(maxsize=1)
+def _encoder() -> tiktoken.Encoding:
+    return tiktoken.get_encoding("cl100k_base")
+
+
 def _count_tokens(text: str) -> int:
-    return len(tiktoken.get_encoding("cl100k_base").encode(text))
+    return len(_encoder().encode(text))
 
 
 def _recency_score(last_used_ts: float, now_ts: float, *, half_life_days: float = 7.0) -> float:
@@ -81,22 +88,18 @@ def _dedupe_ranked(
 ) -> list[RankedProcedure]:
     if len(ranked) < 2:
         return ranked
-    lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
     kept: list[RankedProcedure] = []
-    kept_tokens: dict[str, set[str]] = {}
+    kept_sigs: list[MinHash] = []
     for item in ranked:
         block = blocks_by_id.get(item.block_id, {})
         tokens = _signature_tokens(block)
         if len(tokens) < _MIN_DEDUP_TOKENS:
             kept.append(item)
             continue
-        signature = _minhash(tokens)
-        matches = lsh.query(signature)
-        if any(_jaccard(tokens, kept_tokens[key]) >= threshold for key in matches):
+        sig = _minhash(tokens)
+        if any(sig.jaccard(prior) >= threshold for prior in kept_sigs):
             continue
-        key = f"{len(kept)}:{item.block_id}"
-        lsh.insert(key, signature)
-        kept_tokens[key] = tokens
+        kept_sigs.append(sig)
         kept.append(item)
     return kept
 

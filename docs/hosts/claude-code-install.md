@@ -144,7 +144,7 @@ All commands use the `/atelier:name` format (colon, not dash):
 | `/atelier:execute` | Switch to focused execution mode               |
 | `/atelier:review`   | Switch to adversarial review mode              |
 | `/atelier:research` | Switch to external research mode with citations |
-| `/atelier:solve`   | Switch to benchmark solve mode                 |
+| `/atelier:solve`   | Switch to autonomous solve mode                |
 
 ## Agents
 
@@ -158,7 +158,7 @@ Select from the `/agents` list in Claude Code:
 | `atelier:execute` | Executor — focused edits + self-check       |
 | `atelier:review`  | Verifier — plan checks + rubric gate         |
 | `atelier:research`| External research with citations             |
-| `atelier:solve`  | Benchmark solver — artifact/check loop       |
+| `atelier:solve`  | Autonomous solver — artifact/check loop      |
 
 ## Dynamic Workflows
 
@@ -188,7 +188,7 @@ surface.
 
 With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Claude Code includes
 `context`, `route`, `rescue`, `record`, `verify`, `memory`, `read`, `edit`,
-`sql`, `search`, `compact`, `shell`, and the `code` helpers.
+`sql`, `search`, `compact`, `bash`, and the `code` helpers.
 
 Without developer mode, `record` remains the most reliable active surface and
 some other tools may still appear as passive compatibility stubs.

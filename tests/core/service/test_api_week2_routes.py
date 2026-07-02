@@ -75,10 +75,10 @@ def _run_snapshot(session_id: str, cost: float = 0.5) -> dict[str, Any]:
 
 
 def _write_run(root: Path, session_id: str, cost: float = 0.5) -> Path:
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     snap = _run_snapshot(session_id, cost=cost)
-    p = runs_dir / f"{session_id}.json"
+    p = runs_dir / "run.json"
     p.write_text(json.dumps(snap))
     return p
 
@@ -118,6 +118,7 @@ def _write_imported_trace(
     cached_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
     raw_artifact_ids: list[str] | None = None,
+    workspace_path: str | None = None,
 ) -> None:
     store = ContextStore(root)
     store.init()
@@ -135,6 +136,7 @@ def _write_imported_trace(
         cached_input_tokens=cached_input_tokens,
         cache_creation_input_tokens=cache_creation_input_tokens,
         raw_artifact_ids=raw_artifact_ids or [],
+        workspace_path=workspace_path,
     )
     store.record_trace(trace, write_json=False)
 
@@ -147,6 +149,7 @@ def _write_raw_artifact(
     content: str,
     source: str = "cursor",
     relative_path: str | None = None,
+    created_at: datetime | None = None,
 ) -> None:
     store = ContextStore(root)
     store.init()
@@ -161,6 +164,7 @@ def _write_raw_artifact(
         sha256_redacted="redacted",
         byte_count_original=len(content.encode("utf-8")),
         byte_count_redacted=len(content.encode("utf-8")),
+        **({"created_at": created_at} if created_at is not None else {}),
     )
     store.record_raw_artifact(artifact, content)
 
@@ -307,39 +311,7 @@ def _build_imported_host_fixture(host: str) -> tuple[str, dict[str, int | str]]:
                 "cache_creation_input_tokens": 15,
             },
         )
-    if host == "gemini":
-        return (
-            "\n".join(
-                [
-                    json.dumps(
-                        {
-                            "id": "gemini-msg-1",
-                            "type": "gemini",
-                            "timestamp": "2026-05-16T00:00:02Z",
-                            "model": "gemini-2.5-pro",
-                            "tokens": {"input": 120, "output": 35, "thoughts": 8, "cached": 25},
-                            "content": "Applied the requested edit.",
-                            "toolCalls": [
-                                {
-                                    "name": "write_file",
-                                    "args": {
-                                        "path": "frontend/src/pages/Sessions.tsx",
-                                        "content": "updated",
-                                    },
-                                }
-                            ],
-                        }
-                    )
-                ]
-            ),
-            {
-                "model": "gemini-2.5-pro",
-                "input_tokens": 120,
-                "output_tokens": 35,
-                "cached_input_tokens": 25,
-                "cache_creation_input_tokens": 0,
-            },
-        )
+
     if host == "opencode":
         return (
             "\n".join(
@@ -412,7 +384,7 @@ def _build_imported_host_fixture(host: str) -> tuple[str, dict[str, int | str]]:
 
 
 def _write_outcomes(root: Path, session_id: str) -> Path:
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     outcomes = {
         "route_outcomes": [
@@ -428,7 +400,7 @@ def _write_outcomes(root: Path, session_id: str) -> Path:
             }
         ],
     }
-    p = runs_dir / f"{session_id}.outcomes.json"
+    p = runs_dir / "outcomes.json"
     p.write_text(json.dumps(outcomes))
     return p
 
@@ -513,6 +485,227 @@ def test_reasoning_context_accepts_runtime_bootstrap_payload(tmp_path: Path, mon
     assert payload["bootstrap"] == {"status": "cold", "repo_hash": "abc123", "blocks": []}
 
 
+class TestListHosts:
+    """GET /hosts — per-host last_import_at + imported_session_count (task 1)."""
+
+    def test_host_with_no_data_has_null_import_fields(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/hosts")
+        assert resp.status_code == 200
+        hosts = {h["host_id"]: h for h in resp.json()}
+        assert "claude" in hosts
+        assert hosts["claude"]["status"] == "not_detected"
+        assert hosts["claude"]["last_import_at"] is None
+        assert hosts["claude"]["imported_session_count"] == 0
+
+    def test_last_import_at_is_max_raw_artifact_created_at_not_session_start(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """last_import_at must reflect RawArtifact.created_at (the real
+        wall-clock import time) rather than Trace.created_at (seeded from the
+        session's own first-message timestamp, i.e. session start) — use two
+        artifacts with an older and a newer import time and a session-start
+        timestamp that sits *between* them, so the two fields can't agree by
+        coincidence.
+        """
+        older_import = datetime(2020, 1, 1, tzinfo=UTC)
+        newer_import = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+        session_started_at = datetime(2023, 1, 1, tzinfo=UTC)
+
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id="claude-sess-a-art",
+            session_id="sess-a",
+            source="claude",
+            content="content-a",
+            created_at=older_import,
+        )
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id="claude-sess-b-art",
+            session_id="sess-b",
+            source="claude",
+            content="content-b",
+            created_at=newer_import,
+        )
+        precheck_store = ContextStore(tmp_path)
+        precheck_store.init()
+        for session_id in ("sess-a", "sess-b"):
+            assert precheck_store.get_trace(f"claude-{session_id}") is None  # not yet written below
+        _write_imported_trace(
+            tmp_path,
+            "sess-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            raw_artifact_ids=["claude-sess-a-art"],
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-b",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            raw_artifact_ids=["claude-sess-b-art"],
+        )
+        # Force both traces' created_at (session start) to a value strictly
+        # between the two artifact import times, so if the endpoint were
+        # using Trace.created_at instead of RawArtifact.created_at the
+        # returned last_import_at would land at session_started_at (wrong)
+        # rather than newer_import (right).
+        store = ContextStore(tmp_path)
+        store.init()
+        for session_id in ("sess-a", "sess-b"):
+            trace = store.get_trace(f"claude-{session_id}")
+            assert trace is not None
+            trace.created_at = session_started_at
+            store.record_trace(trace, write_json=False)
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/hosts")
+        assert resp.status_code == 200
+        hosts = {h["host_id"]: h for h in resp.json()}
+        claude = hosts["claude"]
+        assert claude["status"] == "active"
+        assert claude["imported_session_count"] == 2
+        assert claude["last_import_at"] is not None
+        returned = datetime.fromisoformat(str(claude["last_import_at"]).replace("Z", "+00:00"))
+        assert returned == newer_import
+        assert returned != session_started_at
+
+
+class TestListTracesWorkspaceFilter:
+    """GET /traces?workspace=... — server-side workspace filter (task 2)."""
+
+    def test_workspace_filter_matches_only_that_workspace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-a",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-b",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-b",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        resp = client.get("/traces", params={"workspace": "/home/user/project-a"})
+        assert resp.status_code == 200
+        body = resp.json()
+        session_ids = {item["session_id"] for item in body["items"]}
+        assert session_ids == {"sess-ws-a"}
+
+    def test_workspace_facet_lists_full_history_not_just_loaded_page(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-a",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-b",
+            host="codex",
+            model="gpt-5-mini",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-b",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        # limit=1 caps the *items* page but the workspaces facet must still
+        # reflect every distinct workspace_path in the store, not just the
+        # one session that made it into this page.
+        resp = client.get("/traces", params={"limit": 1})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["items"]) == 1
+        assert set(body["metrics"]["workspaces"]) == {
+            "/home/user/project-a",
+            "/home/user/project-b",
+        }
+
+    def test_workspace_filter_composes_with_host_filter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # host=claude alone would return both claude sessions below; and
+        # workspace=/home/user/shared alone would return the claude AND
+        # codex sessions sharing that workspace -- only the combination of
+        # both filters narrows to exactly sess-ws-claude-shared.
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-claude-shared",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/shared",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-claude-other",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/other",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-codex-shared",
+            host="codex",
+            model="gpt-5-mini",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/shared",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        resp = client.get("/traces", params={"workspace": "/home/user/shared", "host": "claude"})
+        assert resp.status_code == 200
+        session_ids = {item["session_id"] for item in resp.json()["items"]}
+        assert session_ids == {"sess-ws-claude-shared"}
+
+
 class TestListSessions:
     def test_returns_list(self, client: TestClient) -> None:
         resp = client.get("/v1/sessions")
@@ -546,7 +739,7 @@ class TestListSessions:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    @pytest.mark.parametrize("host", ["claude", "codex", "copilot", "gemini", "opencode"])
+    @pytest.mark.parametrize("host", ["claude", "codex", "copilot", "opencode"])
     def test_imported_sessions_prefer_raw_artifact_resumming(
         self,
         host: str,
@@ -607,13 +800,13 @@ class TestListSessions:
         now = datetime.now(UTC)
 
         def write_run(session_id: str, started: str, mtime: float) -> None:
-            runs_dir = tmp_path / "runs"
+            runs_dir = tmp_path / "sessions" / session_id
             runs_dir.mkdir(parents=True, exist_ok=True)
             snap = _run_snapshot(session_id)
             snap["status"] = "running"
             snap["created_at"] = started
             snap["updated_at"] = started
-            path = runs_dir / f"{session_id}.json"
+            path = runs_dir / "run.json"
             path.write_text(json.dumps(snap))
             os.utime(path, (mtime, mtime))
 
@@ -640,6 +833,302 @@ class TestListSessions:
         data = listing.json()
         assert [item["session_id"] for item in data[:2]] == ["sess-new", "sess-old"]
         assert data[0]["updated_at"] > data[1]["updated_at"]
+
+    def test_in_progress_session_sorts_above_older_completed_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for finding 5: sort must use effective last-activity
+        (ended_at or updated_at or started_at), not a 3-tuple that maps a
+        running session's missing ended_at to 0.0 and buries it below any
+        completed session regardless of how recently it was active.
+        """
+        now = datetime.now(UTC)
+
+        def write_run(session_id: str, *, status: str, business_at: str, mtime: float) -> None:
+            runs_dir = tmp_path / "sessions" / session_id
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            snap = _run_snapshot(session_id)
+            snap["status"] = status
+            snap["created_at"] = business_at
+            snap["updated_at"] = business_at
+            path = runs_dir / "run.json"
+            path.write_text(json.dumps(snap))
+            os.utime(path, (mtime, mtime))
+
+        # Completed a full day ago (ended_at set, far in the past).
+        write_run(
+            "sess-completed",
+            status="done",
+            business_at=(now - timedelta(days=1)).isoformat(),
+            mtime=(now - timedelta(days=1)).timestamp(),
+        )
+        # Still running; last activity was seconds ago (ended_at is None).
+        write_run(
+            "sess-running",
+            status="running",
+            business_at=(now - timedelta(minutes=5)).isoformat(),
+            mtime=(now - timedelta(seconds=5)).timestamp(),
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        data = listing.json()
+        session_ids = [item["session_id"] for item in data]
+        assert "sess-running" in session_ids
+        assert "sess-completed" in session_ids
+        assert session_ids.index("sess-running") < session_ids.index("sess-completed")
+
+        running_item = next(item for item in data if item["session_id"] == "sess-running")
+        assert running_item["ended_at"] is None
+
+    def test_running_session_started_at_uses_real_created_at_not_evicted_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root-cause regression: build_report()'s started_at prefers the
+        oldest *surviving* ledger event, but RunLedger.events is a bounded,
+        evicted list for long sessions — the true first event can be evicted,
+        drifting started_at forward until it looks like processing time
+        instead of the session's real start. The ledger's own created_at is
+        recorded once at session start and is never evicted, so /v1/sessions
+        must prefer it whenever it is earlier than the reconstructed
+        started_at. A running session must also still surface ended_at: null
+        and sort above an older, fully completed session.
+        """
+        now = datetime.now(UTC)
+        real_start = now - timedelta(hours=2)
+
+        def write_run(session_id: str, *, status: str, created_at: datetime, event_at: datetime, mtime: float) -> None:
+            runs_dir = tmp_path / "sessions" / session_id
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            snap = _run_snapshot(session_id)
+            snap["status"] = status
+            snap["created_at"] = created_at.isoformat()
+            snap["updated_at"] = event_at.isoformat()
+            # Simulate a bounded/evicted events list: only a recent event
+            # survived, well after the ledger's real created_at.
+            snap["events"] = [{"kind": "tool_call", "at": event_at.isoformat(), "tool": "Bash"}]
+            path = runs_dir / "run.json"
+            path.write_text(json.dumps(snap))
+            os.utime(path, (mtime, mtime))
+
+        # Older, fully completed session.
+        write_run(
+            "sess-completed-old",
+            status="done",
+            created_at=now - timedelta(days=1),
+            event_at=now - timedelta(days=1) + timedelta(minutes=5),
+            mtime=(now - timedelta(days=1)).timestamp(),
+        )
+        # Running session: real start 2h ago, but only a recent surviving
+        # event remains in the bounded ledger events list.
+        write_run(
+            "sess-running",
+            status="running",
+            created_at=real_start,
+            event_at=now - timedelta(minutes=1),
+            mtime=now.timestamp(),
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        data = listing.json()
+
+        session_ids = [item["session_id"] for item in data]
+        assert session_ids.index("sess-running") < session_ids.index("sess-completed-old")
+
+        running_item = next(item for item in data if item["session_id"] == "sess-running")
+        assert running_item["ended_at"] is None
+        assert datetime.fromisoformat(running_item["started_at"]) == real_start
+
+    def test_completed_session_keeps_real_ended_at_after_started_at(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A completed session must never invert started_at/ended_at: ended_at
+        must reflect the real last activity and stay after started_at."""
+        now = datetime.now(UTC)
+        started = now - timedelta(hours=1)
+        ended = now - timedelta(minutes=10)
+
+        runs_dir = tmp_path / "sessions" / "sess-done"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        snap = _run_snapshot("sess-done")
+        snap["status"] = "done"
+        snap["created_at"] = started.isoformat()
+        snap["updated_at"] = ended.isoformat()
+        snap["events"] = [
+            {"kind": "tool_call", "at": started.isoformat(), "tool": "Bash"},
+            {"kind": "tool_call", "at": ended.isoformat(), "tool": "Bash"},
+        ]
+        (runs_dir / "run.json").write_text(json.dumps(snap))
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        item = next(row for row in listing.json() if row["session_id"] == "sess-done")
+
+        assert item["ended_at"] is not None
+        started_dt = datetime.fromisoformat(item["started_at"])
+        ended_dt = datetime.fromisoformat(item["ended_at"])
+        assert ended_dt > started_dt
+
+    def test_imported_session_ended_at_reflects_real_last_turn_not_import_time(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root-cause regression: _build_imported_session_payload used to seed
+        both started_at and ended_at from trace.created_at (import/ingest
+        time) and only ever *raise* ended_at from there — for a session
+        imported after it finished (trace.created_at is always >= every real
+        turn), ended_at stayed pinned at import time forever instead of the
+        real last turn. The fixture's turn is dated 2026-05-16; trace.created_at
+        defaults to "now" (test run time), which is always later —
+        reproducing the real-world import-after-the-fact case.
+        """
+        session_id = "claude-import-ts"
+        artifact_id = "artifact-import-ts"
+        content, _ = _build_imported_host_fixture("claude")
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            source="claude",
+            content=content,
+        )
+        _write_imported_trace(
+            tmp_path,
+            session_id,
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=100,
+            output_tokens=50,
+            raw_artifact_ids=[artifact_id],
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        item = next(row for row in listing.json() if row["session_id"] == session_id)
+
+        real_turn_at = datetime.fromisoformat("2026-05-16T00:00:05+00:00")
+        assert datetime.fromisoformat(item["started_at"]) == real_turn_at
+        assert datetime.fromisoformat(item["ended_at"]) == real_turn_at
+        # updated_at must track the real last activity, not import time.
+        assert datetime.fromisoformat(item["updated_at"]) == real_turn_at
+
+    def test_naive_turn_timestamp_does_not_500(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression for finding 4: an offset-less ISO turn timestamp used to
+        parse as a naive datetime and raise (TypeError: can't compare
+        offset-naive and offset-aware datetimes) when compared against the
+        aware trace.created_at. _parse_session_datetime now normalizes naive
+        results to UTC, so both the list and detail endpoints stay 200.
+        """
+        session_id = "sess-naive-ts"
+        artifact_id = "artifact-naive-ts"
+        content, _ = _build_imported_host_fixture("claude")
+        # Strip the trailing "Z" so the turn's "at" timestamp parses naive.
+        assert "2026-05-16T00:00:05Z" in content
+        content = content.replace("2026-05-16T00:00:05Z", "2026-05-16T00:00:05")
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id=artifact_id,
+            session_id=session_id,
+            source="claude",
+            content=content,
+        )
+        _write_imported_trace(
+            tmp_path,
+            session_id,
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=100,
+            output_tokens=50,
+            raw_artifact_ids=[artifact_id],
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        listing = client.get("/v1/sessions")
+        assert listing.status_code == 200
+        assert any(item["session_id"] == session_id for item in listing.json())
+
+        detail = client.get(f"/v1/sessions/{session_id}")
+        assert detail.status_code == 200
+        assert detail.json()["session_id"] == session_id
+
+    def test_bad_imported_session_is_skipped_not_fatal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression for finding 4: one imported session raising inside
+        _build_imported_session_payload must not 500 the whole /v1/sessions
+        listing — it should be logged and skipped, leaving other sessions intact.
+        """
+        for session_id in ("sess-bad", "sess-good"):
+            artifact_id = f"artifact-{session_id}"
+            content, _ = _build_imported_host_fixture("claude")
+            _write_raw_artifact(
+                tmp_path,
+                artifact_id=artifact_id,
+                session_id=session_id,
+                source="claude",
+                content=content,
+            )
+            _write_imported_trace(
+                tmp_path,
+                session_id,
+                host="claude",
+                model="claude-sonnet-4-6",
+                input_tokens=100,
+                output_tokens=50,
+                raw_artifact_ids=[artifact_id],
+            )
+
+        def fake_savings(session_id: str, root: Path) -> float:
+            if session_id == "sess-bad":
+                raise RuntimeError("boom")
+            return 0.0
+
+        monkeypatch.setattr("atelier.infra.runtime.session_report.read_total_savings_from_events", fake_savings)
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        monkeypatch.chdir(tmp_path)
+
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/v1/sessions")
+        assert resp.status_code == 200
+        session_ids = [item["session_id"] for item in resp.json()]
+        assert "sess-good" in session_ids
+        assert "sess-bad" not in session_ids
 
 
 # ---------------------------------------------------------------------------
@@ -848,9 +1337,10 @@ class TestGetOutcomesForSession:
             assert "kind" in e
             assert e["kind"] in ("route", "compact")
 
-    def test_404_no_outcomes_file(self, client: TestClient) -> None:
+    def test_empty_list_when_no_outcomes_file(self, client: TestClient) -> None:
         resp = client.get("/v1/outcomes/no-such-session")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.json() == []
 
 
 # ---------------------------------------------------------------------------

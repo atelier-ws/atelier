@@ -1,16 +1,16 @@
 """MCP-backed SDK client.
 
 This client supports the MCP-standard task tools directly. For richer read
-operations like listing ReasonBlocks it falls back to a local store at
+operations like listing Playbooks it falls back to a local store at
 ``root`` so external hosts can embed Atelier without shelling out.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
-from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
     RescueResult,
     RubricResult,
@@ -22,9 +22,7 @@ from atelier.gateway.adapters import mcp_server
 from atelier.gateway.sdk.client import (
     ContextResult,
     MCPToolTransport,
-    MemoryArchiveResult,
     MemoryRecallResult,
-    MemoryUpsertBlockResult,
     TraceRecordResult,
 )
 from atelier.gateway.sdk.local import LocalClient
@@ -32,22 +30,22 @@ from atelier.gateway.trace_payloads import serialize_trace_learnings, serialize_
 
 
 class _LoopbackTransport(MCPToolTransport):
+    # Aliases the in-process SDK accepts in addition to canonical tool names.
+    # ``record`` is a historical synonym for the ``trace`` recorder.
+    _ALIASES: ClassVar[dict[str, str]] = {"record": "trace"}
+
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        tools = {
-            "context": mcp_server.tool_get_context,
-            "rescue": mcp_server.tool_rescue_failure,
-            "trace": mcp_server.tool_record_trace,
-            "record": mcp_server.tool_record_trace,
-            "verify": mcp_server.tool_run_rubric_gate,
-            "route": mcp_server.tool_route,
-            "memory": mcp_server.tool_memory,
-            "read": mcp_server.tool_smart_read,
-            "search": mcp_server.tool_smart_search,
-            "edit": mcp_server.tool_smart_edit,
-            "compact": mcp_server.tool_compact,
-            "symbols": mcp_server.tool_symbols,
-        }
-        return cast(dict[str, Any], tools[name](arguments))
+        # Expose the full registered MCP tool surface to in-process/SDK callers
+        # so loopback parity tracks the stdio/HTTP transports automatically as
+        # tools are added (workflow, codemod, rename-via-codemod, shell, grep,
+        # graph, scan, ...). Each entry is the same dict-accepting handler the
+        # MCP dispatcher invokes, so behavior is identical across transports.
+        canonical = self._ALIASES.get(name, name)
+        spec = mcp_server.TOOLS.get(canonical)
+        if spec is None:
+            raise KeyError(name)
+        handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
+        return cast(dict[str, Any], handler(arguments))
 
 
 class MCPClient(LocalClient):
@@ -94,67 +92,6 @@ class MCPClient(LocalClient):
         )
         return ContextResult.model_validate(payload)
 
-    def memory_upsert_block(
-        self,
-        *,
-        agent_id: str,
-        label: str,
-        value: str,
-        limit_chars: int = 8000,
-        description: str = "",
-        read_only: bool = False,
-        pinned: bool = False,
-        metadata: dict[str, Any] | None = None,
-        expected_version: int | None = None,
-        actor: str | None = None,
-    ) -> MemoryUpsertBlockResult:
-        payload = self._transport.call_tool(
-            "memory",
-            {
-                "op": "block_upsert",
-                "agent_id": agent_id,
-                "label": label,
-                "value": value,
-                "limit_chars": limit_chars,
-                "description": description,
-                "read_only": read_only,
-                "pinned": pinned,
-                "metadata": metadata or {},
-                "expected_version": expected_version,
-                "actor": actor,
-            },
-        )
-        return MemoryUpsertBlockResult.model_validate(payload)
-
-    def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
-        payload = self._transport.call_tool(
-            "memory",
-            {"op": "block_get", "agent_id": agent_id, "label": label},
-        )
-        return MemoryBlock.model_validate(payload) if payload is not None else None
-
-    def memory_archive(
-        self,
-        *,
-        agent_id: str,
-        text: str,
-        source: str,
-        source_ref: str = "",
-        tags: list[str] | None = None,
-    ) -> MemoryArchiveResult:
-        payload = self._transport.call_tool(
-            "memory",
-            {
-                "op": "archive",
-                "agent_id": agent_id,
-                "text": text,
-                "source": source,
-                "source_ref": source_ref,
-                "tags": tags or [],
-            },
-        )
-        return MemoryArchiveResult.model_validate(payload)
-
     def memory_recall(
         self,
         *,
@@ -176,12 +113,6 @@ class MCPClient(LocalClient):
             },
         )
         return MemoryRecallResult.model_validate(payload)
-
-    def memory_summary(self, *, session_id: str) -> dict[str, Any]:
-        return self._transport.call_tool("memory", {"op": "summarize", "session_id": session_id})
-
-    def route(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
-        return self._transport.call_tool("route", {"op": op, **kwargs})
 
     def compact(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
         return self._transport.call_tool("compact", {"op": op, **kwargs})

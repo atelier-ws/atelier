@@ -41,7 +41,7 @@ def default_policy() -> GovernancePolicy:
     return GovernancePolicy(
         redaction_rules=[
             RedactionRule(pattern=r"sk-[A-Za-z0-9]+"),
-            RedactionRule(pattern=r"(?i)api[_-]?key\\s*[:=]\\s*\\S+"),
+            RedactionRule(pattern=r"(?i)api[_-]?key\s*[:=]\s*\S+"),
         ]
     )
 
@@ -107,4 +107,7 @@ def _record_timestamp(record: dict[str, Any]) -> datetime | None:
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
+    ts = record.get("ts")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        return datetime.fromtimestamp(float(ts), tz=UTC)
     return None

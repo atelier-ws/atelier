@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
+from atelier.core.capabilities.native_read_baseline import claude_read_baseline_text
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.graph import (
     build_reference_graph,
@@ -21,6 +22,7 @@ from atelier.core.capabilities.repo_map.graph import (
 )
 from atelier.core.capabilities.repo_map.pagerank import personalized_pagerank
 from atelier.core.capabilities.tool_supervision.search_read import search_read, search_read_to_dict
+from atelier.core.foundation.paths import confine_to_root
 from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.storage.vector import cosine_similarity
@@ -29,7 +31,6 @@ SearchMode = Literal["chunks", "full", "map"]
 IndexedSearch = Callable[..., dict[str, Any]]
 
 _CLAUDE_GREP_FILE_LIMIT = 100
-_CLAUDE_READ_LINE_LIMIT = 2000
 _SHELL_METACHARS_RE = re.compile(r"[;&|`$<>()\n\r]")
 _LEADING_DASH_RE = re.compile(r"^-")
 _TEXT_SUFFIXES = {
@@ -67,7 +68,10 @@ def _repo_root() -> Path:
 def _resolve_path(repo_root: Path, path: str) -> Path:
     raw = Path(path)
     resolved = raw if raw.is_absolute() else repo_root / raw
-    return resolved.resolve()
+    # Confine the agent-controlled path to the workspace root so smart_search
+    # cannot be coerced into reading files outside it. Raises ValueError on
+    # escape (including via symlinks, which confine_to_root resolves).
+    return confine_to_root(resolved, repo_root)
 
 
 def _iter_text_files(root: Path, *, limit: int = 500) -> list[Path]:
@@ -198,11 +202,10 @@ def _cache_key(payload: dict[str, Any], search_path: Path) -> str:
 
 
 def _state_path(repo_root: Path) -> Path:
-    from hashlib import sha256
 
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    h = sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    h = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / h / "smart_state.json"
 
 
@@ -272,13 +275,6 @@ def _search_with_backend(
     return payload
 
 
-def _claude_read_baseline_text(text: str) -> str:
-    lines = text.splitlines()
-    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
-        return text
-    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
-
-
 def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode = "chunks") -> int:
     """Bytes in the closest Claude Code built-in baseline for these matches."""
     if mode != "full":
@@ -290,7 +286,7 @@ def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode 
         raw = str(match.get("path", ""))
         content = match.get("content")
         if isinstance(content, str) and content:
-            total += len(_claude_read_baseline_text(content))
+            total += len(claude_read_baseline_text(content))
             continue
         if not raw:
             continue
@@ -298,7 +294,7 @@ def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode 
             source = Path(raw).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        total += len(_claude_read_baseline_text(source))
+        total += len(claude_read_baseline_text(source))
     return total
 
 
@@ -478,6 +474,19 @@ def _file_preview(
     }
 
 
+def _cap_fields(returned: int, max_files: int) -> dict[str, Any]:
+    """Truncation signal: 'capped' is True when the result hit the max_files
+    limit, so the caller (LLM) knows it may be partial and can raise max_files
+    to page instead of assuming these are all the matches.
+    """
+    return {
+        "returned": returned,
+        "capped": returned >= max_files,
+        "cap_param": "max_files",
+        "cap_limit": max_files,
+    }
+
+
 def smart_search(
     *,
     query: str,
@@ -519,8 +528,9 @@ def smart_search(
         cached = cache.get(cache_key)
         if isinstance(cached, dict):
             cached_matches = [match for match in cached.get("matches", []) if isinstance(match, dict)]
+            cached_sliced = cached_matches[:max_files]
             return {
-                "matches": cached_matches[:max_files],
+                "matches": cached_sliced,
                 "match_paths": [path for path in cached.get("match_paths", []) if isinstance(path, str)][:max_files],
                 "mode": mode,
                 "backend": str(cached.get("backend") or "ripgrep"),
@@ -528,6 +538,7 @@ def smart_search(
                 "cache_hit": True,
                 "total_tokens": int(cached.get("total_tokens", 0) or 0),
                 "tokens_saved": int(cached.get("tokens_saved", 0) or 0),
+                **_cap_fields(len(cached_sliced), max_files),
                 **({"fallback": cached["fallback"]} if isinstance(cached.get("fallback"), dict) else {}),
             }
     else:
@@ -602,6 +613,7 @@ def smart_search(
             "total_tokens": payload.get("total_tokens", 0),
             "cache_hit": False,
             "tokens_saved": max(0, (zoekt_naive - zoekt_rendered) // 4),
+            **_cap_fields(len(zoekt_matches), max_files),
             **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
         }
         if os.environ.get("ATELIER_CACHE_DISABLED") != "1":
@@ -658,6 +670,7 @@ def smart_search(
         "total_tokens": int(payload.get("total_tokens", 0) or 0),
         "cache_hit": False,
         "tokens_saved": max(0, (final_naive - final_rendered) // 4),
+        **_cap_fields(len(final_matches), max_files),
         **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
     }
 

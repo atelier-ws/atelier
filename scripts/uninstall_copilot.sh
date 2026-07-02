@@ -48,9 +48,9 @@ run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
 if [ -f "$MCP_JSON" ] && grep -q "atelier" "$MCP_JSON" 2>/dev/null; then
     run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
-path = Path(\"$MCP_JSON\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 for key in (\"servers\", \"mcpServers\"):
     data.get(key, {}).pop(\"atelier\", None)
@@ -61,52 +61,52 @@ if not data:
     path.unlink()
 else:
     path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$MCP_JSON")"
     info "Removed atelier MCP entry from $MCP_JSON"
 fi
 
 if [ -f "$INSTRUCTIONS" ] && grep -qi "atelier" "$INSTRUCTIONS" 2>/dev/null; then
     if $WORKSPACE_SET; then
-        run "cp '$INSTRUCTIONS' '${INSTRUCTIONS}.atelier-backup.$(date +%Y%m%dT%H%M%S)'"
+        run "cp $(printf %q "$INSTRUCTIONS") $(printf %q "${INSTRUCTIONS}.atelier-backup.$(date +%Y%m%dT%H%M%S)")"
         run "python3 -c '
-import re
+import re, sys
 from pathlib import Path
-path = Path(\"$INSTRUCTIONS\")
+path = Path(sys.argv[1])
 content = path.read_text(encoding=\"utf-8\")
 content = re.sub(r\"\\n?##\\s*Atelier[^\\n]*\\n[\\s\\S]*?(?=\\n##\\s|\\Z)\", \"\\n\", content).strip()
 path.write_text((content + \"\\n\") if content else \"\", encoding=\"utf-8\")
-'"
+' $(printf %q "$INSTRUCTIONS")"
         info "Removed Atelier section from $INSTRUCTIONS"
     else
-        run "rm -f '$INSTRUCTIONS'"
+        run "rm -f $(printf %q "$INSTRUCTIONS")"
         info "Removed $INSTRUCTIONS"
     fi
 fi
 
 if [ -n "$AGENTS_DIR" ] && [ -d "$AGENTS_DIR" ]; then
-    run "rm -f '$AGENTS_DIR/atelier.agent.md' '$AGENTS_DIR'/atelier.*.agent.md 2>/dev/null || true"
+    run "rm -f $(printf %q "$AGENTS_DIR/atelier.agent.md") $(printf %q "$AGENTS_DIR")/atelier.*.agent.md 2>/dev/null || true"
     info "Removed Atelier Copilot agents from $AGENTS_DIR"
 fi
 
 if [ -f "$TASKS_JSON" ] && grep -q "Atelier:" "$TASKS_JSON" 2>/dev/null; then
     run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
-path = Path(\"$TASKS_JSON\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 data[\"tasks\"] = [t for t in data.get(\"tasks\", []) if not str(t.get(\"label\", \"\")).startswith(\"Atelier:\")]
 data[\"inputs\"] = [i for i in data.get(\"inputs\", []) if not str(i.get(\"id\", \"\")).startswith(\"atelier\")]
 path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$TASKS_JSON")"
     info "Removed Atelier task presets from $TASKS_JSON"
 fi
 
 if ! $WORKSPACE_SET && [ -f "$COPILOT_CLI_HOOKS_JSON" ] && grep -q "atelier" "$COPILOT_CLI_HOOKS_JSON" 2>/dev/null; then
     run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
 
-path = Path(\"$COPILOT_CLI_HOOKS_JSON\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 hooks = data.get(\"hooks\", {})
 for event, entries in list(hooks.items()):
@@ -123,7 +123,7 @@ if hooks:
     path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 else:
     path.unlink()
-'"
+' $(printf %q "$COPILOT_CLI_HOOKS_JSON")"
     info "Removed Atelier Copilot CLI hooks from $COPILOT_CLI_HOOKS_JSON"
 fi
 

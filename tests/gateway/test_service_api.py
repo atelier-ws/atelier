@@ -125,13 +125,10 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == names
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "read" in names
-    assert "grep" in names
-    assert "search" in names
-    assert "memory" in names
-    assert "shell" in names
-    symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
-    enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
-    assert "mode" in enum_param_names
+    assert "bash" in names
+    assert "code_search" in names
+    assert "edit" in names
+    assert "web_fetch" in names
 
 
 def test_workflow_current_and_snapshot_actions(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -443,186 +440,6 @@ def test_trace_record_accepts_mcp_context_fields_and_learnings(app_no_auth: Test
     ]
     assert trace.learnings[1].kind == "next_rule"
     assert trace.learnings[1].promote_to == "rubric"
-
-
-def test_external_analytics_endpoints_return_summary_and_detail(
-    app_no_auth: TestClient,
-    store: SQLiteStore,
-) -> None:
-    store.record_external_analytics_run(
-        tool="codeburn",
-        period="today",
-        source="servicectl",
-        ok=True,
-        command_display="codeburn report --format json -p today",
-        returncode=0,
-        summary={"highlights": [{"key": "cost_usd", "label": "cost usd", "value": 4.5}]},
-        payload={
-            "overview": {"cost": 4.5, "calls": 9, "sessions": 2},
-            "providerEntries": [
-                {
-                    "provider": "codex",
-                    "providerDisplayName": "Codex",
-                    "models": 1,
-                    "calls": 7,
-                    "inputTokens": 100,
-                    "outputTokens": 20,
-                    "cacheReadTokens": 10,
-                    "cacheWriteTokens": 0,
-                    "totalTokens": 130,
-                    "costUSD": 3.8,
-                },
-                {
-                    "provider": "gemini",
-                    "providerDisplayName": "Gemini",
-                    "models": 1,
-                    "calls": 2,
-                    "inputTokens": 40,
-                    "outputTokens": 8,
-                    "cacheReadTokens": 0,
-                    "cacheWriteTokens": 0,
-                    "totalTokens": 48,
-                    "costUSD": 0.7,
-                },
-            ],
-        },
-        collected_at="2026-05-11T12:00:00+00:00",
-    )
-    store.record_external_analytics_run(
-        tool="tokscale",
-        period="today",
-        source="servicectl",
-        ok=False,
-        command_display="tokscale --json --no-spinner --today",
-        returncode=1,
-        summary={"highlights": [{"key": "input_tokens", "label": "input tokens", "value": 1200}]},
-        payload={"summary": {"input_tokens": 1200}},
-        stderr="tool missing",
-        collected_at="2026-05-11T13:00:00+00:00",
-    )
-
-    external_resp = app_no_auth.get("/analytics/external")
-    assert external_resp.status_code == 200
-    external_data = external_resp.json()
-    assert external_data["totals"]["runs_total"] == 2
-    assert external_data["latest_by_tool"]["codeburn"]["summary"]["highlights"][0]["key"] == "cost_usd"
-
-    dashboard_resp = app_no_auth.get("/analytics/dashboard")
-    assert dashboard_resp.status_code == 200
-    dashboard = dashboard_resp.json()
-    assert dashboard["external"]["runs_total"] == 2
-    assert {item["tool"] for item in dashboard["external"]["latest"]} == {"codeburn", "tokscale"}
-    assert dashboard["external"]["by_provider"] == [
-        {
-            "provider": "codex",
-            "providerDisplayName": "Codex",
-            "models": 1,
-            "calls": 7,
-            "inputTokens": 100,
-            "outputTokens": 20,
-            "cacheReadTokens": 10,
-            "cacheWriteTokens": 0,
-            "totalTokens": 130,
-            "costUSD": 3.8,
-        },
-        {
-            "provider": "gemini",
-            "providerDisplayName": "Gemini",
-            "models": 1,
-            "calls": 2,
-            "inputTokens": 40,
-            "outputTokens": 8,
-            "cacheReadTokens": 0,
-            "cacheWriteTokens": 0,
-            "totalTokens": 48,
-            "costUSD": 0.7,
-        },
-    ]
-
-
-def test_dashboard_external_uses_period_matched_codeburn_snapshot(
-    app_no_auth: TestClient,
-    store: SQLiteStore,
-) -> None:
-    now = datetime.now(UTC)
-    today_collected_at = (now - timedelta(minutes=10)).isoformat()
-    month_collected_at = (now - timedelta(minutes=5)).isoformat()
-
-    store.record_external_analytics_run(
-        tool="codeburn",
-        period="today",
-        source="servicectl",
-        ok=True,
-        command_display="codeburn report --format json -p today",
-        returncode=0,
-        summary={"highlights": [{"key": "cost_usd", "label": "cost usd", "value": 4.5}]},
-        payload={
-            "overview": {"cost": 4.5, "calls": 9, "sessions": 2},
-            "providerEntries": [
-                {
-                    "provider": "copilot",
-                    "providerDisplayName": "Copilot",
-                    "models": 1,
-                    "calls": 9,
-                    "inputTokens": 120,
-                    "outputTokens": 40,
-                    "cacheReadTokens": 0,
-                    "cacheWriteTokens": 0,
-                    "totalTokens": 160,
-                    "costUSD": 4.5,
-                }
-            ],
-        },
-        collected_at=today_collected_at,
-    )
-    store.record_external_analytics_run(
-        tool="codeburn",
-        period="month",
-        source="servicectl",
-        ok=True,
-        command_display="codeburn report --format json -p month",
-        returncode=0,
-        summary={"highlights": [{"key": "cost_usd", "label": "cost usd", "value": 82.1}]},
-        payload={
-            "overview": {"cost": 82.1, "calls": 190, "sessions": 33},
-            "providerEntries": [
-                {
-                    "provider": "codex",
-                    "providerDisplayName": "Codex",
-                    "models": 2,
-                    "calls": 190,
-                    "inputTokens": 5000,
-                    "outputTokens": 1200,
-                    "cacheReadTokens": 0,
-                    "cacheWriteTokens": 0,
-                    "totalTokens": 6200,
-                    "costUSD": 82.1,
-                }
-            ],
-        },
-        collected_at=month_collected_at,
-    )
-
-    dashboard_resp = app_no_auth.get("/analytics/dashboard?days=1")
-    assert dashboard_resp.status_code == 200
-
-    dashboard = dashboard_resp.json()
-    codeburn_snapshot = next(item for item in dashboard["external"]["latest"] if item["tool"] == "codeburn")
-    assert codeburn_snapshot["period"] == "today"
-    assert dashboard["external"]["by_provider"] == [
-        {
-            "provider": "copilot",
-            "providerDisplayName": "Copilot",
-            "models": 1,
-            "calls": 9,
-            "inputTokens": 120,
-            "outputTokens": 40,
-            "cacheReadTokens": 0,
-            "cacheWriteTokens": 0,
-            "totalTokens": 160,
-            "costUSD": 4.5,
-        }
-    ]
 
 
 def test_analytics_day_windows_use_calendar_days(
@@ -1009,9 +826,9 @@ def test_list_blocks_empty(app_no_auth: TestClient) -> None:
 
 
 def test_get_block_from_compat_endpoints(app_no_auth: TestClient, store: SQLiteStore) -> None:
-    from atelier.core.foundation.models import ReasonBlock
+    from atelier.core.foundation.models import Playbook
 
-    block = ReasonBlock(
+    block = Playbook(
         id="rb-api-test",
         title="API Test Block",
         domain="test",
@@ -1246,8 +1063,8 @@ def test_file_projection_endpoint_returns_compact_projection_metadata(
     assert resp.status_code == 200
     payload = resp.json()
 
-    assert payload["projection"]["view"] == "compact"
-    assert payload["projection_mapping"]["projection_kind"] == "compact"
+    assert payload["projection"]["view"] == "minified"
+    assert payload["projection_mapping"]["projection_kind"] == "minified"
     assert payload["projection_delta"]["saved_tokens"] > 0
 
 

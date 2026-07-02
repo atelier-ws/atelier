@@ -7,23 +7,20 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-
-from atelier.core.capabilities.tool_supervision.search_read import (
-    FileMatch,
-    SearchReadResult,
-    Snippet,
-    _count_tokens,
-    _detect_lang,
-    _file_outline,
-)
+from typing import TYPE_CHECKING, Literal
 
 from .binary import ZoektBinaryResolution, discover_zoekt_binary, zoekt_mode
 from .client import ZoektClient, ZoektFileResult
 from .indexer import ZoektIndexer
-from .server import ZoektServer, get_zoekt_server, reset_zoekt_servers
+from .server import ZoektServer, _resolve_host_binaries, get_zoekt_server, reset_zoekt_servers
 
-_DEFAULT_LOC_THRESHOLD = 500_000
+if TYPE_CHECKING:
+    from atelier.core.capabilities.tool_supervision.search_read import SearchReadResult
+
+# Route every repo through zoekt by default -- even a 1-file repo benefits
+# from the resident index (no Go-runtime spin-up per query). Override via
+# ATELIER_ZOEKT_LOC_THRESHOLD if you want a larger repo-size gate.
+_DEFAULT_LOC_THRESHOLD = 1
 _NOISE_PATH_PARTS = frozenset(
     {
         ".git",
@@ -64,6 +61,9 @@ class ZoektSupervisor:
         self._client: ZoektClient | None = None
         self._indexer = ZoektIndexer(self.repo_root)
         self._lock = threading.Lock()
+        # Serialises background rebuilds without blocking the search _lock, so a
+        # refresh never stalls concurrent searches (they read existing shards).
+        self._build_lock = threading.Lock()
         self._route_cache: dict[tuple[str, int], bool] = {}
 
     @property
@@ -109,8 +109,18 @@ class ZoektSupervisor:
                 index_age_seconds=None,
                 reason=resolution.reason,
             )
+        if self.ensure_started() is None:
+            # ensure_started returned None because Zoekt isn't ready
+            # (no index built yet).  Return non-ok health instead of
+            # forwarding to server.health() which would raise.
+            return ZoektBackendHealth(
+                ok=False,
+                backend="zoekt",
+                binary_path=str(resolution.path) if resolution.path is not None else None,
+                index_age_seconds=None,
+                reason="Zoekt index not built yet",
+            )
         try:
-            self.ensure_started()
             server_health = self.server.health()
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
@@ -129,18 +139,77 @@ class ZoektSupervisor:
             index_age_seconds=server_health.index_age_seconds,
         )
 
-    def ensure_started(self) -> ZoektClient:
+    def ensure_started(self) -> ZoektClient | None:
+        """Wire up against an existing Zoekt index and return the client.
+
+        Returns ``None`` (never raises) when Zoekt is unavailable or the
+        index hasn't been built yet.  Callers on the MCP hot path must
+        treat ``None`` as "no results" and degrade gracefully -- never
+        trigger a build from here.
+        """
         with self._lock:
             if self._client is not None:
                 return self._client
             resolution = self._resolution()
             if not resolution.available:
-                raise RuntimeError(resolution.reason or "zoekt binary unavailable")
+                logging.debug("zoekt unavailable: %s", resolution.reason)
+                return None
             self._binary_resolution = resolution
             server = get_zoekt_server(self.repo_root, resolution=resolution)
-            server.ensure_started()
+            try:
+                server.ensure_started()
+            except RuntimeError as exc:
+                logging.debug("zoekt index not ready, skipping: %s", exc)
+                return None
             self._client = ZoektClient(server)
             return self._client
+
+    def refresh_index_if_head_changed(self) -> bool:
+        """Background-only: keep an already-built git Zoekt index fresh.
+
+        ``zoekt-git-index`` reads committed git objects, so its content
+        granularity is per-commit -- a working-tree edit can't change what it
+        indexes, only a HEAD move (commit/checkout/merge) can. That indexer is
+        inherently incremental: it diffs the new HEAD's blobs against the shard
+        metadata and re-indexes only the objects that changed in the commit, not
+        the whole repo (deletions handled, no stale shards). This re-runs it when
+        HEAD advances. No-op for: zoekt off, non-git repos, docker runtime, a
+        missing git-aware indexer, or before the first build (initial build stays
+        an ``atelier code index`` concern). Never call on the search hot path --
+        it spawns the indexer subprocess. Returns True iff a rebuild ran.
+        """
+        if zoekt_mode() == "off":
+            return False
+        if not (self.repo_root / ".git").exists():
+            return False
+        if not self._build_lock.acquire(blocking=False):
+            return False  # a rebuild is already in flight; skip this tick
+        try:
+            resolution = self._resolution()
+            if not resolution.available or resolution.runtime == "docker":
+                return False
+            try:
+                _search, _index, git_index = _resolve_host_binaries(resolution)
+            except Exception:
+                return False
+            if git_index is None:
+                # Only the git-aware indexer is incremental; without it a refresh
+                # would full-rebuild every commit, so leave it to explicit reindex.
+                return False
+            self._binary_resolution = resolution
+            server = get_zoekt_server(self.repo_root, resolution=resolution)
+            if not server.index_present():
+                return False
+            current = server.current_git_head()
+            if current is None or current == server.indexed_git_head():
+                return False
+            server.build_index(resolution)
+            return True
+        except Exception:
+            logging.debug("zoekt incremental refresh failed", exc_info=True)
+            return False
+        finally:
+            self._build_lock.release()
 
     def search(
         self,
@@ -155,8 +224,24 @@ class ZoektSupervisor:
         max_snippets_per_file: int | None = None,
         skip_noise: bool = True,
         prefer_source: bool = True,
+        _include_index_age: bool = True,
     ) -> SearchReadResult:
+        from atelier.core.capabilities.tool_supervision.search_read import (
+            FileMatch,
+            SearchReadResult,
+            Snippet,
+            _count_tokens,
+            _detect_lang,
+            _file_outline,
+        )
+
         client = self.ensure_started()
+        if client is None:
+            from atelier.core.capabilities.tool_supervision.search_read import SearchReadResult
+
+            return SearchReadResult(
+                matches=[], total_tokens=0, tokens_saved_vs_naive=0, cache_hit=False, backend="zoekt"
+            )
         rel_glob = _path_to_glob(self.repo_root, Path(search_path).resolve())
         raw_limit = max(max_files * 4, max_files, 20)
         raw_matches = client.search(query, num_matches=raw_limit, file_glob=rel_glob)
@@ -185,7 +270,7 @@ class ZoektSupervisor:
         file_matches: list[FileMatch] = []
         total_tokens = 0
         naive_tokens = 0
-        for _, file_match in selected:
+        for _score, file_match in selected:
             rel_path = _normalize_zoekt_path(file_match.path)
             abs_path = self.repo_root / rel_path
             lang = _detect_lang(rel_path)
@@ -247,16 +332,19 @@ class ZoektSupervisor:
                     snippets=snippets,
                     outline=outline,
                     tokens=file_tokens,
+                    score=_score,
                 )
             )
-        health = self.health()
+        index_age_seconds: int | None = None
+        if _include_index_age:
+            index_age_seconds = self.health().index_age_seconds
         return SearchReadResult(
             matches=file_matches,
             total_tokens=total_tokens,
             tokens_saved_vs_naive=max(0, naive_tokens - total_tokens),
             cache_hit=False,
             backend="zoekt",
-            index_age_seconds=health.index_age_seconds,
+            index_age_seconds=index_age_seconds,
         )
 
 

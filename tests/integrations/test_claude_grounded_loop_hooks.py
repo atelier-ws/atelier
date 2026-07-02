@@ -15,10 +15,9 @@ USER_PROMPT = cast(Any, user_prompt)
 
 
 def _session_state_path(root: Path, workspace: Path) -> Path:
-    import hashlib
+    from atelier.core.foundation.paths import workspace_key
 
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    return root / "workspaces" / workspace_hash / "session_state.json"
+    return root / "workspaces" / workspace_key(workspace) / "session_state.json"
 
 
 def _write_session_state(root: Path, workspace: Path, state: dict[str, object]) -> None:
@@ -56,7 +55,7 @@ def test_pre_tool_use_risky_edit_always_allowed(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
 def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
@@ -72,14 +71,22 @@ def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",
-        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+        io.StringIO(
+            json.dumps(
+                {
+                    "session_id": "bench-session",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "shopify/catalog/product.py"},
+                }
+            )
+        ),
     )
 
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["decision"] == "block"
-    assert "ground" in payload["reason"].lower()
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "ground" in payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
 
 
 def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
@@ -109,13 +116,21 @@ def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",
-        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+        io.StringIO(
+            json.dumps(
+                {
+                    "session_id": "bench-session",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "shopify/catalog/product.py"},
+                }
+            )
+        ),
     )
 
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
 def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
@@ -136,18 +151,40 @@ def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
-def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_warning(
+def test_user_prompt_hook_emits_compaction_nudge_as_ui_only_system_message(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # The grounded-batching nudge was intentionally removed (commit b27437c):
+    # the compaction nudge is now UI-only advice for the user (systemMessage),
+    # never injected into model context, and no separate batching nudge fires.
+    # Occupancy is read from the transcript's real ``usage`` numbers, so the
+    # fixture carries a usage block above the 100k compaction floor rather than
+    # raw bytes.
     transcript = tmp_path / "transcript.jsonl"
-    transcript.write_text("x" * 600_000, encoding="utf-8")
+    transcript.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "model": "claude-sonnet-4-5",
+                    "usage": {
+                        "input_tokens": 150_000,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
+    monkeypatch.setattr(user_prompt, "_read_session_state", lambda: {})
+    monkeypatch.setattr(user_prompt, "_write_session_state", lambda state: None)
     monkeypatch.setattr(
         USER_PROMPT.sys,
         "stdin",
@@ -164,10 +201,13 @@ def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_w
     assert user_prompt.main() == 0
 
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert len(lines) == 2
-    assert "Context estimated" in lines[0]["content"]
-    assert "search" in lines[1]["content"]
-    assert "batch" in lines[1]["content"]
+    # Exactly one UI-only message: the compaction nudge. No grounded-batching nudge.
+    assert len(lines) == 1
+    assert "systemMessage" in lines[0]
+    assert "content" not in lines[0]
+    assert "additionalContext" not in json.dumps(lines[0])
+    assert "/compact" in lines[0]["systemMessage"]
+    assert "Context is" in lines[0]["systemMessage"]
 
 
 def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
@@ -175,7 +215,6 @@ def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
     monkeypatch.setattr(
         USER_PROMPT.sys,
         "stdin",
@@ -191,3 +230,72 @@ def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
     assert user_prompt.main() == 0
 
     assert capsys.readouterr().out == ""
+
+
+def test_user_prompt_hook_blocks_after_noop_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """After _NOOP_CAP consecutive no-op retry prompts the hook returns 2 + blocks."""
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+
+    noop = user_prompt._NOOP_PROMPT
+    cap = user_prompt._NOOP_CAP
+
+    # First (cap - 1) calls should pass through.
+    for i in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        rc = user_prompt.main()
+        assert rc == 0, f"Expected 0 on call {i + 1}, got {rc}"
+        capsys.readouterr()  # discard
+
+    # The cap-th call must block.
+    monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+    rc = user_prompt.main()
+    assert rc == 2
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    assert payload["decision"] == "block"
+    assert "no-op" in payload["reason"].lower() or "stuck" in payload["reason"].lower()
+
+
+def test_user_prompt_hook_resets_noop_count_on_real_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A real user prompt resets the no-op counter so a later noop streak starts fresh."""
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+
+    noop = user_prompt._NOOP_PROMPT
+    cap = user_prompt._NOOP_CAP
+
+    # Drive the counter to (cap - 1).
+    for _ in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        user_prompt.main()
+        capsys.readouterr()
+
+    # Real prompt resets the counter.
+    monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": "fix the auth flow"})))
+    rc = user_prompt.main()
+    assert rc == 0
+    capsys.readouterr()
+
+    # A fresh noop streak must not block until the cap is hit again.
+    for i in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        rc = user_prompt.main()
+        assert rc == 0, f"Expected 0 on call {i + 1} after reset, got {rc}"
+        capsys.readouterr()

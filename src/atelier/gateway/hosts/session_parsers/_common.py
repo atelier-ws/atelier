@@ -50,6 +50,21 @@ _FILE_TOOL_NAMES = {
     "developer__write_file",
 }
 
+# System-message prefixes marking host-injected content (permissions
+# banners, environment context, IDE-injected commands) rather than real user
+# input. Shared by claude.py's Trace user-text extraction and
+# _session_parser.py's turn rendering so the two lists can't drift apart.
+_SYSTEM_PREFIXES_CLAUDE = (
+    "I have been initialized",
+    "Environment context:",
+    "<environment_context>",
+    "<permissions instructions>",
+    "<local-command",
+    "<ide_",
+    "<command-",
+    "<thinking>",
+)
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -67,10 +82,17 @@ def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
-        stamp = float(value)
-        if stamp < 1e12:
-            stamp *= 1000
-        return datetime.fromtimestamp(stamp / 1000, tz=UTC)
+        try:
+            stamp = float(value)
+            if stamp < 1e12:
+                stamp *= 1000
+            return datetime.fromtimestamp(stamp / 1000, tz=UTC)
+        except (OSError, ValueError, OverflowError, TypeError):
+            logger.warning(
+                "Suppressed out-of-range numeric timestamp at _common.py",
+                exc_info=True,
+            )
+            return default or utcnow()
     if isinstance(value, str):
         stripped = value.strip()
         if stripped:
@@ -410,8 +432,10 @@ def persist_imported_run_snapshot(
     started_at: datetime,
     ended_at: datetime,
 ) -> Path:
-    runs_dir = store.root / "runs"
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    from atelier.core.foundation.paths import session_dir
+
+    run_dir = session_dir(store.root, trace.host or "claude", trace.session_id or trace.id)
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     calls: list[dict[str, Any]] = []
     total_cost_usd = 0.0
@@ -471,7 +495,7 @@ def persist_imported_run_snapshot(
         "events": [],
     }
 
-    path = runs_dir / f"{trace.session_id or trace.id}.json"
+    path = run_dir / "run.json"
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
 
@@ -551,7 +575,7 @@ def _build_trace_from_normalized_content(
             if not task_text:
                 title = str(event.get("title") or "").strip()
                 if title:
-                    task_text = title
+                    task_text = redact(title)
 
             # Extract settings if available
             if "settings" in event:
@@ -613,7 +637,7 @@ def _build_trace_from_normalized_content(
                 if not first_user_text:
                     first_user_text = combined[:200]
                     if not task_text and not first_user_text.startswith("/"):
-                        task_text = first_user_text
+                        task_text = redact(first_user_text)
             continue
 
         if role != "assistant":
@@ -681,19 +705,21 @@ def _build_trace_from_normalized_content(
                     if path:
                         files_touched[path] = FileEditRecord(
                             path=path,
-                            diff=str(
-                                arguments_dict.get("diff")
-                                or arguments_dict.get("patch")
-                                or arguments_dict.get("content")
-                                or arguments_dict.get("new_string")
-                                or ""
-                            )[:4096],
+                            diff=redact(
+                                str(
+                                    arguments_dict.get("diff")
+                                    or arguments_dict.get("patch")
+                                    or arguments_dict.get("content")
+                                    or arguments_dict.get("new_string")
+                                    or ""
+                                )[:4096]
+                            ),
                         )
 
                 if _is_command_tool(name):
                     command = str(arguments_dict.get("command") or "").strip()
                     if command:
-                        commands_run.append(CommandRecord(command=command[:4096]))
+                        commands_run.append(CommandRecord(command=redact(command[:4096])))
 
     if not task_text:
         task_text = f"untitled {source} session"
@@ -744,6 +770,7 @@ def _build_trace_from_normalized_content(
         skills=unique_strings(skills),
         telemetry=telemetry,
         created_at=created_at,
+        transcript_path=artifact.source_path,
     )
     return trace
 
@@ -759,26 +786,26 @@ def import_paths_with_progress(
 ) -> list[str]:
     """Iterate *paths*, print Gemini-style progress, call *import_fn(path)* for each."""
     total = len(paths)
-    logger.info("[atelier] %s: discovering sessions (found %d)", source, total)
+    logger.info("%s: discovering sessions (found %d)", source, total)
     imported: list[str] = []
     for i, path in enumerate(paths):
         try:
             size = path.stat().st_size
             if size > size_limit:
                 logger.warning(
-                    "[atelier] %s: skipping massive session %s (%.1fMB)",
+                    "%s: skipping massive session %s (%.1fMB)",
                     source,
                     path.name,
                     size / 1e6,
                 )
                 continue
             if i % 10 == 0 and i > 0:
-                logger.info("[atelier] %s: importing %d/%d...", source, i, total)
+                logger.info("%s: importing %d/%d...", source, i, total)
             sid = import_fn(path)
             if sid:
                 imported.append(sid)
         except Exception:
-            logger.exception("[atelier] skipping %s session %s", source, path.name)
+            logger.exception("skipping %s session %s", source, path.name)
     return imported
 
 
@@ -807,7 +834,11 @@ def snapshot_edited_files(
         seen.add(fpath)
 
         p = Path(fpath)
-        if not p.is_file():
+        try:
+            if not p.is_file():
+                continue
+        except (PermissionError, OSError):
+            logger.debug("Skipping inaccessible file: %s", fpath)
             continue
 
         try:
@@ -836,7 +867,7 @@ def snapshot_edited_files(
             source_session_id=session_id,
             kind="file.snapshot",
             relative_path=fpath,
-            content_path=fpath,
+            content_path=(f"raw/{sanitize_id(source)}/snapshots/{sanitize_id(session_id)}/{sha256_text(fpath)}.txt"),
             sha256_original=sha256_text(file_content),
             sha256_redacted=sha256_text(file_content),
             byte_count_original=len(raw_bytes),
@@ -847,9 +878,8 @@ def snapshot_edited_files(
         try:
             store.record_raw_artifact(artifact, file_content)
             saved += 1
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            logger.debug("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
+        except Exception:  # noqa: BLE001
+            logger.warning("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
 
     return saved
 

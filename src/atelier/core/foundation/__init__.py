@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from atelier.core.foundation.models import (
-    FailureCluster,
     PlanCheckResult,
-    ReasonBlock,
+    Playbook,
     RescueResult,
     Rubric,
     RubricCheckOutcome,
@@ -14,9 +13,8 @@ from atelier.core.foundation.models import (
 )
 
 __all__ = [
-    "FailureCluster",
     "PlanCheckResult",
-    "ReasonBlock",
+    "Playbook",
     "RescueResult",
     "Rubric",
     "RubricCheckOutcome",

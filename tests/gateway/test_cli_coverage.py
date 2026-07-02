@@ -4,7 +4,6 @@ Covers:
 - search
 - ledger reset, ledger update
 - env validate
-- failure show, eval show/deprecate/from-cluster
 - search
 - savings detail/reset
 - benchmark hosts, benchmark full, benchmark packs
@@ -19,6 +18,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
+from atelier.core.foundation.paths import session_dir
 from atelier.gateway.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
 from tests.helpers import init_store_at
@@ -107,7 +107,7 @@ def test_ledger_update_field(tmp_path: Path) -> None:
     assert res.exit_code == 0
     assert "updated task" in res.output
 
-    snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
+    snap = json.loads((session_dir(root, "codex", "run1") / "run.json").read_text(encoding="utf-8"))
     assert snap["task"] == "updated task text"
 
 
@@ -126,7 +126,7 @@ def test_ledger_update_json_value(tmp_path: Path) -> None:
         '["blocker one", "blocker two"]',
     )
     assert res.exit_code == 0
-    snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
+    snap = json.loads((session_dir(root, "codex", "run1") / "run.json").read_text(encoding="utf-8"))
     assert snap["current_blockers"] == ["blocker one", "blocker two"]
 
 
@@ -134,7 +134,7 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     init_store_at(str(root))
     _seed_ledger(root)
-    ledger_path = root / "runs" / "run1.json"
+    ledger_path = session_dir(root, "codex", "run1") / "run.json"
     assert ledger_path.exists()
 
     res = _invoke(root, "ledger", "reset", input="y\n")
@@ -147,14 +147,21 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.skip(
-    reason="atelier init no longer ships built-in rubrics; env validate requires user-supplied rubrics (see docs/launch-readiness.md)."
-)
 def test_env_validate_known_env(tmp_path: Path) -> None:
+    from atelier.core.foundation.models import Rubric
+    from atelier.infra.storage.factory import create_store
+
     root = tmp_path / ".atelier"
     init_store_at(str(root))
+    # atelier init no longer seeds built-in rubrics; env validate resolves
+    # user-supplied rubrics, so the known-env success path seeds its own.
+    store = create_store(root)
+    store.upsert_rubric(
+        Rubric(id="rubric_state_change_safety", domain="state_change_safety"),
+        write_yaml=False,
+    )
     res = _invoke(root, "env", "validate", "env_state_change_safety")
-    assert res.exit_code == 0
+    assert res.exit_code == 0, res.output
     assert "ok" in res.output
 
 
@@ -162,109 +169,6 @@ def test_env_validate_unknown_env(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     init_store_at(str(root))
     res = _invoke(root, "env", "validate", "env_does_not_exist")
-    assert res.exit_code != 0
-
-
-# --------------------------------------------------------------------------- #
-# failure show                                                                #
-# --------------------------------------------------------------------------- #
-
-
-def test_failure_show_after_accept(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    _seed_ledger(root)
-    _seed_ledger(root, session_id="run2")
-
-    clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
-    assert clusters
-    cid = clusters[0]["id"]
-
-    _invoke(root, "failure", "accept", cid)
-    res = _invoke(root, "failure", "show", cid)
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["id"] == cid
-    assert payload["status"] == "accepted"
-
-
-def test_failure_show_unknown_cluster(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    res = _invoke(root, "failure", "show", "nonexistent-cluster-id")
-    assert res.exit_code != 0
-
-
-# --------------------------------------------------------------------------- #
-# eval show / deprecate / eval-from-cluster                                  #
-# --------------------------------------------------------------------------- #
-
-
-def _make_eval_case(root: Path, case_id: str = "case1") -> None:
-    eval_dir = root / "evals"
-    eval_dir.mkdir(parents=True, exist_ok=True)
-    case = {
-        "id": case_id,
-        "domain": "state.change",
-        "description": "test eval",
-        "task": "Fix live state",
-        "plan": ["Resolve target from URL slug alone"],
-        "expected_status": "blocked",
-        "status": "draft",
-    }
-    (eval_dir / f"{case_id}.json").write_text(json.dumps(case), encoding="utf-8")
-
-
-def test_eval_show(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    _make_eval_case(root)
-
-    res = _invoke(root, "eval", "show", "case1")
-    assert res.exit_code == 0
-    payload = json.loads(res.output)
-    assert payload["id"] == "case1"
-
-
-def test_eval_deprecate(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    _make_eval_case(root)
-
-    res = _invoke(root, "eval", "deprecate", "case1")
-    assert res.exit_code == 0
-    case = json.loads((root / "evals" / "case1.json").read_text(encoding="utf-8"))
-    assert case["status"] == "deprecated"
-
-
-def test_eval_from_cluster(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    _seed_ledger(root)
-    _seed_ledger(root, session_id="run2")
-
-    clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
-    assert clusters
-    cid = clusters[0]["id"]
-
-    # Must accept cluster before generating eval
-    _invoke(root, "failure", "accept", cid)
-
-    res = _invoke(root, "eval", "from-cluster", cid)
-    assert res.exit_code == 0
-    assert "saved draft eval" in res.output
-
-
-def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    init_store_at(str(root))
-    _seed_ledger(root)
-    _seed_ledger(root, session_id="run2")
-
-    clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
-    cid = clusters[0]["id"]
-
-    res = _invoke(root, "eval", "from-cluster", cid)
     assert res.exit_code != 0
 
 
@@ -383,18 +287,6 @@ def test_benchmark_hosts_command_runs(tmp_path: Path) -> None:
         payload = json.loads(json_lines[0])
     assert payload["suite"] == "hosts"
     assert "exit_code" in payload
-
-
-def test_benchmark_packs_returns_domain_keys(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        ["--root", str(tmp_path / ".atelier"), "benchmark", "packs", "--json"],
-    )
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["suite"] == "domains"
-    assert payload["domains_total"] >= payload["domains_benchmarked"]
 
 
 @pytest.mark.slow

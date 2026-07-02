@@ -21,20 +21,25 @@ from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 from tests.helpers import init_store_at
 
+
+def _preindex(repo_root: str | Path) -> None:
+    """Explicitly index the repo for deterministic code-context tests.
+
+    The gateway conftest disables the background autosync worker so tests that
+    need a populated index build it explicitly via ``_op_index``.
+    """
+    mcp_server._op_index(repo_root=str(repo_root), force=True)
+
+
+# Single-primary retrieval surface: `code_search` (ranked source + call-graph
+# relations + blast-radius in one call) + `read`, plus edit/bash/web_fetch.
+# `grep`, `relations`, `search`, `memory`, `sql`, `codemod` are registered but
+# hidden from agents (grep/relations stay callable as escape hatch / drill-in).
 EXPECTED_TOOLS = {
-    "agent",
-    "memory",
     "read",
     "edit",
-    "grep",
-    "sql",
-    "search",
-    "symbols",
-    "node",
-    "callers",
-    "explore",
-    "shell",
-    "usages",
+    "code_search",
+    "bash",
     "web_fetch",
 }
 
@@ -57,11 +62,17 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def _payload(response: dict[str, Any]) -> dict[str, Any]:
+def _payload(response: dict[str, Any]) -> Any:
     assert "result" in response, response
-    payload = json.loads(response["result"]["content"][0]["text"])
-    assert isinstance(payload, dict)
-    return payload
+    text = response["result"]["content"][0]["text"]
+    # A success-silent edit renders the minimal token "ok" instead of a JSON
+    # body; normalize to an empty dict for uniform dict-membership assertions.
+    if text == "ok":
+        return {}
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
 
 
 def _text(response: dict[str, Any]) -> str:
@@ -210,7 +221,7 @@ def test_non_remote_tool_calls_fallback_when_route_has_no_configured_vendor_keys
     assert "hello route fallback" in payload
 
 
-@pytest.mark.slow  # Spawns a real atelier-mcp subprocess for end-to-end stdio
+@pytest.mark.slow  # Spawns a real atelier mcp subprocess for end-to-end stdio
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
     target = mcp_env / "stdio.txt"
     target.write_text("hello world\n", encoding="utf-8")
@@ -255,8 +266,7 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
                             "name": "search",
                             "arguments": {
                                 "query": "stdio",
-                                "file_path": str(mcp_env),
-                                "mode": "chunks",
+                                "path": str(mcp_env),
                             },
                         },
                     }
@@ -289,14 +299,18 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
 
     assert result.returncode == 0, result.stderr
     responses = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    assert responses[0]["result"]["serverInfo"]["name"] == "atelier-context"
+    assert responses[0]["result"]["serverInfo"]["name"] == "atelier"
 
-    edit_payload = json.loads(responses[1]["result"]["content"][0]["text"])
-    assert edit_payload["failed"] == []
+    edit_text = responses[1]["result"]["content"][0]["text"]
+    # Clean exact edit is success-silent over the wire: minimal "ok" token, and
+    # the change is confirmed on disk rather than echoed back in the body.
+    assert edit_text == "ok", edit_text
     assert target.read_text(encoding="utf-8") == "hello stdio\n"
 
-    search_payload = json.loads(responses[2]["result"]["content"][0]["text"])
-    assert search_payload["matches"]
+    search_text = responses[2]["result"]["content"][0]["text"]
+    # search returns formatted markdown, not JSON
+    assert "stdio" in search_text, f"expected 'stdio' in search output: {search_text}"
+    assert "stdio.txt" in search_text, f"expected 'stdio.txt' in search output: {search_text}"
 
 
 def test_stdio_server_processes_requests_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -445,16 +459,14 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
     ranged_read = _text(_call("read", {"path": str(target), "range": "2-2"}))
     assert "needle" in ranged_read
 
-    ranked_search = _text(_call("search", {"query": "needle", "path": str(mcp_env), "mode": "chunks"}))
+    # `search` is the hidden semantic tool (chunks only); callable by name.
+    ranked_search = _text(_call("search", {"query": "needle", "path": str(mcp_env)}))
     assert "needle" in ranked_search or "sample.py" in ranked_search
 
-    repo_map = _text(
-        _call(
-            "search",
-            {"query": "", "seed_files": [str(target)], "mode": "map", "budget_tokens": 200},
-        )
-    )
-    assert "sample.py" in repo_map
+    # grep's `mode='map'` is the ranked FILE map (an output shape), not the old
+    # seed-expanded repo map -- it returns ranked pointers for the regex.
+    ranked_map = _text(_call("grep", {"regex": "needle", "path": str(mcp_env), "mode": "map"}))
+    assert "sample.py" in ranked_map
 
     native_search = _text(
         _call(
@@ -463,7 +475,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
                 "path": str(mcp_env),
                 "content_regex": "secondary needle",
                 "file_glob_patterns": ["*.py"],
-                "output_mode": "file_paths_with_match_count",
+                "mode": "counts",
                 "lines_before": 1,
                 "lines_after": 1,
             },
@@ -477,7 +489,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             {
                 "edits": [
                     {
-                        "file_path": "sample.py#2",
+                        "file_path": "sample.py:L2",
                         "old_string": "return 'needle'",
                         "new_string": "return 'atelier'",
                     }
@@ -485,7 +497,8 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert rich_edit["failed"] == []
+    # Clean exact edit is success-silent: no body, change confirmed on disk.
+    assert "failed" not in rich_edit
     assert "atelier" in target.read_text(encoding="utf-8")
 
     legacy_edit = _payload(
@@ -503,7 +516,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert legacy_edit["failed"] == []
+    assert "failed" not in legacy_edit
     assert "secondary atelier" in target.read_text(encoding="utf-8")
 
     partial = mcp_env / "partial.txt"
@@ -568,9 +581,10 @@ def test_edit_atomic_rollback_e2e(mcp_env: Path) -> None:
 def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
     target = mcp_env / "service.py"
     target.write_text(
-        "class AuthService:\n" "    def verify(self, token: str) -> bool:\n" "        return token == 'ok'\n",
+        "class AuthService:\n    def verify(self, token: str) -> bool:\n        return token == 'ok'\n",
         encoding="utf-8",
     )
+    _preindex(mcp_env)
 
     payload = _payload(
         _call(
@@ -581,15 +595,17 @@ def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
                         "kind": "symbol",
                         "name": "AuthService.verify",
                         "mode": "replace",
-                        "new_body": ("def verify(self, token: str) -> bool:\n" "    return token.startswith('ok')"),
+                        "new_body": ("def verify(self, token: str) -> bool:\n    return token.startswith('ok')"),
                     }
                 ]
             },
         )
     )
 
-    assert payload["failed"] == []
-    assert payload["applied"][0]["kind"] == "symbol"
+    # A clean symbol replace is success-silent (its applied entry is an exact
+    # match), so the model-facing body is empty; the file change is the proof.
+    assert not payload.get("failed")
+    assert "applied" not in payload
     # Post-edit hooks may run ruff format which normalises quotes; accept either.
     final = target.read_text(encoding="utf-8")
     assert "startswith('ok')" in final or 'startswith("ok")' in final
@@ -619,7 +635,7 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert lint["ok"] is True
+    assert "sql lint: ok" in lint
 
     query = _payload(
         _call(
@@ -634,10 +650,10 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     )
     assert query["isError"] is False
     assert query["results"][0]["row_count"] == 2
-    assert query["results"][0]["rows"][0]["name"] == "Ada"
+    assert query["results"][0]["rows"][0] == [1, "Ada"]
 
 
-def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
+def test_context_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
     context = _payload(
         _call(
             "context",
@@ -662,21 +678,6 @@ def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> Non
     )
     assert "rescue" in rescue
     assert "analysis" in rescue
-
-    decision = _payload(
-        _call(
-            "route",
-            {
-                "task": "Harden MCP gateway end-to-end tests",
-                "task_type": "test",
-                "budget": "cheap",
-            },
-        )
-    )
-    assert "model" in decision
-    assert "tier" in decision
-    assert "route_tier" in decision
-    assert "can_spawn" not in decision
 
     rubric = _payload(
         _call(

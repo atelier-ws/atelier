@@ -66,11 +66,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "src" / "urls.py").write_text(
-        "from django.urls import path\n"
-        "from . import views\n\n"
-        "urlpatterns = [\n"
-        "    path('admin/', views.admin),\n"
-        "]\n",
+        "from django.urls import path\nfrom . import views\n\nurlpatterns = [\n    path('admin/', views.admin),\n]\n",
         encoding="utf-8",
     )
     (root / "src" / "server.ts").write_text(
@@ -104,6 +100,7 @@ def _baseline_manual_route_discovery(repo_root: Path) -> str:
 def test_code_routes_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     t0 = time.perf_counter()
     native_text = _baseline_manual_route_discovery(tmp_path)

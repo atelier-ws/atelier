@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from atelier.core.foundation.models import _utcnow
+from atelier.core.foundation.redaction import is_prompt_injection
 from atelier.infra.storage.ids import make_uuid7
 
 ArchivalSource = Literal["trace", "block_evict", "user", "tool_output", "file_chunk"]
@@ -71,6 +72,14 @@ class ArchivalPassage(BaseModel):
     dedup_hash: str
     dedup_hit: bool = False
     created_at: datetime = Field(default_factory=_utcnow)
+    # N13 bi-temporal validity window, DISTINCT from ``created_at`` (ingestion
+    # time). ``valid_at`` is when the captured knowledge became true (defaults to
+    # ingestion); ``invalid_at`` marks when it stopped being true. Both additive
+    # with open-ended defaults (valid since ingestion, never invalidated), so
+    # records persisted before this field -- which the store reconstructs without
+    # passing them -- load unchanged and every existing read is unaffected.
+    valid_at: datetime | None = None
+    invalid_at: datetime | None = None
 
     @field_validator("dedup_hash")
     @classmethod
@@ -78,6 +87,35 @@ class ArchivalPassage(BaseModel):
         if not value.strip():
             raise ValueError("dedup_hash must be non-empty")
         return value
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def injection_flagged(self) -> bool:
+        """Index-time trust label (N15): True when the passage text matches a
+        prompt-injection needle.
+
+        Inbound dual of live output redaction. Derived deterministically from
+        ``text`` so the flag rides along in every retrieval result (and
+        ``model_dump``) without a schema migration, and survives store/bridge
+        round-trips. Additive only: callers that ignore it are unaffected; the
+        passage text itself is never altered or dropped.
+        """
+        return is_prompt_injection(self.text)
+
+    def is_valid_at(self, when: datetime | None = None) -> bool:
+        """N13: True when this passage's validity window covers ``when``.
+
+        ``when`` defaults to now. A passage is valid when ``when`` is at or after
+        ``valid_at`` (open-ended start when unset -- valid since ingestion) and
+        strictly before ``invalid_at`` (open-ended end when unset -- never
+        invalidated). Pure: it reads only the record's own fields.
+        """
+        moment = when if when is not None else _utcnow()
+        if self.valid_at is not None and moment < self.valid_at:
+            return False
+        if self.invalid_at is not None and moment >= self.invalid_at:
+            return False
+        return True
 
 
 class MemoryRecall(BaseModel):

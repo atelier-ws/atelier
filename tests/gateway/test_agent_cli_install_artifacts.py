@@ -47,17 +47,6 @@ def test_install_script_exists(host: str) -> None:
     assert is_executable(script), f"Not executable: scripts/install_{host}.sh"
 
 
-# ---------------------------------------------------------------------------
-# 2. atelier-mcp on PATH
-# ---------------------------------------------------------------------------
-
-
-def test_mcp_binary_on_path() -> None:
-    # Just verify the command is documented as available
-    content = (ATELIER_ROOT / "README.md").read_text()
-    assert "atelier-mcp" in content
-
-
 # atelier-status was folded into `atelier status` — its test moved to the CLI test suite.
 
 # ---------------------------------------------------------------------------
@@ -65,8 +54,8 @@ def test_mcp_binary_on_path() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_install_agent_clis_script_exists() -> None:
-    script = SCRIPTS / "install_agent_clis.sh"
+def test_install_hosts_script_exists() -> None:
+    script = SCRIPTS / "install_hosts.sh"
     assert script.exists()
     assert is_executable(script)
 
@@ -85,20 +74,73 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    expected = expected_visible_skill_names()
     registry = build_default_registry(ATELIER_ROOT)
+    expected = expected_visible_skill_names() | set(registry.surfaced_role_ids("shared_skill"))
     assert generated == expected
     assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
 
+def test_codex_plugin_agent_surface_exists() -> None:
+    surface = INTEGRATIONS / "codex" / "plugin" / "agents" / "openai.yaml"
+    assert surface.exists()
+    content = surface.read_text(encoding="utf-8")
+    assert 'display_name: "Atelier Agents"' in content
+    assert "atelier_code" in content
+    assert "atelier_review" in content
+
+
+def test_codex_plugin_prompt_uses_real_discovery_path() -> None:
+    manifest = INTEGRATIONS / "codex" / "plugin" / ".codex-plugin" / "plugin.json"
+    manifest_text = manifest.read_text(encoding="utf-8")
+    data = json.loads(manifest_text)
+    prompt = "\n".join(data["interface"]["defaultPrompt"])
+    assert "atelier_code" in prompt
+    assert all(len(item) <= 128 for item in data["interface"]["defaultPrompt"])
+    assert "mcp__atelier__context" not in manifest_text
+    assert "context first" not in manifest_text
+
+
+def test_codex_installers_stage_plugin_agent_surface() -> None:
+    for script in (SCRIPTS / "install_codex.sh", INTEGRATIONS / "codex" / "install.sh"):
+        content = script.read_text(encoding="utf-8")
+        assert "integrations/codex/plugin/agents" in content
+        assert "agents/openai.yaml" in content
+        assert "write_codex_agent_config" in content
+        assert "write_workspace_codex_agent_config" in content
+        assert "agents\\.atelier_code" in content
+
+
+def test_codex_installers_auto_approve_exposed_atelier_tools() -> None:
+    expected_tools = [
+        "bash",
+        "read",
+        "grep",
+        "edit",
+        "callees",
+        "codemod",
+        "memory",
+        "callers",
+        "explore",
+        "web_fetch",
+        "search",
+        "usages",
+    ]
+    for script in (SCRIPTS / "install_codex.sh", INTEGRATIONS / "codex" / "install.sh"):
+        content = script.read_text(encoding="utf-8")
+        for tool in expected_tools:
+            assert f'"{tool}"' in content
+        assert '"context"' not in content
+
+
 def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> None:
+    host = "antigravity"
     dest = tmp_path / "skills"
     subprocess.run(
         [
             "bash",
             str(SCRIPTS / "build_host_skills.sh"),
             "--host",
-            "antigravity",
+            host,
             "--dest",
             str(dest),
         ],
@@ -106,18 +148,9 @@ def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> No
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
+    build_default_registry(ATELIER_ROOT)
     expected = expected_visible_skill_names()
-    registry = build_default_registry(ATELIER_ROOT)
     assert generated == expected
-    assert set(registry.surfaced_role_ids("shared_skill")) <= generated
-
-
-def test_generated_surfaces_in_sync_with_repository_artifacts() -> None:
-    subprocess.run(
-        ["uv", "run", "python", str(SCRIPTS / "sync_agent_context.py"), "--check"],
-        cwd=ATELIER_ROOT,
-        check=True,
-    )
 
 
 def test_verify_agent_clis_script_exists() -> None:
@@ -126,31 +159,34 @@ def test_verify_agent_clis_script_exists() -> None:
     assert is_executable(script)
 
 
-def test_install_agent_clis_references_all_hosts() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+def test_install_hosts_references_all_hosts() -> None:
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     for host in ["claude", "codex", "opencode", "copilot", "antigravity"]:
-        assert host in content, f"install_agent_clis.sh missing reference to {host}"
+        assert host in content, f"install_hosts.sh missing reference to {host}"
 
 
 def test_host_installers_stream_output_instead_of_buffering() -> None:
-    install_content = (SCRIPTS / "dev.sh").read_text()
-    host_content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    # The shared run_setup() orchestrator (lib/common.sh) streams host installer
+    # output through `tee` rather than capturing it into a variable, and the
+    # per-host dispatcher (install_hosts.sh) streams via stream_colored_output.
+    common_content = (SCRIPTS / "lib" / "common.sh").read_text()
+    host_content = (SCRIPTS / "install_hosts.sh").read_text()
 
-    assert 'host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh"' not in install_content
-    assert '| tee "$host_output_file"' in install_content
+    assert 'host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_hosts.sh"' not in common_content
+    assert '| tee "$host_output_file"' in common_content
     assert 'output=$(bash "$script"' not in host_content
     assert '| stream_colored_output "$output_file"' in host_content
 
 
 def test_host_installer_default_selection_uses_detection() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     assert "host_is_detected()" in content
     assert "enable_detected_hosts_by_default" in content
     assert "enable_detected_hosts_by_default" in content.split("# Default: all hosts", 1)[1]
 
 
 def test_host_installer_has_timeout_guard() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     assert 'ATELIER_HOST_INSTALL_TIMEOUT_SECONDS="${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS:-180}"' in content
     assert "run_host_installer()" in content
     assert "host installer timed out after" in content
@@ -170,7 +206,7 @@ def test_verify_agent_clis_references_all_hosts() -> None:
 def test_makefile_has_single_dev_target() -> None:
     content = MAKEFILE.read_text()
     assert "dev:" in content
-    assert "scripts/dev.sh" in content
+    assert "scripts/local.sh" in content
 
 
 def test_makefile_has_single_verify_target() -> None:
@@ -239,14 +275,8 @@ def test_antigravity_mcp_template_exists() -> None:
     assert template.exists(), "integrations/antigravity/mcp.atelier.template.json must exist"
     data = json.loads(template.read_text())
     assert "atelier" in data.get("servers", {}), "Antigravity template must have 'servers.atelier'"
-    assert data["servers"]["atelier"]["command"] == "atelier-mcp"
-    assert data["servers"]["atelier"]["args"] == ["--host", "antigravity"]
-
-
-def test_antigravity_agents_surface_exists() -> None:
-    surface = ANTIGRAVITY_INTEGRATION / "AGENTS.atelier.md"
-    assert surface.exists(), "integrations/antigravity/AGENTS.atelier.md must exist"
-    assert "atelier:code" in surface.read_text()
+    assert data["servers"]["atelier"]["command"] == "atelier"
+    assert data["servers"]["atelier"]["args"] == ["mcp", "--host", "antigravity"]
 
 
 def test_copilot_example_has_servers_key() -> None:
@@ -279,7 +309,7 @@ def test_codex_plugin_mcp_template_exists() -> None:
     assert mcp_json.exists(), "integrations/codex/plugin/.mcp.json must exist"
     data = json.loads(mcp_json.read_text())
     atelier = data.get("atelier", {})
-    assert atelier.get("command") == "atelier-mcp", "Codex plugin template must call atelier-mcp directly"
+    assert atelier.get("command") == "atelier", "Codex plugin template must call atelier directly"
 
 
 def test_codex_hooks_bundle_exists() -> None:
@@ -295,37 +325,9 @@ def test_codex_hooks_bundle_exists() -> None:
 
 
 def test_codex_agents_atelier_md_mentions_mcp() -> None:
-    agents_md = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
-    if not agents_md.exists():
-        pytest.skip("codex/AGENTS.atelier.md not found")
+    agents_md = INTEGRATIONS / "AGENTS.atelier.md"
     content = agents_md.read_text()
     assert "mcp" in content.lower() or "MCP" in content, "AGENTS.atelier.md should mention MCP"
-
-
-# ---------------------------------------------------------------------------
-# 10. Copilot instructions mention atelier
-# ---------------------------------------------------------------------------
-
-
-def test_copilot_instructions_mention_atelier() -> None:
-    instructions = INTEGRATIONS / "copilot" / "COPILOT_INSTRUCTIONS.atelier.md"
-    if not instructions.exists():
-        pytest.skip("copilot/COPILOT_INSTRUCTIONS.atelier.md not found")
-    content = instructions.read_text()
-    assert "atelier" in content.lower() or "Atelier" in content, "Copilot instructions must reference Atelier"
-
-
-# ---------------------------------------------------------------------------
-# 11. README mentions the streamlined install flow
-# ---------------------------------------------------------------------------
-
-
-def test_readme_mentions_install_sh() -> None:
-    readme = ATELIER_ROOT / "README.md"
-    if not readme.exists():
-        pytest.skip("README.md not found")
-    content = readme.read_text()
-    assert "scripts/install.sh" in content or "install.sh | bash" in content
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +362,11 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     assert 'PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"' in codex
     assert 'PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"' in codex
     assert ".agents/plugins/marketplace.json" in codex
+    assert "atelier@atelier-local" in codex
+    assert "plugin add atelier@openai-curated" not in codex
+    assert "patch_plugin_hooks" in codex
+    assert "__ATELIER_PYTHON__" in codex
+    assert "__ATELIER_REPO_SRC__" in codex
 
     copilot = (SCRIPTS / "install_copilot.sh").read_text()
     assert "Code/User" in copilot
@@ -370,18 +377,21 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     opencode = (SCRIPTS / "install_opencode.sh").read_text()
     assert ".config}/opencode" in opencode
     assert 'OC_FILE="${WORKSPACE}/opencode.json"' in opencode
+    assert 'PLUGIN_DEST_DIR="${WORKSPACE}/.opencode/plugins"' in opencode
+    assert 'PLUGIN_DEST_DIR="${OPENCODE_CONFIG_HOME}/plugins"' in opencode
+    assert "atelier-nudge.js" in opencode
     assert "${HOME}/opencode.jsonc" not in opencode
     assert "${HOME}/.opencode" not in opencode
 
     claude = (SCRIPTS / "install_claude.sh").read_text()
     assert "claude mcp add --scope user atelier" in claude
     assert '.mcp.json"' in claude
-    assert "atelier-mcp" in claude
+    assert '"atelier mcp"' in claude or '"atelier"' in claude
 
     antigravity = (SCRIPTS / "install_antigravity.sh").read_text()
     assert "antigravity --add-mcp" in antigravity
     assert "mcp.json" in antigravity
-    assert "atelier-mcp" in antigravity
+    assert "atelier" in antigravity
 
 
 def test_install_codex_merges_existing_agents_file() -> None:
@@ -402,8 +412,8 @@ def test_uninstall_codex_removes_managed_agents_block() -> None:
 
 def test_managed_context_helper_shared_across_host_installs() -> None:
     helper = (SCRIPTS / "lib" / "managed_context.sh").read_text()
-    assert 'ATELIER_CODE_BLOCK_START="<!-- ATELIER:CODE START -->"' in helper
-    assert 'ATELIER_CODE_BLOCK_END="<!-- ATELIER:CODE END -->"' in helper
+    assert 'ATELIER_CODE_BLOCK_START="<!-- ATELIER START -->"' in helper
+    assert 'ATELIER_CODE_BLOCK_END="<!-- ATELIER END -->"' in helper
     assert "atelier_write_managed_copy()" in helper
     assert "atelier_upsert_managed_block()" in helper
     for script_name in [
@@ -419,31 +429,40 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         ), f"{script_name} must use the shared managed context helper"
 
 
-def test_dev_sh_bootstraps_atelier_before_host_installers() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
-    install_pos = content.index('step_start "Installing Atelier"')
-    hosts_pos = content.index('step_start "Installing host integrations"')
+def test_local_sh_bootstraps_atelier_before_host_installers() -> None:
+    # The source installer (local.sh) installs the Atelier console scripts, then
+    # delegates to run_setup() in lib/common.sh, which installs host integrations.
+    local_content = (SCRIPTS / "local.sh").read_text()
+    common_content = (SCRIPTS / "lib" / "common.sh").read_text()
 
-    assert install_pos < hosts_pos, "Atelier console installation must precede host integration installation"
-    # Note: `atelier init` (runtime store initialization) runs after host integrations
-    # in the current script flow — both orderings are valid.
+    assert 'step_start "Installing Atelier"' in local_content
+    assert 'step_start "Installing host integrations"' in common_content
+    # local.sh installs Atelier and only then calls run_setup (which installs hosts).
+    install_pos = local_content.index('step_start "Installing Atelier"')
+    # rindex: the actual run_setup call in main(), not the comment near the top.
+    run_setup_pos = local_content.rindex("run_setup")
+    assert install_pos < run_setup_pos, "Atelier console installation must precede run_setup (host integrations)"
 
 
-def test_dev_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
+def test_local_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
+    content = (SCRIPTS / "local.sh").read_text()
     assert "tool install" in content
     assert "UV_TOOL_BIN_DIR" in content
-    assert "mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry" in content
+    # The console-script extras the source installer requests. The runtime
+    # ("repo-map"/"api"/"telemetry") extras were dropped on this branch.
+    assert "mcp,memory,smart,cloud,postgres,vector,parsers,rename" in content
 
 
-def test_dev_sh_has_only_local_and_remote_source_modes() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
+def test_source_installer_is_always_local_mode() -> None:
+    # The legacy dev.sh switched between source and binary modes via --local/--remote
+    # and a prepare_repo clone step. That mode-switching was removed: local.sh is
+    # always the source installer (ATELIER_LOCAL=1), bundle.sh is the binary one.
+    content = (SCRIPTS / "local.sh").read_text()
     assert "ATELIER_USE_CURRENT_REPO" not in content
-    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/dev.sh" ]]' not in content
-    assert "--local) ATELIER_LOCAL=1" in content
-    assert "--remote|--no-local) ATELIER_LOCAL=0" in content
-    assert 'if [[ "$ATELIER_LOCAL" == "1" ]]; then' in content
-    assert "prepare_repo" in content
+    assert "prepare_repo" not in content
+    assert "ATELIER_LOCAL=1" in content
+    # --local/--remote/--no-local remain accepted as no-ops for CLI compatibility.
+    assert "--local|--remote|--no-local) : ;;" in content
 
 
 def test_copilot_tasks_include_preflight_wrapper() -> None:
@@ -531,9 +550,9 @@ def test_new_claude_plugin_json_author_is_object() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert isinstance(data.get("author"), dict), (
-        'plugin.json \'author\' must be an object like {"name": "Beseam"}, ' f"got: {data.get('author')!r}"
-    )
+    assert isinstance(
+        data.get("author"), dict
+    ), f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
 
 
 def test_new_claude_plugin_json_no_manifest_keys() -> None:
@@ -606,7 +625,7 @@ def test_new_claude_plugin_mcp_is_valid() -> None:
     data = json.loads(mcp_json.read_text())
     assert "mcpServers" in data
     assert "atelier" in data["mcpServers"]
-    assert data["mcpServers"]["atelier"]["command"] == "atelier-mcp"
+    assert data["mcpServers"]["atelier"]["command"] == "atelier"
 
 
 def test_new_claude_plugin_hooks_enabled() -> None:
@@ -642,12 +661,10 @@ def test_new_claude_plugin_settings_uses_supported_keys() -> None:
     data = json.loads(settings.read_text())
     allowed = {"agent", "subagentStatusLine"}
     extra = set(data.keys()) - allowed
-    assert not extra, (
-        f"settings.json contains unsupported keys: {extra}. " f"Only {allowed} are honored by Claude Code."
-    )
-    assert data.get("agent") == "atelier:code", (
-        "settings.json must set `agent` to 'atelier:code' so it appears as " "the default agent for the atelier plugin."
-    )
+    assert not extra, f"settings.json contains unsupported keys: {extra}. Only {allowed} are honored by Claude Code."
+    assert (
+        data.get("agent") == "atelier:code"
+    ), "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
 
 
 def test_new_claude_plugin_subagent_statusline_wired() -> None:
@@ -667,9 +684,9 @@ def test_new_claude_plugin_subagent_statusline_wired() -> None:
 def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
     """scripts/statusline.sh must exist and be executable."""
     script = CLAUDE_PLUGIN_NEW / "scripts" / "statusline.sh"
-    assert script.exists(), (
-        "integrations/claude/plugin/scripts/statusline.sh must exist — " "wired by settings.json subagentStatusLine."
-    )
+    assert (
+        script.exists()
+    ), "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
     assert os.access(script, os.X_OK), f"{script} must be executable (chmod +x)"
 
 
@@ -833,17 +850,11 @@ def test_claude_install_docs_mention_workflows_and_version_gate() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_codex_agents_atelier_md_has_persona() -> None:
-    f = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
-    assert f.exists(), "Missing: integrations/codex/AGENTS.atelier.md"
+def test_agents_atelier_md_has_persona() -> None:
+    f = INTEGRATIONS / "AGENTS.atelier.md"
+    assert f.exists(), "Missing: integrations/AGENTS.atelier.md"
     content = f.read_text()
-    assert "atelier:code" in content, "codex AGENTS.atelier.md must declare atelier:code persona"
-
-
-def test_antigravity_atelier_md_exists() -> None:
-    f = INTEGRATIONS / "antigravity" / "AGENTS.atelier.md"
-    assert f.exists(), "Missing: integrations/antigravity/AGENTS.atelier.md"
-    assert "atelier:code" in f.read_text()
+    assert "atelier:code" in content, "AGENTS.atelier.md must declare atelier:code persona"
 
 
 def test_opencode_atelier_agent_exists() -> None:

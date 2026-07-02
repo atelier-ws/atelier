@@ -48,7 +48,7 @@ def build_terminalbench_evidence(
     }
 
 
-def build_atelierbench_evidence(
+def build_codebench_evidence(
     *,
     run_dir: Path,
     manifest_path: Path,
@@ -57,6 +57,11 @@ def build_atelierbench_evidence(
     results_path = run_dir / "results.jsonl"
     summary_csv_path = run_dir / "summary.csv"
     results_csv_path = run_dir / "results.csv"
+    task_metrics_csv_path = run_dir / "task_metrics.csv"
+    task_correctness_csv_path = run_dir / "task_correctness.csv"
+    model_audit_csv_path = run_dir / "model_audit.csv"
+    pairwise_quality_csv_path = run_dir / "pairwise_quality.csv"
+    quality_adjusted_summary_csv_path = run_dir / "quality_adjusted_summary.csv"
     report_path = run_dir / "report.txt"
     results = _load_jsonl(results_path)
     flow_paths = sorted(
@@ -67,7 +72,7 @@ def build_atelierbench_evidence(
         }
     )
     return {
-        "suite": "atelierbench",
+        "suite": "codebench",
         "captured_at": datetime.now(UTC).isoformat(),
         "commit_under_test": repo_state,
         "manifest_path": str(manifest_path),
@@ -75,6 +80,11 @@ def build_atelierbench_evidence(
             "results_jsonl": _artifact_record(results_path),
             "results_csv": _artifact_record(results_csv_path),
             "summary_csv": _artifact_record(summary_csv_path),
+            "task_metrics_csv": _artifact_record(task_metrics_csv_path),
+            "task_correctness_csv": _artifact_record(task_correctness_csv_path),
+            "model_audit_csv": _artifact_record(model_audit_csv_path),
+            "pairwise_quality_csv": _artifact_record(pairwise_quality_csv_path),
+            "quality_adjusted_summary_csv": _artifact_record(quality_adjusted_summary_csv_path),
             "report_txt": _artifact_record(report_path),
             "flow_paths": flow_paths,
         },
@@ -82,8 +92,16 @@ def build_atelierbench_evidence(
             "kind": "embedded-jsonl",
             "path": str(results_path),
             "fields": ["correct", "score", "judge_model", "judge_reason"],
+            "pairwise_path": str(pairwise_quality_csv_path),
+            "pairwise_fields": [
+                "candidate_at_least_baseline",
+                "baseline_score",
+                "candidate_score",
+                "quality_delta",
+                "judge_reason",
+            ],
         },
-        "summary": _summarize_atelierbench_results(results),
+        "summary": _summarize_codebench_results(results),
     }
 
 
@@ -125,7 +143,7 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _summarize_atelierbench_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _summarize_codebench_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     arms = sorted({str(result.get("arm") or "") for result in results if result.get("arm")})
     by_arm: dict[str, Any] = {}
     for arm in arms:
@@ -148,7 +166,7 @@ def _summarize_atelierbench_results(results: list[dict[str, Any]]) -> dict[str, 
 
 
 __all__ = [
-    "build_atelierbench_evidence",
+    "build_codebench_evidence",
     "build_terminalbench_evidence",
     "git_state",
     "write_benchmark_evidence",

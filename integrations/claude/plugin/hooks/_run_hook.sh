@@ -8,9 +8,10 @@
 #
 # Tries, in order:
 #   1. $ATELIER_PYTHON env override
-#   2. resolve atelier-mcp on PATH → its sibling venv bin/python
+#   2. resolve atelier on PATH → its sibling venv bin/python
 #   3. ~/.local/share/uv/tools/atelier/bin/python (uv tool default)
-#   4. system python3 (silent no-op fallback, matches old behavior)
+#   4. path stored in ../atelier-python (written by install_claude.sh)
+#   5. system python3 (silent no-op fallback, matches old behavior)
 
 set -u
 
@@ -21,12 +22,12 @@ resolve_atelier_python() {
         fi
     fi
 
-    local mcp_wrapper py
-    mcp_wrapper="$(command -v atelier-mcp 2>/dev/null || true)"
-    if [[ -n "${mcp_wrapper}" ]]; then
-        # The wrapper exec's atelier-mcp.real in the uv venv; the python lives next to it.
+    local wrapper py
+    wrapper="$(command -v atelier 2>/dev/null || true)"
+    if [[ -n "${wrapper}" ]]; then
+        # The wrapper exec's atelier.real in the uv venv; the python lives next to it.
         local real venv_bin
-        real="$(grep -oE '"[^"]*atelier-mcp.real"' "${mcp_wrapper}" 2>/dev/null | head -1 | tr -d '"')"
+        real="$(grep -oE '"[^"]*atelier.real"' "${wrapper}" 2>/dev/null | head -1 | tr -d '"')"
         if [[ -x "${real}" ]]; then
             venv_bin="$(dirname "${real}")"
             for py in "${venv_bin}/python" "${venv_bin}/python3"; do
@@ -44,6 +45,18 @@ resolve_atelier_python() {
             echo "${py}"; return 0
         fi
     done
+
+    # Path written by install_claude.sh at install time (handles binary / dev installs
+    # where no uv-tool venv exists next to the atelier wrapper).
+    local config_file
+    config_file="$(dirname "$0")/../atelier-python"
+    if [[ -f "${config_file}" ]]; then
+        local stored_py
+        stored_py="$(tr -d '[:space:]' < "${config_file}")"
+        if [[ -x "${stored_py}" ]] && "${stored_py}" -c "import atelier" 2>/dev/null; then
+            echo "${stored_py}"; return 0
+        fi
+    fi
 
     echo "python3"
 }

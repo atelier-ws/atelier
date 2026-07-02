@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  api,
-  type Cluster,
-  type WatchdogConfig,
-  type WatchdogProfile,
-  type PlanRecord,
-  type Trace,
-} from "../api";
+import { api, type WatchdogConfig, type WatchdogProfile } from "../api";
 import { Chip, MetricCard, SectionHeader } from "../components/WorkbenchUI";
 
 function profilePayload(
@@ -28,33 +21,19 @@ function configSignature(config: WatchdogConfig | null): string {
 export default function Watchdogs() {
   const [savedConfig, setSavedConfig] = useState<WatchdogConfig | null>(null);
   const [draftConfig, setDraftConfig] = useState<WatchdogConfig | null>(null);
-  const [traces, setTraces] = useState<Trace[]>([]);
-  const [plans, setPlans] = useState<PlanRecord[]>([]);
-  const [clusters, setClusters] = useState<Cluster[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
 
   useEffect(() => {
-    Promise.allSettled([
-      api.watchdogConfig(),
-      api.traces(100, 0),
-      api.plans(100),
-      api.clusters(),
-    ]).then(([configResult, tracesResult, plansResult, clustersResult]) => {
-      if (configResult.status === "fulfilled") {
-        setSavedConfig(configResult.value);
-        setDraftConfig(configResult.value);
-      } else {
-        setError("Unable to load watchdog configuration.");
-      }
-      if (tracesResult.status === "fulfilled")
-        setTraces(tracesResult.value.items);
-      if (plansResult.status === "fulfilled") setPlans(plansResult.value);
-      if (clustersResult.status === "fulfilled")
-        setClusters(clustersResult.value);
-    });
+    api
+      .watchdogConfig()
+      .then((config) => {
+        setSavedConfig(config);
+        setDraftConfig(config);
+      })
+      .catch(() => setError("Unable to load watchdog configuration."));
   }, []);
 
   const activeProfile = useMemo<WatchdogProfile | null>(() => {
@@ -69,17 +48,6 @@ export default function Watchdogs() {
   }, [draftConfig]);
 
   const currentWeights = activeProfile?.weights ?? {};
-  const repeatedFailures = traces.reduce(
-    (acc, trace) => acc + trace.repeated_failures.length,
-    0
-  );
-  const failedValidations = traces.reduce(
-    (acc, trace) =>
-      acc + trace.validation_results.filter((result) => !result.passed).length,
-    0
-  );
-  const blockedPlans = plans.filter((plan) => plan.status !== "success").length;
-  const guardrailPressure = repeatedFailures + failedValidations + blockedPlans;
   const isDirty = configSignature(savedConfig) !== configSignature(draftConfig);
 
   const updateWeight = (monitorKey: string, value: number) => {
@@ -128,13 +96,13 @@ export default function Watchdogs() {
         description="Active execution pathology guards (loops, thrashing, repeated failures)."
         action={
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-amber-500/60 border border-amber-500/30 px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-amber-300 border border-amber-500/30 px-1.5 py-0.5">
               DEV
             </span>
             <button
               type="button"
               disabled={!isDirty || saveState === "saving"}
-              className="border border-purple-500/60 px-4 py-1 font-mono text-xs uppercase tracking-widest text-purple-400 hover:bg-purple-500/10 disabled:opacity-30"
+              className="border border-brand-500/60 px-4 py-1 font-mono text-xs uppercase tracking-widest text-brand-400 hover:bg-brand-500/10 disabled:opacity-30"
               onClick={persistConfig}
             >
               {saveState === "saving" ? "Saving..." : "Save Configuration"}
@@ -143,9 +111,9 @@ export default function Watchdogs() {
         }
       />
 
-      {error && <div className="text-sm text-red-400">{error}</div>}
+      {error && <div className="text-sm text-red-300">{error}</div>}
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2">
         <MetricCard
           label="Active profile"
           value={activeProfile?.label ?? "..."}
@@ -160,17 +128,6 @@ export default function Watchdogs() {
               : undefined
           }
           tone="emerald"
-        />
-        <MetricCard
-          label="Observed sessions"
-          value={String(traces.length)}
-          tone="cyan"
-        />
-        <MetricCard
-          label="Guardrail pressure"
-          value={String(guardrailPressure)}
-          detail={`${clusters.length} clusters · ${failedValidations} failed validations`}
-          tone="amber"
         />
       </section>
 
@@ -261,7 +218,7 @@ export default function Watchdogs() {
                         {monitor.severity}
                       </Chip>
                     </div>
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-xs text-neutral-400">
                       {monitor.description}
                     </div>
                   </div>

@@ -2,8 +2,8 @@
 
 A reasoning/procedure runtime for coding and product agents. Combines:
 
-1. ReasonBlocks-style reasoning reuse (retrieve known procedures before/during runs).
-2. Lemma-style failure improvement (record traces, detect recurring failures).
+1. Playbook-based reasoning reuse (retrieve known procedures before/during runs).
+2. Failure-driven improvement (record traces, detect recurring failures).
 3. Rubric-style verification (check plans/outputs against expert rubrics).
 
 This is NOT memory. It stores observable traces, explicit procedures,
@@ -11,16 +11,14 @@ failures, validation results, and reusable lessons — never hidden chain-of-tho
 or user preferences.
 """
 
-import logging
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from atelier.core.foundation.models import (
-        FailureCluster,
         PlanCheckResult,
-        ReasonBlock,
+        Playbook,
         RescueResult,
         Rubric,
         RubricResult,
@@ -30,9 +28,8 @@ if TYPE_CHECKING:
 
 
 _LAZY_EXPORTS = {
-    "FailureCluster": ("atelier.core.foundation.models", "FailureCluster"),
     "PlanCheckResult": ("atelier.core.foundation.models", "PlanCheckResult"),
-    "ReasonBlock": ("atelier.core.foundation.models", "ReasonBlock"),
+    "Playbook": ("atelier.core.foundation.models", "Playbook"),
     "RescueResult": ("atelier.core.foundation.models", "RescueResult"),
     "Rubric": ("atelier.core.foundation.models", "Rubric"),
     "RubricResult": ("atelier.core.foundation.models", "RubricResult"),
@@ -47,8 +44,7 @@ try:
     from importlib.metadata import version as _version
 
     __version__ = _version(__name__.split(".")[0])
-except Exception:
-    logging.exception("Recovered from broad exception handler")
+except Exception:  # noqa: BLE001 — metadata may be missing in dev/bundle contexts
     # Fallback: read pyproject.toml directly for dev/uninstalled usage.
     _pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
     if _pyproject.exists():
@@ -58,6 +54,17 @@ except Exception:
         __version__ = _match.group(1) if _match else "0.0.0"
     else:
         __version__ = "0.0.0"
+
+
+# Seed process env vars from persisted `atelier settings set` overrides before
+# anything else reads them. Cheap (small local JSON, stdlib-only import) and
+# must never block a plain `import atelier` — see apply_settings_env().
+try:
+    from atelier.core.settings import apply_settings_env as _apply_settings_env
+
+    _apply_settings_env()
+except Exception:  # noqa: BLE001 - settings must never block import
+    pass
 
 
 def __getattr__(name: str) -> Any:
@@ -81,11 +88,10 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "AtelierClient",
-    "FailureCluster",
     "LocalClient",
     "MCPClient",
     "PlanCheckResult",
-    "ReasonBlock",
+    "Playbook",
     "RemoteClient",
     "RescueResult",
     "Rubric",

@@ -12,9 +12,9 @@ import {
   fmtTok,
   fmtDate,
   fmtDuration,
-  parseInspectorData,
-  groupTurns,
-} from "./helpers";
+  parseAt,
+} from "../../lib/format";
+import { parseInspectorData, groupTurns } from "./helpers";
 import { StatusDot } from "./StatusBadge";
 import { FileDetail, getFileEditInfo, type FileEditInfo } from "./DiffView";
 import {
@@ -43,18 +43,18 @@ function HeaderStat({
       className="flex min-w-0 items-center justify-between gap-3 border border-neutral-800/40 bg-black/15 px-2.5 py-1.5 transition-colors hover:bg-neutral-800/20 group"
       title={title}
     >
-      <div className="truncate text-[8px] text-neutral-400 uppercase font-black tracking-[0.18em] group-hover:text-neutral-500 transition-colors">
+      <div className="truncate text-[10px] text-neutral-400 uppercase font-black tracking-[0.18em] group-hover:text-neutral-400 transition-colors">
         {label}
       </div>
       <div
         className={cx(
           "truncate text-[10px] font-bold font-mono leading-none",
           tone === "amber"
-            ? "text-amber-500/90"
+            ? "text-amber-300"
             : tone === "emerald"
-              ? "text-emerald-500/90"
+              ? "text-emerald-300"
               : tone === "violet"
-                ? "text-violet-400"
+                ? "text-violet-300"
                 : "text-neutral-400"
         )}
       >
@@ -79,7 +79,7 @@ function SidebarMetric({
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-[9px] text-neutral-400 font-mono uppercase font-bold">
+      <span className="text-[10px] text-neutral-400 font-mono uppercase font-bold">
         {label}
       </span>
       <span className={cx("text-[10px] font-mono font-black", color)}>
@@ -92,7 +92,7 @@ function SidebarMetric({
 function SidebarList({
   title,
   items,
-  color = "text-neutral-500",
+  color = "text-neutral-400",
 }: {
   title: string;
   items: Array<string | { path: string; artifact_id?: string }>;
@@ -127,10 +127,10 @@ function SidebarList({
 
   return (
     <section className="space-y-3">
-      <h3 className="text-[9px] font-black uppercase tracking-widest text-neutral-500">
+      <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
         {title}
       </h3>
-      <div className="space-y-1.5 font-mono text-[9px]">
+      <div className="space-y-1.5 font-mono text-[10px]">
         {items.map((item) => {
           const p = typeof item === "string" ? item : item.path;
           const artId = typeof item === "string" ? null : item.artifact_id;
@@ -174,15 +174,15 @@ function SidebarList({
                   {p}
                 </span>
               )}
-              <div className="flex items-center gap-2 ml-2 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0 bg-[#0a0a0a] px-1">
+              <div className="flex items-center gap-2 ml-2 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0 bg-surface px-1">
                 <button
                   type="button"
                   onClick={() => copyToClipboard(p)}
                   className={cx(
-                    "text-[8px] uppercase font-black flex items-center gap-1",
+                    "text-[10px] uppercase font-black flex items-center gap-1",
                     justCopied
-                      ? "text-emerald-500"
-                      : "text-neutral-400 hover:text-sky-400"
+                      ? "text-emerald-300"
+                      : "text-neutral-400 hover:text-sky-300"
                   )}
                   title={`Copy path: ${p}`}
                 >
@@ -193,7 +193,7 @@ function SidebarList({
                     href={projectionUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[8px] text-neutral-400 hover:text-cyan-300 uppercase font-black"
+                    className="text-[10px] text-neutral-400 hover:text-cyan-300 uppercase font-black"
                     title="Inspect compact projection metadata"
                   >
                     Projection
@@ -204,7 +204,7 @@ function SidebarList({
                     href={rawUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[8px] text-neutral-400 hover:text-emerald-500 uppercase font-black flex items-center gap-1"
+                    className="text-[10px] text-neutral-400 hover:text-emerald-300 uppercase font-black flex items-center gap-1"
                     title="View raw content"
                   >
                     Raw <ExternalLink size={10} />
@@ -219,29 +219,72 @@ function SidebarList({
   );
 }
 
+function truncateMiddle(value: string, keepEach = 6): string {
+  if (value.length <= keepEach * 2 + 1) return value;
+  return `${value.slice(0, keepEach)}…${value.slice(-keepEach)}`;
+}
+
 function MetaPill({
   label,
   value,
   tone = "neutral",
+  copyValue,
 }: {
   label: string;
   value: string;
   tone?: "neutral" | "violet" | "amber";
+  /** When set, the pill truncates `value` and copies this on click. */
+  copyValue?: string;
 }) {
+  const [copied, setCopied] = useState(false);
+  const toneClass =
+    tone === "violet"
+      ? "border-violet-900/30 bg-violet-950/25 text-violet-200"
+      : tone === "amber"
+        ? "border-amber-900/30 bg-amber-950/25 text-amber-200"
+        : "border-neutral-800 bg-black/20 text-neutral-400";
+
+  if (copyValue === undefined) {
+    return (
+      <span
+        className={cx(
+          "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em]",
+          toneClass
+        )}
+      >
+        <span className="text-neutral-400">{label}</span>
+        <span className="normal-case tracking-normal text-current">
+          {value}
+        </span>
+      </span>
+    );
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyValue);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard may be disabled */
+    }
+  };
+
   return (
-    <span
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Copy: ${copyValue}`}
       className={cx(
-        "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.2em]",
-        tone === "violet"
-          ? "border-violet-900/30 bg-violet-950/25 text-violet-200"
-          : tone === "amber"
-            ? "border-amber-900/30 bg-amber-950/25 text-amber-200"
-            : "border-neutral-800 bg-black/20 text-neutral-400"
+        "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em] transition hover:border-neutral-600",
+        toneClass
       )}
     >
-      <span className="text-neutral-500">{label}</span>
-      <span className="normal-case tracking-normal text-current">{value}</span>
-    </span>
+      <span className="text-neutral-400">{label}</span>
+      <span className="normal-case tracking-normal text-current">
+        {copied ? "Copied" : truncateMiddle(value)}
+      </span>
+    </button>
   );
 }
 
@@ -255,6 +298,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
   const [inspectorData, setInspectorData] = useState<RunInspectorData | null>(
     null
   );
+  const [outcomes, setOutcomes] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [allExpanded, setAllExpanded] = useState(false);
@@ -268,11 +312,13 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       api.sessionReport(sessionId).catch(() => null),
       api.trace(sessionId).catch(() => null),
       api.ledger(sessionId).catch(() => null),
+      api.outcomesForSession(sessionId).catch(() => []),
     ])
-      .then(([rep, tr, led]) => {
+      .then(([rep, tr, led, outcomeEntries]) => {
         setReport(rep);
         setTrace(tr);
         if (led) setInspectorData(parseInspectorData(sessionId, led));
+        setOutcomes(outcomeEntries);
         setLoading(false);
       })
       .catch((e) => {
@@ -281,6 +327,27 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       });
   }, [sessionId]);
 
+  // Average outcome_window.outcome_score across all entries of one kind
+  // ("route" | "compact") returned by api.outcomesForSession.
+  const outcomeScore = useMemo(() => {
+    return (kind: string): number | null => {
+      const scores = outcomes
+        .filter((entry) => entry.kind === kind)
+        .map((entry) => {
+          const window = entry.outcome_window as
+            | Record<string, unknown>
+            | undefined;
+          const score = window?.outcome_score;
+          return typeof score === "number" ? score : null;
+        })
+        .filter((value): value is number => value !== null);
+      if (scores.length === 0) return null;
+      return scores.reduce((a, b) => a + b, 0) / scores.length;
+    };
+  }, [outcomes]);
+  const routeScore = outcomeScore("route");
+  const compactScore = outcomeScore("compact");
+
   const activeDurationSecs = useMemo(() => {
     if (
       !inspectorData?.conversations ||
@@ -288,22 +355,26 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     ) {
       return report?.duration_seconds || 0;
     }
-    let ms = 0;
+    let secs = 0;
     let currentStart: number | null = null;
     for (const turn of inspectorData.conversations) {
-      const at = new Date(turn.at || 0).getTime();
+      // Missing/unparseable timestamps must not collapse to epoch (1970) or
+      // NaN — skip them rather than corrupting the running chunk baseline.
+      const at = parseAt(turn.at)?.getTime();
+      if (at === undefined) continue;
       if (turn.kind === "user_message") {
         currentStart = at;
+      } else if (currentStart !== null) {
+        const chunk = (at - currentStart) / 1000;
+        // Mirror the backend's active-duration guard: only count positive
+        // gaps under an hour as "active" time between turns.
+        if (chunk > 0 && chunk < 3600) secs += chunk;
+        currentStart = at;
       } else {
-        if (currentStart !== null) {
-          ms += at - currentStart;
-          currentStart = at;
-        } else {
-          currentStart = at;
-        }
+        currentStart = at;
       }
     }
-    return ms / 1000;
+    return secs;
   }, [inspectorData, report]);
 
   const startedModel = useMemo(() => {
@@ -344,12 +415,22 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       const shortName = parts[parts.length - 1];
       const rows = queue.get(shortName);
       if (!rows) return turn;
-      const i = ptr.get(shortName) ?? 0;
+      let i = ptr.get(shortName) ?? 0;
+      const turnMs = new Date(turn.at || 0).getTime();
+      // A savings row that's more than 2s older than this turn can never
+      // match a later turn either — advance past it so a stale first event
+      // doesn't permanently stall the queue for every turn that follows.
+      while (
+        i < rows.length &&
+        new Date(rows[i].at).getTime() < turnMs - 2000
+      ) {
+        i++;
+      }
+      ptr.set(shortName, i);
       if (i >= rows.length) return turn;
       // Savings timestamp is slightly after the tool call — allow up to 60 s.
-      const turnMs = new Date(turn.at || 0).getTime();
       const savMs = new Date(rows[i].at).getTime();
-      if (savMs >= turnMs - 2000 && savMs <= turnMs + 60000) {
+      if (savMs <= turnMs + 60000) {
         ptr.set(shortName, i + 1);
         return {
           ...turn,
@@ -380,8 +461,8 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
 
   if (loading)
     return (
-      <div className="flex flex-col items-center justify-center h-full space-y-4 bg-[#0a0a0a]">
-        <div className="w-10 h-10 border border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+      <div className="flex flex-col items-center justify-center h-full space-y-4 bg-surface">
+        <div className="w-10 h-10 border border-brand-500/20 border-t-brand-500 rounded-full animate-spin" />
         <div className="text-[10px] text-neutral-400 uppercase tracking-[0.3em] font-mono animate-pulse">
           Reconstructing Ledger...
         </div>
@@ -390,9 +471,9 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
 
   if (err)
     return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0a] p-12 text-center">
+      <div className="h-full flex items-center justify-center bg-surface p-12 text-center">
         <div className="max-w-xs space-y-3">
-          <div className="text-red-500 text-sm font-mono font-bold uppercase tracking-widest">
+          <div className="text-red-300 text-sm font-mono font-bold uppercase tracking-widest">
             Load Failure
           </div>
           <div className="text-neutral-400 text-xs font-mono leading-relaxed">
@@ -403,9 +484,9 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
     );
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] relative animate-in fade-in duration-500">
+    <div className="flex flex-col h-full bg-surface relative animate-in fade-in duration-500">
       {/* Header */}
-      <header className="flex-shrink-0 px-8 py-4 border-b border-neutral-800/80 bg-[#0d0d0d]/95 backdrop-blur-md sticky top-0 z-20 shadow-2xl">
+      <header className="flex-shrink-0 px-8 py-4 border-b border-neutral-800/80 bg-surface-raised/95 backdrop-blur-md sticky top-0 z-20 shadow-2xl">
         <div className="space-y-3">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1 space-y-2">
@@ -421,7 +502,11 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 {trace?.task || "Execution Detail"}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
-                <MetaPill label="Session" value={sessionId} />
+                <MetaPill
+                  label="Session"
+                  value={sessionId}
+                  copyValue={sessionId}
+                />
                 <MetaPill
                   label="Started"
                   value={fmtDate(report?.started_at || trace?.created_at)}
@@ -444,7 +529,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     href={`/api/raw-artifacts/${report.raw_artifact_ids[0]}/content`}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-white transition-all text-[9px] font-mono text-neutral-500 uppercase tracking-widest flex items-center gap-2"
+                    className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-100 transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest flex items-center gap-2"
                   >
                     <ExternalLink size={10} />
                     Raw Link
@@ -452,7 +537,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 )}
               <button
                 onClick={() => setAllExpanded(!allExpanded)}
-                className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-white transition-all text-[9px] font-mono text-neutral-500 uppercase tracking-widest"
+                className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-100 transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest"
               >
                 {allExpanded ? "Collapse View" : "Expand All"}
               </button>
@@ -461,8 +546,8 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 className={cx(
                   "w-8 h-8 flex items-center justify-center border transition-all text-sm font-mono",
                   rightPanelOpen
-                    ? "bg-purple-600 border-purple-500 text-white"
-                    : "border-neutral-700 text-neutral-500 hover:border-neutral-500 hover:text-white"
+                    ? "bg-brand-600 border-brand-500 text-white"
+                    : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-100"
                 )}
                 title="Toggle Detailed Metrics"
               >
@@ -471,7 +556,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-5 gap-1.5">
             <HeaderStat
               label="Cost"
               value={
@@ -489,7 +574,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
               tone="emerald"
             />
             <HeaderStat
-              label="Input"
+              label="Tokens"
               value={
                 report || trace || inspectorData
                   ? (() => {
@@ -508,51 +593,18 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                         report?.cache_write_tokens ??
                         trace?.cache_creation_input_tokens ??
                         0;
-                      return fmtTok(newIn + cw);
-                    })()
-                  : "—"
-              }
-              title={
-                report
-                  ? `${fmtTok(report.input_tokens)} new + ${fmtTok(report.cache_write_tokens)} cache-write`
-                  : undefined
-              }
-            />
-            <HeaderStat
-              label="Output"
-              value={
-                report || trace || inspectorData
-                  ? fmtTok(
-                      report?.output_tokens ??
+                      const out =
+                        report?.output_tokens ??
                         trace?.output_tokens ??
                         inspectorData?.tokens_post ??
-                        0
-                    )
-                  : "—"
-              }
-            />
-            <HeaderStat
-              label="Cache"
-              value={
-                report || trace
-                  ? (() => {
-                      const cr =
-                        report?.cache_read_tokens ??
-                        trace?.cached_input_tokens ??
                         0;
-                      const cw =
-                        report?.cache_write_tokens ??
-                        trace?.cache_creation_input_tokens ??
-                        0;
-                      return cw > 0
-                        ? `${fmtTok(cr)} / ${fmtTok(cw)}`
-                        : fmtTok(cr);
+                      return `${fmtTok(newIn + cw)} / ${fmtTok(out)}`;
                     })()
                   : "—"
               }
               title={
                 report
-                  ? `${fmtTok(report.cache_read_tokens)} cache-read · ${fmtTok(report.cache_write_tokens)} cache-write`
+                  ? `in: ${fmtTok(report.input_tokens)} new + ${fmtTok(report.cache_write_tokens)} cache-write · out: ${fmtTok(report.output_tokens)} · cache-read: ${fmtTok(report.cache_read_tokens)}`
                   : undefined
               }
             />
@@ -578,11 +630,11 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
       <div className="flex-1 overflow-hidden">
         <div className="flex h-full">
           {/* Scrollable timeline */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#0a0a0a]">
+          <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface">
             <div className="p-10 space-y-16 pb-48">
               <section className="space-y-12">
                 <div className="flex items-center gap-6">
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-neutral-500 whitespace-nowrap">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-neutral-400 whitespace-nowrap">
                     Execution Flow
                   </h2>
                   <div className="h-px w-full bg-gradient-to-r from-neutral-800 to-transparent" />
@@ -590,24 +642,40 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
 
                 <div className="space-y-12">
                   {enrichedConversations.length > 0 ? (
-                    groupTurns(enrichedConversations).map((turn, i) => (
-                      <ConversationTurn
-                        key={i}
-                        turn={turn}
-                        forceExpand={allExpanded}
-                      />
-                    ))
+                    (() => {
+                      const seen = new Map<string, number>();
+                      return groupTurns(enrichedConversations).map((turn) => {
+                        // Stable per-turn key so React preserves each
+                        // ConversationTurn's expand state when the list is
+                        // re-enriched (savings reattachment) or turns are
+                        // inserted/prepended. tool_use_id is unique when
+                        // present; otherwise disambiguate same-(kind, at)
+                        // turns by occurrence order.
+                        const base =
+                          turn.tool_use_id || `${turn.kind}:${turn.at}`;
+                        const n = seen.get(base) ?? 0;
+                        seen.set(base, n + 1);
+                        const key = n === 0 ? base : `${base}#${n}`;
+                        return (
+                          <ConversationTurn
+                            key={key}
+                            turn={turn}
+                            forceExpand={allExpanded}
+                          />
+                        );
+                      });
+                    })()
                   ) : (
                     <div className="space-y-8">
                       {trace?.reasoning && trace.reasoning.length > 0 && (
                         <div className="space-y-4">
-                          <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 px-1">
+                          <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">
                             Strategy
                           </h3>
                           {trace.reasoning.map((r, i) => (
                             <div
                               key={i}
-                              className="bg-purple-950/[0.03] border border-purple-900/10 p-5 text-[11px] leading-relaxed text-purple-400/60 font-mono whitespace-pre-wrap rounded-sm shadow-inner"
+                              className="bg-brand-950/[0.03] border border-brand-900/10 p-5 text-[11px] leading-relaxed text-brand-400/60 font-mono whitespace-pre-wrap rounded-sm shadow-inner"
                             >
                               {r}
                             </div>
@@ -615,7 +683,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                         </div>
                       )}
                       <div className="space-y-4">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 px-1">
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-1">
                           Events
                         </h3>
                         <div className="space-y-3">
@@ -643,11 +711,11 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
               {ledgerFilesTouched.length > 0 && (
                 <section className="space-y-6 pt-12 border-t border-neutral-900/50">
                   <div className="flex items-center gap-6">
-                    <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-neutral-500 whitespace-nowrap">
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-neutral-400 whitespace-nowrap">
                       File Changes
                     </h2>
                     <div className="h-px w-full bg-gradient-to-r from-neutral-800 to-transparent" />
-                    <span className="text-[9px] text-neutral-500 font-mono font-bold uppercase tracking-widest flex-shrink-0">
+                    <span className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-widest flex-shrink-0">
                       {ledgerFilesTouched.length} file
                       {ledgerFilesTouched.length !== 1 ? "s" : ""} · from
                       session
@@ -669,37 +737,12 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
 
           {/* Right rail — detailed metrics */}
           {rightPanelOpen && (
-            <aside className="w-96 flex-shrink-0 border-l border-neutral-800/60 bg-[#0d0d0d]/40 overflow-y-auto custom-scrollbar p-6 space-y-10 animate-in slide-in-from-right duration-300">
+            <aside className="w-96 flex-shrink-0 border-l border-neutral-800/60 bg-surface-raised/40 overflow-y-auto custom-scrollbar p-6 space-y-10 animate-in slide-in-from-right duration-300">
               <section className="space-y-4">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 border-b border-neutral-800 pb-2">
                   Session Blueprint
                 </h3>
                 <div className="grid gap-4">
-                  <SidebarMetric
-                    label="Total cost"
-                    value={report ? fmtUsd(report.total_cost_usd) : "—"}
-                    color="text-amber-500"
-                  />
-                  <SidebarMetric
-                    label="Model Savings"
-                    value={
-                      report ? fmtUsd(report.total_atelier_savings_usd) : "—"
-                    }
-                    color="text-emerald-500"
-                  />
-                  <SidebarMetric
-                    label="Started Model"
-                    value={startedModel || "—"}
-                    color="text-violet-400"
-                  />
-                  <SidebarMetric
-                    label="Total Tokens"
-                    value={
-                      report
-                        ? fmtTok(report.input_tokens + report.output_tokens)
-                        : "—"
-                    }
-                  />
                   <SidebarMetric
                     label="Input Cost"
                     value={report ? fmtUsd(report.input_token_cost_usd) : "—"}
@@ -709,10 +752,28 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     value={report ? fmtUsd(report.output_token_cost_usd) : "—"}
                   />
                   <SidebarMetric
-                    label="Cache Savings"
+                    label="Cache Read Cost"
                     value={report ? fmtUsd(report.cache_read_cost_usd) : "—"}
                   />
                 </div>
+                {(routeScore !== null || compactScore !== null) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {routeScore !== null && (
+                      <MetaPill
+                        label="Route outcome"
+                        value={routeScore.toFixed(2)}
+                        tone="violet"
+                      />
+                    )}
+                    {compactScore !== null && (
+                      <MetaPill
+                        label="Compact outcome"
+                        value={compactScore.toFixed(2)}
+                        tone="amber"
+                      />
+                    )}
+                  </div>
+                )}
               </section>
 
               {report?.top_tools_by_cost &&
@@ -727,10 +788,10 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                           key={i}
                           className="flex items-center justify-between text-[10px] font-mono border-b border-neutral-800/40 pb-1 last:border-0"
                         >
-                          <span className="text-blue-400/80 truncate pr-4">
+                          <span className="text-blue-300 truncate pr-4">
                             {t.tool} ({t.calls})
                           </span>
-                          <span className="text-neutral-500">
+                          <span className="text-neutral-400">
                             {fmtUsd(t.cost_usd)}
                           </span>
                         </div>
@@ -750,7 +811,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                         key={i}
                         className="flex items-center justify-between text-[10px] font-mono border-b border-neutral-800/40 pb-1 last:border-0"
                       >
-                        <span className="text-emerald-400/80 truncate pr-4">
+                        <span className="text-emerald-300 truncate pr-4">
                           {row.tool}
                         </span>
                         <span className="text-neutral-400">
@@ -776,10 +837,10 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                             key={i}
                             className="flex items-center justify-between border-b border-neutral-800/40 pb-1 last:border-0"
                           >
-                            <span className="text-violet-400/80 truncate pr-4">
+                            <span className="text-violet-300 truncate pr-4">
                               {model}
                             </span>
-                            <span className="text-neutral-500">
+                            <span className="text-neutral-400">
                               {count} calls
                             </span>
                           </div>
@@ -802,7 +863,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                             key={i}
                             className="flex flex-col border-b border-neutral-800/40 pb-1 last:border-0 gap-0.5"
                           >
-                            <span className="text-neutral-400 uppercase font-bold tracking-tighter text-[8px]">
+                            <span className="text-neutral-400 uppercase font-bold tracking-tighter text-[10px]">
                               {key}
                             </span>
                             <span className="text-neutral-400 truncate">
@@ -819,7 +880,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 <SidebarList
                   title="Active Skills"
                   items={report.skills}
-                  color="text-amber-500/70"
+                  color="text-amber-300"
                 />
               )}
               {inspectorData?.source_files &&
@@ -837,7 +898,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                       path: `${artifact.label || (artifact.scope === "subagent" ? "subagent" : "main")} · ${artifact.relative_path.split("/").pop() || artifact.relative_path}`,
                       artifact_id: artifact.id,
                     }))}
-                    color="text-sky-500/70"
+                    color="text-sky-300"
                   />
                 )}
               {inspectorData?.pinned_blocks &&
@@ -845,7 +906,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   <SidebarList
                     title="Pinned Logic"
                     items={inspectorData.pinned_blocks}
-                    color="text-purple-500/70"
+                    color="text-brand-400/70"
                   />
                 )}
               {inspectorData?.recalled_passages &&
@@ -853,22 +914,22 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   <SidebarList
                     title="Memory Recall"
                     items={inspectorData.recalled_passages.map((p) => p.id)}
-                    color="text-cyan-500/70"
+                    color="text-cyan-300"
                   />
                 )}
 
               <section className="space-y-3 opacity-60 hover:opacity-100 transition-opacity pt-4 border-t border-neutral-800">
-                <h3 className="text-[9px] font-black uppercase tracking-widest text-neutral-500">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
                   Audit Telemetry
                 </h3>
-                <div className="space-y-1.5 text-[9px] font-mono text-neutral-500">
+                <div className="space-y-1.5 text-[10px] font-mono text-neutral-400">
                   {report?.telemetry &&
                     Object.entries(report.telemetry).map(([key, val], i) => (
                       <div
                         key={i}
                         className="flex justify-between border-b border-neutral-800/20 pb-0.5 last:border-0"
                       >
-                        <span className="uppercase text-[8px] font-bold">
+                        <span className="uppercase text-[10px] font-bold">
                           {key}
                         </span>
                         <span className="text-neutral-400">{String(val)}</span>
@@ -876,17 +937,17 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     ))}
                   {inspectorData?.summarized_events_count ? (
                     <div className="flex justify-between border-b border-neutral-800/20 pb-0.5 last:border-0">
-                      <span className="uppercase text-[8px] font-bold text-amber-600/80">
+                      <span className="uppercase text-[10px] font-bold text-amber-600/80">
                         Compressed_Events
                       </span>
-                      <span className="text-amber-500/70">
+                      <span className="text-amber-300">
                         {inspectorData.summarized_events_count}
                       </span>
                     </div>
                   ) : null}
                   {inspectorData?.tokens_pre && (
                     <div className="flex justify-between border-b border-neutral-800/20 pb-0.5 last:border-0">
-                      <span className="uppercase text-[8px] font-bold">
+                      <span className="uppercase text-[10px] font-bold">
                         Context_Pre
                       </span>
                       <span className="text-neutral-400">
@@ -896,10 +957,10 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   )}
                   {inspectorData?.tokens_post && (
                     <div className="flex justify-between border-b border-neutral-800/20 pb-0.5 last:border-0">
-                      <span className="uppercase text-[8px] font-bold text-emerald-600/80">
+                      <span className="uppercase text-[10px] font-bold text-emerald-600/80">
                         Context_Post
                       </span>
-                      <span className="text-emerald-500/70">
+                      <span className="text-emerald-300">
                         {fmtTok(inspectorData.tokens_post)}
                       </span>
                     </div>

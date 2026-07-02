@@ -16,16 +16,13 @@ def _invoke(root: Path, *args: str) -> tuple[int, str]:
     return res.exit_code, res.output
 
 
-@pytest.mark.skip(reason="benchmark solver CLI needs a deterministic offline harness")
-def test_bench_runtime(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    code, out = _invoke(root, "init")
-    assert code == 0, out
-
-    code, out = _invoke(root, "benchmark", "solver", "--task-prompt", "Fix PDP", "--format", "json")
-    assert code == 0, out
-    metrics = json.loads(out)
-    assert "total_tool_calls" in metrics
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # `init` bootstraps a code index over cwd when it is a git repo. Without an
+    # isolated cwd the CliRunner inherits the atelier repo and init spends
+    # 14-37s indexing the whole codebase. Both tests here drive the actual work
+    # through --workspace, so cwd only needs to point away from the atelier repo.
+    monkeypatch.chdir(tmp_path)
 
 
 def test_search_smart_blocks(tmp_path: Path) -> None:
@@ -125,5 +122,8 @@ def test_read_smart_and_edit_smart(tmp_path: Path) -> None:
             pytest.fail(f"Could not find JSON in output: {out}")
         edit_payload = json.loads(out[start:])
 
-    assert len(edit_payload["applied"]) == 1
+    # A clean exact-match edit echoes the minimal applied range (orientation only);
+    # the file change itself is the confirmation, no diff body.
+    assert edit_payload.get("applied")
+    assert "failed" not in edit_payload
     assert "return 2" in target.read_text(encoding="utf-8")

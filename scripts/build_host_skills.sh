@@ -15,6 +15,7 @@ RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
 
 HOST=""
 DEST=""
+INCLUDE_DEV=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host)
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
             DEST="$2"
             shift
             ;;
+        --include-dev) INCLUDE_DEV=1 ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
@@ -46,24 +48,33 @@ if [[ -z "$HOST" ]]; then
     exit 1
 fi
 
-uv run python "$RENDER_SCRIPT" >/dev/null
+# Regenerate host context files if uv is available; skip silently in binary-only envs
+# (build.sh pre-generates these before packaging).
+if command -v uv >/dev/null 2>&1; then
+    uv run python "$RENDER_SCRIPT" >/dev/null 2>&1 || true
+fi
 
 if [[ ! -d "$SKILLS_SRC" ]]; then
     echo "Shared packaged skills directory not found: $SKILLS_SRC" >&2
     exit 1
 fi
 
-HIDDEN_SKILLS=()
-while IFS= read -r skill_name; do
-    [[ -n "$skill_name" ]] && HIDDEN_SKILLS+=("$skill_name")
-done < <(
-    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
-from atelier.core.environment import HIDDEN_SKILLS
-
-for name in sorted(HIDDEN_SKILLS):
-    print(name)
-PY
+# These skill names are dev/internal and should not be exposed in host bundles.
+# Kept as a static list to avoid importing the Python package at install time.
+HIDDEN_SKILLS=(
+    analyze-failures
+    context
+    evals
+    rescue
+    savings
+    status
+    record
 )
+
+ROLE_SKILLS=()
+while IFS= read -r mode_path; do
+    [[ -n "$mode_path" ]] && ROLE_SKILLS+=("$(basename "$mode_path" .md)")
+done < <(find "${ATELIER_REPO}/integrations/agents" -mindepth 1 -maxdepth 1 -type f -name '*.md' | sort)
 
 is_hidden_skill() {
     local name="$1"
@@ -75,6 +86,7 @@ is_hidden_skill() {
     done
     return 1
 }
+
 default_dest_for_host() {
     case "$1" in
         claude) printf "%s" "${ATELIER_REPO}/integrations/claude/plugin/skills" ;;
@@ -90,11 +102,24 @@ default_dest_for_host() {
 render_host_bundle() {
     local host="$1"
     local dest_dir="$2"
+    local generated_dir
     local skill_dir
     local skill_name
+    local source_path
+    local dest_path
 
     mkdir -p "$dest_dir"
 
+    generated_dir="$(default_dest_for_host "$host")"
+    for skill_name in "${ROLE_SKILLS[@]}"; do
+        source_path="$generated_dir/$skill_name/SKILL.md"
+        dest_path="$dest_dir/$skill_name/SKILL.md"
+        [[ -f "$source_path" ]] || continue
+        mkdir -p "$dest_dir/$skill_name"
+        if [[ "$source_path" != "$dest_path" ]]; then
+            cp "$source_path" "$dest_path"
+        fi
+    done
 
     while IFS= read -r skill_dir; do
         [[ -n "$skill_dir" ]] || continue
@@ -105,7 +130,6 @@ render_host_bundle() {
         if is_hidden_skill "$skill_name"; then
             continue
         fi
-
         mkdir -p "$dest_dir/$skill_name"
         cp "$skill_dir/SKILL.md" "$dest_dir/$skill_name/SKILL.md"
     done < <(find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort)

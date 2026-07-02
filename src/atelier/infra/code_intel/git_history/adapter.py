@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import sqlite3
+import threading
+from collections.abc import Callable
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,9 +15,45 @@ from typing import Any, cast
 
 from atelier.infra.code_intel.git_history import require_pygit2
 from atelier.infra.code_intel.git_history.graveyard import SymbolGraveyard
-from atelier.infra.code_intel.git_history.walker import walk_history
+from atelier.infra.code_intel.git_history.walker import resolve_history_bootstrap_commits, walk_history
 
 logger = logging.getLogger(__name__)
+
+
+def history_indexing_enabled() -> bool:
+    """Whether deleted/renamed-symbol history indexing runs (default OFF; opt-in).
+
+    Opt in with ``ATELIER_HISTORY_ENABLED=1``; then ``scope="deleted"`` works and
+    the bootstrap graveyard walk runs. FTS/semantic search and the
+    ``since``/``touched_by`` filters (a separate ``changed_files`` walk) are
+    unaffected either way.
+
+    TODO(perf, needs-improvement): this feature is DISABLED BY DEFAULT pending a
+    rework. It is the dominant code-intel cold-start cost, NOT a correctness need
+    for a normal explore/search. Findings from latency profiling (2026-06):
+
+      * On a cold MCP process the graveyard warmup walks git history with a
+        per-commit ``diff_to_tree`` -- ~7s of PURE-PYTHON, GIL-HELD work on a
+        ~1k-commit repo, and far worse on large histories (django/sympy have
+        tens of thousands of commits). Because it holds the GIL it STALLS the
+        very next explore/search on that process (~9s observed; with this flag
+        off explore drops from ~9.2s warm to <40ms -- ~250x). The worst single
+        offender (an unbounded ``changed_files(since_ts=None)`` prewalk) is
+        already removed in ``_background_warmup_worker``; the bounded bootstrap
+        build still adds hundreds of ms.
+      * ``changed_files`` caches results only IN MEMORY (``_changed_files_cache``),
+        so EVERY fresh MCP process re-walks from scratch -- the on-disk graveyard
+        does not help the recency/``since`` path. A benchmark that spawns one MCP
+        server per task therefore re-pays this every single task.
+
+    Before re-enabling by default, the next agent should: (1) make the warmup
+    fully non-blocking w.r.t. the query path -- bound the walk or move the
+    diff_to_tree work off the GIL (subprocess/process pool) so it can never
+    starve a concurrent tool call; and (2) persist ``changed_files`` /the
+    graveyard head-state cross-process so a new MCP server reuses prior work
+    instead of re-walking. Then look elsewhere for remaining per-call cost.
+    """
+    return os.environ.get("ATELIER_HISTORY_ENABLED", "0") == "1"
 
 
 class DeletedHistorySearchAdapter:
@@ -29,15 +68,16 @@ class DeletedHistorySearchAdapter:
         self._head_state_key = f"graveyard_head:{repo_id}"
         self._rename_target_cache: dict[tuple[str, str], str | None] = {}
         self._changed_files_cache: dict[tuple[int | None, str | None, str | None], frozenset[str]] = {}
+        self._history_ready = False
 
     def search(
         self,
         query: str,
         *,
-        limit: int = 20,
         since_ts: int | None,
         touched_by: str | None,
         language: str | None,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
         self._ensure_history_ready()
         lowered_query = query.strip().lower()
@@ -86,19 +126,87 @@ class DeletedHistorySearchAdapter:
                     break
             return items[:limit]
 
-    def _ensure_history_ready(self) -> None:
+    def start_background_warmup(self) -> None:
+        """Launch a daemon thread to warm the graveyard index in the background.
+
+        Safe to call multiple times — only one thread is ever launched.
+        """
+        if not history_indexing_enabled():
+            return
+        if self._history_ready:
+            return
+        t = threading.Thread(
+            target=self._background_warmup_worker,
+            daemon=True,
+            name=f"atelier-graveyard-{self._repo_id[:8]}",
+        )
+        t.start()
+
+    def _background_warmup_worker(self) -> None:
+        try:
+            self._ensure_history_ready()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return
+        # NB: do NOT pre-walk changed_files(since_ts=None) here. It walks the
+        # ENTIRE git history (diff_to_tree per commit -- ~7s of pure-Python,
+        # GIL-held, on a 1k-commit repo and far worse on large ones), which
+        # starves the very next explore/search call on this process. The result
+        # it caches -- every file ever changed -- is ~the whole repo and of no
+        # practical use. changed_files is computed and cached lazily anyway, only
+        # when a query actually passes a since/touched_by filter.
+
+    def _ensure_history_ready(self, *, on_commit: Callable[[int, int], None] | None = None) -> dict[str, int]:
+        import logging
+
+        if not history_indexing_enabled():
+            # Disabled via ATELIER_HISTORY_ENABLED=0: skip the historical diff +
+            # tree-sitter parse walk. Ensure the (empty) graveyard table exists so
+            # a scope="deleted" search degrades to no results instead of erroring.
+            # FTS indexing and since/touched_by filters are unaffected.
+            if not self._history_ready:
+                with closing(self._connection_factory()) as conn:
+                    SymbolGraveyard(conn)
+                self._history_ready = True
+            return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
+
         current_head = self._current_head()
         if current_head is None:
-            return
+            return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
+
         with closing(self._connection_factory()) as conn:
             SymbolGraveyard(conn)
             row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (self._head_state_key,)).fetchone()
             previous_head = str(row["value"]) if row is not None else None
             count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
             graveyard_count = int(count_row["n"]) if count_row is not None else 0
+
+            # Check why we might need to re-walk
             if previous_head == current_head and graveyard_count > 0:
-                return
-            walk_history(self._repo_root, SymbolGraveyard(conn))
+                logging.debug(f"Git history already indexed for HEAD {current_head[:8]}... ({graveyard_count} entries)")
+                self._history_ready = True
+                return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
+
+            # Log why we're walking
+            since_sha = previous_head if previous_head != current_head else None
+            if previous_head is None:
+                logging.info("Git history not yet indexed, starting walk...")
+            elif previous_head != current_head:
+                logging.info(f"Git HEAD changed ({previous_head[:8]}... → {current_head[:8]}...), walking new commits")
+            elif graveyard_count == 0:
+                logging.info("Git history graveyard is empty, re-walking...")
+
+            # Bootstrap: index only the most-recent N commits synchronously so the
+            # eager index stays fast. Deeper history is left to the background
+            # backfill (ATELIER_HISTORY_BOOTSTRAP_COMMITS / _MAX_COMMITS).
+            summary = walk_history(
+                self._repo_root,
+                SymbolGraveyard(conn),
+                since_sha=since_sha,
+                limit=resolve_history_bootstrap_commits(),
+                on_commit=on_commit,
+            )
+
             conn.execute(
                 """
                 INSERT INTO engine_state(key, value)
@@ -108,6 +216,8 @@ class DeletedHistorySearchAdapter:
                 (self._head_state_key, current_head),
             )
             conn.commit()
+        self._history_ready = True
+        return summary
 
     def _current_head(self) -> str | None:
         pygit2 = require_pygit2()

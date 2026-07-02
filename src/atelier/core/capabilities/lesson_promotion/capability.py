@@ -28,6 +28,19 @@ from atelier.infra.storage.vector import cosine_similarity
 _log = logging.getLogger(__name__)
 
 
+def ingest_failed_trace(store: ContextStore, trace: Trace) -> None:
+    """Best-effort: feed a failed trace into the lesson inbox from any trace-record
+    path (SDK, MCP tool, runtime session). Never raises -- lesson extraction must
+    not break trace recording. Call after the trace is persisted so the
+    store-backed cluster lookup can see it."""
+    if trace.status != "failed" or not trace.errors_seen:
+        return
+    try:
+        LessonPromoterCapability(store).ingest_trace(trace)
+    except Exception:  # noqa: BLE001 - lesson ingest is best-effort
+        _log.debug("lesson ingest skipped for trace %s", trace.id, exc_info=True)
+
+
 class LessonPromoterCapability:
     """Create and review lesson candidates from failed traces."""
 
@@ -44,7 +57,6 @@ class LessonPromoterCapability:
         self._embedder = embedder or get_embedder()
         self._cluster_threshold = cluster_threshold or float(os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85"))
         self._trace_embedding_cache: dict[str, list[float]] = {}
-        self._recent_failed_by_domain: dict[str, list[Trace]] = {}
 
     def _trace_text(self, trace: Trace) -> str:
         commands: list[str] = []
@@ -63,11 +75,12 @@ class LessonPromoterCapability:
         text = self._trace_text(trace)
         try:
             vectors = self._embedder.embed([text])
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            _log.warning("lesson embedding unavailable, using NullEmbedder: %s", exc)
-            self._embedder = NullEmbedder()
-            vectors = self._embedder.embed([text])
+        except Exception as exc:  # noqa: BLE001 - an embedder failure must not abort ingest
+            # Fall back to an empty vector for THIS trace only. Reassigning
+            # self._embedder would permanently disable embeddings for the rest of
+            # the instance's life on a single transient failure.
+            _log.warning("lesson embedding unavailable for trace %s, using empty vector: %s", trace.id, exc)
+            vectors = NullEmbedder().embed([text])
         embedding = vectors[0] if vectors and vectors[0] else []
         self._trace_embedding_cache[trace.id] = embedding
         return embedding
@@ -133,7 +146,14 @@ class LessonPromoterCapability:
         return [item[1] for item in scored[:limit]]
 
     def ingest_trace(self, trace: Trace) -> LessonCandidate | None:
-        """Ingest one failed trace and create an inbox candidate when cluster size >= 3."""
+        """Ingest one failed trace and create an inbox candidate when cluster size >= 3.
+
+        Neighbor lookup is store-backed (``_recent_trace_cluster`` +
+        ``_nearest_cluster``), not in-process state, so clustering works whether
+        the caller holds a long-lived capability or builds a fresh one per
+        recorded trace (the SDK ``record_trace`` seam). Persist the trace before
+        calling this so the store-backed lookup can see it among its peers.
+        """
         if trace.status != "failed":
             return None
         if not trace.errors_seen:
@@ -141,25 +161,24 @@ class LessonPromoterCapability:
 
         embedding = self._embed_trace(trace)
         cluster_fingerprint = self._cluster_key(trace, embedding)
-        neighbors = self._nearest_cluster(
-            domain=trace.domain,
-            embedding=embedding,
-        )
-        bucket = self._recent_failed_by_domain.setdefault(trace.domain, [])
-        trace_neighbors: list[Trace] = []
-        for prior in reversed(bucket):
-            if len(trace_neighbors) >= 8:
-                break
-            try:
-                sim = cosine_similarity(embedding, self._embed_trace(prior))
-            except ValueError:
-                sim = 0.0
-            if sim >= self._cluster_threshold:
-                trace_neighbors.append(prior)
-
-        if len(neighbors) + len(trace_neighbors) + 1 < 3:
-            bucket.append(trace)
-            return None
+        # Cheap: scores stored candidate vectors only (no re-embedding).
+        neighbors = self._nearest_cluster(domain=trace.domain, embedding=embedding)
+        if neighbors:
+            # An inbox candidate already represents this cluster -> refresh it in
+            # place rather than inserting a near-duplicate per recurrence, and
+            # skip the expensive recent-trace scan (it re-embeds up to 500 traces
+            # and would only re-derive an already-formed cluster).
+            existing_id: str | None = neighbors[0].id
+            trace_neighbors: list[Trace] = []
+        else:
+            existing_id = None
+            trace_neighbors = self._recent_trace_cluster(
+                domain=trace.domain,
+                current_trace_id=trace.id,
+                embedding=embedding,
+            )
+            if len(trace_neighbors) + 1 < 3:
+                return None
 
         traces = [trace, *trace_neighbors]
         seen_trace_ids = {item.id for item in traces}
@@ -189,8 +208,11 @@ class LessonPromoterCapability:
             "cluster_threshold": self._cluster_threshold,
         }
         candidate.embedding_provenance = self._embedder.__class__.__name__
+        if existing_id is not None:
+            # Refresh the existing cluster candidate in place (ON CONFLICT(id) DO
+            # UPDATE) instead of inserting a near-duplicate for every recurrence.
+            candidate.id = existing_id
         self.store.upsert_lesson_candidate(candidate)
-        bucket.append(trace)
         return candidate
 
     def inbox(self, *, domain: str | None = None, limit: int = 25) -> list[LessonCandidate]:
@@ -215,17 +237,24 @@ class LessonPromoterCapability:
         candidate.reviewer = reviewer
         candidate.decision_reason = reason
         candidate.decision_at = now
-        candidate.status = "approved" if decision == "approve" else "rejected"
-        self.store.upsert_lesson_candidate(candidate)
 
         if decision == "reject":
+            candidate.status = "rejected"
+            self.store.upsert_lesson_candidate(candidate)
             return {"lesson": candidate.model_dump(mode="json"), "promotion": None}
 
+        # Build everything that can fail (promotion, typed lesson) BEFORE
+        # persisting approval, so a raise can't leave a candidate marked
+        # approved with no promotion or typed lesson.
         promotion = self._promote(candidate)
-        self.store.upsert_lesson_promotion(promotion)
         typed_lesson: TypedLesson | None = None
         if candidate.kind in {"route-preference", "cost-cap"}:
             typed_lesson = self._typed_lesson_from_candidate(candidate)
+
+        candidate.status = "approved"
+        self.store.upsert_lesson_candidate(candidate)
+        self.store.upsert_lesson_promotion(promotion)
+        if typed_lesson is not None:
             TypedLessonStore(self.store.root).upsert_lesson(typed_lesson)
         return {
             "lesson": candidate.model_dump(mode="json"),
@@ -236,7 +265,7 @@ class LessonPromoterCapability:
     def _promote(self, candidate: LessonCandidate) -> LessonPromotion:
         kind = str(getattr(candidate, "kind", ""))
 
-        if kind in {"new_block", "reasonblock"}:
+        if kind in {"new_block", "playbook"}:
             block = candidate.proposed_block
             if block is None:
                 # Fallback to the existing extractor path from evidence traces.

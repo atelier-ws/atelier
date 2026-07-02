@@ -286,6 +286,49 @@ def test_parse_claude_assigns_usage_to_only_one_visible_turn() -> None:
     }
 
 
+def test_parse_claude_merges_split_message_usage_with_null_token_values() -> None:
+    """A message split across JSONL lines whose later usage has nulls must not crash the merge."""
+    content = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-16T00:00:05Z",
+                    "message": {
+                        "id": "msg-1",
+                        "model": "claude-sonnet-4-6",
+                        "usage": {
+                            "input_tokens": None,
+                            "output_tokens": None,
+                            "cache_read_input_tokens": None,
+                        },
+                        "content": [{"type": "text", "text": "First chunk."}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-05-16T00:00:06Z",
+                    "message": {
+                        "id": "msg-1",
+                        "model": "claude-sonnet-4-6",
+                        "usage": {"input_tokens": 120, "output_tokens": 45},
+                        "content": [{"type": "text", "text": "Second chunk."}],
+                    },
+                }
+            ),
+        ]
+    )
+
+    turns = parse_session_turns(content, "claude")
+
+    tokenized = [turn for turn in turns if any((turn.get("tokens") or {}).values())]
+    assert len(tokenized) == 1
+    assert tokenized[0]["tokens"]["in"] == 120
+    assert tokenized[0]["tokens"]["out"] == 45
+
+
 def test_parse_copilot_assigns_output_tokens_once_across_sibling_turns() -> None:
     content = "\n".join(
         [
@@ -316,42 +359,3 @@ def test_parse_copilot_assigns_output_tokens_once_across_sibling_turns() -> None
     assert [turn["kind"] for turn in turns] == ["thinking", "agent_message", "file_edit"]
     assert len(tokenized_turns) == 1
     assert tokenized_turns[0]["tokens"] == {"out": 88}
-
-
-def test_parse_gemini_assigns_usage_to_only_one_turn() -> None:
-    content = "\n".join(
-        [
-            json.dumps(
-                {
-                    "id": "gemini-msg-1",
-                    "type": "gemini",
-                    "timestamp": "2026-05-16T00:00:02Z",
-                    "model": "gemini-2.5-pro",
-                    "tokens": {"input": 120, "output": 35, "thoughts": 8, "cached": 25},
-                    "content": "Applied the requested edit.",
-                    "toolCalls": [
-                        {
-                            "name": "write_file",
-                            "args": {
-                                "path": "frontend/src/pages/Sessions.tsx",
-                                "content": "updated",
-                            },
-                        }
-                    ],
-                }
-            )
-        ]
-    )
-
-    turns = parse_session_turns(content, "gemini")
-
-    tokenized_turns = [turn for turn in turns if any((turn.get("tokens") or {}).values())]
-    assert [turn["kind"] for turn in turns] == ["file_edit", "agent_message"]
-    assert len(tokenized_turns) == 1
-    assert tokenized_turns[0]["tokens"] == {
-        "in": 120,
-        "out": 35,
-        "thinking": 8,
-        "cache_read": 25,
-        "cache_write": 0,
-    }

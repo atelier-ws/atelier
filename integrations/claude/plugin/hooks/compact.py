@@ -39,16 +39,28 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def _session_state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    h = _workspace_key(workspace)
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -134,7 +146,12 @@ def _active_session_id() -> str | None:
 def _ensure_compact_manifest(session_id: str) -> Path:
     """Ensure manifest file exists. Return the path."""
     atelier_root = _atelier_root()
-    run_dir = atelier_root / "runs" / session_id
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_dir = session_dir(atelier_root, "claude", session_id)
+    except ImportError:
+        return atelier_root / "sessions" / session_id / "compact_manifest.json"
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "compact_manifest.json"
 
@@ -151,7 +168,7 @@ def _ensure_compact_manifest(session_id: str) -> Path:
             "utilisation_pct": 0.0,
             "turn_count": 0,
             "task_boundary_detected": False,
-            "preserve_blocks": [],
+            "preserve_playbooks": [],
             "pin_memory": [],
             "open_files": [],
             "recent_turns": [],
@@ -169,13 +186,15 @@ def _ensure_compact_manifest(session_id: str) -> Path:
 def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
     """Read compact_manifest.json from the run directory."""
     try:
+        from atelier.core.foundation.paths import session_dir
+
         atelier_root = _atelier_root()
-        manifest_path = atelier_root / "runs" / session_id / "compact_manifest.json"
+        manifest_path = session_dir(atelier_root, "claude", session_id) / "compact_manifest.json"
         if manifest_path.exists():
             data = json.loads(manifest_path.read_text("utf-8"))
             if isinstance(data, dict):
                 return data
-    except (OSError, json.JSONDecodeError):
+    except (ImportError, OSError, json.JSONDecodeError):
         pass
     return None
 
@@ -188,9 +207,11 @@ def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
 def _append_compact_event(
     session_id: str, hook_event: str, trigger: str, payload: dict[str, Any] | None = None
 ) -> None:
-    atelier_root = _atelier_root()
-    runs_dir = atelier_root / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -240,6 +261,62 @@ def _append_compact_event(
 # ---------------------------------------------------------------------------
 
 
+def _checkpoint_pre_compact_usage(session_id: str, transcript_path: str) -> None:
+    """Snapshot cumulative session usage into stats.json before compact rewrites the transcript.
+
+    After /compact, Claude Code replaces the transcript JSONL with a compact summary.
+    The pre-compact token history is then invisible to read_transcript_stats at stop time.
+    By saving the running totals here (before the overwrite), the stop hook can add them
+    back on top of whatever post-compact usage the transcript shows.
+
+    Stores the HIGH-WATER MARK across compacts (max per field, not sum).
+    Fail-open: any error is silently swallowed.
+    """
+    try:
+        from atelier.core.capabilities.savings_summary import read_transcript_stats
+
+        stats = read_transcript_stats(transcript_path)
+        if stats is None:
+            return
+        # Only checkpoint if there's real usage to preserve.
+        if not (stats.input_tokens or stats.output_tokens or stats.cache_read_tokens or stats.cache_write_tokens):
+            return
+
+        from atelier.core.foundation.paths import session_dir
+
+        atelier_root = _atelier_root()
+        stats_path = session_dir(atelier_root, "claude", session_id) / "stats.json"
+        try:
+            existing: dict[str, Any] = json.loads(stats_path.read_text("utf-8")) if stats_path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+
+        # High-water mark — keep the largest snapshot seen across compacts.
+        #
+        # Why max, not sum: Claude Code preserves the full transcript after each
+        # /compact (old turns remain below compact_boundary markers), so
+        # read_transcript_stats() already counts every token once via msg_id
+        # dedup.  Summing N growing snapshots inflated cost by up to Nx in
+        # heavy-compact sessions.  With max, pre_compact holds the full session
+        # state at the most recent compact; stop.py then adds only the delta
+        # above what the post-compact transcript already shows (≈ 0 when the
+        # transcript is complete, correct recovery when entries were erased).
+        prev = existing.get("pre_compact_usage")
+        if not isinstance(prev, dict):
+            prev = {}
+        existing["pre_compact_usage"] = {
+            "input_tokens": max(int(prev.get("input_tokens", 0) or 0), stats.input_tokens),
+            "output_tokens": max(int(prev.get("output_tokens", 0) or 0), stats.output_tokens),
+            "cache_read_tokens": max(int(prev.get("cache_read_tokens", 0) or 0), stats.cache_read_tokens),
+            "cache_write_tokens": max(int(prev.get("cache_write_tokens", 0) or 0), stats.cache_write_tokens),
+            "est_cost_usd": max(float(prev.get("est_cost_usd", 0.0) or 0.0), stats.est_cost_usd),
+        }
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(existing, indent=2), "utf-8")
+    except Exception:  # noqa: BLE001
+        pass  # Fail-open — never block the compact
+
+
 def _handle_pre_compact(session_id: str, trigger: str, transcript_path: str = "") -> None:
     """Handle PreCompact: create manifest and capture pre-compaction occupancy.
 
@@ -250,6 +327,9 @@ def _handle_pre_compact(session_id: str, trigger: str, transcript_path: str = ""
     _ensure_compact_manifest(session_id)
     _append_compact_event(session_id, "PreCompact", trigger)
     if transcript_path:
+        # Snapshot cumulative usage BEFORE Claude Code overwrites the transcript.
+        # stop.py will add these pre-compact totals on top of post-compact transcript stats.
+        _checkpoint_pre_compact_usage(session_id, transcript_path)
         occ, model = _context_occupancy(transcript_path)
         if occ > 0:
             state = _read_session_state()
@@ -268,7 +348,7 @@ def _handle_post_compact(session_id: str, trigger: str) -> None:
     payload: dict[str, Any] = {}
     if manifest:
         payload = {
-            "preserve_blocks": manifest.get("preserve_blocks", []),
+            "preserve_playbooks": manifest.get("preserve_playbooks", []),
             "pin_memory": manifest.get("pin_memory", []),
             "utilisation_pct": manifest.get("utilisation_pct", 0.0),
             "should_handover": manifest.get("should_handover", False),
@@ -304,7 +384,15 @@ def main() -> int:
         return 0
 
     try:
-        session_id = _active_session_id()
+        # Prefer the session_id Claude Code sends in the payload — it matches
+        # what the Stop hook will receive for the same session.  Falling back
+        # to _active_session_id() risks a mismatch when SessionStart (which
+        # updates session_state.json) fires *before* PreCompact: the state
+        # file already holds the new post-compact session_id while the payload
+        # and transcript still belong to the old session.  That mismatch causes
+        # the old session's pre_compact_usage to be written under the new
+        # session_id, inflating the new session's stop-hook cost.
+        session_id = str(payload.get("session_id") or "") or _active_session_id()
         if not session_id:
             return 0
 

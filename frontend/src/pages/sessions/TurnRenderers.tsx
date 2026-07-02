@@ -9,13 +9,8 @@ import {
 } from "../../api";
 import { cx } from "../../components/WorkbenchUI";
 import { getFileEditInfo, InlineFileDiff, SideBySideDiff } from "./DiffView";
-import {
-  fmtUsd,
-  fmtTok,
-  parseAt,
-  LONG_OUTPUT_THRESHOLD,
-  getNormName,
-} from "./helpers";
+import { fmtUsd, fmtTok, parseAt } from "../../lib/format";
+import { LONG_OUTPUT_THRESHOLD, getNormName } from "./helpers";
 
 const TEXT_EXTENSIONS = new Set([
   "c",
@@ -139,7 +134,7 @@ function shouldShowArtifactLabel(turn: ConversationEntry): boolean {
 
 function ModelPill({ model }: { model: string }) {
   return (
-    <span className="max-w-full truncate border border-sky-900/30 bg-sky-950/25 px-2 py-0.5 text-[9px] normal-case tracking-normal text-sky-200">
+    <span className="max-w-full truncate border border-sky-900/30 bg-sky-950/25 px-2 py-0.5 text-[10px] normal-case tracking-normal text-sky-200">
       {model}
     </span>
   );
@@ -169,13 +164,13 @@ function TextBlock({
         {text}
       </div>
       {!showFull && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface to-transparent" />
       )}
       {isLong && !forceExpand && (
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-4 border border-neutral-800 px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200 flex items-center gap-1.5"
+          className="mt-4 border border-neutral-800 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200 flex items-center gap-1.5"
         >
           {expanded ? (
             <>
@@ -198,14 +193,14 @@ function TodoCard({ turn }: { turn: ConversationEntry }) {
     <div className="w-full border border-amber-900/30 bg-amber-950/[0.08] p-5 shadow-2xl">
       <div className="mb-4 flex items-center justify-between gap-3 border-b border-amber-900/20 pb-3">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-amber-500/80">
+          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-amber-300">
             Task List
           </div>
           <div className="mt-1 text-sm font-semibold text-amber-100">
             {turn.summary}
           </div>
         </div>
-        <div className="text-[11px] font-mono font-bold text-amber-400">
+        <div className="text-[11px] font-mono font-bold text-amber-300">
           {todos.length} item{todos.length === 1 ? "" : "s"}
         </div>
       </div>
@@ -220,12 +215,12 @@ function TodoCard({ turn }: { turn: ConversationEntry }) {
             </div>
             <div className="flex flex-wrap items-center gap-2 md:justify-end">
               {todo.priority && (
-                <span className="border border-red-900/30 bg-red-950/20 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-red-300">
+                <span className="border border-red-900/30 bg-red-950/20 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.2em] text-red-300">
                   {todo.priority}
                 </span>
               )}
               {todo.status && (
-                <span className="border border-amber-900/30 bg-amber-950/20 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-amber-200">
+                <span className="border border-amber-900/30 bg-amber-950/20 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.2em] text-amber-200">
                   {todo.status}
                 </span>
               )}
@@ -306,14 +301,14 @@ function AttachmentPreview({
 
   if (loading) {
     return (
-      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-500">
+      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400">
         Loading preview...
       </div>
     );
   }
 
   if (error) {
-    return <div className="text-xs text-red-400">{error}</div>;
+    return <div className="text-xs text-red-300">{error}</div>;
   }
 
   if (remoteContent) {
@@ -339,7 +334,7 @@ function AttachmentCard({
     <div className="w-full space-y-3 border border-cyan-900/20 bg-cyan-950/[0.05] p-5 shadow-2xl">
       <div className="flex items-center justify-between gap-3 border-b border-cyan-900/15 pb-3">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-cyan-400/80">
+          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-cyan-300">
             {turn.kind === "pasted_content"
               ? "Pasted Context"
               : "Attached Context"}
@@ -369,22 +364,22 @@ function AttachmentCard({
                     attachment.type}
                 </div>
                 {attachment.path && (
-                  <div className="mt-1 truncate font-mono text-[10px] text-neutral-500">
+                  <div className="mt-1 truncate font-mono text-[10px] text-neutral-400">
                     {attachment.path}
                   </div>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="border border-cyan-900/20 bg-cyan-950/20 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-cyan-200">
+                <span className="border border-cyan-900/20 bg-cyan-950/20 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-200">
                   {attachment.type}
                 </span>
                 {attachment.size_label && (
-                  <span className="text-[10px] font-mono text-neutral-500">
+                  <span className="text-[10px] font-mono text-neutral-400">
                     {attachment.size_label}
                   </span>
                 )}
                 {attachment.line_count !== undefined && (
-                  <span className="text-[10px] font-mono text-neutral-500">
+                  <span className="text-[10px] font-mono text-neutral-400">
                     {attachment.line_count} lines
                   </span>
                 )}
@@ -397,7 +392,7 @@ function AttachmentCard({
                         })}
                         target="_blank"
                         rel="noreferrer"
-                        className="border border-neutral-800 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
+                        className="border border-neutral-800 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
                         title="Inspect compact projection metadata"
                       >
                         Projection
@@ -407,7 +402,7 @@ function AttachmentCard({
                       href={fileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="border border-neutral-800 px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
+                      className="border border-neutral-800 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400 transition hover:border-cyan-500/40 hover:text-cyan-200"
                     >
                       Open
                     </a>
@@ -432,7 +427,7 @@ function SubagentCard({ turn }: { turn: ConversationEntry }) {
     <div className="w-full border border-violet-900/25 bg-violet-950/[0.06] p-5 shadow-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-900/15 pb-3">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-violet-400/80">
+          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-violet-300">
             Subagent Lifecycle
           </div>
           <div className="mt-1 text-sm font-semibold text-neutral-100">
@@ -452,7 +447,7 @@ function SubagentCard({ turn }: { turn: ConversationEntry }) {
         </div>
       )}
       {turn.subagent_id && (
-        <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-500">
+        <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-400">
           {turn.subagent_id}
         </div>
       )}
@@ -475,10 +470,10 @@ function ToolConversationCard({
   );
 
   return (
-    <div className="w-full space-y-4 border border-neutral-800/70 bg-[#0d0d0d] p-5 shadow-2xl">
+    <div className="w-full space-y-4 border border-neutral-800/70 bg-surface-raised p-5 shadow-2xl">
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800/60 pb-3">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-[0.3em] text-neutral-400">
             Tool Call
           </div>
           <div className="mt-1 text-sm font-semibold text-neutral-100">
@@ -488,7 +483,7 @@ function ToolConversationCard({
       </div>
       {turn.arguments !== undefined && (
         <div className="space-y-2">
-          <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400">
             Arguments
           </div>
           <div className="border border-neutral-800 bg-black/30 p-3 text-[11px] font-mono text-neutral-300">
@@ -498,7 +493,7 @@ function ToolConversationCard({
       )}
       {showContent && (
         <div className="space-y-2">
-          <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-400">
             Result
           </div>
           <div className="border border-neutral-800 bg-black/30 p-3 text-[11px] font-mono text-neutral-300">
@@ -533,7 +528,12 @@ export function ConversationTurn({
   const isTool = !isUser && !isAgent && !isThinking;
   const [internalExpanded, setInternalExpanded] = useState(false);
   const isLong = (turn.content?.length || 0) > LONG_OUTPUT_THRESHOLD;
-  const isExpanded = forceExpand || internalExpanded || !isLong;
+  // Reasoning turns default-collapse regardless of length — they're the
+  // noisiest part of the transcript and rarely needed at a glance.
+  const isExpanded = isThinking
+    ? forceExpand || internalExpanded
+    : forceExpand || internalExpanded || !isLong;
+  const showExpandToggle = isThinking ? true : isLong;
   const toolDisplayName = turn.tool_name || getNormName(turn);
   const fileEditInfo = isTool ? getFileEditInfo(turn) : null;
   const showArtifactLabel = shouldShowArtifactLabel(turn);
@@ -561,34 +561,34 @@ export function ConversationTurn({
             className={cx(
               "border-[0.5px] px-2 py-0.5",
               isUser
-                ? "border-emerald-500/20 bg-emerald-500/[0.03] text-emerald-500"
+                ? "border-emerald-500/20 bg-emerald-500/[0.03] text-emerald-300"
                 : isAgent
-                  ? "border-violet-500/20 bg-violet-500/[0.03] text-violet-500"
+                  ? "border-violet-500/20 bg-violet-500/[0.03] text-violet-300"
                   : isThinking
-                    ? "border-cyan-500/20 bg-cyan-500/[0.03] text-cyan-500"
-                    : "border-neutral-800 bg-neutral-900/50 text-neutral-500"
+                    ? "border-cyan-500/20 bg-cyan-500/[0.03] text-cyan-300"
+                    : "border-neutral-800 bg-neutral-900/50 text-neutral-400"
             )}
           >
             {turnKindLabel(turn)}
           </span>
           {toolDisplayName && isTool && !isTodo && !isSubagent && (
-            <span className="truncate text-[11px] normal-case tracking-normal text-amber-400/80">
+            <span className="truncate text-[11px] normal-case tracking-normal text-amber-300">
               {toolDisplayName}
             </span>
           )}
           {turn.model && <ModelPill model={turn.model} />}
           {turn.count && turn.count > 1 && (
-            <span className="border border-neutral-800 bg-neutral-900/60 px-2 py-0.5 text-[9px] text-neutral-400">
+            <span className="border border-neutral-800 bg-neutral-900/60 px-2 py-0.5 text-[10px] text-neutral-400">
               ×{turn.count}
             </span>
           )}
           {turn.source_scope === "subagent" && (
-            <span className="border border-violet-900/20 bg-violet-950/20 px-2 py-0.5 text-[9px] text-violet-300">
+            <span className="border border-violet-900/20 bg-violet-950/20 px-2 py-0.5 text-[10px] text-violet-300">
               subagent
             </span>
           )}
           {showArtifactLabel && (
-            <span className="truncate text-[10px] font-normal normal-case tracking-normal text-neutral-500">
+            <span className="truncate text-[10px] font-normal normal-case tracking-normal text-neutral-400">
               source · {turn.artifact_label}
             </span>
           )}
@@ -606,10 +606,10 @@ export function ConversationTurn({
                   (tok.cache_write ?? 0)
                 : 0;
               return (
-                <div className="text-[9px] font-black tracking-tight text-red-500">
+                <div className="text-[10px] font-black tracking-tight text-red-300">
                   - {fmtUsd(turn.cost)}
                   {totalTok > 0 && (
-                    <span className="ml-1 font-normal text-red-500/60">
+                    <span className="ml-1 font-normal text-red-300">
                       ({fmtTok(totalTok)})
                     </span>
                   )}
@@ -619,7 +619,7 @@ export function ConversationTurn({
           {turn.saved &&
             ((turn.saved.tokens ?? 0) > 0 || (turn.saved.calls ?? 0) > 0) && (
               <span
-                className="text-[9px] font-black tracking-tight text-emerald-400"
+                className="text-[10px] font-black tracking-tight text-emerald-300"
                 title={`Atelier saved ${turn.saved.tokens.toLocaleString()} tokens${turn.saved.calls > 0 ? ` and ${turn.saved.calls} call${turn.saved.calls === 1 ? "" : "s"}` : ""}${turn.saved.usd > 0 ? ` (≈ $${turn.saved.usd.toFixed(4)} at the model's input rate)` : ""}`}
               >
                 ↓{" "}
@@ -627,13 +627,13 @@ export function ConversationTurn({
                   ? fmtUsd(turn.saved.usd)
                   : `${fmtTok(turn.saved.tokens)} tok`}
                 {turn.saved.tokens > 0 && (
-                  <span className="ml-1 font-normal text-emerald-500/70">
+                  <span className="ml-1 font-normal text-emerald-300">
                     ({fmtTok(turn.saved.tokens)})
                   </span>
                 )}
               </span>
             )}
-          <span className="font-normal tracking-tight text-neutral-500 transition-colors group-hover:text-neutral-300">
+          <span className="font-normal tracking-tight text-neutral-400 transition-colors group-hover:text-neutral-300">
             {parseAt(turn.at)?.toLocaleTimeString() ?? ""}
           </span>
         </div>
@@ -672,7 +672,7 @@ export function ConversationTurn({
                 ? "border-violet-900/20 bg-violet-950/[0.03] p-8 text-neutral-200"
                 : isThinking
                   ? "border-cyan-900/10 border-l-2 border-l-cyan-600/40 bg-black/20 p-6"
-                  : "w-full border-neutral-800/60 bg-[#0d0d0d] p-6"
+                  : "w-full border-neutral-800/60 bg-surface-raised p-6"
           )}
         >
           <div
@@ -700,15 +700,15 @@ export function ConversationTurn({
               >
                 {turn.content}
                 {!isExpanded && (
-                  <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-full bg-gradient-to-t from-[#0a0a0a] to-transparent" />
+                  <div className="pointer-events-none absolute bottom-0 left-0 h-16 w-full bg-gradient-to-t from-surface to-transparent" />
                 )}
               </div>
             )}
-            {isLong && !forceExpand && (
+            {showExpandToggle && !forceExpand && (
               <button
                 type="button"
                 onClick={() => setInternalExpanded((value) => !value)}
-                className="mt-6 border border-neutral-800 bg-neutral-900/50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500 transition-all hover:border-neutral-500 hover:text-neutral-200 flex items-center gap-1.5"
+                className="mt-6 border border-neutral-800 bg-neutral-900/50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 transition-all hover:border-neutral-500 hover:text-neutral-200 flex items-center gap-1.5"
               >
                 {internalExpanded ? (
                   <>
@@ -743,24 +743,24 @@ export function ToolCallDetail({
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = forceExpand || internalExpanded;
   return (
-    <div className="overflow-hidden rounded-none border border-neutral-800 bg-[#0d0d0d] group/tool">
+    <div className="overflow-hidden rounded-none border border-neutral-800 bg-surface-raised group/tool">
       <button
         onClick={() => setInternalExpanded(!internalExpanded)}
         className="w-full p-4 text-left transition-all hover:bg-neutral-800/20"
       >
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <span className="bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-blue-500 border border-blue-500/20">
+            <span className="bg-blue-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-blue-300 border border-blue-500/20">
               SYSTEM_TOOL
             </span>
-            <span className="text-xs font-mono font-bold tracking-wide text-neutral-400 transition-colors group-hover/tool:text-blue-400">
+            <span className="text-xs font-mono font-bold tracking-wide text-neutral-400 transition-colors group-hover/tool:text-blue-300">
               {tool.count > 1 && (
-                <span className="mr-2 text-blue-500/80">{tool.count}x</span>
+                <span className="mr-2 text-blue-300">{tool.count}x</span>
               )}
               {tool.name}
             </span>
           </div>
-          <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/tool:text-neutral-300 flex items-center gap-1.5">
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 transition-colors group-hover/tool:text-neutral-300 flex items-center gap-1.5">
             {expanded ? (
               <>
                 Collapse <ChevronUp size={10} />
@@ -777,20 +777,20 @@ export function ToolCallDetail({
         <div className="space-y-6 border-t border-neutral-800/60 bg-black/60 p-6 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)]">
           {tool.args && (
             <div className="space-y-2">
-              <div className="text-[8px] font-black uppercase tracking-[0.3em] text-neutral-500">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
                 Parameters
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap border border-neutral-800/40 bg-[#080808] p-4 text-[10px] font-mono text-neutral-500">
+              <pre className="overflow-x-auto whitespace-pre-wrap border border-neutral-800/40 bg-surface-code p-4 text-[10px] font-mono text-neutral-400">
                 {JSON.stringify(tool.args, null, 2)}
               </pre>
             </div>
           )}
           {tool.result_summary && (
             <div className="space-y-2">
-              <div className="text-[8px] font-black uppercase tracking-[0.3em] text-neutral-500">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
                 Outcome
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap border border-neutral-800/40 bg-[#080808] p-4 text-[10px] font-mono text-emerald-500/60">
+              <pre className="overflow-x-auto whitespace-pre-wrap border border-neutral-800/40 bg-surface-code p-4 text-[10px] font-mono text-emerald-300">
                 {tool.result_summary}
               </pre>
             </div>
@@ -817,17 +817,20 @@ export function CommandDetail({
   const isObj = typeof command !== "string";
   const text = isObj ? command.command : command;
   const rc = isObj ? command.exit_code : null;
-  const ok = rc === 0 || rc === null;
+  // Omitted exit_code (undefined) is exactly as unknown as an explicit
+  // null — neither means failure, so neither should render red.
+  const unknownExit = rc === null || rc === undefined;
+  const ok = unknownExit || rc === 0;
 
   return (
-    <div className="overflow-hidden rounded-none border border-neutral-800 bg-[#0d0d0d] group/cmd">
+    <div className="overflow-hidden rounded-none border border-neutral-800 bg-surface-raised group/cmd">
       <button
         onClick={() => setInternalExpanded(!internalExpanded)}
         className="w-full p-4 text-left transition-all hover:bg-neutral-800/20"
       >
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <span className="border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-amber-600">
+            <span className="border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">
               SHELL_CMD
             </span>
             <span className="truncate font-mono text-xs text-amber-200/80 transition-colors group-hover/cmd:text-amber-100">
@@ -839,13 +842,17 @@ export function CommandDetail({
               <span
                 className={cx(
                   "text-[10px] font-black tracking-widest font-mono",
-                  ok ? "text-emerald-600" : "text-red-600"
+                  unknownExit
+                    ? "text-neutral-400"
+                    : ok
+                      ? "text-emerald-600"
+                      : "text-red-600"
                 )}
               >
                 EXIT_{rc ?? "?"}
               </span>
             )}
-            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500 transition-colors group-hover/cmd:text-neutral-300 flex items-center gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 transition-colors group-hover/cmd:text-neutral-300 flex items-center gap-1.5">
               {expanded ? (
                 <>
                   Hide <ChevronUp size={10} />
@@ -863,20 +870,20 @@ export function CommandDetail({
         <div className="space-y-4 border-t border-neutral-800/60 bg-black/60 p-6 text-[10px] font-mono shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)]">
           {command.stdout && (
             <div className="space-y-2">
-              <div className="text-[8px] font-black uppercase tracking-[0.3em] text-neutral-500">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
                 stdout
               </div>
-              <pre className="whitespace-pre-wrap border border-neutral-800/30 bg-[#080808] p-3 text-neutral-500">
+              <pre className="whitespace-pre-wrap border border-neutral-800/30 bg-surface-code p-3 text-neutral-400">
                 {command.stdout}
               </pre>
             </div>
           )}
           {command.stderr && (
             <div className="space-y-2">
-              <div className="text-[8px] font-black uppercase tracking-[0.3em] text-red-700">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-red-700">
                 stderr
               </div>
-              <pre className="whitespace-pre-wrap border border-red-900/20 bg-red-950/[0.05] p-3 text-red-500/50">
+              <pre className="whitespace-pre-wrap border border-red-900/20 bg-red-950/[0.05] p-3 text-red-300">
                 {command.stderr}
               </pre>
             </div>

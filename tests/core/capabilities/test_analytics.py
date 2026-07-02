@@ -46,12 +46,8 @@ def test_upsert_and_recent_round_trip(tmp_path: Path) -> None:
 
 def test_summary_stats_accumulates(tmp_path: Path) -> None:
     store = AnalyticsStore(path=tmp_path / "a.db")
-    store.upsert_session(
-        _record("sess-1", started_at="2024-01-01T00:00:00", cache_efficiency_pct=60.0)
-    )
-    store.upsert_session(
-        _record("sess-2", started_at="2024-01-02T00:00:00", cache_efficiency_pct=80.0)
-    )
+    store.upsert_session(_record("sess-1", started_at="2024-01-01T00:00:00", cache_efficiency_pct=60.0))
+    store.upsert_session(_record("sess-2", started_at="2024-01-02T00:00:00", cache_efficiency_pct=80.0))
     stats = store.summary_stats()
     assert stats["total_sessions"] == 2
     assert stats["total_cost_usd"] == 3.0

@@ -75,9 +75,7 @@ def _write_fixture_repo(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "tests" / "test_auth.py").write_text(
-        "from src.auth import login\n\n"
-        "def test_login() -> None:\n"
-        "    assert login('x', 'y').startswith('session:')\n",
+        "from src.auth import login\n\ndef test_login() -> None:\n    assert login('x', 'y').startswith('session:')\n",
         encoding="utf-8",
     )
 
@@ -115,6 +113,7 @@ def _baseline_manual_workflow(repo_root: Path, query: str) -> str:
 def test_code_explore_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "auth login session"
 
     t0 = time.perf_counter()

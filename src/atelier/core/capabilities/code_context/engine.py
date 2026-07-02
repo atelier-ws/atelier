@@ -3,31 +3,41 @@
 from __future__ import annotations
 
 import ast
+import atexit
 import concurrent.futures
 import contextlib
-import difflib
 import fnmatch
 import hashlib
+import itertools
 import json
 import logging
+import math
 import multiprocessing
 import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
-import warnings
 import weakref
-from bisect import bisect_right
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX platforms
+    fcntl = None  # type: ignore[assignment]
+
+from atelier.core.capabilities.code_context.ann_symbol_index import (
+    SymbolAnnIndex,
+    ensure_symbol_vector_schema,
+)
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
     BudgetPacker,
@@ -41,17 +51,18 @@ from atelier.core.capabilities.code_context.call_graph import (
     build_call_graph_payload,
     traverse_call_graph,
 )
+from atelier.core.capabilities.code_context.call_graph_centrality import compute_call_graph_centrality
 from atelier.core.capabilities.code_context.embedding import (
     SearchMode,
     SemanticSearchRanker,
     resolve_search_mode,
     semantic_candidate_limit,
 )
+from atelier.core.capabilities.code_context.generated_files import is_generated_path
 from atelier.core.capabilities.code_context.intel_store import ProviderHealth, SymbolIntelStore
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
     CrossLangReference,
-    ImpactResult,
     IndexedFileRecord,
     IndexStats,
     RouteRecord,
@@ -60,13 +71,12 @@ from atelier.core.capabilities.code_context.models import (
     UsageReference,
 )
 from atelier.core.capabilities.code_context.output_policy import (
-    TRUNCATION_MARKER,
     hard_cap_chars,
     resolve_output_policy,
 )
 from atelier.core.capabilities.code_context.rerank import SearchReranker
 from atelier.core.capabilities.repo_map import build_repo_map
-from atelier.core.capabilities.repo_map.budget import count_tokens
+from atelier.core.capabilities.repo_map.budget import count_tokens, estimate_tokens
 from atelier.core.capabilities.repo_map.graph import iter_source_files, should_skip_relative_path
 from atelier.core.foundation.paths import default_store_root
 from atelier.core.service.telemetry import emit_product_local
@@ -78,11 +88,49 @@ from atelier.infra.code_intel.astgrep import (
     PatternSearchResult,
 )
 from atelier.infra.code_intel.cross_lang import CrossLangEdge, CrossLangEdgeStore
-from atelier.infra.internal_llm.exceptions import OllamaUnavailable
-from atelier.infra.tree_sitter.tags import detect_language, extract_tags
+from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
+
+# watchdog for OS-native file watching (inotify/FSEvents/ReadDirectoryChangesW).
+# Falls back gracefully when the package is not installed.
+try:
+    from watchdog.events import (
+        FileSystemEvent,
+        FileSystemEventHandler,
+    )
+    from watchdog.observers import Observer
+except ImportError:
+    Observer = None  # type: ignore[assignment]
+    FileSystemEventHandler = object  # type: ignore[assignment]
 
 if TYPE_CHECKING:
+    from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
+
+
+def _query_is_natural_language(query: str) -> bool:
+    """Return True when the query looks like natural language -> activate semantic.
+
+    Symbol-name queries (short, <= 2 meaningful tokens) skip semantic so lexical
+    can dominate.  Multi-word sentence queries activate it so the embedder can
+    contribute.  Override via ATELIER_SEMANTIC_MODE=always|off|auto (default auto).
+    """
+    _mode = os.environ.get("ATELIER_SEMANTIC_MODE", "auto").strip().lower()
+    if _mode == "always":
+        return True
+    if _mode == "off":
+        return False
+    # auto: word count heuristic
+    stripped = query.strip()
+    # Strip common leading keywords ("def ", "class ", "async def ") that appear
+    # in definition-gold queries but don't make them natural language.
+    for _kw in ("async def ", "def ", "class "):
+        if stripped.lower().startswith(_kw):
+            stripped = stripped[len(_kw) :]
+            break
+    words = stripped.split()
+    # >= 4 words after stripping the keyword -> treat as natural-language query
+    return len(words) >= 4
+
 
 _MAX_FILE_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
@@ -101,9 +149,58 @@ def _shared_db_lock(db_path: Path) -> threading.RLock:
         return lock
 
 
+class _ReusedConnection:
+    """Wraps a shared sqlite connection so per-call ``with self._connect()`` and
+    ``contextlib.closing(...)`` blocks reuse it instead of opening a new one.
+    ``close()`` and ``__exit__`` are no-ops -- the owning ``_reuse_connection``
+    scope commits and closes the real connection once. Confined to a single
+    thread via the engine's thread-local, matching sqlite's per-thread rule."""
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        object.__setattr__(self, "_conn", conn)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(object.__getattribute__(self, "_conn"), name, value)
+
+    def __enter__(self) -> sqlite3.Connection:
+        conn: sqlite3.Connection = object.__getattribute__(self, "_conn")
+        return conn
+
+    def __exit__(self, *exc: object) -> Literal[False]:
+        # Mirror sqlite3.Connection.__exit__: commit on success / rollback on error
+        # so an inner ``with self._connect()`` write block releases its lock promptly
+        # instead of holding it open for the whole reuse scope. The connection itself
+        # stays open (that's the reuse); only close() is neutralized.
+        #
+        # Skip the commit/rollback when no transaction is pending (i.e. the inner
+        # block was read-only).  ``conn.commit()`` on a connection with no pending
+        # changes still acquires the write lock briefly in WAL mode, which can
+        # block for the full busy_timeout (~30 s) when another process holds the
+        # write lock (e.g. atelier autosync on the same DB).  The outer
+        # ``_reuse_connection`` scope handles the final commit/close.
+        conn: sqlite3.Connection = object.__getattribute__(self, "_conn")
+        if not conn.in_transaction:
+            return False
+        if exc[0] is None:
+            conn.commit()
+        else:
+            conn.rollback()
+        return False
+
+    def close(self) -> None:
+        return None
+
+
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _PRECISE_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# Code-query leading keywords used by the AND-channel guard in _fts_and_query.
+_CODE_LEADING_KW = frozenset({"def", "class", "import", "from", "return", "async", "yield"})
 _SINCE_RELATIVE_RE = re.compile(r"^(?P<amount>\d+)(?P<unit>[dwmy])$")
 _JS_IMPORT_RE = re.compile(
     r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))"
@@ -178,10 +275,21 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
 _SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score", "commit_sha"])
 _LINEAGE_INDEX_VERSION = 2
 _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
+
+# --- File-watcher constants ---
+# Minimal set of directories that are *never* source code, regardless of .gitignore.
+# The watcher relies primarily on .gitignore (loaded via pathspec) for file filtering;
+# this is just a fast-path guard for paths that git doesn't even track.
+_WATCHER_HARD_SKIP_DIRS: frozenset[str] = frozenset({".git"})
+# Source file extensions to watch, built from the canonical language registry.
+_WATCHER_SOURCE_EXTENSIONS: frozenset[str] = frozenset(
+    ext
+    for lang in __import__("atelier.infra.code_intel.languages", fromlist=["LANGUAGES"]).LANGUAGES
+    for ext in lang.extensions
+)
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
 )
-_OUTLINE_ESSENTIAL_KEYS = ["file_path", "name"]
 _FILES_ESSENTIAL_KEYS = ["file_path"]
 _FILES_OPTIONAL_KEYS = ["top_symbols", "symbol_count", "language"]
 _ROUTES_ESSENTIAL_KEYS = ["framework", "method", "route", "file_path", "line", "provenance"]
@@ -213,27 +321,242 @@ _CONTEXT_ESSENTIAL_KEYS = [
 _EXPLORE_ESSENTIAL_KEYS = [
     "query",
     "entry_points",
+    "files",
+    "exact_match",
     "truncated",
     "provenance",
 ]
-_EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
-_EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
-_IMPACT_ESSENTIAL_KEYS = [
-    "target",
-    "target_type",
-    "file_path",
-    "affected_files",
-    "direct_importers",
-    "transitive_importers",
-    "affected_tests",
-    "risk_level",
-    "provenance",
+# `files` is essential (never dropped by the packer). Budget pressure is handled
+# earlier: multi-file explores drop whole files, single-file explores trim source
+# sections -- so the renderer always has content to display.
+_EXPLORE_OPTIONAL_KEYS = [
+    "relationships",
+    "additional_relevant_files",
+    "skeletonized",
+    "skeleton_tokens_saved",
 ]
-_IMPACT_OPTIONAL_KEYS = ["dead_code_candidates"]
+_EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
+
+# Index-free sibling skeletonization for tool_explore: when an explore result
+# pulls >=3 same-kind symbols that share a name affix (e.g. *Embedder, *Resolver),
+# the highest-scored member is kept full and the rest render signatures-only.
+# Heuristic over the already-selected symbols -- no new index queries.
+_SKELETON_KINDS = frozenset({"class", "struct", "interface", "trait", "protocol", "enum", "method", "function"})
+_SKELETON_STOPWORDS = frozenset(
+    {
+        "make",
+        "handle",
+        "data",
+        "base",
+        "util",
+        "utils",
+        "test",
+        "tests",
+        "impl",
+        "main",
+        "value",
+        "values",
+        "name",
+        "names",
+        "type",
+        "types",
+        "node",
+        "item",
+        "items",
+        "list",
+        "dict",
+        "async",
+        "await",
+        "none",
+        "true",
+        "false",
+        "self",
+        "func",
+        "call",
+        "args",
+        "kwargs",
+        "init",
+        "build",
+        "create",
+        "update",
+        "delete",
+        "result",
+        "config",
+        "client",
+        "server",
+        "model",
+        "models",
+        "error",
+        "errors",
+    }
+)
+_SKELETON_MIN_FAMILY = 3
+_SKELETON_MIN_BODY_LINES = 12
+# Family-completion retrieval: surface sibling families that name-ranked search
+# misses (FTS tokenization splits camelCase, so 'embedder' finds the base class
+# but not 'OpenAIEmbedder'). Bounded substring lookups over the symbol index.
+_EXPLORE_FAMILY_PROBE_SYMBOLS = 12
+_EXPLORE_FAMILY_TOTAL_CAP = 12
+_EXPLORE_FAMILY_PER_FAMILY_CAP = 8
+# Explore relevance floor: drop ranked symbols scoring below this fraction of the
+# top hit (unless pinned -- exact match, recall anchor, or seed file). Bites only
+# when a query has a dominant hit (exact symbol >> lexical sub-token co-matches);
+# uniform low-score concept queries leave the floor near zero, keeping everything.
+_EXPLORE_SCORE_FLOOR_FRAC = 0.30
+# Path-quality filters for explore results.
+# Hard-remove: minified/vendor artefacts are never useful navigation targets.
+_MINIFIED_FILE_RE = re.compile(r"\.min\.(js|css)$", re.IGNORECASE)
+_VENDOR_PATH_RE = re.compile(r"(?:^|/)(?:vendor|node_modules|dist|__pycache__)/", re.IGNORECASE)
+# Soft-penalise: test/spec files rank below implementation files unless the
+# query is explicitly about tests.
+_TEST_PATH_RE = re.compile(
+    r"(?:^|/)tests?/|/test_[^/]+$|_test\.(?:py|js|ts|rb|go)$|(?:^|/)spec/",
+    re.IGNORECASE,
+)
+_TEST_SCORE_PENALTY = 0.75  # multiply test-file scores by this when query doesn't mention tests
+# Definitional kinds outrank trivial variables/constants when explore decides which
+# files survive the file/budget caps -- a class/function is higher signal than a const.
+_DEFINITION_KINDS = frozenset(
+    {"class", "struct", "interface", "trait", "protocol", "enum", "function", "method", "type_alias", "namespace"}
+)
+# Kinds probed by query-driven family completion (the definition families a query names).
+_QUERY_PROBE_KINDS = ("class", "function", "method")
+
+
+def _explore_skeleton_enabled() -> bool:
+    """Whether tool_explore sibling skeletonization is active (env override)."""
+    import os
+
+    value = os.environ.get("ATELIER_EXPLORE_SKELETON")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+# Callee short-names that resolve to language builtins / ubiquitous container
+# methods. As callees they have no navigable definition and only add noise +
+# tokens, so they are dropped when no same-language definition is indexed.
+_PY_CALLEE_NOISE: frozenset[str] = frozenset(
+    {
+        "abs",
+        "all",
+        "any",
+        "ascii",
+        "bin",
+        "bool",
+        "bytearray",
+        "bytes",
+        "callable",
+        "chr",
+        "classmethod",
+        "compile",
+        "complex",
+        "delattr",
+        "dict",
+        "dir",
+        "divmod",
+        "enumerate",
+        "eval",
+        "exec",
+        "filter",
+        "float",
+        "format",
+        "frozenset",
+        "getattr",
+        "globals",
+        "hasattr",
+        "hash",
+        "help",
+        "hex",
+        "id",
+        "input",
+        "int",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "len",
+        "list",
+        "locals",
+        "map",
+        "max",
+        "memoryview",
+        "min",
+        "next",
+        "object",
+        "oct",
+        "open",
+        "ord",
+        "pow",
+        "print",
+        "property",
+        "range",
+        "repr",
+        "reversed",
+        "round",
+        "set",
+        "setattr",
+        "slice",
+        "sorted",
+        "staticmethod",
+        "str",
+        "sum",
+        "super",
+        "tuple",
+        "type",
+        "vars",
+        "zip",
+        "append",
+        "extend",
+        "insert",
+        "pop",
+        "remove",
+        "clear",
+        "copy",
+        "get",
+        "keys",
+        "values",
+        "items",
+        "update",
+        "setdefault",
+        "add",
+        "discard",
+        "join",
+        "split",
+        "rsplit",
+        "splitlines",
+        "strip",
+        "lstrip",
+        "rstrip",
+        "replace",
+        "startswith",
+        "endswith",
+        "lower",
+        "upper",
+        "title",
+        "encode",
+        "decode",
+        "read",
+        "write",
+        "readline",
+        "readlines",
+        "close",
+        "flush",
+        "seek",
+        "format_map",
+        "index",
+        "count",
+        "sort",
+        "reverse",
+        "find",
+        "rfind",
+        "group",
+    }
+)
+
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "provenance"]
 _USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
-_PATTERN_ESSENTIAL_KEYS = ["snippet"]
-_PATTERN_OPTIONAL_KEYS = ["file_path", "line", "captures", "column", "end_line", "end_column"]
+_PATTERN_ESSENTIAL_KEYS = ["file_path", "line", "snippet"]
+_PATTERN_OPTIONAL_KEYS = ["captures", "column", "end_line", "end_column"]
 _STATUS_ESSENTIAL_KEYS = [
     "repo_id",
     "repo_root",
@@ -301,9 +624,7 @@ _CACHE_TOOL_ALIASES = {
     "routes": "code.routes",
     "search": "code.search",
     "symbol": "code.symbol",
-    "outline": "code.outline",
     "context": "code.context",
-    "impact": "code.impact",
     "usages": "code.usages",
     "callers": "code.callers",
     "callees": "code.callees",
@@ -314,15 +635,12 @@ _OPERATION_TOKEN_CAPS = {
     "index": 80,
     "search": 800,
     "symbol": 800,
-    "outline": 150,
     "pattern": 800,
     "callers": 700,
     "callees": 300,
     "usages": 700,
-    "impact": 150,
     "context": 2400,
     "blame": 50,
-    "hover": 190,
     "cache_invalidate": 35,
 }
 # Map internal field names to shortened MCP output names to reduce token bloat.
@@ -440,19 +758,79 @@ class _FileIndexData:
     language: str
     content_hash: str
     size_bytes: int
+    text_lines: list[tuple[int, str]]
     symbols: list[_ExtractedSymbol]
     symbol_sources: list[str]  # source slices for FTS (parallel to symbols)
     imports: list[tuple[str, str | None]]
     references: list[_IndexedReference]
     call_edges: list[_IndexedCallEdge]
+    mtime_ns: int = 0
+
+
+class IndexLockTimeout(RuntimeError):
+    """A required index-write lock could not be acquired before the timeout.
+
+    Raised only when a caller passes ``require_lock=True`` (e.g. the CLI
+    ``atelier code index`` prewarm), so a contended/failed build fails loudly
+    instead of silently returning a stale snapshot.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(
+            f"index-write lock not acquired for {db_path}: another atelier process "
+            "is indexing. Increase ATELIER_INDEX_LOCK_TIMEOUT_S or retry."
+        )
+
+
+def _index_lock_timeout_s() -> float:
+    """Seconds a blocking index-write-lock acquisition waits before giving up.
+
+    Defaults to 10s (unchanged); override via ATELIER_INDEX_LOCK_TIMEOUT_S for
+    long prewarm builds that must win the lock before serving tool calls.
+    """
+    raw = os.environ.get("ATELIER_INDEX_LOCK_TIMEOUT_S")
+    if not raw:
+        return 10.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 10.0
 
 
 def _repo_id(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
 
 
+# Above this many bytes, skip vector_quantize_preload and let the TurboQuant scan
+# read the quantized data via mmap (reclaimable, file-backed) instead of pinning it
+# in anonymous RAM. ~960 MB for linux's 1.24Mx1536 store stays under the cap.
+_SQLITE_VEC_PRELOAD_MAX_BYTES = 2 * 1024**3
+
+# One-element memo: [] = not probed yet, [path|None] = resolved once per process.
+_sqlite_vector_ext_memo: list[str | None] = []
+
+
+def _sqlite_vector_extension_path() -> str | None:
+    """Path to the sqlite_vector loadable extension, or None when the optional
+    ``sqliteai-vector`` package is absent. SQLite appends the platform shared-lib
+    suffix to the bare 'vector' stem at load time."""
+    if _sqlite_vector_ext_memo:
+        return _sqlite_vector_ext_memo[0]
+    path: str | None
+    try:
+        import importlib.resources
+
+        path = str(importlib.resources.files("sqlite_vector.binaries") / "vector")
+    except (ImportError, OSError):
+        path = None
+    _sqlite_vector_ext_memo.append(path)
+    return path
+
+
 def _default_db_path(repo_root: Path) -> Path:
-    workspace_hash = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    from atelier.core.foundation.paths import workspace_key
+
+    workspace_hash = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / workspace_hash / "code_context.sqlite"
 
 
@@ -471,10 +849,6 @@ def _line_offsets(text: str) -> list[int]:
     return offsets
 
 
-def _byte_to_line(offsets: list[int], byte_offset: int) -> int:
-    return max(1, bisect_right(offsets, byte_offset))
-
-
 def _safe_relpath(repo_root: Path, path: Path) -> str:
     resolved = path.resolve()
     try:
@@ -483,35 +857,711 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
         return str(resolved)
 
 
+# IDF pruning cap for the FTS OR/prefix channels: a query token present in more
+# than this fraction of all indexed symbols (e.g. "get", "name", "field") is
+# non-discriminative -- it contributes a huge bm25 posting-list scan while the
+# rarer tokens decide the match. Such tokens are dropped from the FTS MATCH (see
+# CodeContextEngine._discriminative_fts_terms). ~10% is the elbow where common
+# code tokens start dominating scan cost. The absolute floor disables pruning on
+# small corpora: a posting list under ~1500 docs scans in a few ms, so there is
+# nothing to prune, and a percentage cap on a tiny repo would wrongly drop tokens
+# present in only 2-3 symbols (breaking recall on small indexes).
+_FTS_COMMON_TERM_DF_FRACTION = 0.10
+_FTS_COMMON_TERM_DF_FLOOR = 1500
+# Anchor-df cap for the substring/path trigram channels (a MUCH tighter bound than
+# the FTS OR/prefix cap above). A token with df over this has large trigram
+# postings, so `t.name LIKE '%anchor%'` scans 100s of ms on a big repo to surface a
+# few non-token substring matches -- while FTS bm25 already ranked the whole-token
+# match in ~15ms. Below it, the substring scan is a few ms and catches partial-token
+# substrings the FTS tokenizer splits ('mbedde' in 'Embedder'). Override via env.
+_SUBSTRING_ANCHOR_DF_CAP = int(os.environ.get("ATELIER_SUBSTRING_ANCHOR_DF_CAP", "500"))
+# "Semantic additive only" fusion gate for the hybrid symbol-search path: freeze
+# the top-K lexical(+graph) hits so the semantic channel can only surface symbols
+# lexical missed -- it never demotes a symbol lexical already ranked in the top-K.
+# 0 disables the gate (prior RRF behaviour); see SemanticSearchRanker.reciprocal_rank_fuse.
+_SEMANTIC_ADDITIVE_TOP_K = 5
+# Cap the FTS OR/prefix query to the rarest few discriminative terms.  The most
+# selective tokens carry the match; extra mid-frequency tokens ("data", "set")
+# only enlarge the bm25 posting-list scan.  Bounds FTS latency regardless of how
+# many tokens a messy multi-clause/regex query produces.  Bounded by TOTAL bm25
+# posting-list work (sum of doc-frequencies), rarest-first, rather than a flat
+# term count: a small repo keeps every cheap term (no recall loss), while a big
+# repo stops before a mid-frequency term would blow the budget.
+# Maximum cumulative document-frequency across all OR-query terms.  When a term
+# would push the total above this, it is dropped.  Capping at ~500 prevents a
+# handful of moderately-common tokens (e.g. "import", df≈1000 in django) from
+# forcing FTS5 to score thousands of rows when rarer, more-discriminative terms
+# are already present.  The budget never drops ALL terms: the first (rarest) term
+# is always kept regardless of its df (see _discriminative_fts_terms).
+_FTS_DF_BUDGET = 500
+
+# Thread pool for parallel FTS channel execution in _search_symbols_local.
+# SQLite's C extension releases the GIL during query execution, so threads
+# achieve true CPU-level parallelism for I/O-bound FTS reads without the
+# process-startup overhead or fork-while-threaded deadlock risks of a
+# ProcessPoolExecutor.  Each thread opens its own read connection (WAL mode
+# makes concurrent readers lock-free).
+_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=16,
+)
+
+# Persistent thread pool for the three V6 HEF channels (_hef_exact_symbol_candidates,
+# _hef_anchor_zoekt_candidates, _hef_line_fts_candidates).  Module-level so threads
+# are reused across queries: no spawn/join overhead per call, and the 200ms deadline
+# in _fused_explore_hybrid actually releases the caller immediately instead of
+# waiting for shutdown(wait=True).
+_HEF_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=3, thread_name_prefix="atelier-hef"
+)
+
+
+# Per-statement wall-clock deadline for a single search channel.  The caller's
+# `_fut.result(timeout=8.0)` only abandons the WAIT -- without this, the SQLite
+# query keeps running in the worker thread (a leading-wildcard LIKE '%term%'
+# full-scans a huge symbol_trigram table for 15-20s on linux-sized repos) and
+# piles up behind later queries.  A progress handler that trips at the deadline
+# ABORTS the running statement, so a pathological scan self-cancels.  Kept below
+# the 8s caller wait so the channel returns [] cleanly before that fires.
+_SEARCH_CHANNEL_DEADLINE_S = float(os.environ.get("ATELIER_SEARCH_CHANNEL_DEADLINE_S", "2.5"))
+
+# Tight deadline for the low-priority recall-supplement channels (substring +
+# path trigram scans, base 820-860).  Their cost is set by trigram POSTING size,
+# not token df: a common substring like 'include' has huge 3-gram postings
+# ('inc','ncl'), so the LIKE scans 300-500ms to surface a few non-token matches
+# the FTS bm25 channel already ranked in ~15ms.  A rare anchor's scan finishes in
+# <5ms, so this bound only ever fires on the non-discriminative case, where the
+# channel adds no recall anyway -- it self-aborts (-> empty) instead of dominating
+# p100.  Override via ATELIER_SUPPLEMENT_CHANNEL_DEADLINE_S.
+_SUPPLEMENT_CHANNEL_DEADLINE_S = float(os.environ.get("ATELIER_SUPPLEMENT_CHANNEL_DEADLINE_S", "0.08"))
+
+
+def _run_search_channel(
+    db_path: Path, sql: str, params: tuple[Any, ...], deadline_s: float = _SEARCH_CHANNEL_DEADLINE_S
+) -> list[dict[str, Any]]:
+    """Execute one FTS/trigram search channel on a dedicated read connection.
+
+    Called from worker threads in _SEARCH_CHANNEL_EXECUTOR so that all five
+    channels of _search_symbols_local run concurrently.  Each invocation opens
+    its own SQLite connection (WAL mode makes reader-reader access lock-free)
+    and closes it on return.  SQLite's C extension releases the GIL during
+    query execution, so threads achieve genuine CPU-level parallelism for
+    these I/O-bound FTS reads.
+    sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
+    treated as an empty result set so it never crashes the caller.
+    Returns dicts (not sqlite3.Row) for consistent dict-based result handling.
+
+    A SQLite progress handler enforces _SEARCH_CHANNEL_DEADLINE_S as a real
+    statement timeout: sqlite3.connect(timeout=...) is only a busy-lock wait, so
+    without this a slow full-scan (leading-wildcard LIKE on a large trigram
+    table) would run for tens of seconds even after the caller has timed out.
+    Returning non-zero from the handler raises OperationalError, caught below as
+    an empty channel -> graceful degradation instead of a stuck worker thread.
+    """
+    conn = sqlite3.connect(
+        f"file:{db_path}?mode=ro",
+        uri=True,
+        timeout=5.0,
+        check_same_thread=False,
+    )
+    conn.row_factory = sqlite3.Row
+    _deadline = time.monotonic() + deadline_s
+    # Checked every ~50k VM ops: frequent enough to abort a runaway scan within
+    # milliseconds of the deadline, rare enough to add no measurable overhead to
+    # the common <200ms query.
+    conn.set_progress_handler(lambda: 1 if time.monotonic() > _deadline else 0, 50_000)
+    try:
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def _fts_or_query_from_terms(terms: list[str]) -> str:
+    return " OR ".join(f'"{term[:64]}"' for term in terms[:12] if term)
+
+
+def _fts_prefix_query_from_terms(terms: list[str]) -> str:
+    return " OR ".join(f'"{term[:64]}"*' for term in terms[:12] if term)
+
+
 def _safe_fts_query(query: str) -> str:
-    terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(term[:64] for term in terms[:12])
+    # Quote each term as an FTS5 string literal so natural-language queries whose
+    # words happen to be FTS operators (or/and/near/not) are treated as literal
+    # terms instead of breaking the MATCH grammar. Terms are [A-Za-z0-9_]+ only,
+    # so no embedded-quote escaping is required. Use the cleaned query terms
+    # (snake/camel subtokens, code/regex noise dropped) so messy queries
+    # (`def foo|def bar`, `^class Baz`) match on real identifiers, not "def".
+    return _fts_or_query_from_terms(_query_terms(query))
 
 
 def _fts_prefix_query(query: str) -> str:
-    terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(f"{term[:64]}*" for term in terms[:12] if term)
+    return _fts_prefix_query_from_terms(_query_terms(query))
+
+
+def _fts_and_query(query: str) -> str:
+    """FTS5 implicit-AND query for code/identifier queries with 2+ distinctive terms.
+
+    Multi-term AND finds symbols whose indexed text contains ALL distinctive terms,
+    a stronger hit signal than the OR fallback.  Guards against natural-language
+    queries (e.g. "create login token for authenticated user") that would otherwise
+    match a symbol's docstring text and blur the lexical/semantic boundary.  Only
+    fires when the query contains structural code markers: pipe separators,
+    underscores, CamelCase terms, ALL_CAPS identifiers, or a code-keyword prefix.
+    Returns empty string when the guard rejects the query or fewer than two
+    distinctive terms (length ≥ 4) are present.
+    """
+    if os.environ.get("ABLATE_B"):  # ablation switch (benchmark attribution only)
+        return ""
+    terms_raw = _FTS_TERM_RE.findall(query)
+    if not terms_raw:
+        return ""
+
+    # Natural-language guard: skip the AND channel unless the query has at least one
+    # structural code marker.  Without |/_/CamelCase/ALL_CAPS/code-kw, the query is
+    # almost certainly a concept description, not a code/identifier search.
+    if "|" not in query and "_" not in query:
+        has_code_kw = terms_raw[0].lower() in _CODE_LEADING_KW
+        has_mixed_case = any(any(c.isupper() for c in t) and any(c.islower() for c in t) for t in terms_raw)
+        has_all_caps = any(len(t) >= 4 and t.isupper() for t in terms_raw)
+        # n-gram compound tokens (e.g. 'donothingaction', 'preprocessable') are
+        # always code-derived and never appear in natural-language docstrings.
+        # The n-gram pipeline strips underscores so they won't have |/_ markers;
+        # use a minimum length of 12 chars as a reliable compound-token signal.
+        has_long_compound = len(terms_raw) >= 2 and len(terms_raw[0]) >= 12
+        if not (has_code_kw or has_mixed_case or has_all_caps or has_long_compound):
+            return ""
+
+    seen_lower: set[str] = set()
+    distinctive: list[str] = []
+    for t in terms_raw:
+        tl = t.lower()
+        if len(t) >= 4 and tl not in seen_lower:
+            seen_lower.add(tl)
+            distinctive.append(t)
+    if len(distinctive) < 2:
+        return ""
+    # FTS5 implicit AND: space-separated quoted phrases without the OR keyword.
+    return " ".join(f'"{t[:64]}"' for t in distinctive[:4])
+
+
+def _ngram_tokens(name: str) -> list[str]:
+    """Stripped-join n-gram tokens for a compound identifier.
+
+    The FTS5 unicode61 tokenizer splits on ``_`` so 'get_timezone' stored in
+    the index is silently broken into 'get' + 'timezone' -- the compound form
+    is lost.  By joining sub-tokens WITHOUT a separator we get tokens that the
+    tokenizer treats as a single unit::
+
+        _get_timezone_name
+        → pieces: ['get', 'timezone', 'name']
+        → bigrams: 'gettimezone', 'timezonename'
+        → full:    'gettimezonename'
+
+    These are highly specific (df ≈ 1-3) so they are cheap to scan and give
+    precise BM25 signal.  Used both when indexing symbols and when extracting
+    query terms, so the two sides stay in sync.
+    """
+    pieces: list[str] = []
+    for raw in _FTS_TERM_RE.findall(name):
+        for camel in _CAMEL_BOUNDARY_RE.split(raw):
+            for piece in camel.split("_"):
+                p = piece.strip().lower()
+                if p:
+                    pieces.append(p)
+    if len(pieces) < 2:
+        return []
+    out: list[str] = []
+    # Bigrams (consecutive pairs)
+    for i in range(len(pieces) - 1):
+        out.append(pieces[i] + pieces[i + 1])
+    # Full compound (3+ parts only; 2-part already covered by the single bigram)
+    if len(pieces) >= 3:
+        out.append("".join(pieces))
+    return out
 
 
 def _identifier_terms(text: str) -> list[str]:
     terms: list[str] = []
     for raw in _FTS_TERM_RE.findall(text):
-        for split in _CAMEL_BOUNDARY_RE.split(raw):
-            lowered = split.strip().lower()
-            if lowered:
-                terms.append(lowered)
+        pieces: list[str] = []
+        for camel in _CAMEL_BOUNDARY_RE.split(raw):
+            # Split snake_case / dotted pieces too, so `_sqlite_datetime_parse`
+            # yields sqlite/datetime/parse (matches a query naming those) instead
+            # of only the whole underscore-joined token.
+            for piece in camel.split("_"):
+                lowered = piece.strip().lower()
+                if lowered:
+                    pieces.append(lowered)
+                    terms.append(lowered)
+        # Emit stripped-join bigrams and full compound so that a query for
+        # '_get_timezone_name' also searches 'gettimezone timezonename
+        # gettimezonename', matching only the one symbol that defines the exact
+        # compound name instead of every file that contains 'get'/'timezone'.
+        terms.extend(_ngram_tokens(raw))
     return terms
+
+
+# Python keywords / regex-ish noise that carry no symbol signal -- dropped from
+# QUERY term extraction so messy queries (grep regexes, `def foo`, `^class Bar`)
+# don't flood FTS with "def"/"class" or stall on metacharacters. Symbol-name
+# tokenization (_identifier_terms) is deliberately left untouched.
+_QUERY_STOPWORDS = frozenset(
+    {
+        "def",
+        "class",
+        "return",
+        "self",
+        "cls",
+        "import",
+        "from",
+        "lambda",
+        "async",
+        "await",
+        "yield",
+        "pass",
+        "raise",
+        "with",
+        "for",
+        "while",
+        "if",
+        "elif",
+        "else",
+        "try",
+        "except",
+        "finally",
+        "and",
+        "or",
+        "not",
+        "none",
+        "true",
+        "false",
+        "del",
+        "global",
+        "nonlocal",
+        "assert",
+        "break",
+        "continue",
+        "in",
+        "is",
+        "as",
+        "the",
+        "this",
+    }
+)
+
+
+def _trigrams(text: str) -> list[str]:
+    """Overlapping lowercased 3-char sequences, matching the FTS5 trigram tokenizer
+    so the index can serve approximate (typo) lookups -- candidates sharing trigrams
+    with the query -- instead of a full-table edit-distance scan (the pg_trgm idea)."""
+    s = text.lower()
+    return [s[i : i + 3] for i in range(len(s) - 2)] if len(s) >= 3 else []
+
+
+def _query_terms(query: str) -> list[str]:
+    """Identifier subtokens of a query with keyword/regex noise removed. Falls
+    back to the raw identifier terms if filtering would empty the query."""
+    if os.environ.get("ABLATE_A"):  # ablation switch (benchmark attribution only)
+        return _identifier_terms(query)
+    cleaned = [t for t in _identifier_terms(query) if len(t) >= 2 and t not in _QUERY_STOPWORDS]
+    return cleaned or _identifier_terms(query)
+
+
+# ---------------------------------------------------------------------------
+# Explore top-5 reranker: feature extraction + linear scoring
+# ---------------------------------------------------------------------------
+# Features are computed purely from what _tool_explore_impl already returned
+# (file path, symbol list, source sections). No DB I/O, no network calls.
+
+_ER_FEATURE_NAMES: tuple[str, ...] = (
+    "reciprocal_rank",
+    "rank_one",
+    "path_term_coverage",
+    "path_identifier_exact",
+    "basename_similarity",
+    "symbol_term_coverage",
+    "symbol_identifier_exact",
+    "source_term_coverage",
+    "source_best_line_coverage",
+    "test_scope_match",
+    "test_scope_mismatch",
+    "doc_scope_match",
+    "doc_scope_mismatch",
+    "path_depth",
+    # Semantic cosine of the file's best-matching symbol to the query (0 when the
+    # file was not a semantic anchor). The learned reranker was previously blind to
+    # the embedding signal -- this is the feature it needs to arbitrate lexical vs
+    # semantic. Sourced from the explore payload's per-file ``semantic_score``.
+    "semantic_cosine",
+)
+_ER_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "by",
+        "class",
+        "def",
+        "for",
+        "from",
+        "in",
+        "is",
+        "of",
+        "on",
+        "or",
+        "return",
+        "self",
+        "the",
+        "to",
+        "with",
+    }
+)
+_ER_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_ER_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+_ER_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_ER_TEST_PATH_RE = re.compile(
+    r"(^|/)(tests?|testing|specs?)(/|$)|(^|/)test_[^/]+$|_test\.[^/]+$",
+    re.IGNORECASE,
+)
+_ER_DOC_PATH_RE = re.compile(
+    r"(^|/)(docs?|documentation|examples?|galleries)(/|$)|\.(?:md|rst|ipynb)$",
+    re.IGNORECASE,
+)
+
+# --- Hybrid explore fusion (v6) ---
+_HEF_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_HEF_DEFINITION_RE = re.compile(r"\b(?P<kind>def|class)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
+_HEF_QUOTED_RE = re.compile(r"""(?P<quote>["'])(?P<value>.*?)(?P=quote)""")
+_HEF_TEST_RE = re.compile(
+    r"(^|/)(tests?|testing|specs?)(/|$)|(^|/)test_[^/]+$",
+    re.IGNORECASE,
+)
+_HEF_AUX_RE = re.compile(
+    r"(^|/)(docs?(?:-internal)?|documentation|examples?|galleries|benchmarks?|"
+    r"frontend|vendor|third_party)(/|$)|\.(?:md|rst|ipynb|json|lock)$",
+    re.IGNORECASE,
+)
+_HEF_STOP: frozenset[str] = frozenset(
+    {
+        "and",
+        "as",
+        "assert",
+        "async",
+        "await",
+        "break",
+        "case",
+        "class",
+        "continue",
+        "def",
+        "del",
+        "do",
+        "else",
+        "except",
+        "false",
+        "finally",
+        "for",
+        "from",
+        "if",
+        "import",
+        "in",
+        "is",
+        "lambda",
+        "none",
+        "not",
+        "or",
+        "pass",
+        "raise",
+        "return",
+        "self",
+        "super",
+        "true",
+        "try",
+        "while",
+        "with",
+        "yield",
+    }
+)
+_HEF_PROSE_STOP: frozenset[str] = _HEF_STOP | frozenset(
+    {
+        "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        "then",
+        "than",
+        "into",
+        "onto",
+        "when",
+        "where",
+        "which",
+        "what",
+        "with",
+        "without",
+        "within",
+        "should",
+        "could",
+        "would",
+        "have",
+        "has",
+        "had",
+        "does",
+        "did",
+        "done",
+        "make",
+        "using",
+        "used",
+        "use",
+        "value",
+        "values",
+        "result",
+        "results",
+        "file",
+        "files",
+        "code",
+        "name",
+        "string",
+        "object",
+        "method",
+        "function",
+    }
+)
+
+_ER_QUERY_TEST_RE = re.compile(
+    r"\btests?\b|\btesting\b|\bpytest\b|\bunittest\b|\bspecs?\b|\btest_[A-Za-z0-9_]+",
+    re.IGNORECASE,
+)
+_ER_QUERY_DOC_RE = re.compile(
+    r"\bdocs?\b|\bdocumentation\b|\bexamples?\b|\bgallery\b|\breadme\b",
+    re.IGNORECASE,
+)
+
+
+def _er_identifier_parts(value: str) -> list[str]:
+    parts: list[str] = []
+    for raw in re.split(r"[./:_-]+", value):
+        for part in _ER_CAMEL_RE.split(raw):
+            normalized = part.strip().lower()
+            if len(normalized) >= 2 and normalized not in _ER_STOPWORDS:
+                parts.append(normalized)
+    return parts
+
+
+def _er_dedupe(values: list[str], limit: int) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values:
+        n = v.strip().lower()
+        if not n or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+        if len(out) >= limit:
+            break
+    return tuple(out)
+
+
+def _er_query_features(
+    query: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], bool, bool]:
+    identifiers = [
+        t
+        for t in _ER_IDENTIFIER_RE.findall(query)
+        if len(t) >= 3
+        and t.lower() not in _ER_STOPWORDS
+        and ("_" in t or "." in t or t.isupper() or any(c.isupper() for c in t[1:]))
+    ]
+    terms: list[str] = []
+    for raw in _ER_TOKEN_RE.findall(query):
+        terms.extend(_er_identifier_parts(raw))
+        n = raw.lower()
+        if len(n) >= 3 and n not in _ER_STOPWORDS:
+            terms.append(n)
+    return (
+        _er_dedupe(terms, 20),
+        _er_dedupe(identifiers, 12),
+        bool(_ER_QUERY_TEST_RE.search(query)),
+        bool(_ER_QUERY_DOC_RE.search(query)),
+    )
+
+
+def _er_flatten_text(value: Any, limit: int = 12_000) -> str:
+    chunks: list[str] = []
+    remaining = limit
+
+    def _visit(item: Any) -> None:
+        nonlocal remaining
+        if remaining <= 0 or item is None:
+            return
+        if isinstance(item, str):
+            text = item[:remaining]
+            chunks.append(text)
+            remaining -= len(text)
+        elif isinstance(item, dict):
+            for k, child in item.items():
+                if str(k) in {"content_hash", "symbol_id", "repo_id"}:
+                    continue
+                _visit(child)
+                if remaining <= 0:
+                    break
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                _visit(child)
+                if remaining <= 0:
+                    break
+
+    _visit(value)
+    return "\n".join(chunks)
+
+
+def _er_coverage(text: str, terms: tuple[str, ...]) -> float:
+    if not terms:
+        return 0.0
+    lowered = text.lower()
+    return sum(t in lowered for t in terms) / len(terms)
+
+
+def _er_char_trigrams(value: str) -> set[str]:
+    """Character trigrams for Jaccard similarity (not the FTS tokenizer)."""
+    n = re.sub(r"[^a-z0-9]+", "", value.lower())
+    if not n:
+        return set()
+    if len(n) < 3:
+        return {n}
+    return {n[i : i + 3] for i in range(len(n) - 2)}
+
+
+def _er_trisim(left: str, right: str) -> float:
+    lg, rg = _er_char_trigrams(left), _er_char_trigrams(right)
+    if not lg or not rg:
+        return 0.0
+    return len(lg & rg) / len(lg | rg)
+
+
+def _er_entry_features(
+    query: str,
+    entry: dict[str, Any],
+    rank: int,
+) -> list[float]:
+    terms, identifiers, wants_tests, wants_docs = _er_query_features(query)
+    raw_path = str(entry.get("file_path") or entry.get("path") or "")
+    file_path = raw_path.replace("\\", "/")
+    path_text = file_path.lower()
+    basename = Path(file_path).stem
+
+    symbol_text = _er_flatten_text(entry.get("symbols"))
+    source_text = _er_flatten_text(entry.get("source_sections"))
+    source_lines = source_text.splitlines()
+    best_line = max(
+        (_er_coverage(ln, terms) for ln in source_lines[:400]),
+        default=0.0,
+    )
+
+    path_id_exact = max(
+        (float(ident in path_text) for ident in identifiers),
+        default=0.0,
+    )
+    sym_id_exact = max(
+        (float(ident in symbol_text.lower()) for ident in identifiers),
+        default=0.0,
+    )
+    basename_sim = max(
+        (_er_trisim(ident, basename) for ident in identifiers),
+        default=0.0,
+    )
+
+    is_test = bool(_ER_TEST_PATH_RE.search(file_path))
+    is_doc = bool(_ER_DOC_PATH_RE.search(file_path))
+    depth = min(1.0, file_path.count("/") / 12.0)
+
+    return [
+        1.0 / max(1, rank),
+        float(rank == 1),
+        _er_coverage(path_text, terms),
+        path_id_exact,
+        basename_sim,
+        _er_coverage(symbol_text, terms),
+        sym_id_exact,
+        _er_coverage(source_text, terms),
+        best_line,
+        float(wants_tests and is_test),
+        float(not wants_tests and is_test),
+        float(wants_docs and is_doc),
+        float(not wants_docs and is_doc),
+        depth,
+        float(entry.get("semantic_score") or 0.0),
+    ]
+
+
+def _er_entry_path(entry: dict[str, Any]) -> str:
+    """Extract the file path from an explore file entry."""
+    return str(entry.get("file_path") or entry.get("path") or "")
+
+
+def _er_linear_score(weights: list[float], features: list[float]) -> float:
+    return sum(w * f for w, f in zip(weights, features, strict=True))
+
+
+def _validate_er_model(raw: Any) -> dict[str, Any] | None:
+    """Validate/normalize an explore reranker model (LambdaMART trees or linear).
+
+    Legacy per-workspace deploys have no ``model_type`` and are treated as linear.
+    """
+    if not isinstance(raw, dict) or not raw.get("enabled") or raw.get("feature_names") != list(_ER_FEATURE_NAMES):
+        return None
+    model_type = raw.get("model_type")
+    if model_type == "lambdamart_trees":
+        return raw if isinstance(raw.get("trees"), list) and raw["trees"] else None
+    if model_type in ("linear", None):
+        if len(raw.get("weights", [])) != len(_ER_FEATURE_NAMES):
+            return None
+        return raw if model_type == "linear" else {**raw, "model_type": "linear"}
+    return None
+
+
+def _er_tree_score(trees: list[dict[str, Any]], features: list[float]) -> float:
+    """Sum leaf values across a LambdaMART forest for one candidate.
+
+    Each tree is stored as parallel arrays (feature/threshold/left/right/leaf).
+    A node with ``feature == -1`` is a leaf. Decision rule: ``x < threshold``
+    takes the ``left`` branch (XGBoost "yes" direction). Constant per-candidate
+    offsets (base_score) are omitted — they do not change within-group order.
+    Pure-Python and dependency-free so it stays well under the inline budget
+    (~40 depth-3 trees over a handful of candidates: a few thousand compares).
+    """
+    total = 0.0
+    for tree in trees:
+        feature = tree["feature"]
+        threshold = tree["threshold"]
+        left = tree["left"]
+        right = tree["right"]
+        node = 0
+        while feature[node] != -1:
+            node = left[node] if features[feature[node]] < threshold[node] else right[node]
+        total += tree["leaf"][node]
+    return total
+
+
+# Characters that mean a query is NOT a literal path substring: whitespace (a
+# multi-term query) and regex/FTS metacharacters (an alternation/pattern query).
+# When any are present, `file_path LIKE '%<whole query>%'` can never match a real
+# path, so the path channel skips the full-query LIKE and keeps only the cheap
+# first-term LIKE.
+_NON_PATHY_QUERY_RE = re.compile(r"[\s|*()\[\]^$+?\\=<>{}]")
+
+
+def _query_is_pathy_literal(query: str) -> bool:
+    """True when the whole query could appear as a literal substring of a file
+    path (a single token with no regex/multi-term metacharacters)."""
+    q = query.strip()
+    return bool(q) and _NON_PATHY_QUERY_RE.search(q) is None
 
 
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
-
-
-def _should_skip_fuzzy_for_precise_query(query: str) -> bool:
-    normalized = query.strip()
-    if not _is_precise_symbol_query(normalized):
-        return False
-    return "_" in normalized or "." in normalized
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
@@ -549,6 +1599,45 @@ def _exact_symbol_hits(hits: list[SymbolRecord], query: str) -> list[SymbolRecor
     ]
 
 
+# A query is "symbol-like" when it is a bare identifier or dotted path (no
+# spaces) -- the shape worth an explicit exact-name lookup. Multi-word concept
+# queries skip that lookup so they never pay an extra search.
+_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# A token looks like a code identifier when it has an internal underscore
+# (trim_docstring) or a camelCase boundary (MyClass) -- the shape worth an
+# exact symbol-name probe in multi-word queries. Plain English words
+# (admindocs, default, role) never match, staying on the anchor/recall path.
+_COMPOUND_IDENT_RE = re.compile(r"[A-Za-z0-9]_[A-Za-z0-9]|[a-z][A-Z]")
+_REGEX_NOISE_RE = re.compile(r"[\^$\\().*+?\[\]{}|\s]")
+
+
+def _split_pipe_query(query: str) -> list[str]:
+    """Expand a pipe-delimited OR pattern into individual searchable terms.
+
+    Zoekt treats ``|`` as a literal character, not an OR operator, so a query
+    like ``"timezone_name|TIME_ZONE|def timezone"`` finds nothing.  This helper
+    splits on ``|``, strips leading regex anchors (``^``, ``\\b``, etc.) and
+    trailing noise, and returns the distinct non-trivial terms for individual
+    searches whose results are then unioned.
+
+    Returns an empty list when the query has no ``|``, or when fewer than two
+    meaningful terms survive cleaning (fall back to the original query).
+    """
+    if "|" not in query:
+        return []
+    seen: dict[str, None] = {}  # ordered dedup
+    for part in query.split("|"):
+        # Strip common regex anchors/metacharacters from edges
+        stripped = part.strip().lstrip("^").rstrip("$")
+        stripped = re.sub(r"\\[bBsSwWdD]", "", stripped).strip()
+        # Must contain at least one word character and be >=3 chars
+        if len(stripped) < 3 or not re.search(r"[a-zA-Z0-9_]", stripped):
+            continue
+        seen[stripped] = None
+    terms = list(seen)
+    return terms if len(terms) >= 2 else []
+
+
 def _query_implies_test_scope(query: str) -> bool:
     lowered = query.lower()
     return any(token in lowered for token in ("test", "tests", "spec", "pytest", "unittest"))
@@ -556,24 +1645,11 @@ def _query_implies_test_scope(query: str) -> bool:
 
 def _is_test_file_path(file_path: str) -> bool:
     lowered = file_path.lower()
-    name = Path(file_path).name.lower()
+    # Cheap basename via rfind instead of Path(...).name -- this runs once per
+    # candidate row in the search hot loop, where pathlib object construction
+    # dominates the profile.  '/' is the normalized separator in stored paths.
+    name = lowered[lowered.rfind("/") + 1 :]
     return "/test" in lowered or "/tests/" in lowered or name.startswith("test_") or name.endswith("_test.py")
-
-
-def _camel_case_match(query: str, symbol_name: str, qualified_name: str) -> bool:
-    query_terms = _identifier_terms(query)
-    if not query_terms:
-        return False
-    symbol_terms = _identifier_terms(f"{symbol_name}.{qualified_name}")
-    if not symbol_terms:
-        return False
-    if all(any(term.startswith(query_term) for term in symbol_terms) for query_term in query_terms):
-        return True
-    initials = "".join(term[0] for term in symbol_terms if term)
-    query_compact = "".join(query_terms)
-    if not initials or not query_compact:
-        return False
-    return initials.startswith(query_compact)
 
 
 def _parse_since_filter(value: str | None) -> int | None:
@@ -647,6 +1723,181 @@ def _git_repo_class() -> Any:
     return Repo
 
 
+# Minimum address space (MB) a spawn worker needs to re-import the full package
+# (interpreter + tree-sitter grammars + gitpython + glibc arenas, which scale
+# with core count). Measured: ~2.5 GB OOMs on import, ~4 GB is safe. RLIMIT_AS
+# caps *virtual* address space, which runs well ahead of actual RSS, so the
+# per-worker cap must never drop below this floor or workers die on startup.
+_WORKER_MIN_MB = 4096
+
+
+def _available_memory_mb() -> int | None:
+    """Best-effort memory we may use, in MB: the lesser of host MemAvailable and
+    any cgroup memory ceiling. Returns ``None`` when it can't be determined."""
+    candidates: list[int] = []
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    candidates.append(int(line.split()[1]) // 1024)  # kB -> MB
+                    break
+    except Exception:  # noqa: BLE001  # non-Linux / unreadable -- fall through
+        pass
+    for cg in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = Path(cg).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if raw and raw != "max" and raw.isdigit():
+            val = int(raw)
+            if 0 < val < (1 << 62):  # cgroup v1 uses a huge sentinel for "unlimited"
+                candidates.append(val // (1024 * 1024))
+    return min(candidates) if candidates else None
+
+
+def _resolve_index_max_workers() -> int:
+    """Worker count for the indexing ProcessPool.
+
+    Honors ``ATELIER_INDEX_MAX_WORKERS`` first. Otherwise defaults to half the
+    CPUs, then caps that by available memory: each spawn worker is a fresh
+    interpreter that re-imports the full package (~4 GB of address space), so on
+    a memory-constrained host one-per-CPU OOM-kills the pool on import. The pool
+    is sized so its total address-space budget stays within ~80% of available
+    memory (OS- and cgroup-aware).
+    """
+    override = os.environ.get("ATELIER_INDEX_MAX_WORKERS", "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+    cpu_workers = max(1, (os.cpu_count() or 1) // 2)
+    avail_mb = _available_memory_mb()
+    if avail_mb is None:
+        return cpu_workers
+    mem_workers = max(1, int(avail_mb * 0.8) // _WORKER_MIN_MB)
+    return max(1, min(cpu_workers, mem_workers))
+
+
+def _resolve_serial_extract_threshold() -> int:
+    """File count at/below which indexing extracts serially, in-process.
+
+    A spawned ``ProcessPoolExecutor`` pays a fixed ~1-2s spawn+shutdown cost
+    (each worker is a fresh interpreter that re-imports the whole package). For
+    small repos that overhead dwarfs the millisecond-scale parsing, so serial
+    extraction is faster and produces byte-for-byte identical results. Honors
+    ``ATELIER_INDEX_SERIAL_MAX_FILES`` (set to 0 to always use the pool).
+    """
+    override = os.environ.get("ATELIER_INDEX_SERIAL_MAX_FILES", "").strip()
+    if override.isdigit():
+        return int(override)
+    return 64
+
+
+# ---------------------------------------------------------------------------
+# Shared process pool — one pool for the lifetime of the process so that
+# repeated index calls don't each spawn a fresh set of interpreter workers.
+# ---------------------------------------------------------------------------
+
+_PROCESS_POOL: concurrent.futures.ProcessPoolExecutor | None = None
+_PROCESS_POOL_LOCK = threading.Lock()
+
+
+def _worker_memory_guard() -> None:
+    """Worker-process initializer: cap virtual address space and arm parent-death signal.
+
+    Two protections applied in each forked worker:
+
+    1. **PR_SET_PDEATHSIG** (Linux only) — deliver SIGTERM to this worker the
+       moment its parent MCP process exits or crashes.  Without this, fork
+       workers are re-parented to the user's systemd instance and keep running
+       (and holding ~300 MB PSS each) indefinitely after the session ends.
+
+    2. **RLIMIT_AS** — cap virtual address space to this worker's share of ~80%
+       of available memory, never below the per-worker import floor
+       (``_WORKER_MIN_MB``) -- so a worker can't false-OOM just re-importing the
+       package, while a pathological parse still can't grow it unbounded.
+       Override with ``ATELIER_INDEX_WORKER_MAX_MEM_MB`` (0 disables).
+
+    Both are skipped silently where the relevant OS primitives are unavailable.
+    """
+    # --- 1. Auto-die when parent exits (Linux fork workers only) ---------------
+    try:
+        import ctypes as _ctypes
+
+        _libc = _ctypes.CDLL("libc.so.6", use_errno=True)
+        _PR_SET_PDEATHSIG = 1
+        _SIGTERM = 15
+        _libc.prctl(_PR_SET_PDEATHSIG, _SIGTERM, 0, 0, 0)
+    except Exception:  # noqa: BLE001 — non-Linux / libc unavailable, skip silently
+        pass
+
+    # --- 2. Cap address space to prevent runaway OOM ---------------------------
+    try:
+        import resource as _resource
+
+        override = os.environ.get("ATELIER_INDEX_WORKER_MAX_MEM_MB", "").strip()
+        if override.lstrip("-").isdigit():
+            mb = int(override)
+        else:
+            avail_mb = _available_memory_mb()
+            if avail_mb is None:
+                return  # can't size safely -> don't cap (a too-low RLIMIT_AS OOMs on import)
+            mb = max(_WORKER_MIN_MB, int(avail_mb * 0.8) // _resolve_index_max_workers())
+        if mb <= 0:
+            return
+        limit = mb * 1024 * 1024
+        _resource.setrlimit(_resource.RLIMIT_AS, (limit, limit))
+    except Exception:  # noqa: BLE001 — non-POSIX or resource unavailable, skip silently
+        pass
+
+
+def _get_index_process_pool() -> concurrent.futures.ProcessPoolExecutor:
+    """Return the shared ProcessPoolExecutor, creating it lazily on first use."""
+    global _PROCESS_POOL
+    if _PROCESS_POOL is not None:
+        return _PROCESS_POOL
+    with _PROCESS_POOL_LOCK:
+        if _PROCESS_POOL is None:
+            # fork: safe on Linux — workers only read source files, no DB
+            # connections or locks are open at pool-creation time.  Avoids the
+            # spawn overhead (~1-2s per pool create) AND the "__main__ not
+            # importable" error that spawn triggers in benchmark/CLI scripts
+            # that run at module level.  Fall back to spawn on macOS/Windows
+            # where fork is unsafe or unavailable.
+            _ctx_name = os.environ.get("ATELIER_INDEX_POOL_CONTEXT", "")
+            if not _ctx_name:
+                import platform
+
+                _ctx_name = "fork" if platform.system() == "Linux" else "spawn"
+            mp_ctx = multiprocessing.get_context(_ctx_name)
+            _pool_kwargs: dict = {
+                "max_workers": _resolve_index_max_workers(),
+                "mp_context": mp_ctx,
+                "initializer": _worker_memory_guard,
+            }
+            # max_tasks_per_child recycles workers to free AST/string
+            # garbage, but is incompatible with the 'fork' start method.
+            if _ctx_name != "fork":
+                _pool_kwargs["max_tasks_per_child"] = 256
+            _PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(**_pool_kwargs)
+            atexit.register(_shutdown_index_process_pool)
+    return _PROCESS_POOL
+
+
+def _reset_index_process_pool() -> None:
+    """Tear down a broken pool so the next call recreates it."""
+    global _PROCESS_POOL
+    with _PROCESS_POOL_LOCK:
+        if _PROCESS_POOL is not None:
+            _PROCESS_POOL.shutdown(wait=False, cancel_futures=True)
+            _PROCESS_POOL = None
+
+
+def _shutdown_index_process_pool() -> None:  # atexit handler
+    global _PROCESS_POOL
+    if _PROCESS_POOL is not None:
+        _PROCESS_POOL.shutdown(wait=False, cancel_futures=True)
+        _PROCESS_POOL = None
+
+
 def _process_one_file(
     repo_root_str: str,
     path_str: str,
@@ -682,13 +1933,22 @@ def _process_one_file(
             py_tree = None
 
     # ---- extract symbols ----
+    tag_list: list[Tag] = []
     if language == "python":
         if py_tree is not None:
             extracted = _extract_python_symbols(source, tree=py_tree)
         else:
             extracted = []
+    elif language == "markdown":
+        from atelier.infra.code_intel.markdown import extract_markdown_symbols
+
+        extracted = [_ExtractedSymbol(**s) for s in extract_markdown_symbols(source)]
     else:
-        extracted = _extract_tag_symbols_worker(path, source, language)
+        try:
+            tag_list = extract_tags(path)
+        except (OSError, SyntaxError):
+            tag_list = []
+        extracted = _extract_tag_symbols_worker(path, source, language, tags=tag_list)
 
     # Pre-read symbol source slices for FTS5 (avoids re-reading during write)
     symbol_sources: list[str] = []
@@ -714,22 +1974,29 @@ def _process_one_file(
                 imports_list.append((raw, None))
     imports_list = sorted(set((raw, target) for raw, target in imports_list if raw and target != rel))
 
-    # ---- extract references / call edges (Python only) ----
+    # ---- extract references / call edges ----
+    # Python: rich AST references + call edges. Every other tree-sitter language:
+    # reference rows from the same tag parse used for symbols, so query-time
+    # find_references is a pure index lookup (no whole-repo re-parse).
     references: list[_IndexedReference] = []
     call_edges: list[_IndexedCallEdge] = []
     if language == "python" and py_tree is not None:
         references, call_edges = _extract_python_reference_index_worker(rel, source, extracted, tree=py_tree)
+    elif tag_list:
+        references = _extract_tag_reference_index_worker(rel, source, tag_list, extracted)
 
     return _FileIndexData(
         rel=rel,
         language=language,
         content_hash=content_hash,
         size_bytes=st.st_size,
+        text_lines=[(idx, line[:20_000]) for idx, line in enumerate(source.splitlines(), start=1)],
         symbols=extracted,
         symbol_sources=symbol_sources,
         imports=imports_list,
         references=references,
         call_edges=call_edges,
+        mtime_ns=st.st_mtime_ns,
     )
 
 
@@ -774,7 +2041,7 @@ def _extract_python_symbols(source: str, tree: ast.Module | None = None) -> list
                 start_line=start_line,
                 end_line=end_line,
                 parent_symbol=parent,
-                doc_summary=doc.strip().splitlines()[0][:200] if doc else None,
+                doc_summary=(stripped.splitlines()[0][:200] if doc and (stripped := doc.strip()) else None),
             )
         )
 
@@ -811,12 +2078,16 @@ def _kind_from_signature_worker(signature: str) -> str:
     return "variable"
 
 
-def _extract_tag_symbols_worker(path: Path, source: str, language: str) -> list[_ExtractedSymbol]:
+def _extract_tag_symbols_worker(
+    path: Path, source: str, language: str, tags: list[Tag] | None = None
+) -> list[_ExtractedSymbol]:
     del language
-    try:
-        tags = [tag for tag in extract_tags(path) if tag.kind == "definition"]
-    except (OSError, SyntaxError):
-        return []
+    if tags is None:
+        try:
+            tags = extract_tags(path)
+        except (OSError, SyntaxError):
+            return []
+    tags = [tag for tag in tags if tag.kind == "definition"]
     offsets = _line_offsets(source)
     lines = source.splitlines()
     sorted_tags = sorted(tags, key=lambda tag: (tag.line, tag.name))
@@ -841,6 +2112,57 @@ def _extract_tag_symbols_worker(path: Path, source: str, language: str) -> list[
             )
         )
     return symbols
+
+
+def _extract_tag_reference_index_worker(
+    rel: str,
+    source: str,
+    tags: list[Tag],
+    symbols: list[_ExtractedSymbol],
+) -> list[_IndexedReference]:
+    """Index reference tags for any tree-sitter language.
+
+    Mirrors the Python AST reference worker, reusing the tree-sitter tags already
+    parsed for symbol extraction, so query-time find_references is a pure index
+    lookup instead of re-parsing the whole repo.
+    """
+    lines = source.splitlines()
+
+    def containing(line: int) -> _ExtractedSymbol | None:
+        candidates = [sym for sym in symbols if sym.start_line <= line <= sym.end_line]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda item: (item.end_line - item.start_line, -item.start_line))[0]
+
+    references: list[_IndexedReference] = []
+    seen: set[tuple[str, int, int]] = set()
+    for tag in tags:
+        if tag.kind != "reference":
+            continue
+        name = tag.name
+        line = tag.line
+        if line <= 0:
+            continue
+        line_text = lines[line - 1] if 1 <= line <= len(lines) else ""
+        column = max(1, line_text.find(name) + 1) if line_text else 1
+        key = (name, line, column)
+        if key in seen:
+            continue
+        seen.add(key)
+        enclosing = containing(line)
+        references.append(
+            _IndexedReference(
+                file_path=rel,
+                symbol_name=name,
+                line=line,
+                column=column,
+                end_column=column + len(name) - 1,
+                enclosing_symbol_name=enclosing.name if enclosing else None,
+                enclosing_qualified_name=enclosing.qualified_name if enclosing else None,
+                snippet=line_text.strip(),
+            )
+        )
+    return references
 
 
 def _python_call_name_worker(node: ast.AST) -> str | None:
@@ -1015,18 +2337,344 @@ def _javascript_imports_worker(repo_root: Path, path: Path, source: str) -> list
     return imports
 
 
+class _SourceFileEventHandler(FileSystemEventHandler):
+    """Watchdog event handler that schedules a debounced reindex on source-file changes.
+
+    Filters events by file extension and .gitignore rules (loaded recursively).
+    Holds a weak reference to the engine so it does not prevent GC.
+    """
+
+    def __init__(self, engine: CodeContextEngine) -> None:
+        super().__init__()
+        self._engine_ref = weakref.ref(engine)
+
+    def dispatch(self, event: FileSystemEvent) -> None:
+        if event.is_directory:
+            return
+        src_path = event.src_path
+        # Fast path: skip non-source extensions before any other work.
+        ext = Path(src_path).suffix.lower()
+        if ext not in _WATCHER_SOURCE_EXTENSIONS:
+            return
+        # Check against .gitignore rules (loaded and cached by the engine).
+        engine = self._engine_ref()
+        if engine is not None and engine._watcher_path_is_ignored(src_path):
+            return
+        if engine is not None:
+            engine._notify_watcher_event()
+
+
+def _watcher_load_gitignore_patterns(repo_root: Path) -> Any | None:
+    """Load all .gitignore files under *repo_root* and return a pathspec PathSpec.
+
+    Returns None when pathspec is not installed or no .gitignore files are found.
+    """
+    try:
+        import pathspec
+    except ImportError:
+        return None
+    try:
+        # Also check the user's global gitignore (~/.config/git/ignore or
+        # core.excludesFile) for patterns like .DS_Store, *.pyc, etc.
+        global_patterns: list[str] = []
+        core_excludes = _git_core_excludes_file()
+        if core_excludes:
+            try:
+                global_patterns.extend(
+                    line.strip()
+                    for line in Path(core_excludes).read_text("utf-8").splitlines()
+                    if line.strip() and not line.startswith("#")
+                )
+            except OSError:
+                pass
+
+        gitignore_files = list(repo_root.rglob(".gitignore"))
+        if not gitignore_files and not global_patterns:
+            return None
+
+        spec_lines: list[str] = []
+        # Global gitignore patterns apply at the repo root.
+        for pat in global_patterns:
+            spec_lines.append(pat)
+
+        for gi_path in gitignore_files:
+            try:
+                rel_dir = gi_path.parent.relative_to(repo_root).as_posix()
+                for line in gi_path.read_text("utf-8").splitlines():
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    # PathSpec expects patterns relative to root; prefix with
+                    # the directory of the .gitignore file.
+                    if rel_dir == ".":
+                        spec_lines.append(stripped)
+                    else:
+                        spec_lines.append(f"/{rel_dir}/{stripped}")
+            except (OSError, ValueError):
+                continue
+
+        return pathspec.PathSpec.from_lines("gitignore", spec_lines)
+    except (OSError, ValueError):
+        logger.debug("Failed to load gitignore patterns", exc_info=True)
+        return None
+
+
+def _git_core_excludes_file() -> str | None:
+    """Return the path to the user's global gitignore file, or None."""
+    try:
+        result = subprocess.run(
+            ["git", "config", "--global", "--get", "core.excludesFile"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # Fallback: XDG default location
+    xdg = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    candidate = Path(xdg) / "git" / "ignore"
+    return str(candidate) if candidate.is_file() else None
+
+
+def _watcher_check_ignored_fast(path: str, hard_skip_dirs: frozenset[str]) -> bool:
+    """Pure-string check against the hard-coded skip directories (fast path)."""
+    for part in path.replace("\\", "/").split("/"):
+        if part in hard_skip_dirs:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Hybrid explore fusion (v6) — module-level helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _HefQueryPlan:
+    intent: str
+    definitions: tuple[tuple[str, str], ...]
+    identifiers: tuple[str, ...]
+    anchors: tuple[str, ...]
+    terms: tuple[str, ...]
+    literals: tuple[str, ...]
+    wants_tests: bool
+    wants_auxiliary: bool
+
+
+def _hef_is_code_shaped(token: str) -> bool:
+    return (
+        "_" in token
+        or token.isupper()
+        or any(ch.isupper() for ch in token[1:])
+        or token.startswith("__")
+        or token.endswith("__")
+    )
+
+
+def _hef_dedupe(values: list[str], *, limit: int) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        value = value.strip()
+        low = value.lower()
+        if not value or low in seen:
+            continue
+        seen.add(low)
+        out.append(value)
+        if len(out) >= limit:
+            break
+    return tuple(out)
+
+
+def _hef_bare_alternative(segment: str) -> str | None:
+    segment = segment.strip()
+    segment = re.sub(r"\\[bBAZz]$", "", segment)
+    segment = re.sub(r"^\^|\$$", "", segment)
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", segment):
+        return segment
+    return None
+
+
+def _hef_path_parts(file_path: str) -> set[str]:
+    return {part for part in re.split(r"[/._-]+", file_path.lower()) if part}
+
+
+def _hef_fts_phrase(term: str) -> str:
+    return '"' + term.replace('"', '""') + '"'
+
+
+# ── Selective Zoekt gate ──────────────────────────────────────────────────────
+# Per-query A/B over the retrieval benchmark showed the *broad* Zoekt channel
+# (full-repo trigram, up to 96 files) earns its keep on two query shapes and
+# only adds noise elsewhere:
+#   * regex/pattern queries -- FTS5 cannot evaluate `a|b`, `.*`, `[xy]`, escaped
+#     metacharacters at all, so Zoekt is the *only* engine that can serve them.
+#   * multi-word phrase queries -- full-text recall surfaces files the symbol
+#     index buries (content/strings/comments, not just symbols).
+# On plain single-identifier lookups the broad channel mostly displaces a file
+# that lexical+centrality already ranked #1 (the observed 1->2 regressions), so
+# we suppress it there and let the *targeted* per-anchor Zoekt channel (which
+# does an identifier-scoped lookup) handle the symbol.  Telemetry on every call
+# records the decision so the gate can be tuned from real traffic.
+_ZOEKT_REGEX_META = re.compile(r"[|()\[\]{}*+?^$\\]")
+# Aggregate fire-rate counter, keyed by (decision, reason). Inspectable in-process
+# (e.g. benchmark harness) and cheap; reset with _ZOEKT_GATE_COUNTS.clear().
+_ZOEKT_GATE_COUNTS: dict[tuple[str, str], int] = {}
+
+
+def _zoekt_broad_gate(query: str) -> tuple[bool, str]:
+    """Return ``(admit, reason)`` for the broad Zoekt channel on *query*."""
+    q = query.strip()
+    if _ZOEKT_REGEX_META.search(q):
+        return True, "regex"
+    if len(q.split()) >= 2:
+        return True, "multiword"
+    return False, "plain_identifier"
+
+
+# ── Symbol-exact fast path ────────────────────────────────────────────────────
+# When a definition/symbol-intent query resolves to a high-confidence exact
+# definition in the symbol index, the anchor-Zoekt and line-FTS recall channels
+# are pure overhead: profiling shows the line-FTS scan dominates explore's
+# critical path (~2/3 of wall clock on definition golds; it is what the 200ms
+# fusion deadline waits on), while the exact channel answers in ~1-2ms.  The
+# gate decides — from the exact channel's own confidence signals — whether those
+# channels can be skipped entirely.  Deterministic by design: skipped channels
+# are never submitted, so fusion sees the same inputs on every run rather than
+# "whatever happened to finish before the deadline".
+# Disable via ATELIER_HEF_FAST_PATH=0 (benchmark ablation).
+
+# Intent-aware confidence floor for the top exact hit. The exact channel's
+# confidence formula caps at 1.0 for definition intent (kind coverage counts)
+# but at 0.70 for bare-identifier symbol intent (no `def`/`class` kinds to
+# match), so the two intents need different floors.
+_HEF_FAST_PATH_MIN_CONFIDENCE: dict[str, float] = {"definition": 0.72, "symbol": 0.65}
+# Collision guard: the rarest matched name must be defined in at most this many
+# files. A collision-heavy name ('save', 'get') matches dozens of files at equal
+# confidence — ranking those needs the full multi-channel pipeline.
+_HEF_FAST_PATH_MAX_DF = 4
+# Ambiguity guard: the top exact hit must be separated from the runner-up by at
+# least this much confidence. Same-name definitions in sibling files (e.g. a
+# `client` fixture in three conftest.py files) tie at equal confidence — the
+# exact channel cannot order them; only the full pipeline's centrality/lexical
+# signals can, so ties are never decisive.
+_HEF_FAST_PATH_MIN_MARGIN = 0.05
+# Fire-rate counter keyed by (decisive, intent) — same pattern as
+# _ZOEKT_GATE_COUNTS; inspectable in-process by the benchmark harness.
+_HEF_FAST_PATH_COUNTS: dict[tuple[bool, str], int] = {}
+# Regex-shaped queries (escapes, groups, char classes, quantifiers — anything
+# beyond plain `a|b` alternation) are asking for CONTENT matches; line-FTS is
+# precisely the channel that serves those, so they are never decisive.
+_HEF_FAST_PATH_REGEX_META = re.compile(r"[()\[\]{}*+?^$\\]")
+
+
+def _hef_fast_path_enabled() -> bool:
+    value = os.environ.get("ATELIER_HEF_FAST_PATH")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _hef_exact_is_decisive(
+    query: str,
+    plan: _HefQueryPlan,
+    exact_files: list[str],
+    exact_details: dict[str, dict[str, Any]],
+) -> bool:
+    """True when the exact-symbol channel alone confidently resolves *plan*.
+
+    Requires the query to be name-shaped (no regex metacharacters beyond `|`
+    alternation) and the top hit to (a) actually DEFINE a queried name (not
+    merely bind a variable of that name), (b) match on a rare name (df-capped),
+    and (c) clear the intent-aware confidence floor.
+    """
+    if not exact_files:
+        return False
+    if _HEF_FAST_PATH_REGEX_META.search(query):
+        return False
+    threshold = _HEF_FAST_PATH_MIN_CONFIDENCE.get(plan.intent)
+    if threshold is None:
+        return False
+    top = exact_details.get(exact_files[0]) or {}
+    if not top.get("definition_tokens"):
+        return False
+    if int(top.get("best_df", 1_000_000)) > _HEF_FAST_PATH_MAX_DF:
+        return False
+    if len(exact_files) > 1:
+        runner_up = exact_details.get(exact_files[1]) or {}
+        margin = float(top.get("confidence", 0.0)) - float(runner_up.get("confidence", 0.0))
+        if margin < _HEF_FAST_PATH_MIN_MARGIN:
+            return False
+    return float(top.get("confidence", 0.0)) >= threshold
+
+
+def _zoekt_gate_enforced() -> bool:
+    """Whether the broad-Zoekt EXECUTION gate is active (default ON).
+
+    When active, the broad Zoekt search is SKIPPED for plain single-identifier
+    queries (FTS symbols + the targeted per-anchor Zoekt channel carry them).
+    A benchmark A/B showed this cuts mean explore latency ~12pct (p95 ~10pct)
+    with no MRR loss (slight Hit@1 gain), so it ships enforced. Opt out with
+    ATELIER_ZOEKT_GATE=0. (The earlier observe-only verdict was for a *fusion*-
+    only gate that could not save latency because the search had already run.)
+    """
+    return os.environ.get("ATELIER_ZOEKT_GATE", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _zoekt_gate_record(
+    query: str, intent: str, decision: bool, reason: str, zoekt_n: int, anchor_n: int, *, enforced: bool
+) -> None:
+    """Telemeter a Zoekt gate decision (aggregate counter + opt-in per-query log)."""
+    key = ("admit" if decision else "suppress", reason)
+    _ZOEKT_GATE_COUNTS[key] = _ZOEKT_GATE_COUNTS.get(key, 0) + 1
+    if os.environ.get("ATELIER_ZOEKT_GATE_LOG"):
+        print(
+            f"[zoekt-gate] decision={decision} enforced={enforced} reason={reason} intent={intent} "
+            f"zoekt_n={zoekt_n} anchor_n={anchor_n} q={query[:60]!r}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 class CodeContextEngine:
     """Local code intelligence using tree-sitter tags, SQLite FTS5, rg, and repo-map ranking."""
 
-    def __init__(self, repo_root: str | Path = ".", *, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        repo_root: str | Path = ".",
+        *,
+        db_path: str | Path | None = None,
+        autosync_enabled: bool | None = None,
+    ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
         self._db_lock = _shared_db_lock(self.db_path)
+        self._schema_ready = False
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
         self._search_reranker = SearchReranker()
+        # G4/N5/N16: persistent ANN over per-symbol embeddings. Opt-in via
+        # ATELIER_ANN_RETRIEVAL; with the flag off this object is never
+        # consulted and the semantic path is byte-identical to today.
+        self._ann_symbol_index = SymbolAnnIndex(self.repo_id)
+        # In-memory cache of the parsed symbol vectors, keyed by
+        # (embedder_name, dim, index_version). Loading + JSON-decoding the whole
+        # store on every semantic query is the dominant hot-path cost otherwise; a
+        # reindex bumps index_version and invalidates this.
+        self._ann_vectors_cache: tuple[tuple[str, int, int], list[str], Any] | None = None
+        # sqlite-vector TurboQuant in-DB ANN: replaces the numpy matrix scan on
+        # large corpora (linux: 1.24Mx1536 = 7.5 GB matrix → OOM). The extension
+        # only operates on a connection's *main* schema, so a dedicated per-thread
+        # direct connection to vectors.sqlite is used (bare 'symbol_vectors')
+        # rather than the engine's attached-vectors connection. Falls back to the
+        # numpy path transparently when the extension is unavailable.
+        self._sqlite_vec_tls = threading.local()
+        self._sqlite_vec_lock = threading.Lock()
+        self._sqlite_vec_disabled = False
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -1037,8 +2685,8 @@ class CodeContextEngine:
             local_find_callees=self._find_callees_local,
         )
         self._deleted_history_search_adapter: DeletedHistorySearchAdapter | None = None
-        autosync_raw = os.getenv("ATELIER_CODE_AUTOSYNC", "1").strip().lower()
-        self._autosync_enabled = autosync_raw not in {"0", "false", "no", "off"}
+        # Autosync disabled for one-shot CLI commands, enabled for services/daemons
+        self._autosync_enabled = autosync_enabled if autosync_enabled is not None else True
         self._autosync_debounce_ms = self._parse_autosync_debounce(os.getenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS"))
         self._autosync_poll_ms = self._parse_autosync_poll_ms(os.getenv("ATELIER_CODE_AUTOSYNC_POLL_MS"))
         self._autosync_state = "idle"
@@ -1048,16 +2696,58 @@ class CodeContextEngine:
         self._autosync_pending_events = 0
         self._autosync_reindex_count = 0
         self._autosync_history: list[dict[str, Any]] = []
+        # Counts completed tool calls; used to pace the periodic heap trim.
+        self._tool_call_count: int = 0
         self._autosync_lock = threading.RLock()
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
         self._lineage_thread: threading.Thread | None = None
+        self._lineage_lock = threading.Lock()
+        self._index_ready_cached = False
+        # Cache the engine_state index_version so a single tool call (which probes
+        # it ~once per sub-query) does not reopen the DB and re-query for a value
+        # that only changes on reindex. Invalidated in _bump_index_version.
+        self._index_version_cached: int | None = None
+        # G6/N16: symbol-level call-graph centrality cache, keyed to the index
+        # version so a graph mutation (any reindex bumps index_version) forces a
+        # recompute and stale rankings are never served. Guarded by its own lock.
+        self._centrality_cache: dict[tuple[int, int], dict[str, Any]] = {}
+        self._centrality_cache_lock = threading.Lock()
+        # Connection reuse: inside a _reuse_connection() scope, _connect() returns a
+        # shared per-thread connection (via _ReusedConnection) instead of opening a
+        # new one + re-running PRAGMAs for every sub-query.
+        self._scoped_conn_tls = threading.local()
+        # File bytes cache: inside a _reuse_connection() scope, _read_file_slice()
+        # caches raw file bytes so the same file is read from disk only once per
+        # tool call even when multiple symbols are selected from it. Eliminates
+        # N_symbols x read_bytes() cost (e.g. 5 symbols from engine.py = 5 x 18 MB
+        # -> 1 x 18 MB). Cleared on scope exit; no inter-call sharing.
+        self._file_cache_tls = threading.local()
+        self._wal_primed = False
+        # FTS corpus size for IDF term pruning, keyed by index_version so a reindex
+        # auto-invalidates it (count(*) over symbol_fts is ~18ms -- never per query).
+        self._fts_doc_count_cache: dict[int, int] = {}
         self._lineage_rebuild_full = False
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
         )
-        self._register_symbol_intel_providers()
+        # G7: optional churn provider. When set, it maps a candidate set of
+        # symbols to a per-symbol churn score in [0, 1]. It is consulted ONLY as
+        # a low-priority ranking tiebreaker (see _context_symbol_rank), never as
+        # an override of match quality. It defaults to unset so ranking never
+        # incurs git/blame cost in the hot path; callers/tests may inject one.
+        self._churn_score_provider: Callable[[list[SymbolRecord]], dict[str, float]] | None = None
+        # --- File watcher (event-driven via watchdog) ---
+        self._watcher_enabled = self._parse_watcher_enabled(os.getenv("ATELIER_CODE_FILE_WATCHER"))
+        self._watcher_debounce_ms = self._parse_watcher_debounce(os.getenv("ATELIER_CODE_WATCHER_DEBOUNCE_MS"))
+        self._file_watcher: Observer | None = None
+        self._watcher_event_handler: _SourceFileEventHandler | None = None
+        self._watcher_gitignore_spec: Any = None  # pathspec.PathSpec or None
+        self._watcher_gitignore_mtime: float = 0  # last load mtime of gitignore files
+        self._watcher_last_event_ms: float = 0
         if self._autosync_enabled:
+            if self._watcher_enabled and Observer is not None:
+                self._start_file_watcher()
             self._start_autosync_worker()
 
     def index_repo(
@@ -1066,6 +2756,8 @@ class CodeContextEngine:
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
         force: bool = True,
+        block: bool = True,
+        require_lock: bool = False,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> IndexStats:
         """Build or refresh the persistent symbol/import index for this repository.
@@ -1075,16 +2767,115 @@ class CodeContextEngine:
             exclude_globs: Glob patterns to exclude.
             force: If True (default), wipe and rebuild the full index. Pass
                 ``force=False`` for an incremental update (skip unchanged files).
+            block: If True (default), wait for the cross-process index-write lock.
+                Pass ``block=False`` to skip indexing (returning the current
+                snapshot) when another process is already rebuilding.
+            require_lock: If True, raise ``IndexLockTimeout`` when the lock cannot
+                be acquired instead of silently returning a stale snapshot. Use
+                for explicit, must-succeed builds (e.g. the CLI prewarm).
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
-        with self._db_lock, self._autosync_lock:
-            return self._index_repo_unsafe(
-                include_globs=include_globs,
-                exclude_globs=exclude_globs,
-                force=force,
-                progress_callback=progress_callback,
-            )
+        if self._autosync_enabled:
+            with self._db_lock, self._autosync_lock:
+                with self._index_write_lock(block=block) as acquired:
+                    if not acquired:
+                        if require_lock:
+                            raise IndexLockTimeout(self.db_path)
+                        # Another process holds the cross-process index-write lock.
+                        # Don't pile on a redundant concurrent rebuild — return the
+                        # current on-disk snapshot and let the other writer finish.
+                        return self._current_index_stats()
+                    return self._index_repo_unsafe(
+                        include_globs=include_globs,
+                        exclude_globs=exclude_globs,
+                        force=force,
+                        progress_callback=progress_callback,
+                    )
+        else:
+            # CLI mode: no autosync, skip the autosync lock to avoid contention
+            # with background services that have autosync enabled.
+            with self._db_lock:
+                with self._index_write_lock(block=block) as acquired:
+                    if not acquired:
+                        if require_lock:
+                            raise IndexLockTimeout(self.db_path)
+                        return self._current_index_stats()
+                    return self._index_repo_unsafe(
+                        include_globs=include_globs,
+                        exclude_globs=exclude_globs,
+                        force=force,
+                        progress_callback=progress_callback,
+                    )
+
+    @contextlib.contextmanager
+    def _index_write_lock(self, *, block: bool) -> Iterator[bool]:
+        """Serialize index writes across separate processes sharing this DB.
+
+        ``_db_lock`` only guards threads inside one process; multiple ``atelier``
+        processes (MCP servers, background service, CLI) each hold their own. This
+        advisory ``flock`` ensures only one of them rebuilds the index at a time.
+        Yields ``True`` when the lock was acquired (always so when ``block`` is
+        True) and ``False`` when a non-blocking attempt found another process
+        already indexing.
+        """
+        if fcntl is None:  # pragma: no cover - non-POSIX platforms
+            yield True
+            return
+        lock_path = self.db_path.with_name(self.db_path.name + ".indexlock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+        acquired = False
+        try:
+            if not block:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                except OSError:
+                    acquired = False
+            else:
+                # Poll with LOCK_NB so we don't block the process forever.
+                # Default 10s: if another atelier process holds the lock (e.g. a
+                # running MCP server) we skip indexing rather than hang. Override
+                # via ATELIER_INDEX_LOCK_TIMEOUT_S for long prewarm builds that
+                # must win the lock before serving.
+                _LOCK_TIMEOUT = _index_lock_timeout_s()
+                _POLL_INTERVAL = 0.5
+                deadline = time.monotonic() + _LOCK_TIMEOUT
+                logging.info("Waiting for index write lock (another process may be indexing)...")
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        acquired = True
+                        logging.debug("Index write lock acquired")
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            logging.warning(
+                                "Index write lock timeout after %.0fs — "
+                                "another process is indexing; skipping this run.",
+                                _LOCK_TIMEOUT,
+                            )
+                            break
+                        time.sleep(_POLL_INTERVAL)
+            yield acquired
+        finally:
+            if acquired:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+    def _current_index_stats(self) -> IndexStats:
+        snapshot = self._index_snapshot()
+        return IndexStats(
+            repo_id=self.repo_id,
+            repo_root=str(self.repo_root),
+            db_path=str(self.db_path),
+            files_indexed=int(snapshot["files_indexed"]),
+            symbols_indexed=int(snapshot["symbols_indexed"]),
+            imports_indexed=int(snapshot["imports_indexed"]),
+            index_version=self._current_index_version(),
+        )
 
     def _apply_file_data_batch(
         self,
@@ -1095,15 +2886,16 @@ class CodeContextEngine:
         # --- files ---
         conn.executemany(
             """
-            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, indexed_at)
-            VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, mtime_ns, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             ON CONFLICT(repo_id, file_path) DO UPDATE SET
                 language = excluded.language,
                 content_hash = excluded.content_hash,
                 size_bytes = excluded.size_bytes,
+                mtime_ns = excluded.mtime_ns,
                 indexed_at = excluded.indexed_at
             """,
-            [(self.repo_id, d.rel, d.language, d.content_hash, d.size_bytes) for d in results],
+            [(self.repo_id, d.rel, d.language, d.content_hash, d.size_bytes, d.mtime_ns) for d in results],
         )
 
         # --- symbols + FTS ---
@@ -1127,6 +2919,7 @@ class CodeContextEngine:
             ]
         ] = []
         fts_rows: list[tuple[str, str, str, str, str, str]] = []
+        trigram_rows: list[tuple[str, str, str, str]] = []  # (symbol_id, name_plain, qualified_name, file_path)
         for d in results:
             for i, sym in enumerate(d.symbols):
                 raw_id = f"{self.repo_id}:{d.rel}:{sym.qualified_name}:{sym.start_byte}:{d.content_hash}"
@@ -1150,7 +2943,17 @@ class CodeContextEngine:
                         d.content_hash,
                     )
                 )
-                fts_rows.append((sid, sym.name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
+                # Augment the FTS 'name' field with stripped-join bigrams and
+                # the full compound form so queries for '_get_timezone_name'
+                # also match the unique token 'gettimezonename', not just
+                # the noisy sub-tokens 'get'/'timezone'/'name'.
+                _ngrams = _ngram_tokens(sym.name)
+                _fts_name = (sym.name + " " + " ".join(_ngrams)) if _ngrams else sym.name
+                fts_rows.append((sid, _fts_name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
+                # Trigram table uses the PLAIN name (no n-gram expansion) — the trigram
+                # tokenizer handles substring matching natively, so pre-expansion only wastes
+                # space. Signature is omitted: 5x size amplification, rarely unique over name.
+                trigram_rows.append((sid, sym.name, sym.qualified_name, d.rel))
 
         conn.executemany(
             """
@@ -1165,6 +2968,19 @@ class CodeContextEngine:
         conn.executemany(
             "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
             fts_rows,
+        )
+        conn.executemany(
+            "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, file_path) VALUES (?, ?, ?, ?)",
+            trigram_rows,
+        )
+
+        # --- line text + FTS ---
+        line_rows: list[tuple[str, str, int, str]] = []
+        for d in results:
+            line_rows.extend((self.repo_id, d.rel, line_no, text) for line_no, text in d.text_lines if text.strip())
+        conn.executemany(
+            "INSERT INTO file_line_fts(repo_id, file_path, line, text) VALUES (?, ?, ?, ?)",
+            line_rows,
         )
 
         # --- imports ---
@@ -1202,7 +3018,7 @@ class CodeContextEngine:
         )
 
         # --- call_edges ---
-        edge_rows: list[tuple[str, str, str, str, int, int, str, int, int, str]] = []
+        edge_rows: list[tuple[str, str, str, str, int, int, str, str, int, int, str]] = []
         for d in results:
             edge_rows.extend(
                 (
@@ -1213,6 +3029,7 @@ class CodeContextEngine:
                     e.caller_start_line,
                     e.caller_end_line,
                     e.callee_name,
+                    e.callee_name.rsplit(".", 1)[-1],
                     e.call_line,
                     e.call_column,
                     e.snippet,
@@ -1222,8 +3039,9 @@ class CodeContextEngine:
         conn.executemany(
             """INSERT OR IGNORE INTO call_edges(
                 repo_id, caller_symbol_name, caller_qualified_name, caller_file_path,
-                caller_start_line, caller_end_line, callee_name, call_line, call_column, snippet
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                caller_start_line, caller_end_line, callee_name, callee_short_name,
+                call_line, call_column, snippet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             edge_rows,
         )
 
@@ -1241,7 +3059,7 @@ class CodeContextEngine:
         Results are sorted deterministically by relative path.
         *total* is the denominator for *progress_callback* (defaults to ``len(files)``).
         """
-        max_workers = os.cpu_count() or 1
+        max_workers = _resolve_index_max_workers()
         total_count = total or len(files)
 
         # Build argument tuples for the pickleable worker function
@@ -1250,21 +3068,60 @@ class CodeContextEngine:
             sb = source_bytes_map.get(str(path)) if source_bytes_map else None
             args_list.append((str(self.repo_root), str(path), sb))
 
-        # fork is safe here: _autosync_lock is held during indexing so no
-        # background thread runs at fork time; suppress the deprecation warning
-        # from multiprocessing's os.fork() call (Python 3.13+).
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*fork.*", category=DeprecationWarning)
-            mp_ctx = multiprocessing.get_context("fork")
-            results: list[_FileIndexData] = []
-            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as executor:
-                future_map = {executor.submit(_process_one_file, *args): args for args in args_list}
-                for completed, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
-                    data = future.result()
-                    if data is not None:
-                        results.append(data)
-                    if progress_callback is not None:
-                        progress_callback(completed, total_count)
+        # Small repos: skip the ProcessPoolExecutor entirely. Spawning fresh
+        # interpreters (each re-imports the whole package) and joining the pool
+        # costs a fixed ~1-2s that dwarfs the millisecond-scale parsing of a
+        # handful of files. Serial in-process extraction is byte-for-byte
+        # identical, just without the process churn.
+        if max_workers <= 1 or len(args_list) <= _resolve_serial_extract_threshold():
+            serial_results: list[_FileIndexData] = []
+            for completed, args in enumerate(args_list, start=1):
+                data = _process_one_file(*args)
+                if data is not None:
+                    serial_results.append(data)
+                if progress_callback is not None:
+                    progress_callback(completed, total_count)
+            serial_results.sort(key=lambda r: r.rel)
+            return serial_results
+
+        # Use the shared pool (spawn context, single instance per process).
+        # Workers never inherit this process's locks or open fds.
+        # Chunked submission: keep at most (max_workers x 4) futures in flight
+        # so input pickles and result objects don't all accumulate in the parent
+        # at once — important when source_bytes_map is provided.
+        # On BrokenProcessPool (worker crash/OOM), reset and retry once.
+        results: list[_FileIndexData] = []
+        for attempt in range(2):
+            executor = _get_index_process_pool()
+            try:
+                backlog = max(8, max_workers * 4)
+                args_iter = iter(args_list)
+                pending: dict[concurrent.futures.Future[_FileIndexData | None], None] = {}
+                completed_count = 0
+
+                for args in itertools.islice(args_iter, backlog):
+                    pending[executor.submit(_process_one_file, *args)] = None
+
+                while pending:
+                    done, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+                    for future in done:
+                        del pending[future]
+                        data = future.result()
+                        if data is not None:
+                            results.append(data)
+                        completed_count += 1
+                        if progress_callback is not None:
+                            progress_callback(completed_count, total_count)
+                        next_args = next(args_iter, None)
+                        if next_args is not None:
+                            pending[executor.submit(_process_one_file, *next_args)] = None
+                break  # success
+            except concurrent.futures.process.BrokenProcessPool:
+                logging.warning("Index process pool broken — resetting (attempt %d/2)", attempt + 1)
+                _reset_index_process_pool()
+                results.clear()
+                if attempt == 1:
+                    raise
 
         results.sort(key=lambda r: r.rel)
         return results
@@ -1281,40 +3138,65 @@ class CodeContextEngine:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         all_files = [
             path
-            for path in iter_source_files(self.repo_root, include_globs=include_globs)
+            for path in iter_source_files(
+                self.repo_root, include_globs=include_globs, progress_callback=progress_callback
+            )
             if not self._excluded(path, exclude_globs or [])
         ]
         total = len(all_files)
+        if progress_callback is not None:
+            progress_callback(0, total)  # Signal: discovery done, real total known
 
         with self._connect() as conn:
             self._init_schema(conn)
 
             if force:
                 # --- Full rebuild: wipe everything, then parallel-extract + batch-write ---
+                conn.execute("DELETE FROM file_line_fts")
                 conn.execute("DELETE FROM symbol_fts")
+                conn.execute("DELETE FROM symbol_trigram")
                 conn.execute("DELETE FROM symbols")
                 conn.execute("DELETE FROM imports")
                 conn.execute('DELETE FROM "references"')
                 conn.execute("DELETE FROM call_edges")
                 conn.execute("DELETE FROM files")
+                # Stale vectors are never overwritten (symbol_id encodes content),
+                # so a full rebuild must wipe them too. Created lazily -> guard.
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("DELETE FROM symbol_vectors")
 
                 results = self._parallel_extract(all_files, total=total, progress_callback=progress_callback)
                 self._apply_file_data_batch(conn, results)
 
                 index_version = self._bump_index_version(conn)
+                # Refresh planner stats, then build per-symbol embeddings into the
+                # persistent vector store -- same index-time work as the incremental
+                # branch below, so a full/forced rebuild also produces vectors
+                # (no-op unless an embedder is configured). Keeps the query hot path
+                # read-only: it embeds only the query and ANN-reads these vectors.
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("PRAGMA optimize")
+                self._build_symbol_embeddings(conn, index_version)
                 files_indexed = len(results)
                 symbols_indexed = sum(len(r.symbols) for r in results)
                 imports_indexed = sum(len(r.imports) for r in results)
 
             else:
                 # --- Incremental: detect changes, then parallel-extract + batch-write ---
-                existing_rows = conn.execute(
-                    "SELECT file_path, content_hash, size_bytes FROM files WHERE repo_id = ?",
+                existing = {}
+                for row in conn.execute(
+                    "SELECT file_path, content_hash, size_bytes, mtime_ns FROM files WHERE repo_id = ?",
                     (self.repo_id,),
-                ).fetchall()
-                existing = {
-                    str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
-                }
+                ):
+                    existing[str(row["file_path"])] = (
+                        str(row["content_hash"]),
+                        int(row["size_bytes"]),
+                        int(row["mtime_ns"] or 0),
+                    )
+                line_index_empty = (
+                    conn.execute("SELECT 1 FROM file_line_fts WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
+                    is None
+                )
 
                 to_extract: list[tuple[Path, bytes]] = []  # (path, source_bytes)
                 current_paths: set[str] = set()
@@ -1330,11 +3212,35 @@ class CodeContextEngine:
                         if rel in existing:
                             self._delete_file_index(conn, rel)
                         continue
+                    previous = existing.get(rel)
+                    # Fast path: a file whose (size, mtime) matches the indexed row
+                    # is already current -- skip the read + sha256 entirely. This
+                    # keeps the background incremental resync cheap on large repos
+                    # instead of O(repo bytes) on every poll.
+                    if (
+                        previous is not None
+                        and not line_index_empty
+                        and previous[1] == int(stat.st_size)
+                        and previous[2] == int(stat.st_mtime_ns)
+                        and previous[2] != 0
+                    ):
+                        continue
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
-                    previous = existing.get(rel)
-                    if previous == (content_hash, int(stat.st_size)):
-                        continue  # unchanged
+                    if (
+                        previous is not None
+                        and not line_index_empty
+                        and previous[0] == content_hash
+                        and previous[1] == int(stat.st_size)
+                    ):
+                        # Content identical (e.g. a touch changed only mtime).
+                        # Refresh the stored mtime so the next pass fast-skips,
+                        # then move on without re-extracting.
+                        conn.execute(
+                            "UPDATE files SET mtime_ns = ? WHERE repo_id = ? AND file_path = ?",
+                            (int(stat.st_mtime_ns), self.repo_id, rel),
+                        )
+                        continue
                     self._delete_file_index(conn, rel)
                     to_extract.append((path, source_bytes))
 
@@ -1357,6 +3263,19 @@ class CodeContextEngine:
 
                 if to_extract or removed_paths:
                     index_version = self._bump_index_version(conn)
+                    # Refresh query-planner statistics after a (re)index so
+                    # call-graph/symbol lookups use the selective composite
+                    # indexes. Without stats SQLite mis-picks the repo_id-only
+                    # index for caller-keyed call_edges queries and full-scans
+                    # the table on every traversal. PRAGMA optimize self-throttles
+                    # (cheap on small incremental deltas, full ANALYZE when needed).
+                    with contextlib.suppress(sqlite3.OperationalError):
+                        conn.execute("PRAGMA optimize")
+                    # Build per-symbol embeddings into the persistent vector store as
+                    # part of the code index (no-op unless an embedder is configured).
+                    # Doing it here keeps the query hot path read-only -- it embeds
+                    # only the query and ANN-reads these prebuilt vectors.
+                    self._build_symbol_embeddings(conn, index_version)
                 else:
                     row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
                     index_version = int(row["value"]) if row is not None else 0
@@ -1364,6 +3283,23 @@ class CodeContextEngine:
                 files_indexed = len(to_extract)
                 symbols_indexed = sum(len(r.symbols) for r in results)
                 imports_indexed = sum(len(r.imports) for r in results)
+
+        if force:
+            # Compact all DBs after a full rebuild — DELETE + re-insert leaves free pages
+            # that inflate file size until VACUUMed (e.g. 87 MB → 31 MB for pylint).
+            for _vac_db in (self.db_path, self.intel_db_path, self.vectors_db_path, self.fts_db_path):
+                if _vac_db.exists():
+                    with contextlib.suppress(Exception):
+                        _vc = sqlite3.connect(str(_vac_db))
+                        _vc.execute("VACUUM")
+                        _vc.close()
+
+        # Compute+persist the centrality map for the new index_version NOW so the
+        # O(edges) power iteration is charged to indexing, never to the first
+        # query. Loads the persisted map when the version is unchanged (cheap
+        # no-op for incremental runs that indexed nothing).
+        with contextlib.suppress(Exception):
+            self._symbol_centrality_map()
 
         emit_product_local(
             "code_index_completed",
@@ -1382,6 +3318,16 @@ class CodeContextEngine:
         )
 
     def _delete_file_index(self, conn: sqlite3.Connection, rel: str) -> None:
+        conn.execute("DELETE FROM file_line_fts WHERE repo_id = ? AND file_path = ?", (self.repo_id, rel))
+        conn.execute(
+            """
+            DELETE FROM symbol_trigram
+            WHERE symbol_id IN (
+                SELECT symbol_id FROM symbols WHERE repo_id = ? AND file_path = ?
+            )
+            """,
+            (self.repo_id, rel),
+        )
         conn.execute(
             """
             DELETE FROM symbol_fts
@@ -1391,6 +3337,21 @@ class CodeContextEngine:
             """,
             (self.repo_id, rel),
         )
+        # Prune persisted embeddings for this file's symbols *before* the symbols
+        # themselves. symbol_id encodes the file content hash, so an edited or
+        # removed file yields fresh ids -- without this the old vectors orphan
+        # (never overwritten, never cleaned) and pollute semantic ranking. The
+        # vector table is created lazily, so guard against its absence.
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute(
+                """
+                DELETE FROM symbol_vectors
+                WHERE repo_id = ? AND symbol_id IN (
+                    SELECT symbol_id FROM symbols WHERE repo_id = ? AND file_path = ?
+                )
+                """,
+                (self.repo_id, self.repo_id, rel),
+            )
         conn.execute("DELETE FROM symbols WHERE repo_id = ? AND file_path = ?", (self.repo_id, rel))
         conn.execute("DELETE FROM imports WHERE repo_id = ? AND source_file = ?", (self.repo_id, rel))
         conn.execute('DELETE FROM "references" WHERE repo_id = ? AND file_path = ?', (self.repo_id, rel))
@@ -1455,6 +3416,23 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         resolved_mode = "semantic" if intent == "semantic" else resolve_search_mode(query, mode)
+        if resolved_mode in {"semantic", "hybrid"} and not self._semantic_ranker.available:
+            # Semantic search requires a configured embedding backend. By default none
+            # is set (no external LLM is contacted). If the caller explicitly asked for
+            # semantic/hybrid, say so; for an auto-resolved query fall back to lexical.
+            if intent == "semantic" or mode in {"semantic", "hybrid"}:
+                return {
+                    "items": [],
+                    "mode": resolved_mode,
+                    "semantic_available": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                    "cache_hit": False,
+                    "message": (
+                        "Semantic search is not configured. Set ATELIER_CODE_EMBEDDER "
+                        "(local|openai|letta|ollama) and optionally ATELIER_CODE_EMBED_MODEL to enable it."
+                    ),
+                }
+            resolved_mode = "lexical"
         use_text_substring = intent == "text" or (
             intent == "auto"
             and self._should_use_text_substring_search(
@@ -1552,6 +3530,10 @@ class CodeContextEngine:
             items = [item for item in items if str(item.get("file_path") or "") in changed_files]
         items = self._dedupe_search_items(items)
         items = self._prioritize_grounded_search_items(items, seed_files=normalized_seed_files)
+        # Capture aggregate provenance before compaction strips per-item provenance
+        # (repo-scope compaction drops "provenance"/"symbol_id" as redundant with the
+        # top-level fields), so the routed-provider provenance survives in the payload.
+        aggregate_provenance = self._items_provenance(items)
         if effective_snippet == "none":
             items = self._compact_search_items(items, scope=scope)
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
@@ -1561,10 +3543,45 @@ class CodeContextEngine:
             budget_tokens=effective_budget_tokens,
             essential_keys=essential_keys,
             optional_keys_in_drop_order=optional_keys,
-            extra_payload={"mode": resolved_mode, "snippet": effective_snippet},
+            extra_payload={
+                "mode": resolved_mode,
+                "snippet": effective_snippet,
+                "provenance": aggregate_provenance,
+            },
         )
         self._cache_set("code.search", cache_args, payload)
         return payload
+
+    def search_channel_health(self, query: str, mode: str = "auto") -> ChannelHealth:
+        """Liveness of optional retrieval channels for a query (verdict stamping).
+
+        Lets the MCP boundary distinguish a *trustworthy* empty (every channel the
+        query wanted actually ran) from a *dark* one (a wanted channel was off):
+
+        - ``semantic``: applicable only when the resolved mode wants it
+          (semantic/hybrid); ``True`` if an embedder is configured, ``False``
+          (dark) if not, ``None`` if the query never wanted it (lexical lookup).
+        - ``zoekt``: applicable for repo-scope lexical/hybrid; ``False`` (dark)
+          only when it is meant to route but the backend is unhealthy. A
+          config-disabled zoekt is ``None`` (not dark) -- FTS, always live,
+          covers the lexical channel.
+        """
+        from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
+
+        requested = cast("SearchMode", mode if mode in ("auto", "lexical", "semantic", "hybrid") else "auto")
+        resolved = resolve_search_mode(query, requested)
+        semantic: bool | None = None
+        if resolved in {"semantic", "hybrid"}:
+            semantic = bool(self._semantic_ranker.available)
+        zoekt: bool | None = None
+        if resolved != "semantic":
+            with contextlib.suppress(Exception):
+                from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
+
+                supervisor = get_zoekt_supervisor(self.repo_root)
+                if supervisor.should_route(self.repo_root):
+                    zoekt = bool(supervisor.health().ok)
+        return ChannelHealth(semantic=semantic, zoekt=zoekt)
 
     def tool_blame(
         self,
@@ -1646,16 +3663,45 @@ class CodeContextEngine:
         from atelier.infra.code_intel.git_history.blame import BlameAnnotator
         from atelier.infra.code_intel.git_history.models import BlameRequest
 
-        annotation = BlameAnnotator(self.repo_root).annotate(
-            BlameRequest(
-                file_path=normalized_file_path,
-                line_start=int(target["start_line"]),
-                line_end=int(target["end_line"]),
-                index_sha=index_sha,
-                head_sha=head_sha,
-                include_churn=include_churn,
+        try:
+            annotation = BlameAnnotator(self.repo_root).annotate(
+                BlameRequest(
+                    file_path=normalized_file_path,
+                    line_start=int(target["start_line"]),
+                    line_end=int(target["end_line"]),
+                    index_sha=index_sha,
+                    head_sha=head_sha,
+                    include_churn=include_churn,
+                )
             )
-        )
+        except ValueError:
+            # The symbol's recorded line span does not map onto a committed HEAD
+            # blob (uncommitted/working-tree region or a dirty re-index). Return a
+            # structured payload instead of crashing the MCP handler with -32603.
+            payload = self._pack_single_payload(
+                {
+                    "error": "blame_unavailable",
+                    "hint": "symbol range is not yet committed; commit then re-index",
+                    "symbol_name": str(target["symbol_name"]),
+                    "qualified_name": str(target["qualified_name"]),
+                    "file_path": normalized_file_path,
+                    "line_start": int(target["start_line"]),
+                    "line_end": int(target["end_line"]),
+                    "provenance": "blame",
+                },
+                budget_tokens=budget_tokens,
+                essential_keys=[
+                    "error",
+                    "hint",
+                    "symbol_name",
+                    "qualified_name",
+                    "file_path",
+                    "provenance",
+                ],
+                optional_keys_in_drop_order=["line_start", "line_end"],
+            )
+            self._cache_set("code.blame", cache_args, payload)
+            return payload
         latest_commit_ts = max(hunk.commit_time for hunk in annotation.hunks)
         payload_data: dict[str, Any] = {
             "symbol_name": str(target["symbol_name"]),
@@ -1687,71 +3733,26 @@ class CodeContextEngine:
         self._cache_set("code.blame", cache_args, payload)
         return payload
 
-    def tool_hover(
-        self,
-        *,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        line: int | None = None,
-        col: int | None = None,
-        budget_tokens: int = 2000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        """Surface type, docstring, and signature for a symbol — no subprocess needed.
-
-        Resolution priority: symbol_id → qualified_name → (file_path, line) → symbol_name.
-        Returns {symbol_id, symbol_name, qualified_name, kind, signature, docstring,
-                 documentation, file, line, col, source_snippet, provenance, cache_hit}.
-        """
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-
-        sym: dict[str, Any]
-
-        positional_lookup = (
-            file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
-        )
-        if positional_lookup:
-            normalized = self._normalize_file_arg(file_path)  # type: ignore[arg-type]
-            with self._connect() as conn:
-                self._init_schema(conn)
-                row = conn.execute(
-                    """
-                    SELECT *, NULL AS score FROM symbols
-                    WHERE repo_id = ? AND file_path = ? AND start_line <= ? AND end_line >= ?
-                    ORDER BY start_line DESC
-                    LIMIT 1
-                    """,
-                    (self.repo_id, normalized, line, line),
-                ).fetchone()
-            if row is None:
-                raise LookupError("no symbol at that position")
-            symbol_rec = _row_to_symbol(row)
-            path = self.repo_root / symbol_rec.file_path
-            source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
-            sym = {**symbol_rec.model_dump(mode="json"), "source": source}
-        else:
-            sym = self.get_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=file_path,
-                auto_index=False,
-            )
-
-        emit_product_local("code_hover_retrieved", repo_id=self.repo_id, kind=sym["kind"])
-        return {
-            "symbol_id": sym["symbol_id"],
-            "symbol_name": sym["symbol_name"],
-            "signature": sym["signature"],
-            "file": sym["file_path"],
-            "line": sym["start_line"],
-            "provenance": sym.get("provenance", "local"),
-            "cache_hit": sym.get("cache_hit", False),
-        }
+    def _symbol_at_line(self, file_path: str, line: int) -> dict[str, Any]:
+        """Resolve the innermost symbol whose span contains `line` in `file_path`."""
+        normalized = self._normalize_file_arg(file_path)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            row = conn.execute(
+                """
+                SELECT *, NULL AS score FROM symbols
+                WHERE repo_id = ? AND file_path = ? AND start_line <= ? AND end_line >= ?
+                ORDER BY start_line DESC
+                LIMIT 1
+                """,
+                (self.repo_id, normalized, line, line),
+            ).fetchone()
+        if row is None:
+            raise LookupError("no symbol at that position")
+        symbol_rec = _row_to_symbol(row)
+        path = self.repo_root / symbol_rec.file_path
+        source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
+        return {**symbol_rec.model_dump(mode="json"), "source": source}
 
     def tool_symbol(
         self,
@@ -1760,6 +3761,7 @@ class CodeContextEngine:
         qualified_name: str | None = None,
         file_path: str | None = None,
         symbol_name: str | None = None,
+        line: int | None = None,
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
@@ -1768,27 +3770,34 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        positional_lookup = (
+            file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
+        )
         cache_args = {
             "symbol_id": symbol_id,
             "qualified_name": qualified_name,
             "symbol_name": symbol_name,
             "file_path": normalized_file_path,
+            "line": line if positional_lookup else None,
             "budget_tokens": effective_budget_tokens,
         }
         hit, cached = self._cache_get("code.symbol", cache_args)
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
+        raw_symbol = (
+            self._symbol_at_line(file_path, line)  # type: ignore[arg-type]
+            if positional_lookup
+            else self.get_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=normalized_file_path,
+                auto_index=False,
+            )
+        )
         payload = self._pack_single_payload(
-            self._hydrate_symbol_cross_lang(
-                self.get_symbol(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=normalized_file_path,
-                    auto_index=False,
-                )
-            ),
+            self._hydrate_symbol_cross_lang(raw_symbol),
             budget_tokens=effective_budget_tokens,
             essential_keys=_SYMBOL_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_SYMBOL_OPTIONAL_KEYS,
@@ -1877,78 +3886,6 @@ class CodeContextEngine:
     def _cross_lang_store(self) -> CrossLangEdgeStore:
         return CrossLangEdgeStore(self.connection)
 
-    def tool_outline(
-        self,
-        *,
-        file_path: str | None = None,
-        limit: int = 200,
-        budget_tokens: int = 4000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        effective_budget_tokens = self._effective_budget_tokens("outline", budget_tokens)
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
-        cache_args = {
-            "file_path": normalized_file_path,
-            "limit": limit,
-            "budget_tokens": effective_budget_tokens,
-            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
-        }
-        hit, cached = self._cache_get("code.outline", cache_args)
-        if hit and cached is not None:
-            return self._mark_cache_hit(cached)
-
-        raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
-        flat_items = self._flatten_outline(raw["files"])
-        if normalized_file_path:
-
-            def _outline_rank(item: dict[str, Any]) -> tuple[int, int, int, str]:
-                kind = str(item.get("kind") or "").lower()
-                name = str(item.get("name") or "")
-                public = 0 if name and not name.startswith("_") else 1
-                kind_rank = {
-                    "function": 0,
-                    "async_function": 0,
-                    "method": 1,
-                    "class": 2,
-                }.get(kind, 3)
-                return (public, kind_rank, 0 if kind_rank <= 1 else 1, name)
-
-            flat_items = sorted(flat_items, key=_outline_rank)
-        full_symbol_count = int(raw["symbol_count"])
-        full_payload = {
-            "repo_id": str(raw["repo_id"]),
-            "files": raw["files"],
-            "symbol_count": full_symbol_count,
-            "provenance": _LOCAL_PROVENANCE,
-        }
-        full_total_tokens = self._compute_total_tokens({**full_payload, "cache_hit": False, "tokens_saved": 0})
-
-        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
-            return self._finalize_packed_payload(
-                {
-                    "repo_id": str(raw["repo_id"]),
-                    "files": self._group_outline(packed_items),
-                    "symbol_count": full_symbol_count,
-                    "cache_hit": False,
-                    "provenance": _LOCAL_PROVENANCE,
-                },
-                full_total_tokens=full_total_tokens,
-            )
-
-        payload = self._fit_items_to_budget(
-            flat_items,
-            budget_tokens=effective_budget_tokens,
-            essential_keys=_OUTLINE_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=[],
-            build_payload=build_payload,
-            enforce_protected_top_rank=False,
-        )
-        self._cache_set("code.outline", cache_args, payload)
-        return payload
-
     def tool_files(
         self,
         *,
@@ -2031,63 +3968,1355 @@ class CodeContextEngine:
         max_files: int = 6,
         max_symbols: int = 20,
         include_source: bool = True,
-        include_relationships: bool = True,
+        include_relationships: bool = False,
         line_numbers: bool = True,
+        skeletonize: bool = True,
+        complete_families: bool | None = None,
         depth: int = 1,
-        budget_tokens: int = 9000,
+        budget_tokens: int = 2000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
+        # The three V6 HEF recall channels (exact / anchor-zoekt / line-FTS) depend
+        # ONLY on the parsed query plan -- never on the baseline result.  Launch them
+        # up front so they run *concurrently* with _tool_explore_impl (baseline FTS +
+        # main Zoekt) instead of in a second serial phase afterward.  This collapses
+        # the explore critical path from (Phase A + Phase B) to max(Phase A, Phase B);
+        # _fused_explore_hybrid simply collects the already-in-flight futures.
+        hef_futures = self._submit_hef_channels(query)
+        # One shared connection for the whole explore (search + relationship
+        # hydration + packing are reads, plus a one-time centrality persist).
+        with self._reuse_connection():
+            result, precomputed_zoekt = self._tool_explore_impl(
+                query,
+                seed_files=seed_files,
+                max_files=max_files,
+                max_symbols=max_symbols,
+                include_source=include_source,
+                include_relationships=include_relationships,
+                line_numbers=line_numbers,
+                skeletonize=skeletonize,
+                complete_families=complete_families,
+                depth=depth,
+                budget_tokens=budget_tokens,
+            )
+        fused = self._fused_explore_hybrid(
+            query, result, max_files=max_files, precomputed_zoekt=precomputed_zoekt, hef_futures=hef_futures
+        )
+        return self._rerank_explore_result(query, fused)
+
+    @property
+    def explore_reranker_model_path(self) -> Path:
+        """Per-workspace path for the trained explore reranker model.
+
+        Each repo deploys its own model next to its index DB.
+        ``ATELIER_EXPLORE_RERANKER_MODEL`` overrides it for benchmarking / A-B.
+        """
+        override = os.environ.get("ATELIER_EXPLORE_RERANKER_MODEL")
+        if override:
+            return Path(override).expanduser()
+        return self.db_path.parent / "explore_reranker.json"
+
+    def _load_explore_reranker(self) -> dict[str, Any] | None:
+        """Load and validate the global explore reranker (LambdaMART trees).
+
+        Returns the model dict when present, enabled, and shape-valid; ``None``
+        otherwise. Cached on the instance so the JSON is parsed once per
+        process. Disabled while collecting self-supervised training candidates
+        (``ATELIER_SELF_SUPERVISED_TRAINING=1``) so the trainer observes raw V6
+        ordering, and via ``ATELIER_EXPLORE_RERANKER_ENABLED=0``.
+        """
+        if hasattr(self, "_er_model_loaded"):
+            return self._er_model_cache  # type: ignore[attr-defined]
+        # Set cache sentinel before the loaded flag so concurrent threads that
+        # observe _er_model_loaded=True always find _er_model_cache defined.
+        self._er_model_cache: dict[str, Any] | None = None
+        self._er_model_loaded: bool = True
+        if os.environ.get("ATELIER_SELF_SUPERVISED_TRAINING") == "1":
+            return None
+        if os.environ.get("ATELIER_EXPLORE_RERANKER_ENABLED", "1") == "0":
+            return None
+        # Per-workspace model: each repo deploys its own explore_reranker.json
+        # next to its index DB (db-stem-keyed variant avoids /tmp collisions).
+        for path in dict.fromkeys(
+            [
+                self.explore_reranker_model_path,
+                self.db_path.with_suffix(".explore_reranker.json"),
+            ]
+        ):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                continue
+            model = _validate_er_model(raw)
+            if model is not None:
+                self._er_model_cache = model
+                return model
+        return None
+
+    def _rerank_explore_result(
+        self,
+        query: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Rerank the top candidates in an explore payload with the global
+        LambdaMART model. Returns *payload* unchanged when no model is
+        available or the top file would not change.
+        """
+        raw_entries = payload.get("files")
+        if not isinstance(raw_entries, list) or len(raw_entries) < 2:
+            return payload
+
+        model = self._load_explore_reranker()
+        if model is None:
+            return payload
+
+        window = min(int(model.get("window", 5)), len(raw_entries))
+        if window < 2:
+            return payload
+        model_type = model.get("model_type")
+        if model_type == "linear":
+            weights = [float(w) for w in model["weights"]]
+            blend = float(model.get("blend", 1.0))
+        else:
+            trees = model["trees"]
+
+        scored: list[tuple[float, int, dict[str, Any]]] = []
+        for rank, entry in enumerate(raw_entries[:window], 1):
+            if not isinstance(entry, dict):
+                return payload  # unexpected shape; skip reranking
+            features = _er_entry_features(query, entry, rank)
+            if model_type == "linear":
+                learned = _er_linear_score(weights, features)
+                score = blend * learned + (1.0 - blend) * (1.0 / rank)
+            else:
+                score = _er_tree_score(trees, features)
+            scored.append((score, rank, entry))
+
+        proposed = sorted(scored, key=lambda item: (-item[0], item[1]))
+        if proposed[0][1] == 1:
+            return payload  # top file unchanged
+
+        margin = float(model.get("margin", 0.0))
+        if margin > 0.0:
+            original_top = next(s for s, r, _e in scored if r == 1)
+            if proposed[0][0] - original_top < margin:
+                return payload  # margin guard: new top not confident enough
+
+        reranked = [e for _s, _r, e in proposed] + list(raw_entries[window:])
+        result = dict(payload)
+        result["files"] = reranked
+        result["experiment"] = {
+            "name": "explore_reranker_v2_lambdamart",
+            "base": payload.get("experiment"),
+        }
+        return result
+
+    # -----------------------------------------------------------------------
+    # Hybrid explore fusion (v6) — instance methods
+    # -----------------------------------------------------------------------
+
+    def _hef_parse_query(self, query: str) -> _HefQueryPlan:
+        definitions = tuple((match.group("kind"), match.group("name")) for match in _HEF_DEFINITION_RE.finditer(query))
+        definition_names = [name for _kind, name in definitions]
+        identifiers: list[str] = []
+        alternatives: list[str] = []
+        for segment in query.split("|"):
+            match = _HEF_DEFINITION_RE.search(segment)
+            if match:
+                alternatives.append(match.group("name"))
+            else:
+                bare = _hef_bare_alternative(segment)
+                if bare is not None:
+                    alternatives.append(bare)
+        for token in _HEF_IDENTIFIER_RE.findall(query):
+            low = token.lower()
+            if low in _HEF_STOP or len(token) < 3:
+                continue
+            if _hef_is_code_shaped(token):
+                identifiers.append(token)
+        normalized = query.strip()
+        with contextlib.suppress(Exception):
+            if _is_precise_symbol_query(normalized):
+                alternatives.append(normalized.rsplit(".", 1)[-1])
+        literals = [
+            match.group("value").strip() for match in _HEF_QUOTED_RE.finditer(query) if match.group("value").strip()
+        ]
+        prose_terms: list[str] = []
+        with contextlib.suppress(Exception):
+            prose_terms = [
+                str(term)
+                for term in _query_terms(query)
+                if len(str(term)) >= 3 and str(term).lower() not in _HEF_PROSE_STOP
+            ]
+        identifier_tuple = _hef_dedupe([*definition_names, *alternatives, *identifiers], limit=18)
+        anchor_tuple = _hef_dedupe([*definition_names, *alternatives, *identifiers], limit=10)
+        literal_tuple = _hef_dedupe(literals, limit=8)
+        if definitions:
+            intent = "definition"
+        elif normalized and _is_precise_symbol_query(normalized):
+            intent = "symbol"
+        elif identifier_tuple or "|" in query:
+            intent = "code"
+        else:
+            intent = "prose"
+        if intent in {"definition", "symbol"}:
+            term_values = [*identifier_tuple, *literal_tuple]
+        elif intent == "code":
+            term_values = [*identifier_tuple, *literal_tuple, *prose_terms]
+        else:
+            term_values = [*literal_tuple, *prose_terms]
+        wants_tests = bool(
+            re.search(
+                r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|" r"tearDown|setUp|TestCase|Tests\b",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        wants_auxiliary = bool(
+            re.search(
+                r"\bdocs?|documentation|example|gallery|benchmark|frontend|" r"javascript|typescript|readme\b",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        return _HefQueryPlan(
+            intent=intent,
+            definitions=definitions,
+            identifiers=identifier_tuple,
+            anchors=anchor_tuple,
+            terms=_hef_dedupe(term_values, limit=16),
+            literals=literal_tuple,
+            wants_tests=wants_tests,
+            wants_auxiliary=wants_auxiliary,
+        )
+
+    def _hef_exact_symbol_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.identifiers:
+            return [], {}
+        tokens = {token.lower(): token for token in plan.identifiers}
+        placeholders = ",".join("?" for _ in tokens)
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    f"""
+                    WITH matched AS (
+                        SELECT file_path,
+                               lower(symbol_name) AS token,
+                               lower(kind) AS kind
+                        FROM symbols
+                        WHERE repo_id = ?
+                          AND lower(symbol_name) IN ({placeholders})
+                    ),
+                    frequencies AS (
+                        SELECT token, COUNT(DISTINCT file_path) AS df
+                        FROM matched
+                        GROUP BY token
+                    )
+                    SELECT matched.file_path,
+                           matched.token,
+                           matched.kind,
+                           frequencies.df
+                    FROM matched
+                    JOIN frequencies USING (token)
+                    ORDER BY matched.file_path, matched.token, matched.kind
+                    """,
+                    (self.repo_id, *tokens),
+                ).fetchall()
+        except Exception:  # noqa: BLE001
+            return [], {}
+        expected = {name.lower(): kind for kind, name in plan.definitions}
+        per_file: dict[str, dict[str, Any]] = {}
+        seen: set[tuple[str, str, str]] = set()
+        for row in rows:
+            file_path = str(row["file_path"] or "")
+            token = str(row["token"] or "")
+            kind = str(row["kind"] or "").lower()
+            df = max(1, int(row["df"] or 1))
+            if not file_path or not token:
+                continue
+            key = (file_path, token, kind)
+            if key in seen:
+                continue
+            seen.add(key)
+            expected_kind = expected.get(token)
+            kind_match = (expected_kind == "class" and kind == "class") or (
+                expected_kind == "def" and kind in {"function", "method"}
+            )
+            item = per_file.setdefault(
+                file_path,
+                {
+                    "tokens": set(),
+                    "definition_tokens": set(),
+                    "kind_matches": set(),
+                    "idf": 0.0,
+                    "best_df": df,
+                },
+            )
+            item["tokens"].add(token)
+            if kind in {"class", "function", "method", "async_function"}:
+                item["definition_tokens"].add(token)
+            if kind_match:
+                item["kind_matches"].add(token)
+            item["idf"] += math.log1p(1.0 + 1.0 / df)
+            item["best_df"] = min(int(item["best_df"]), df)
+        identifier_count = max(1, len(plan.identifiers))
+        definition_count = max(1, len(plan.definitions))
+        for item in per_file.values():
+            token_coverage = len(item["tokens"]) / identifier_count
+            kind_coverage = len(item["kind_matches"]) / definition_count
+            definition_coverage = len(item["definition_tokens"]) / identifier_count
+            rarity = min(1.0, float(item["idf"]) / identifier_count)
+            item["confidence"] = min(
+                1.0,
+                0.42 * token_coverage + 0.30 * kind_coverage + 0.16 * definition_coverage + 0.12 * rarity,
+            )
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -len(per_file[p]["kind_matches"]),
+                -len(per_file[p]["tokens"]),
+                int(per_file[p]["best_df"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "tokens": sorted(per_file[p]["tokens"]),
+                "definition_tokens": sorted(per_file[p]["definition_tokens"]),
+                "kind_matches": sorted(per_file[p]["kind_matches"]),
+                "idf": round(float(per_file[p]["idf"]), 6),
+                "best_df": int(per_file[p]["best_df"]),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:96], details
+
+    def _hef_anchor_zoekt_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.anchors:
+            return [], {}
+        cache: dict[str, list[str]] = self.__dict__.setdefault("_hef_anchor_cache", {})
+        uncached_anchors = [a for a in plan.anchors if a not in cache]
+        if uncached_anchors:
+            # Run all cache-missing anchor searches concurrently — each is an
+            # independent Zoekt HTTP call; parallelism collapses N sequential
+            # round-trips to one wall-clock slot.  Reuse the module-level
+            # _HEF_CHANNEL_EXECUTOR (already running this method's caller) to
+            # avoid the 10-30 ms per-query ThreadPoolExecutor create/destroy cost.
+            def _fetch(anchor: str) -> list[str]:
+                try:
+                    return self._zoekt_candidate_files(anchor, path=".", max_files=30)
+                except Exception:  # noqa: BLE001
+                    return []
+
+            anchor_futs = [_HEF_CHANNEL_EXECUTOR.submit(_fetch, a) for a in uncached_anchors]
+            for anchor, fut in zip(uncached_anchors, anchor_futs, strict=True):
+                try:
+                    cache[anchor] = fut.result(timeout=0.15)
+                except Exception:  # noqa: BLE001
+                    cache[anchor] = []
+        per_file: dict[str, dict[str, Any]] = {}
+        for anchor in plan.anchors:
+            files = cache.get(anchor, [])
+            for rank, file_path in enumerate(files, 1):
+                item = per_file.setdefault(
+                    file_path,
+                    {
+                        "anchors": set(),
+                        "rrf": 0.0,
+                        "best_rank": rank,
+                    },
+                )
+                item["anchors"].add(anchor.lower())
+                item["rrf"] += 1.0 / (8.0 + rank)
+                item["best_rank"] = min(int(item["best_rank"]), rank)
+        anchor_count = max(1, len(plan.anchors))
+        max_rrf = sum(1.0 / 9.0 for _ in plan.anchors)
+        for item in per_file.values():
+            coverage = len(item["anchors"]) / anchor_count
+            normalized_rrf = min(1.0, float(item["rrf"]) / max_rrf)
+            item["confidence"] = min(1.0, 0.72 * coverage + 0.28 * normalized_rrf)
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -len(per_file[p]["anchors"]),
+                int(per_file[p]["best_rank"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "anchors": sorted(per_file[p]["anchors"]),
+                "rrf": round(float(per_file[p]["rrf"]), 6),
+                "best_rank": int(per_file[p]["best_rank"]),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:96], details
+
+    def _hef_line_fts_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.terms:
+            return [], {}
+        terms = [term.lower() for term in plan.terms]
+        or_query = " OR ".join(_hef_fts_phrase(term) for term in terms)
+        # Build the AND query from real query identifiers only (plan.identifiers),
+        # NOT from all plan.terms which may include n-gram compounds like
+        # 'gettimezonename' that are generated for the symbol index but never
+        # appear as raw tokens in source lines.  Including them in the AND query
+        # means the AND always returns 0 rows (the compound isn't in file_line_fts),
+        # so and_hit never fires and we lose the best specificity signal.
+        # Use identifiers (the actual words/dotted names from the query) for AND.
+        and_terms = [t.lower() for t in plan.identifiers] or terms
+        and_query = " AND ".join(_hef_fts_phrase(t) for t in and_terms[: min(8, len(and_terms))])
+        rows: list[tuple[Any, bool]] = []
+        try:
+            with self._connect(readonly=True) as conn:
+                if len(terms) >= 2:
+                    and_rows = conn.execute(
+                        """
+                        SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                        FROM file_line_fts
+                        WHERE file_line_fts MATCH ? AND repo_id = ?
+                        ORDER BY rank ASC, file_path ASC, line ASC
+                        LIMIT 200
+                        """,
+                        (and_query, self.repo_id),
+                    ).fetchall()
+                    rows.extend((row, True) for row in and_rows)
+                or_rows = conn.execute(
+                    """
+                    SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                    FROM file_line_fts
+                    WHERE file_line_fts MATCH ? AND repo_id = ?
+                    ORDER BY rank ASC, file_path ASC, line ASC
+                    LIMIT 600
+                    """,
+                    (or_query, self.repo_id),
+                ).fetchall()
+                rows.extend((row, False) for row in or_rows)
+        except Exception:  # noqa: BLE001
+            return [], {}
+        term_set = set(terms)
+        literal_set = {literal.lower() for literal in plan.literals}
+        per_file: dict[str, dict[str, Any]] = {}
+        for row, from_and in rows:
+            file_path = str(row["file_path"] or "")
+            if not file_path:
+                continue
+            with contextlib.suppress(Exception):
+                if is_generated_path(file_path):
+                    continue
+            if _MINIFIED_FILE_RE.search(file_path):
+                continue
+            if _VENDOR_PATH_RE.search(file_path):
+                continue
+            text = str(row["text"] or "").lower()
+            covered = {term for term in term_set if term in text}
+            if not covered:
+                continue
+            line_coverage = len(covered) / max(1, len(term_set))
+            literal_hits = sum(1 for literal in literal_set if literal in text)
+            item = per_file.setdefault(
+                file_path,
+                {
+                    "covered": set(),
+                    "hit_count": 0,
+                    "and_hit": False,
+                    "best_rank": float(row["rank"] or 0.0),
+                    "max_line_coverage": 0.0,
+                    "multi_term_lines": 0,
+                    "literal_hits": 0,
+                },
+            )
+            item["covered"].update(covered)
+            item["hit_count"] += 1
+            item["and_hit"] = bool(item["and_hit"] or from_and)
+            item["best_rank"] = min(float(item["best_rank"]), float(row["rank"] or 0.0))
+            item["max_line_coverage"] = max(float(item["max_line_coverage"]), line_coverage)
+            if len(covered) >= 2:
+                item["multi_term_lines"] += 1
+            item["literal_hits"] += literal_hits
+        for file_path, item in per_file.items():
+            file_coverage = len(item["covered"]) / max(1, len(term_set))
+            repeat_conf = min(1.0, math.log1p(int(item["hit_count"])) / math.log(13.0))
+            proximity_conf = min(
+                1.0,
+                float(item["max_line_coverage"]) + 0.08 * min(int(item["multi_term_lines"]), 4),
+            )
+            literal_conf = min(1.0, int(item["literal_hits"]) / max(1, len(literal_set))) if literal_set else 0.0
+            confidence = (
+                0.40 * file_coverage
+                + 0.23 * proximity_conf
+                + 0.09 * repeat_conf
+                + 0.20 * float(bool(item["and_hit"]))
+                + 0.08 * literal_conf
+            )
+            if not plan.wants_tests and _HEF_TEST_RE.search(file_path):
+                confidence *= 0.78
+            if not plan.wants_auxiliary and _HEF_AUX_RE.search(file_path):
+                confidence *= 0.68
+            item["file_coverage"] = file_coverage
+            item["confidence"] = min(1.0, confidence)
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -float(per_file[p]["file_coverage"]),
+                -float(per_file[p]["max_line_coverage"]),
+                -int(per_file[p]["and_hit"]),
+                float(per_file[p]["best_rank"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "covered": sorted(per_file[p]["covered"]),
+                "file_coverage": round(float(per_file[p]["file_coverage"]), 6),
+                "max_line_coverage": round(float(per_file[p]["max_line_coverage"]), 6),
+                "multi_term_lines": int(per_file[p]["multi_term_lines"]),
+                "hit_count": int(per_file[p]["hit_count"]),
+                "and_hit": bool(per_file[p]["and_hit"]),
+                "literal_hits": int(per_file[p]["literal_hits"]),
+                "best_rank": round(float(per_file[p]["best_rank"]), 6),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:128], details
+
+    def _submit_hef_channels(
+        self,
+        query: str,
+    ) -> tuple[
+        _HefQueryPlan, concurrent.futures.Future[Any], concurrent.futures.Future[Any], concurrent.futures.Future[Any]
+    ]:
+        """Launch the three V6 HEF recall channels on the persistent thread pool.
+
+        Returns the parsed plan plus the three in-flight futures (exact / anchor /
+        line).  Called at the very start of ``tool_explore`` so the channels run
+        concurrently with the baseline + main-Zoekt phase; ``_fused_explore_hybrid``
+        later collects them.  The channels depend only on the parsed query plan, so
+        starting them early is purely a latency win (identical results).
+        """
+        plan = self._hef_parse_query(query)
+        # Symbol-exact fast path: for definition/symbol-intent queries, resolve
+        # the cheap exact channel inline (~1-2ms indexed lookup) and consult the
+        # gate. When the exact hits are decisive, anchor-Zoekt and line-FTS are
+        # never submitted — fusion sees them as deterministically-empty channels
+        # instead of paying their scan time (the dominant explore cost).
+        # Pre-resolved futures keep _fused_explore_hybrid's collect path uniform.
+        if _hef_fast_path_enabled() and plan.intent in {"definition", "symbol"}:
+            exact = self._hef_exact_symbol_candidates(plan)
+            f_exact_done: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            f_exact_done.set_result(exact)
+            decisive = _hef_exact_is_decisive(query, plan, *exact)
+            key = (decisive, plan.intent)
+            _HEF_FAST_PATH_COUNTS[key] = _HEF_FAST_PATH_COUNTS.get(key, 0) + 1
+            if decisive:
+                f_anchor_empty: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                f_anchor_empty.set_result(([], {}))
+                f_line_empty: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                f_line_empty.set_result(([], {}))
+                return plan, f_exact_done, f_anchor_empty, f_line_empty
+            f_anchor = _HEF_CHANNEL_EXECUTOR.submit(self._hef_anchor_zoekt_candidates, plan)
+            f_line = _HEF_CHANNEL_EXECUTOR.submit(self._hef_line_fts_candidates, plan)
+            return plan, f_exact_done, f_anchor, f_line
+        f_exact = _HEF_CHANNEL_EXECUTOR.submit(self._hef_exact_symbol_candidates, plan)
+        f_anchor = _HEF_CHANNEL_EXECUTOR.submit(self._hef_anchor_zoekt_candidates, plan)
+        f_line = _HEF_CHANNEL_EXECUTOR.submit(self._hef_line_fts_candidates, plan)
+        return plan, f_exact, f_anchor, f_line
+
+    def _fused_explore_hybrid(
+        self,
+        query: str,
+        baseline_payload: dict[str, Any],
+        max_files: int,
+        precomputed_zoekt: list[str] | None = None,
+        hef_futures: (
+            tuple[
+                _HefQueryPlan,
+                concurrent.futures.Future[Any],
+                concurrent.futures.Future[Any],
+                concurrent.futures.Future[Any],
+            ]
+            | None
+        ) = None,
+    ) -> dict[str, Any]:
+        """Apply the V6 multi-channel fusion on top of the baseline explore result.
+
+        Adds exact-symbol, anchor-Zoekt, and line-FTS channels to the baseline
+        and Zoekt results, fuses them with intent-aware RRF + confidence weights,
+        and returns a new payload with the fused file list.
+
+        ``precomputed_zoekt`` is the already-fetched Zoekt file list from
+        ``_tool_explore_impl`` (same query, up to 96 files).  When provided it
+        is reused directly, skipping a redundant second Zoekt search.
+        """
+        raw_files = baseline_payload.get("files")
+        # Don't short-circuit when baseline is empty: the non-baseline channels
+        # (zoekt, exact, anchor, line) can still surface the gold file even when
+        # the FTS symbol search returns nothing (e.g. rare grammar-rule functions,
+        # module-level constants not indexed as symbols, or deep-module definitions
+        # that the centrality-ranked symbol search buries below the result cap).
+        # Only bail out if the payload is genuinely malformed (not a list).
+        if not isinstance(raw_files, list):
+            return baseline_payload
+
+        baseline_entries: dict[str, dict[str, Any]] = {}
+        baseline_files: list[str] = []
+        for entry in raw_files:
+            if not isinstance(entry, dict):
+                continue
+            file_path = str(entry.get("path") or entry.get("file_path") or "")
+            if file_path and file_path not in baseline_entries:
+                baseline_entries[file_path] = entry
+                baseline_files.append(file_path)
+
+        # Get full Zoekt results (up to 96) independent of baseline truncation.
+        # Reuse the list already fetched by _tool_explore_impl when available so
+        # we never search the same query twice on the same code_search call.
+        if precomputed_zoekt is not None:
+            full_zoekt: list[str] = precomputed_zoekt
+        else:
+            full_zoekt = []
+            with contextlib.suppress(Exception):
+                full_zoekt = self._zoekt_candidate_files(query, path=".", max_files=96)
+
+        # The three independent V6 channels run on the persistent _HEF_CHANNEL_EXECUTOR
+        # (module-level ThreadPool — no spawn/join per query).  When the caller started
+        # them up front (the normal tool_explore path) they have already been running
+        # concurrently with the baseline phase; otherwise submit them now.  A 200 ms
+        # shared deadline releases the caller immediately; slow threads finish in the
+        # background and return their slot to the pool.
+        if hef_futures is not None:
+            plan, _f_exact, _f_anchor, _f_line = hef_futures
+        else:
+            plan, _f_exact, _f_anchor, _f_line = self._submit_hef_channels(query)
+        _done, _ = concurrent.futures.wait([_f_exact, _f_anchor, _f_line], timeout=0.200)
+        exact_files, exact_details = _f_exact.result() if _f_exact in _done else ([], {})
+        anchor_files, anchor_details = _f_anchor.result() if _f_anchor in _done else ([], {})
+        line_files, line_details = _f_line.result() if _f_line in _done else ([], {})
+
+        # Selective gate: the broad Zoekt channel would only feed fusion for
+        # query shapes where it helps (regex/pattern, multi-word).  The targeted
+        # per-anchor Zoekt channel stays on regardless.  Enforcement is opt-in
+        # (see _zoekt_gate_enforced); telemetry records the decision either way.
+        broad_decision, gate_reason = _zoekt_broad_gate(query)
+        gate_enforced = _zoekt_gate_enforced()
+        broad_admit = broad_decision or not gate_enforced
+        _zoekt_gate_record(
+            query, plan.intent, broad_decision, gate_reason, len(full_zoekt), len(anchor_files), enforced=gate_enforced
+        )
+        channels: dict[str, list[str]] = {
+            "baseline": baseline_files,
+            "zoekt": full_zoekt if broad_admit else [],
+            "exact": exact_files,
+            "anchors": anchor_files,
+            "line": line_files,
+        }
+        rank_weights: dict[str, float] = {
+            "definition": {"baseline": 1.0, "zoekt": 0.9, "exact": 1.4, "anchors": 1.1, "line": 1.2},
+            "symbol": {"baseline": 1.2, "zoekt": 1.1, "exact": 1.4, "anchors": 1.1, "line": 0.8},
+            "code": {"baseline": 0.9, "zoekt": 0.9, "exact": 0.9, "anchors": 1.1, "line": 1.5},
+            "prose": {"baseline": 0.8, "zoekt": 1.0, "exact": 0.3, "anchors": 0.4, "line": 1.8},
+        }[plan.intent]
+        confidence_weights: dict[str, float] = {
+            "definition": {"exact": 1.25, "anchors": 0.60, "line": 1.05},
+            "symbol": {"exact": 1.10, "anchors": 0.55, "line": 0.55},
+            "code": {"exact": 0.70, "anchors": 0.75, "line": 1.20},
+            "prose": {"exact": 0.15, "anchors": 0.20, "line": 1.40},
+        }[plan.intent]
+
+        scores: dict[str, float] = {}
+        channel_ranks: dict[str, dict[str, int]] = {}
+        rrf_k = 8.0
+        for channel, files in channels.items():
+            channel_ranks[channel] = {p: r for r, p in enumerate(files, 1)}
+            weight = rank_weights[channel]
+            for rank, file_path in enumerate(files, 1):
+                scores[file_path] = scores.get(file_path, 0.0) + weight / (rrf_k + rank)
+
+        for file_path, detail in exact_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["exact"] * float(detail["confidence"])
+        for file_path, detail in anchor_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["anchors"] * float(detail["confidence"])
+        for file_path, detail in line_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["line"] * float(detail["confidence"])
+
+        top_sets = {channel: set(files[:32]) for channel, files in channels.items()}
+        explicit_names = {name.lower() for _kind, name in plan.definitions}
+        identifier_names = {token.lower() for token in plan.identifiers}
+
+        for file_path in list(scores):
+            support = sum(file_path in ts for ts in top_sets.values())
+            if support >= 2:
+                scores[file_path] += 0.08 * (support - 1)
+            exact_detail = exact_details.get(file_path, {})
+            kind_matches = set(exact_detail.get("kind_matches", ()))
+            if explicit_names and kind_matches:
+                scores[file_path] += 0.90 * len(explicit_names & kind_matches)
+            path_overlap = len(identifier_names & _hef_path_parts(file_path))
+            if path_overlap:
+                scores[file_path] += 0.035 * path_overlap
+            if not plan.wants_tests and _HEF_TEST_RE.search(file_path) and file_path not in baseline_entries:
+                scores[file_path] *= 0.78
+            if not plan.wants_auxiliary and _HEF_AUX_RE.search(file_path) and file_path not in baseline_entries:
+                scores[file_path] *= 0.68
+            if file_path.endswith(".pyi") and not re.search(r"\bpyi|stub\b", query, re.I):
+                scores[file_path] *= 0.82
+
+        ordered = sorted(
+            scores,
+            key=lambda p: (
+                -scores[p],
+                channel_ranks["baseline"].get(p, 10_000),
+                channel_ranks["zoekt"].get(p, 10_000),
+                channel_ranks["exact"].get(p, 10_000),
+                channel_ranks["anchors"].get(p, 10_000),
+                channel_ranks["line"].get(p, 10_000),
+                p,
+            ),
+        )[:max_files]
+
+        fused_entries: list[dict[str, Any]] = []
+        for file_path in ordered:
+            existing = baseline_entries.get(file_path)
+            if existing is not None:
+                fused_entries.append(existing)
+            else:
+                fused_entries.append(
+                    {
+                        "path": file_path,
+                        "language": "unknown",
+                        "symbols": [],
+                        "source_sections": [],
+                    }
+                )
+
+        result = dict(baseline_payload)
+        result["files"] = fused_entries
+        result["experiment"] = {
+            "name": "fused_explore_hybrid_v6",
+            "intent": plan.intent,
+            "base": baseline_payload.get("experiment"),
+            "zoekt_gate": {
+                "broad_admitted": broad_admit,
+                "decision": broad_decision,
+                "enforced": gate_enforced,
+                "reason": gate_reason,
+                "zoekt_n": len(full_zoekt),
+                "anchor_n": len(anchor_files),
+            },
+        }
+        return result
+
+    def _tool_explore_impl(
+        self,
+        query: str,
+        *,
+        seed_files: list[str] | None = None,
+        max_files: int = 6,
+        max_symbols: int = 20,
+        include_source: bool = True,
+        include_relationships: bool = False,
+        line_numbers: bool = True,
+        skeletonize: bool = True,
+        complete_families: bool | None = None,
+        depth: int = 1,
+        budget_tokens: int = 9000,
+    ) -> tuple[dict[str, Any], list[str]]:
+        effective_skeletonize = skeletonize and _explore_skeleton_enabled()
+        effective_complete = (
+            bool(complete_families if complete_families is not None else skeletonize) and _explore_skeleton_enabled()
+        )
 
         bounded_max_symbols = max(1, min(max_symbols, 30))
         bounded_max_files = max(1, min(max_files, 8))
         bounded_depth = max(1, depth)
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
         seed_set = set(normalized_seeds)
+        # When the caller passes a single *file* (not directory) as the scope,
+        # restrict FTS5 to that file so its symbols surface even when globally-
+        # higher-scoring symbols from other files would crowd them out.  Computed
+        # here so the cache_args key reflects the scoping behaviour change.
+        _single_file_seed = (
+            normalized_seeds[0]
+            if len(normalized_seeds) == 1 and not (Path(self.repo_root) / normalized_seeds[0]).is_dir()
+            else None
+        )
         cache_args = {
             "query": query,
             "seed_files": normalized_seeds,
+            # v4: inject all seed-file defs + restrict per-file cap + filter family completions.
+            "_scope_v": 4 if _single_file_seed else 1,
             "max_files": bounded_max_files,
             "max_symbols": bounded_max_symbols,
             "include_source": include_source,
             "include_relationships": include_relationships,
             "line_numbers": line_numbers,
+            "skeletonize": effective_skeletonize,
+            "complete_families": effective_complete,
             "depth": bounded_depth,
             "budget_tokens": budget_tokens,
         }
         hit, cached = self._cache_get("code.explore", cache_args)
         if hit and cached is not None:
-            return self._mark_cache_hit(cached)
+            return self._mark_cache_hit(cached), []
 
-        raw_symbols = self.search_symbols(
-            query,
-            limit=bounded_max_symbols,
-            snippet="none",
-            auto_index=False,
-        )
+        # Pipe-separated queries: pre-compute the extra word set for token-pin
+        # ranking.  Actual OR-expansion happens lazily after the main search returns
+        # (see the merge block after the parallel phase) so it only runs when the
+        # primary FTS AND search yields too few results, avoiding serial overhead on
+        # queries where FTS AND already finds the right file.
+        _pipe_query_extra_words: frozenset[str] = frozenset()
+        _pipe_clean_terms: list[str] = []
+        _pipe_extra_symbols: list[SymbolRecord] = []
+        if "|" in query:
+            _pipe_terms = _split_pipe_query(query)
+            if _pipe_terms:
+                _pipe_query_extra_words = frozenset(re.sub(r"[^A-Za-z0-9_.]", "", t) for t in _pipe_terms) - {""}
+                _pipe_clean_terms = sorted((t for t in _pipe_query_extra_words if len(t) >= 3), key=len, reverse=True)[
+                    :5
+                ]
+
+        # Winner-pipeline fusion: pull in trigram (zoekt) AND semantic anchors. The
+        # symbol FTS ranks named symbols well but misses concept/regex queries where
+        # the right file has no lexically-matching symbol name; zoekt's trigram search
+        # and the embedding nearest-neighbours surface those files, and seeding a
+        # couple of their definitions makes the file survive ranking. Both are
+        # additive and graceful (empty when zoekt is off / no embedder configured) --
+        # the exact/score/seed ranking below still governs final order.
+        #
+        # The three pipelines are independent: the FTS5 search channels run in a
+        # dedicated process pool (true CPU parallelism without GIL contention), while
+        # the Zoekt recall runs on a worker thread whose HTTP I/O releases the GIL.
+        # Wall-clock collapses from sum-of-channels to slowest-channel. Opt out with
+        # ATELIER_EXPLORE_PARALLEL=0.
+        anchor_budget = max(bounded_max_files * 2, 12)
+        # Execution gate: for plain single-identifier queries the broad Zoekt
+        # channel mostly displaces a file lexical+centrality already ranked #1,
+        # so when enforced (ATELIER_ZOEKT_GATE) we SKIP the broad search entirely
+        # — saving its ~HTTP round-trip — and let FTS symbols + the targeted
+        # per-anchor Zoekt channel carry the query.
+        _broad_admit = (not _zoekt_gate_enforced()) or _zoekt_broad_gate(query)[0]
+        # {file_path: best cosine} from the semantic channel; used both as recall
+        # anchors AND (the fix) as a ranking signal below so semantic-surfaced
+        # files aren't scored ~0 on lexical/centrality and buried.
+        _sem_scores: dict[str, float] = {}
+        if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
+            from concurrent.futures import ThreadPoolExecutor
+
+            # Do NOT use "with _pool" here: its __exit__ calls shutdown(wait=True)
+            # which blocks until zoekt/semantic threads finish even if we've
+            # already timed out and moved on.  shutdown(wait=False) lets slow
+            # threads drain in the background (they terminate within 2 s once
+            # the HTTP timeout fires in _WEBSERVER_REQUEST_TIMEOUT_SECONDS).
+            _pool = ThreadPoolExecutor(max_workers=2)
+            _sem_t0 = time.monotonic()  # stamp before submitting so deadline is from T=0
+            # Fetch up to 96 files so _fused_explore_hybrid can reuse this
+            # list without a redundant second search call on the same query.
+            _zk_fetch_limit = max(anchor_budget, 30)
+            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=_zk_fetch_limit) if _broad_admit else None
+            _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
+            # Pass _candidate_files=set() to skip the duplicate zoekt call inside
+            # search_symbols -- we already have _zk running in the pool above.
+            # search_symbols returns immediately (~50-150 ms), freeing the 0.8 s
+            # zoekt timeout budget for the _zk future already in flight.
+            raw_symbols = self.search_symbols(
+                query,
+                limit=bounded_max_symbols,
+                snippet="none",
+                auto_index=False,
+                _candidate_files=set(),
+            )
+            # Collect zoekt results; cap at 800 ms.  By the time search_symbols
+            # returns (~100 ms), zoekt has had most of that budget already.
+            _zk_list: list[str] = []
+            if _zk is not None:
+                try:
+                    _zk_list = _zk.result(timeout=0.8)
+                except (TimeoutError, concurrent.futures.CancelledError):
+                    _zk_list = []
+            # _zk_list may have up to 96 entries (for the fusion channel).
+            # Limit baseline anchors to anchor_budget to match V6 behaviour:
+            # the capturing wrapper in the experiment only returned the first
+            # anchor_budget files to _tool_explore_impl, keeping baseline scoring
+            # calibrated while the fusion channel still sees the full 96.
+            _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
+            try:
+                # _sem has been running since T=0 in parallel with search_symbols
+                # (~100ms) and zoekt (~20-50ms).  Give it a total budget of 500ms
+                # from submission: enough for cached-embed + linux TurboQuant ANN
+                # (~200ms), while still bounding worst-case interactive latency.
+                # Minimum 50ms floor so the common small-repo case (5ms ANN) never
+                # waits unnecessarily.
+                _sem_remaining = max(0.05, 0.5 - (time.monotonic() - _sem_t0))
+                _sem_scores = _sem.result(timeout=_sem_remaining)
+                for _f in _sem_scores:
+                    _seen_anchors.setdefault(_f, None)
+            except (TimeoutError, concurrent.futures.CancelledError):
+                pass
+            _pool.shutdown(wait=False)  # don't block; slow threads drain in bg
+            anchor_candidates = list(_seen_anchors)
+        else:
+            raw_symbols = self.search_symbols(
+                query,
+                limit=bounded_max_symbols,
+                snippet="none",
+                auto_index=False,
+            )
+            # Preserve zoekt's score-ranked order; append semantic-only files at the end.
+            # Limit baseline anchors to anchor_budget (same as V6 capturing_zoekt behaviour).
+            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 30)) if _broad_admit else []
+            _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
+            _sem_scores = self._semantic_candidate_files(query, max_files=anchor_budget)
+            for _f in _sem_scores:
+                _seen_anchors_s.setdefault(_f, None)
+            anchor_candidates = list(_seen_anchors_s)
+        # Single-file scope: restrict results to that file only.
+        # FTS5 indexes the full symbol body (start_byte:end_byte), so concept
+        # queries do match body content. However, a body-match in a DIFFERENT
+        # file would crowd out the target file's symbols. Instead:
+        #   1. Discard FTS5 hits from OTHER files.
+        #   2. Inject all definition symbols from the seed file directly so
+        #      every definition is visible even when the query has no FTS match.
+        #      Injected symbols bypass the score floor via seed_set.
+        #   3. Sort injected symbols by name-query token overlap so the most
+        #      relevant definitions surface first.
+        if _single_file_seed:
+            anchor_candidates = [f for f in anchor_candidates if f == _single_file_seed]
+            seed_fts_hits = [s for s in raw_symbols if s.file_path == _single_file_seed]
+            _qt = set(re.split(r"\W+", query.lower())) - {"", "the", "a", "in", "of"}
+            # Score each injected symbol by name-token overlap so the ranking
+            # sort (-(score or 0.0), start_line) surfaces query-relevant symbols
+            # first rather than just the earliest-in-file ones.
+            seed_file_syms = [
+                s.model_copy(update={"score": float(sum(1 for t in _qt if t in (s.symbol_name or "").lower())) * 0.001})
+                for s in self._symbols_for_files([_single_file_seed], limit=5000)
+                if (s.kind or "").lower() in _DEFINITION_KINDS
+            ]
+            raw_symbols = self._dedupe_symbols(seed_fts_hits + seed_file_syms)
+        # Exact-name guard + anchor gate. When the query is itself an indexed symbol
+        # name, the definition (+ its family) is the answer, so two things happen:
+        # (1) the exact match is pinned to the front (semantic/lexical ranking can
+        # otherwise bury it behind cousins or drop it past the cap), and (2) the
+        # zoekt/semantic anchor recall is SKIPPED -- for an exact hit those channels
+        # only flood the payload with the many files that merely *reference* the
+        # name (grep-style over-recall, the dominant explore bloat). Anchors stay on
+        # for concept queries (no exact hit), where they are the recall mechanism.
+        # Only symbol-like (single-token) queries pay the extra lexical lookup.
+        exact_hits = _exact_symbol_hits(raw_symbols, query)
+        # Save the strict full-query exact match for the anchor gate below.
+        # The multi-word token probe (elif branch) overwrites exact_hits with
+        # token-level matches — using those would skip the anchor merge even
+        # though the full query is not an indexed symbol name (e.g. a multi-word
+        # query whose only exact match is a sub-token like "aggregate_session_stats"
+        # inside "def aggregate_session_stats").  The anchor gate should only
+        # fire when the query itself is an exact symbol name.
+        _anchor_gate_exact_hits = True if exact_hits else False
+        if not exact_hits and _SYMBOL_QUERY_RE.match(query.strip()):
+            lexical_hits = self.search_symbols(
+                query,
+                limit=max(bounded_max_symbols, 10),
+                mode="lexical",
+                snippet="none",
+                auto_index=False,
+                _candidate_files=set(),  # zoekt already ran above; skip duplicate
+            )
+            exact_hits = _exact_symbol_hits(lexical_hits, query)
+        elif not exact_hits and " " in query.strip():
+            # Multi-word query: probe each compound-identifier token for an
+            # exact symbol-name match. FTS5 BM25 tokenises on underscores, so
+            # a test class that references sub-tokens many times can outscore
+            # the one definition. E.g. 'trim_docstring admindocs' → probe
+            # 'trim_docstring' → pin utils.py::trim_docstring to the front so
+            # it survives the floor and appears first.
+            token_hits: list[SymbolRecord] = []
+            seen_ids: set[str] = set()
+            for token in query.strip().split():
+                if not _SYMBOL_QUERY_RE.match(token):
+                    continue
+                # Strip class prefix: "DataArray.quantile" → probe "quantile".
+                # The compound-identifier guard applies to the probe name so
+                # plain English words are still skipped, but "Variable.quantile"
+                # is no longer dropped because the dot broke the CamelCase check.
+                has_dot = "." in token
+                probe = token.rsplit(".", 1)[-1] if has_dot else token
+                if len(probe) <= 3:
+                    continue
+                # For plain (non-dotted) tokens keep the compound-ident filter so
+                # bare English words like "find" or "get" are not probed.
+                if not has_dot and not _COMPOUND_IDENT_RE.search(token):
+                    continue
+                lhits = self.search_symbols(
+                    probe,
+                    limit=max(bounded_max_symbols, 10),
+                    mode="lexical",
+                    snippet="none",
+                    auto_index=False,
+                    _candidate_files=set(),  # zoekt already ran above; skip duplicate
+                )
+                for r in _exact_symbol_hits(lhits, probe):
+                    if r.symbol_id not in seen_ids:
+                        seen_ids.add(r.symbol_id)
+                        token_hits.append(r)
+            exact_hits = token_hits
+        exact_ids = {record.symbol_id for record in exact_hits}
+        # No extra searches needed for pipe queries: _pipe_query_extra_words is
+        # already merged into _query_words for token-pin ranking, and the file-level
+        # coverage boost below rewards files that match more pipe terms.
+        anchor_ids: set[str] = set()
+        if not _anchor_gate_exact_hits:
+            seeded_files = {symbol.file_path for symbol in raw_symbols}
+            # anchor_candidates is zoekt-score ordered (highest relevance first);
+            # do NOT sort alphabetically — that would bury high-signal files.
+            anchor_files = [anchor for anchor in anchor_candidates if anchor not in seeded_files]
+            if anchor_files:
+                anchor_symbols = self._cap_symbols_per_file(
+                    [
+                        symbol
+                        for symbol in self._symbols_for_files(anchor_files[:bounded_max_files], limit=400)
+                        if (symbol.kind or "").lower() in _DEFINITION_KINDS
+                    ],
+                    max_per_file=2,
+                )
+                anchor_ids = {symbol.symbol_id for symbol in anchor_symbols}
+                raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
+        # ── Reference-file expansion ──────────────────────────────────────
+        # For concept queries (no exact hit yet), find files that REFERENCE
+        # the top-ranked FTS symbols.  Catches the "subclass override" pattern:
+        # FTS finds the base-class definition (e.g. base/base.py for
+        # timezone_name) but the gold file is the concrete backend override
+        # (e.g. mysql/operations.py) which only REFERENCES that symbol.
+        # Uses the intel.sqlite 'references' table which is already attached
+        # to the shared connection - no extra connection overhead.
+        _ref_anchor_ids: set[str] = set()
+        if not exact_hits:
+            _top_sym_names = list(
+                dict.fromkeys(
+                    r.symbol_name
+                    for r in raw_symbols[:24]
+                    if r.symbol_name
+                    and len(r.symbol_name) >= 5
+                    and not r.symbol_name.lower().startswith(("test_", "assert_", "mock_"))
+                )
+            )[:6]
+            if _top_sym_names:
+                try:
+                    _ref_ph = ",".join("?" * len(_top_sym_names))
+                    with self._connect(readonly=True) as _rconn:
+                        _ref_file_rows = _rconn.execute(
+                            f"SELECT file_path, COUNT(DISTINCT symbol_name) AS cnt "
+                            f'FROM "references" '
+                            f"WHERE repo_id=? AND symbol_name IN ({_ref_ph}) "
+                            f"GROUP BY file_path ORDER BY cnt DESC LIMIT 12",
+                            [self.repo_id, *_top_sym_names],
+                        ).fetchall()
+                    _known_ref_fps = {r.file_path for r in raw_symbols if r.file_path}
+                    _new_ref_fps = [row[0] for row in _ref_file_rows if row[0] not in _known_ref_fps][:8]
+                    if _new_ref_fps:
+                        _ref_syms = self._cap_symbols_per_file(
+                            [
+                                s
+                                for s in self._symbols_for_files(_new_ref_fps, limit=200)
+                                if (s.kind or "").lower() in _DEFINITION_KINDS
+                            ],
+                            max_per_file=2,
+                        )
+                        _ref_anchor_ids = {s.symbol_id for s in _ref_syms}
+                        raw_symbols = self._dedupe_symbols(raw_symbols + _ref_syms)
+                except (KeyError, TypeError):
+                    pass
+        if exact_hits:
+            raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
+        # Token-level exact pinning: any whitespace-delimited word in the query that
+        # exactly matches a symbol name is pinned alongside full-query exact hits.
+        # FTS5 BM25 misses this for multi-word queries because test files accumulate
+        # far more term hits in assertion bodies than the single definition file.
+        # Split on whitespace AND pipe (|) so pipe-separated multi-term queries
+        # like "_get_timezone_name|get_current_timezone_name" correctly yield each
+        # term as a candidate for exact-symbol pinning.
+        # Merge original pipe terms so symbols matching any pipe-token are pinned
+        # even though the primary FTS search used only the longest identifier.
+        _query_words = frozenset(re.split(r"[\s|]+", query.strip())) | _pipe_query_extra_words
+        token_exact_ids = {
+            r.symbol_id for r in raw_symbols if r.symbol_name in _query_words or r.symbol_name.lower() in _query_words
+        }
+        # Pipe-query file coverage: count how many DISTINCT pipe terms have an exact
+        # symbol-name match in each file.  Files that cover more pipe terms (e.g.
+        # `expressions.py` matching both ExpressionWrapper and DurationField) rank
+        # ahead of files that cover only one term.  Free: no extra searches needed.
+        _file_pipe_coverage: dict[str, int] = {}
+        if _pipe_query_extra_words:
+            _fp_terms: dict[str, set[str]] = {}
+            for _r in raw_symbols:
+                _rname = _r.symbol_name or ""
+                _rlow = _rname.lower()
+                for _w in _pipe_query_extra_words:
+                    if _rname == _w or _rlow == _w.lower():
+                        _fp = _r.file_path or ""
+                        if _fp:
+                            _fp_terms.setdefault(_fp, set()).add(_w)
+            _file_pipe_coverage = {fp: len(ws) for fp, ws in _fp_terms.items()}
+        # ── Semantic score fusion (the fix) ──────────────────────────────────
+        # Give every symbol in a semantically-matched file a rank boost
+        # proportional to that file's cosine, so a file the embedder ranked #1
+        # competes in the final ordering instead of sinking to the tail. Before
+        # this, semantic contributed recall only: the file was added to the
+        # candidate pool but scored ~0 on lexical/centrality and lost the
+        # -(score) sort. Purely additive -- never demotes a strong lexical hit,
+        # only lifts semantic-surfaced files. Weight tunable for calibration.
+        if _sem_scores:
+            _sem_w = float(os.environ.get("ATELIER_SEMANTIC_RANK_WEIGHT", "120"))
+            raw_symbols = [
+                (
+                    record.model_copy(update={"score": (record.score or 0.0) + _sem_scores[record.file_path] * _sem_w})
+                    if record.file_path in _sem_scores
+                    else record
+                )
+                for record in raw_symbols
+            ]
+        # Path-quality filter FIRST: hard-remove minified/vendor artefacts and
+        # soft-penalise test files BEFORE the ranking sort and the score floor.
+        # The penalty must precede the sort or it can never demote a test file:
+        # test symbols often score highest (query terms repeat in assertion
+        # bodies), and the sort order fixed here also seeds the stable
+        # _explore_priority tie-break below. Pinned exact hits and seed files
+        # are exempt.
+        query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
+        pinned_ids = exact_ids | anchor_ids | token_exact_ids | _ref_anchor_ids
+        pre_filtered: list[SymbolRecord] = []
+        for record in raw_symbols:
+            fp = record.file_path or ""
+            if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
+                if record.symbol_id not in pinned_ids and fp not in seed_set:
+                    continue  # hard remove before floor
+            if not query_wants_tests and _TEST_PATH_RE.search(fp):
+                if record.symbol_id not in pinned_ids and fp not in seed_set:
+                    record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
+            pre_filtered.append(record)
+        raw_symbols = pre_filtered
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
                 0 if record.file_path in seed_set else 1,
+                0 if record.symbol_id in exact_ids or record.symbol_id in token_exact_ids else 1,
+                -_file_pipe_coverage.get(record.file_path or "", 0),  # more pipe coverage = rank first
                 -(record.score or 0.0),
                 record.file_path,
                 record.start_line,
             ),
         )
-        selected_symbols = ranked_symbols[:bounded_max_symbols]
+        # Relevance floor: when the top hit is strongly dominant (e.g. an exact
+        # symbol scoring far above the lexical sub-token co-matches that share a
+        # token like "get"/"name"), drop the near-zero tail so a precise query
+        # returns the definition, not every file that merely shares a sub-token.
+        # Pinned categories are always kept: the exact hit(s), the recall anchors
+        # (zoekt/semantic, intentionally low/zero lexical score), and seed files --
+        # so uniform low-score concept queries (floor ~ 0) keep everything.
+        if ranked_symbols:
+            # Idea C: Compute floor from definition-kind symbols in non-test files only.
+            # Test files can have inflated BM25 scores from repeated assertions/references,
+            # causing the floor to exclude the actual implementation file.
+            definition_scores = [
+                record.score or 0.0
+                for record in ranked_symbols
+                if (record.kind or "").lower() in _DEFINITION_KINDS and not _is_test_file_path(record.file_path)
+            ]
+            if definition_scores:
+                top_score = max(definition_scores)
+            else:
+                # Fallback: no definition symbols in non-test files, use overall max
+                top_score = max((record.score or 0.0) for record in ranked_symbols)
+            floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
+            if floor > 0:
+                ranked_symbols = [
+                    record
+                    for record in ranked_symbols
+                    if record.symbol_id in pinned_ids or record.file_path in seed_set or (record.score or 0.0) >= floor
+                ]
+        # File diversity: cap symbols-per-file before the symbol budget so one
+        # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
+        # cannot starve the other files the query also matches (the ambiguous-name
+        # collapse). Exact/seed hits already sort first, so they survive the cap.
+        # Single-file scope: the caller explicitly restricted to one file, so there
+        # are no other files to protect -- let the full symbol budget apply without
+        # the per-file cap that would otherwise truncate to just 3 symbols.
+        _per_file_cap = bounded_max_symbols if _single_file_seed else 3
+        diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=_per_file_cap)
+        selected_symbols = diverse_ranked[:bounded_max_symbols]
+        # Ensure reference-expansion symbols are not silently dropped by the
+        # symbol-budget cap above.  They rank low (score=None) so they fall
+        # after all FTS hits in diverse_ranked; without this injection they
+        # would be cut off when the FTS budget is already full.  Keep at most
+        # one symbol per reference file to minimise token cost.
+        if _ref_anchor_ids:
+            _have_sel = {s.symbol_id for s in selected_symbols}
+            _ref_missing_by_file: dict[str, SymbolRecord] = {}
+            for _rs in raw_symbols:
+                if _rs.symbol_id in _ref_anchor_ids and _rs.symbol_id not in _have_sel:
+                    _ref_missing_by_file.setdefault(_rs.file_path or "", _rs)
+            if _ref_missing_by_file:
+                selected_symbols = selected_symbols + list(_ref_missing_by_file.values())[:8]
+        # Zoekt/semantic anchor symbols suffer the same problem: they rank low
+        # (score=None from direct file-path lookup) so the symbol-budget cap at
+        # bounded_max_symbols cuts them before any anchor file gets a slot in the
+        # file list.  Inject one symbol per anchor file that missed the budget.
+        _anchor_injected: dict[str, SymbolRecord] = {}
+        if anchor_ids:
+            _have_sel = {s.symbol_id for s in selected_symbols}
+            _anchor_missing_by_file: dict[str, SymbolRecord] = {}
+            for _rs in raw_symbols:
+                if _rs.symbol_id in anchor_ids and _rs.symbol_id not in _have_sel:
+                    _anchor_missing_by_file.setdefault(_rs.file_path or "", _rs)
+            if _anchor_missing_by_file:
+                selected_symbols = selected_symbols + list(_anchor_missing_by_file.values())[:bounded_max_files]
+                _anchor_injected = _anchor_missing_by_file
+        family_member_ids: set[str] = set()
+        # Skip sibling-family completion for an exact-symbol query: the named
+        # definition is the answer, so pulling in related families across other
+        # files would re-bloat a grep-style lookup (the dominant explore use).
+        if effective_complete and not exact_hits:
+            additions = self._complete_sibling_families(selected_symbols, query=query, seed_set=seed_set)
+            if additions:
+                # Single-file scope: keep family completions inside the target file.
+                if _single_file_seed:
+                    additions = [s for s in additions if s.file_path == _single_file_seed]
+                have = {symbol.symbol_id for symbol in selected_symbols}
+                fresh = [symbol for symbol in additions if symbol.symbol_id not in have]
+                selected_symbols = selected_symbols + fresh
+                family_member_ids = {symbol.symbol_id for symbol in fresh}
+
+        # Test-coverage pinning: for each exact-hit function F, also include the
+        # corresponding test_F symbol so the agent sees the test alongside the
+        # implementation on the very first explore call. This eliminates the
+        # secondary grep/read step that agents use to discover which test to run.
+        # Uses an explicit lexical probe so the test is found even when the
+        # BM25 top-N (max_symbols=20) didn't include it.
+        if exact_ids and not query_wants_tests:
+            _have = {s.symbol_id for s in selected_symbols}
+            _exact_fn_names_lower = {
+                r.symbol_name.lower() for r in selected_symbols if r.symbol_id in exact_ids and r.symbol_name
+            }
+            for _fn_name in _exact_fn_names_lower:
+                _test_sym = f"test_{_fn_name}"
+                _test_hits = self.search_symbols(
+                    _test_sym, limit=5, mode="lexical", snippet="none", auto_index=False, _candidate_files=set()
+                )  # zoekt already ran above
+                for _tr in _exact_symbol_hits(_test_hits, _test_sym):
+                    if _tr.symbol_id not in _have and _TEST_PATH_RE.search(_tr.file_path or ""):
+                        selected_symbols = [*selected_symbols, _tr]
+                        _have.add(_tr.symbol_id)
+                        break  # one test per function is enough
+
+        # Rank so the highest-signal symbols claim the files that survive the file
+        # and budget caps: seed files, then the query's completed family, then
+        # definitions by score, then trivial variables/constants last.
+        def _explore_priority(symbol: SymbolRecord) -> int:
+            if symbol.symbol_id in exact_ids:
+                return -1
+            if symbol.file_path in seed_set:
+                return 0
+            # Direct definition hits must claim files BEFORE sibling-family
+            # completions -- otherwise a loose affix (e.g. "select" pulling the
+            # whole Select* widget family) hijacks the file slots above the
+            # actually-relevant definitions.
+            if (symbol.kind or "").lower() in _DEFINITION_KINDS:
+                return 1
+            if symbol.symbol_id in family_member_ids:
+                return 2
+            return 3
+
+        selected_symbols = [
+            symbol
+            for _, symbol in sorted(enumerate(selected_symbols), key=lambda pair: (_explore_priority(pair[1]), pair[0]))
+        ]
         selected_files: list[str] = []
         by_file: dict[str, list[SymbolRecord]] = {}
         for symbol in selected_symbols:
             by_file.setdefault(symbol.file_path, []).append(symbol)
             if symbol.file_path not in selected_files:
                 selected_files.append(symbol.file_path)
-        selected_files = selected_files[:bounded_max_files]
+        # Family-completion can add files past the normal cap; allow them since the
+        # extra siblings render signatures-only (cheap), but stay bounded.
+        # Hard-respect the caller's max_files. Sibling-family completion gets a small
+        # fixed headroom (a couple of extra files for cross-file families) but is no
+        # longer allowed to balloon: the old cap let an explicit max_files=1 expand
+        # to 16 files, which then truncated every section to fit the token budget.
+        file_cap = bounded_max_files + 2 if family_member_ids else bounded_max_files
+        selected_files = selected_files[:file_cap]
+        # Zoekt anchor files get injected to selected_symbols above, but the
+        # file cap cuts them (they sort last because score=None).  Promote the
+        # first anchor file into the file list so Zoekt's unique surface recall
+        # (files FTS5 missed entirely) reaches the caller's result.
+        if _anchor_injected:
+            _anchor_in_cap = {f for f in selected_files if f in _anchor_injected}
+            if not _anchor_in_cap:
+                _first = next(iter(_anchor_injected.keys()))
+                selected_files[-1:] = [_first]
+        # Path-alignment reranking: stable re-sort by query-word overlap with file path
+        # parts + symbol names. Surfaces files whose paths/symbols match query terms
+        # (e.g. 'timezone.py' for a timezone query) with zero latency and no API calls.
+        # Only fires when ATELIER_RERANK=1 and there are enough candidates to reorder.
+        if os.environ.get("ATELIER_RERANK") == "1" and len(selected_files) > 3:
+            _stop = {"the", "a", "an", "in", "of", "to", "for", "is", "it", "on", "at", "fix", "bug", "issue"}
+            _qwords = frozenset(re.split(r"[\s\W]+", query.lower())) - _stop - {""}
+            # Build symbol-name lookup for each file from already-ranked symbols
+            _file_syms: dict[str, set[str]] = {}
+            for _sym in ranked_symbols:
+                if _sym.file_path in set(selected_files) and _sym.symbol_name:
+                    _file_syms.setdefault(_sym.file_path, set()).update(re.split(r"[_A-Z]", _sym.symbol_name.lower()))
+
+            def _align_score(fp: str) -> float:
+                path_parts = frozenset(re.split(r"[/._-]+", fp.lower()))
+                sym_parts = _file_syms.get(fp, set())
+                return len(_qwords & (path_parts | sym_parts))
+
+            _max_align = max((_align_score(f) for f in selected_files), default=0)
+            if _max_align > 0:
+                selected_files = [
+                    f
+                    for f, _ in sorted(
+                        ((f, _align_score(f)) for f in selected_files),
+                        key=lambda x: -x[1],
+                    )
+                ]
         trimmed_symbols = [symbol for symbol in selected_symbols if symbol.file_path in set(selected_files)]
         trimmed_by_file: dict[str, list[SymbolRecord]] = {}
         for symbol in trimmed_symbols:
             trimmed_by_file.setdefault(symbol.file_path, []).append(symbol)
+
+        skeleton_ids: set[str] = set()
+        skeleton_families: dict[str, str] = {}
+        if effective_skeletonize:
+            skeleton_ids, skeleton_families = self._select_skeleton_symbols(trimmed_symbols, seed_set=seed_set)
+            # An exact name match is the whole point of the query -- never reduce
+            # it to a signature-only skeleton; always show its full body.
+            skeleton_ids -= exact_ids
+        # Completed family members are supplementary "here's the rest of the family"
+        # context, not direct hits -- always render them signatures-only so surfacing
+        # a whole family stays cheap and never forces the budget to drop relevant
+        # files. The actual search hits still render per the skeletonize flag.
+        if family_member_ids:
+            for symbol in trimmed_symbols:
+                if symbol.symbol_id in family_member_ids and symbol.file_path not in seed_set:
+                    skeleton_ids.add(symbol.symbol_id)
+                    skeleton_families.setdefault(symbol.symbol_id, "completion")
 
         entry_points = [
             {
@@ -2110,6 +5339,10 @@ class CodeContextEngine:
             file_entry: dict[str, Any] = {
                 "file_path": file_path,
                 "language": symbols[0].language if symbols else "unknown",
+                # Per-file semantic cosine for the learned reranker's feature vector
+                # (0.0 when the file was not a semantic anchor). Cheap to carry; only
+                # the reranker reads it.
+                "semantic_score": float(_sem_scores.get(file_path, 0.0)),
                 "symbols": [
                     {
                         "symbol_id": symbol.symbol_id,
@@ -2124,7 +5357,27 @@ class CodeContextEngine:
                 ],
             }
             if include_source:
-                sections = [self._source_section_for_symbol(symbol, line_numbers=line_numbers) for symbol in symbols]
+                # Single-file scope: generate sections in score-DESC order so the
+                # budget trim (which pops from the tail) keeps the most query-relevant
+                # source rather than the earliest-in-file symbol.
+                source_order = (
+                    sorted(symbols, key=lambda s: -(s.score or 0.0)) if file_path == _single_file_seed else symbols
+                )
+                sections = [
+                    {
+                        **self._source_section_for_symbol(
+                            symbol,
+                            line_numbers=line_numbers,
+                            skeleton=symbol.symbol_id in skeleton_ids,
+                        ),
+                        "_score": symbol.score or 0.0,
+                        # matched=True when symbol had an FTS/exact score (not just
+                        # seed-injected). Kept after _score is stripped so the
+                        # renderer can tag query-relevant sections.
+                        "matched": (symbol.score or 0.0) > 0.001,
+                    }
+                    for symbol in source_order
+                ]
                 merged_sections = self._merge_nearby_source_sections(sections)
                 file_entry["source_sections"] = merged_sections
             files_payload.append(file_entry)
@@ -2136,7 +5389,8 @@ class CodeContextEngine:
         }
         if include_relationships:
             for symbol in trimmed_symbols[:3]:
-                callers = self.tool_callers(
+                callers = self._neighborhood(
+                    "callers",
                     symbol_id=symbol.symbol_id,
                     depth=bounded_depth,
                     limit=20,
@@ -2152,7 +5406,8 @@ class CodeContextEngine:
                             "edges": callers.get("edges", []),
                         }
                     )
-                callees = self.tool_callees(
+                callees = self._neighborhood(
+                    "callees",
                     symbol_id=symbol.symbol_id,
                     depth=bounded_depth,
                     limit=20,
@@ -2168,7 +5423,8 @@ class CodeContextEngine:
                             "edges": callees.get("edges", []),
                         }
                     )
-                references = self.find_references(
+                references = self._neighborhood(
+                    "refs",
                     symbol_id=symbol.symbol_id,
                     group_by="none",
                     snippet_lines=0,
@@ -2187,20 +5443,90 @@ class CodeContextEngine:
                             }
                         )
 
-        additional_relevant_files = [
-            symbol.file_path for symbol in ranked_symbols if symbol.file_path not in set(selected_files)
-        ][:20]
-        full_payload = {
+        # Dedup: ranked_symbols holds many symbols per file, so the naive
+        # comprehension repeated a file once per matching symbol. Emit each related
+        # file once, capped to what the renderer surfaces (_CONTEXT_RELATED_CAP=10).
+        _extra_seen: set[str] = set(selected_files)
+        additional_relevant_files: list[str] = []
+        for _sym in ranked_symbols:
+            if _sym.file_path in _extra_seen:
+                continue
+            _extra_seen.add(_sym.file_path)
+            additional_relevant_files.append(_sym.file_path)
+            if len(additional_relevant_files) >= 10:
+                break
+        full_payload: dict[str, Any] = {
             "query": query,
             "repo_id": self.repo_id,
             "entry_points": entry_points,
             "files": files_payload,
-            "relationships": relationships,
             "additional_relevant_files": additional_relevant_files,
+            "exact_match": bool(exact_hits),
             "truncated": len(selected_symbols) > len(trimmed_symbols),
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
         }
+        # Only ship relationships when populated -- the default explore call has
+        # include_relationships=False, and an empty {callers,callees,usages} dict
+        # was being serialised on every response for no signal.
+        if any(relationships.values()):
+            full_payload["relationships"] = relationships
+        # Budget-aware file trim: drop the lowest-priority files until the payload
+        # fits, so explore degrades to fewer (most-relevant) files instead of
+        # collapsing to "no results" when a completed family + relationships overflow.
+        if include_source:
+            # Budget-aware file trim: measure total once, then subtract per-file
+            # token costs instead of re-serialising the full payload on every pop.
+            # Old loop was O(N x payload_size); this is O(N + payload_size).
+            _trim_total = self._compute_total_tokens(full_payload)
+            if len(files_payload) > 1 and _trim_total > budget_tokens:
+                _per_file_tokens = [estimate_tokens(_canonical_json(fe)) for fe in files_payload]
+                while len(files_payload) > 1 and _trim_total > budget_tokens:
+                    _trim_total -= _per_file_tokens.pop()
+                    files_payload.pop()
+                    full_payload["files"] = files_payload
+                    full_payload["truncated"] = True
+            # Single-file / last-file fallback: trim sections by score (stored in
+            # _score) so the most query-relevant source survives, not the
+            # earliest-in-file. Restore file order for display after trimming.
+            if _single_file_seed and files_payload:
+                _trim_total = self._compute_total_tokens(full_payload)
+                if _trim_total > budget_tokens:
+                    sections = files_payload[0].get("source_sections") or []
+                    sections.sort(key=lambda s: -(s.get("_score") or 0.0))
+                    _per_sec_tokens = [estimate_tokens(_canonical_json(s)) for s in sections]
+                    while len(sections) > 1 and _trim_total > budget_tokens:
+                        _trim_total -= _per_sec_tokens.pop()
+                        sections.pop()
+                        files_payload[0]["source_sections"] = sections
+                        full_payload["files"] = files_payload
+                        full_payload["truncated"] = True
+                    sections.sort(key=lambda s: int(s.get("start_line") or 0))
+                    files_payload[0]["source_sections"] = sections
+                    full_payload["files"] = files_payload
+            # Strip the internal _score annotation before packing (matched stays).
+            for fe in files_payload:
+                for sec in fe.get("source_sections", []):
+                    sec.pop("_score", None)
+        skeletonized_meta: list[dict[str, Any]] = []
+        tokens_saved_total = 0
+        for file_entry in files_payload:
+            for section in file_entry.get("source_sections", []):
+                if not section.get("skeleton"):
+                    continue
+                section_id = str(section.get("symbol_id") or "")
+                skeletonized_meta.append(
+                    {
+                        "symbol_id": section_id,
+                        "qualified_name": section.get("qualified_name"),
+                        "file_path": section.get("file_path"),
+                        "family": skeleton_families.get(section_id, ""),
+                    }
+                )
+                tokens_saved_total += int(section.get("tokens_saved") or 0)
+        if skeletonized_meta:
+            full_payload["skeletonized"] = skeletonized_meta
+            full_payload["skeleton_tokens_saved"] = tokens_saved_total
         packed = self._pack_single_payload(
             full_payload,
             budget_tokens=budget_tokens,
@@ -2208,7 +5534,7 @@ class CodeContextEngine:
             optional_keys_in_drop_order=_EXPLORE_OPTIONAL_KEYS,
         )
         self._cache_set("code.explore", cache_args, packed)
-        return packed
+        return packed, _zk_list
 
     def tool_routes(
         self,
@@ -2326,127 +5652,6 @@ class CodeContextEngine:
         self._cache_set("code.context", cache_args, payload)
         return payload
 
-    def tool_impact(
-        self,
-        target: str | None = None,
-        *,
-        query: str | None = None,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        kind: str | None = None,
-        language: str | None = None,
-        file_glob: str | None = None,
-        budget_tokens: int = 4000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        effective_budget_tokens = self._effective_budget_tokens("impact", budget_tokens)
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-        candidate_file_path = file_path if file_path is not None else target
-        normalized_file_path = (
-            self._normalize_file_arg(candidate_file_path) if candidate_file_path is not None else None
-        )
-        cache_args = {
-            "target": target,
-            "query": query,
-            "symbol_id": symbol_id,
-            "qualified_name": qualified_name,
-            "symbol_name": symbol_name,
-            "file_path": normalized_file_path,
-            "kind": kind,
-            "language": language,
-            "file_glob": file_glob,
-            "budget_tokens": effective_budget_tokens,
-            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
-        }
-        hit, cached = self._cache_get("code.impact", cache_args)
-        if hit and cached is not None:
-            return self._mark_cache_hit(cached)
-
-        raw_payload = self.impact(
-            target,
-            query=query,
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name,
-            file_path=file_path,
-            kind=kind,
-            language=language,
-            file_glob=file_glob,
-            auto_index=False,
-        ).model_dump(mode="json")
-        compact_payload = self._compact_impact_payload(raw_payload, budget_tokens=effective_budget_tokens)
-        payload = self._pack_single_payload(
-            compact_payload,
-            budget_tokens=effective_budget_tokens,
-            essential_keys=_IMPACT_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=_IMPACT_OPTIONAL_KEYS,
-        )
-        self._cache_set("code.impact", cache_args, payload)
-        return payload
-
-    def _compact_impact_payload(self, payload: dict[str, Any], *, budget_tokens: int) -> dict[str, Any]:
-        compact = dict(payload)
-        compact["affected_files"] = [
-            {key: value for key, value in dict(item).items() if key != "symbols"}
-            for item in cast(list[dict[str, Any]], compact.get("affected_files", []))
-            if isinstance(item, dict)
-        ]
-        compact["direct_importers"] = [str(item) for item in cast(list[Any], compact.get("direct_importers", []))]
-        compact["affected_tests"] = [str(item) for item in cast(list[Any], compact.get("affected_tests", []))]
-        minimum_items = {
-            "affected_files": 1 if compact["affected_files"] else 0,
-            "direct_importers": 1 if compact["direct_importers"] else 0,
-            "affected_tests": 1 if compact["affected_tests"] else 0,
-        }
-
-        def measured_total() -> int:
-            return self._compute_total_tokens({**compact, "cache_hit": False, "tokens_saved": 0})
-
-        if measured_total() <= budget_tokens:
-            return compact
-
-        truncated = False
-        for list_key in ("affected_files", "direct_importers", "affected_tests"):
-            rows = cast(list[Any], compact.get(list_key, []))
-            while len(rows) > int(minimum_items.get(list_key, 0)) and measured_total() > budget_tokens:
-                rows.pop()
-                truncated = True
-            compact[list_key] = rows
-
-        target = compact.get("target")
-        if isinstance(target, dict):
-            match_rows = target.get("matches")
-            if isinstance(match_rows, list):
-                normalized_matches = [
-                    {
-                        "symbol_name": str(item.get("symbol_name") or ""),
-                        "qualified_name": str(item.get("qualified_name") or ""),
-                        "file_path": str(item.get("file_path") or ""),
-                        "start_line": int(item.get("start_line") or 0),
-                    }
-                    for item in match_rows
-                    if isinstance(item, dict)
-                ]
-                min_matches = 1 if normalized_matches else 0
-                while len(normalized_matches) > min_matches and measured_total() > budget_tokens:
-                    normalized_matches.pop()
-                    truncated = True
-                target["matches"] = normalized_matches
-                target["match_count"] = len(normalized_matches)
-                compact["target"] = target
-
-        if measured_total() > budget_tokens:
-            compact["file_path"] = hard_cap_chars(str(compact.get("file_path") or ""), 160)
-            truncated = True
-        if truncated:
-            compact["truncated"] = True
-            compact["message"] = TRUNCATION_MARKER
-        return compact
-
     def tool_usages(
         self,
         query: str | None = None,
@@ -2486,7 +5691,8 @@ class CodeContextEngine:
         hit, cached = self._cache_get("code.usages", cache_args)
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
-        payload = self.find_references(
+        payload = self._neighborhood(
+            "refs",
             query=query,
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -2521,7 +5727,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
-        return self._tool_call_graph(
+        return self._neighborhood(
             "callers",
             query=query,
             symbol_id=symbol_id,
@@ -2553,7 +5759,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
-        return self._tool_call_graph(
+        return self._neighborhood(
             "callees",
             query=query,
             symbol_id=symbol_id,
@@ -2580,9 +5786,21 @@ class CodeContextEngine:
         limit: int = 20,
         budget_tokens: int = 4000,
     ) -> dict[str, Any]:
+        self._ensure_indexed()
         effective_budget_tokens = self._effective_budget_tokens("pattern", budget_tokens)
         adapter = AstGrepAdapter(self.repo_root)
         if rewrite is None:
+            cache_args = {
+                "pattern": pattern,
+                "language": language,
+                "file_glob": file_glob,
+                "limit": limit,
+                "budget_tokens": effective_budget_tokens,
+            }
+            native_cache_args = {**cache_args, "native": True}
+            hit, cached = self._cache_get("code.pattern", native_cache_args)
+            if hit and cached is not None:
+                return self._mark_cache_hit(cached)
             native = self._native_python_pattern_search(
                 pattern=pattern,
                 language=language,
@@ -2593,24 +5811,10 @@ class CodeContextEngine:
                 payload = self._pack_pattern_matches(native, budget_tokens=effective_budget_tokens)
                 self._cache_set(
                     "code.pattern",
-                    {
-                        "pattern": pattern,
-                        "language": language,
-                        "file_glob": file_glob,
-                        "limit": limit,
-                        "budget_tokens": effective_budget_tokens,
-                        "native": True,
-                    },
+                    native_cache_args,
                     payload,
                 )
                 return payload
-            cache_args = {
-                "pattern": pattern,
-                "language": language,
-                "file_glob": file_glob,
-                "limit": limit,
-                "budget_tokens": effective_budget_tokens,
-            }
             hit, cached = self._cache_get("code.pattern", cache_args)
             if hit and cached is not None:
                 return self._mark_cache_hit(cached)
@@ -2727,7 +5931,83 @@ class CodeContextEngine:
                 captures=captures,
             )
 
+        max_matches = max(0, limit)
+        truncated = False
+
+        def append_match(match: PatternMatch) -> None:
+            nonlocal truncated
+            if len(matches) < max_matches:
+                matches.append(match)
+                return
+            truncated = True
+
+        if mode == "decorator" and target_name:
+            raw_matches = self.search_text(f"@{target_name}", path=".", limit=max_matches + 1)
+            decorator_re = re.compile(r"^\s*@\s*([A-Za-z_][A-Za-z0-9_\.]*)")
+            for raw_match in raw_matches:
+                if not raw_match.file_path.endswith(".py"):
+                    continue
+                if file_glob and not _matches_file_glob(raw_match.file_path, file_glob):
+                    continue
+                match = decorator_re.match(raw_match.text)
+                if match is None or not names_match(match.group(1)):
+                    continue
+                append_match(
+                    PatternMatch(
+                        file_path=raw_match.file_path,
+                        line=raw_match.line,
+                        column=raw_match.column,
+                        end_line=raw_match.line,
+                        end_column=raw_match.column + len(raw_match.text),
+                        snippet=raw_match.text.strip(),
+                        captures={"decorator": match.group(1)},
+                    )
+                )
+                if truncated:
+                    break
+            matches.sort(key=lambda item: (item.file_path, item.line, item.column, item.snippet))
+            return PatternSearchResult(
+                matches=matches, truncated=truncated, total_matches=None if truncated else len(matches)
+            )
+
+        if mode in {"def", "class"} and target_name:
+            wanted_kinds = ("class",) if mode == "class" else ("function", "method")
+            placeholders = ",".join("?" for _ in wanted_kinds)
+            with self._connect() as conn:
+                self._init_schema(conn)
+                rows = conn.execute(
+                    f"""
+                    SELECT *, NULL AS score FROM symbols
+                    WHERE repo_id = ? AND symbol_name = ? AND kind IN ({placeholders})
+                    ORDER BY file_path, start_line, end_line, qualified_name, symbol_id
+                    LIMIT ?
+                    """,
+                    (self.repo_id, target_name, *wanted_kinds, max_matches + 1),
+                ).fetchall()
+            for row in rows:
+                symbol = _row_to_symbol(row)
+                if file_glob and not _matches_file_glob(symbol.file_path, file_glob):
+                    continue
+                append_match(
+                    PatternMatch(
+                        file_path=symbol.file_path,
+                        line=symbol.start_line,
+                        column=1,
+                        end_line=symbol.end_line,
+                        end_column=1,
+                        snippet=symbol.signature,
+                        captures={"name": symbol.symbol_name},
+                    )
+                )
+                if truncated:
+                    break
+            return PatternSearchResult(
+                matches=matches, truncated=truncated, total_matches=None if truncated else len(matches)
+            )
+
         for rel in candidates:
+            if truncated:
+                break
             source = self._read_file(rel)
             lines = source.splitlines()
             try:
@@ -2736,6 +6016,8 @@ class CodeContextEngine:
                 continue
             if mode == "decorator":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                         continue
                     for decorator in node.decorator_list:
@@ -2744,7 +6026,7 @@ class CodeContextEngine:
                             name = decorator.id
                         if not names_match(name):
                             continue
-                        matches.append(
+                        append_match(
                             build_match(
                                 rel,
                                 lines,
@@ -2752,26 +6034,33 @@ class CodeContextEngine:
                                 captures={"decorator": name or target_name or ""},
                             )
                         )
+                        if truncated:
+                            break
             elif mode in {"call", "call_any"}:
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if not isinstance(node, ast.Call):
                         continue
                     name = self._python_call_name(node.func)
                     if not name or (mode == "call" and not names_match(name)):
                         continue
-                    matches.append(build_match(rel, lines, node, captures={"F": name}))
+                    append_match(build_match(rel, lines, node, captures={"F": name}))
             elif mode == "def":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == target_name:
-                        matches.append(build_match(rel, lines, node, captures={"name": node.name}))
+                        append_match(build_match(rel, lines, node, captures={"name": node.name}))
             elif mode == "class":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if isinstance(node, ast.ClassDef) and node.name == target_name:
-                        matches.append(build_match(rel, lines, node, captures={"name": node.name}))
+                        append_match(build_match(rel, lines, node, captures={"name": node.name}))
         matches.sort(key=lambda item: (item.file_path, item.line, item.column, item.snippet))
-        total_matches = len(matches)
-        limited = matches[: max(0, limit)]
-        return PatternSearchResult(matches=limited, truncated=total_matches > len(limited), total_matches=total_matches)
+        total_matches = None if truncated else len(matches)
+        return PatternSearchResult(matches=matches, truncated=truncated, total_matches=total_matches)
 
     def tool_status(
         self,
@@ -2813,9 +6102,7 @@ class CodeContextEngine:
 
         provider_thresholds = {
             "required_health_status": "ok",
-            "require_index_head_match_for_scip": True,
         }
-        head_sha = self._safe_current_head_sha()
         warnings: list[dict[str, Any]] = []
         provider_counts = {"ok": 0, "degraded": 0, "unhealthy": 0}
         providers: list[dict[str, Any]] = []
@@ -2854,27 +6141,7 @@ class CodeContextEngine:
                     index_sha = index_sha_fn()
                     if index_sha:
                         entry["index_sha"] = str(index_sha)
-            if provider_name == "scip":
-                if head_sha is not None:
-                    entry["head_sha"] = head_sha
-                index_sha = entry.get("index_sha")
-                if isinstance(index_sha, str) and head_sha:
-                    if index_sha == head_sha:
-                        entry["freshness"] = "fresh"
-                    else:
-                        entry["freshness"] = "stale"
-                        warnings.append(
-                            {
-                                "code": "provider_index_stale",
-                                "level": "warning",
-                                "provider": provider_name,
-                                "message": "SCIP index SHA does not match HEAD; reindex recommended.",
-                            }
-                        )
-                else:
-                    entry["freshness"] = "unknown"
-            else:
-                entry["freshness"] = "unknown"
+            entry["freshness"] = "unknown"
             providers.append(entry)
 
         payload = {
@@ -2994,6 +6261,7 @@ class CodeContextEngine:
         self,
         query: str,
         *,
+        scope: Literal["deleted"],
         limit: int = 20,
         mode: SearchMode = "auto",
         kind: str | None = None,
@@ -3001,7 +6269,6 @@ class CodeContextEngine:
         snippet: Literal["none", "head", "full"] = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
-        scope: Literal["deleted"],
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
@@ -3024,6 +6291,7 @@ class CodeContextEngine:
         touched_by: str | None = None,
         auto_index: bool = True,
         provenance_filter: str | None = None,
+        _candidate_files: set[str] | None = None,
     ) -> list[SymbolRecord] | list[DeletedHistoryItem]:
         """Deterministic multi-channel symbol search with routed-provider fallback."""
         if auto_index and scope != "deleted":
@@ -3058,20 +6326,46 @@ class CodeContextEngine:
             return [
                 self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]
             ]
+        _cf_t: threading.Thread | None = None
+        _cf_box: list[list[str]] = [[]]
+        _t0 = 0.0
         if scope == "repo" and resolved_mode != "semantic":
-            candidate_files = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
+            if _candidate_files is not None:
+                # Caller pre-computed (or deliberately skipped) zoekt; reuse it.
+                candidate_files = _candidate_files
+            else:
+                # Start zoekt in a background thread but defer the join until
+                # AFTER lexical search runs — both proceed in parallel so
+                # wall-clock = max(zoekt, lexical) instead of zoekt + lexical.
+                # The candidate_files filter is applied post-hoc once both finish.
+                _t0 = time.monotonic()
+
+                def _fetch_cf() -> None:
+                    with contextlib.suppress(Exception):
+                        _cf_box[0] = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
+
+                _cf_t = threading.Thread(target=_fetch_cf, daemon=True)
+                _cf_t.start()
+                # candidate_files resolved after lexical returns below
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
-            if scope == "repo" and candidate_files:
-                hits = [hit for hit in hits if hit.file_path in candidate_files]
             if scope == "repo" and not hits:
+                # Run local FTS while zoekt is still in flight — parallel.
                 hits = self._search_symbols_local(
                     query,
                     limit=limit,
                     kind=kind,
                     language=language,
-                    candidate_files=candidate_files,
+                    candidate_files=None,  # zoekt filter applied post-hoc
                 )
+            # Collect zoekt results — has been running in parallel since T=0.
+            if scope == "repo" and _cf_t is not None:
+                _cf_t.join(max(0.0, 0.8 - (time.monotonic() - _t0)))
+                candidate_files = set(_cf_box[0] or [])
+            if scope == "repo" and candidate_files:
+                _filtered = [hit for hit in hits if hit.file_path in candidate_files]
+                if _filtered:  # guard: don't discard all results if zoekt is cold
+                    hits = _filtered
         else:
             candidate_limit = semantic_candidate_limit(rerank_limit)
             if scope == "external":
@@ -3090,25 +6384,34 @@ class CodeContextEngine:
                     language=language,
                     scope="repo",
                 )
-                if candidate_files:
-                    lexical_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
                 if not lexical_hits:
+                    # Run local FTS while zoekt is still in flight — parallel.
                     lexical_hits = self._search_symbols_local(
                         query,
                         limit=candidate_limit,
                         kind=kind,
                         language=language,
-                        candidate_files=candidate_files,
+                        candidate_files=None,  # zoekt filter applied post-hoc
                     )
-                try:
-                    semantic_hits = self._search_symbols_semantic_local(
-                        query,
-                        limit=candidate_limit,
-                        kind=kind,
-                        language=language,
-                    )
-                except OllamaUnavailable:
-                    semantic_hits = []
+                # Collect zoekt results — has been running in parallel since T=0.
+                if _cf_t is not None:
+                    _cf_t.join(max(0.0, 0.8 - (time.monotonic() - _t0)))
+                    candidate_files = set(_cf_box[0] or [])
+                if candidate_files:
+                    _filtered_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
+                    if _filtered_hits:  # guard: don't discard all results if zoekt is cold
+                        lexical_hits = _filtered_hits
+                semantic_hits: list[SymbolRecord] = []
+                if _query_is_natural_language(query) or resolved_mode == "semantic":
+                    try:
+                        semantic_hits = self._search_symbols_semantic_local(
+                            query,
+                            limit=candidate_limit,
+                            kind=kind,
+                            language=language,
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        pass
                 # Merge commit chunks as a third candidate source (LINEAGE-03)
                 commit_hits: list[SymbolRecord] = []
                 with contextlib.suppress(Exception):
@@ -3117,7 +6420,10 @@ class CodeContextEngine:
                     hits = (semantic_hits + commit_hits)[:rerank_limit]
                 else:
                     hits = self._semantic_ranker.reciprocal_rank_fuse(
-                        lexical_hits, semantic_hits + commit_hits, limit=rerank_limit
+                        lexical_hits,
+                        semantic_hits + commit_hits,
+                        limit=rerank_limit,
+                        semantic_additive_k=_SEMANTIC_ADDITIVE_TOP_K,
                     )
         if file_glob:
             hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
@@ -3137,6 +6443,91 @@ class CodeContextEngine:
         )
         return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
 
+    def _fts_document_count(self, conn: sqlite3.Connection) -> int:
+        """Total indexed-symbol count, cached per index_version (a reindex bumps the
+        version and invalidates the entry).  Denominator for IDF term pruning;
+        count(*) over the FTS is ~18ms so it must never run per query."""
+        version = self._current_index_version()
+        cached = self._fts_doc_count_cache.get(version)
+        if cached is not None:
+            return cached
+        row = conn.execute("SELECT count(*) FROM symbol_fts").fetchone()
+        total = int(row[0]) if row else 0
+        self._fts_doc_count_cache[version] = total
+        return total
+
+    def _discriminative_fts_terms(
+        self, conn: sqlite3.Connection, terms: list[str]
+    ) -> tuple[list[str], list[str], frozenset[str]]:
+        """IDF pruning of FTS query terms -> (or_terms, prefix_terms, common_terms).
+
+        Tokens whose document frequency exceeds _FTS_COMMON_TERM_DF_FRACTION of the
+        corpus (``get``, ``name``, ``field`` -- present in a large fraction of all
+        symbols) bloat the bm25 posting-list scan without adding precision: the
+        rarer tokens decide the match, and the exact/substring channels already
+        cover the common token.
+
+        - ``or_terms`` drives the FTS OR channel and is never empty -- when every
+          token is common it keeps the single rarest so a lone common token (e.g.
+          ``field``) still matches via FTS.
+        - ``prefix_terms`` drives the prefix-completion channel and keeps ONLY
+          discriminative tokens (may be empty -> the channel is skipped).  A common
+          token's prefix expansion (``field*`` -> field/fields/fieldname/...) is the
+          single most expensive variant and is already covered by the substring
+          channel, so it is never prefix-expanded.
+
+        Frequencies come from the fts5vocab index (one ~0.03ms lookup per term)."""
+        unique: list[str] = []
+        seen: set[str] = set()
+        for term in terms[:12]:
+            if term and term not in seen:
+                seen.add(term)
+                unique.append(term)
+        if not unique:
+            return [], [], frozenset()
+        total = self._fts_document_count(conn)
+        if total <= 0:
+            return unique, unique, frozenset()
+        cap = max(_FTS_COMMON_TERM_DF_FLOOR, int(total * _FTS_COMMON_TERM_DF_FRACTION))
+        try:
+            # One batched vocab lookup for all terms instead of a round-trip per
+            # term: a 7-8 term query (multi-term/regex) drops from ~8 executes to
+            # 1.  Terms absent from the vocab table simply return no row and
+            # default to df=0 below -- identical to the per-term lookup.
+            placeholders = ",".join("?" for _ in unique)
+            doc_rows = conn.execute(
+                f"SELECT term, doc FROM symbol_fts_vocab WHERE term IN ({placeholders})",
+                tuple(unique),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # Vocab table unavailable (e.g. mid-migration DB) -- skip pruning.
+            return unique, unique, frozenset()
+        doc_by_term = {str(r["term"]): int(r["doc"]) if r["doc"] is not None else 0 for r in doc_rows}
+        freqs: list[tuple[str, int]] = [(term, doc_by_term.get(term, 0)) for term in unique]
+        df_by_term = dict(freqs)
+        # Tokens common enough that their trigram-substring scan is too costly for
+        # its marginal recall (df > _SUBSTRING_ANCHOR_DF_CAP): the substring channel
+        # skips these; FTS bm25 already indexes the whole token. See
+        # _search_symbols_local. (Distinct from the FTS OR/prefix `cap` above, which
+        # is ~10% of the corpus -- far too loose to bound a trigram scan.)
+        common_terms = frozenset(t for t, d in freqs if d > _SUBSTRING_ANCHOR_DF_CAP)
+        discriminative = sorted((t for t, d in freqs if d <= cap), key=lambda t: df_by_term[t])
+        if discriminative:
+            # Add rarest-first until the cumulative posting-list size hits the budget.
+            kept: list[str] = []
+            used = 0
+            for term in discriminative:
+                if kept and used + df_by_term[term] > _FTS_DF_BUDGET:
+                    break
+                kept.append(term)
+                used += df_by_term[term]
+            # Skip prefix-expansion of 1-char terms only (``"d"*`` matches every
+            # d-token); 2+ char prefixes stay (short identifiers like "fit" need them).
+            prefix_terms = [t for t in kept if len(t) >= 2]
+            return kept, prefix_terms, common_terms
+        # Every token is common -- keep the single rarest so recall doesn't collapse.
+        return [min(freqs, key=lambda item: item[1])[0]], [], common_terms
+
     def _search_symbols_local(
         self,
         query: str,
@@ -3150,12 +6541,9 @@ class CodeContextEngine:
         if not normalized_query:
             return []
         normalized_query_lower = normalized_query.lower()
-        fts_query = _safe_fts_query(normalized_query)
-        fts_prefix_query = _fts_prefix_query(normalized_query)
-        terms = _identifier_terms(normalized_query)
+        terms = _query_terms(normalized_query)
         first_term = terms[0] if terms else normalized_query_lower[:4]
         strong_fetch_limit = max(limit * 8, 80)
-        fuzzy_fetch_limit = max(limit * 120, 1200)
         query_mentions_tests = _query_implies_test_scope(normalized_query)
         kind_boosts = {
             "class": 18.0,
@@ -3184,8 +6572,15 @@ class CodeContextEngine:
                 filters.append(f"file_path IN ({','.join('?' for _ in normalized_candidates)})")
                 params.extend(normalized_candidates)
         where_sql = " AND ".join(filters)
+        # Same predicates, aliased for joins against the trigram FTS table (alias s).
+        where_sql_s = " AND ".join(f"s.{f}" for f in filters)
 
+        term_set = {term for term in terms if term}
+        centrality_map = self._symbol_centrality_map()
         scored: dict[str, tuple[float, int, SymbolRecord]] = {}
+        # Idea D: importing_files will be populated after the first DB query;
+        # the adjustment function will check this set via closure.
+        importing_files_for_boost: set[str] = set()
 
         def adjustment(symbol: SymbolRecord) -> float:
             score = kind_boosts.get(symbol.kind, 0.0)
@@ -3193,7 +6588,13 @@ class CodeContextEngine:
             qualified_name_lower = symbol.qualified_name.lower()
             lexical_text = f"{symbol.symbol_name} {symbol.qualified_name} {symbol.signature}".lower()
             file_path_lower = symbol.file_path.lower()
-            file_name_stem = Path(symbol.file_path).stem.lower()
+            # Basename-without-extension via string slicing: Path(...).stem builds a
+            # pathlib object per candidate row (tens of thousands per query in the
+            # profile), which dominated the Python time -- this is identical output
+            # for the normalized '/'-separated stored paths.
+            _basename = file_path_lower[file_path_lower.rfind("/") + 1 :]
+            _dot = _basename.rfind(".")
+            file_name_stem = _basename[:_dot] if _dot > 0 else _basename
             coverage = sum(1 for term in terms[:8] if term and term in lexical_text)
             score += float(coverage) * 5.0
             if symbol_name_lower.startswith(normalized_query_lower):
@@ -3207,6 +6608,35 @@ class CodeContextEngine:
             for term in terms[:6]:
                 if term and term in file_path_lower:
                     score += 6.0
+            # Per-token name match (the missing name-match bonus): reward a query
+            # TOKEN that matches the symbol's OWN name tokens, so multi-term/regex
+            # queries (e.g. "select_format|CAST") still surface the exactly-named
+            # symbol instead of losing to body-coverage / kind-boost noise.
+            name_tokens = _identifier_terms(symbol.symbol_name)
+            if name_tokens:
+                matched = sum(1 for token in name_tokens if token in term_set)
+                if matched == len(name_tokens):
+                    # IDF boost: symbols with longer, multi-token names that fully match
+                    # query terms are more discriminative (e.g., "RewriteContext" vs "get").
+                    # Amplify the bonus for complete multi-token matches.
+                    base_bonus = 28.0 + 6.0 * len(name_tokens)
+                    if len(name_tokens) >= 2:
+                        # Extra boost for multi-token discriminative names
+                        base_bonus += 12.0 * (len(name_tokens) - 1)
+                    score += base_bonus
+                elif matched:
+                    score += 9.0 * matched
+            # Structural importance (call-graph eigenvector centrality / PageRank):
+            # the signal Atelier computes but never fed into ranking. Central core
+            # symbols outrank peripheral textual matches. Normalized 0..1.
+            cscore = centrality_map.get(symbol_name_lower)
+            if cscore is None:
+                cscore = centrality_map.get(qualified_name_lower, 0.0)
+            score += cscore * 30.0
+            # Idea D: boost symbols whose file imports a seed file.
+            # Files that explicitly import the seed are closely related.
+            if symbol.file_path in importing_files_for_boost:
+                score += 50.0
             if _is_test_file_path(symbol.file_path) and not query_mentions_tests:
                 score -= 90.0
             return score
@@ -3226,166 +6656,250 @@ class CodeContextEngine:
                 if next_value[0] > existing[0] or (next_value[0] == existing[0] and next_value[1] < existing[1]):
                     scored[symbol.symbol_id] = next_value
 
-        with self._connect() as conn:
+        # Phase 1 (main thread, sequential): IDF pruning + two exact-name seeks.
+        # These must stay serial: IDF needs the fts_vocab table; exact seeks are
+        # ~1ms total (index-backed) and the results are needed before ranking.
+        # Read-only connection: all phase-1 work is pure SELECT.  WAL mode lets
+        # readers run concurrently with no write-lock wait (eliminates the 30 s
+        # timeout cliff when autosync is writing to a live repo DB).
+        # Exact-name candidates.  A normal query seeks its own name; a pure
+        # identifier alternation (identifiers joined by `|`, e.g.
+        # "apply_fuzzy_replace|resolve_symbol_edit|ResolvedSymbolEdit") must seek
+        # EACH alternative.  Seeking the whole pipe-joined string matches no
+        # symbol, so the two highest-priority exact channels (base 1300/1180)
+        # stay dead and the alternation is ranked only by noisy subtoken BM25 --
+        # the definition files lose to cousins/tests that repeat those subtokens.
+        # Gate strictly on EVERY alternative being a bare/dotted identifier: a
+        # mixed regex alternation ("auto.?mode|MODE_AUTO|mode==\"auto\"") is a
+        # grep pattern, not a name list, and exact-pinning one stray identifier
+        # in it only perturbs the FTS ranking.  Falls back to the whole query
+        # otherwise, preserving behaviour for every non-alternation query.
+        exact_name_candidates = [normalized_query]
+        if "|" in normalized_query:
+            alt_names = _split_pipe_query(normalized_query)
+            if alt_names and all(_SYMBOL_QUERY_RE.match(alt) for alt in alt_names):
+                exact_name_candidates = alt_names
+        exact_name_lower = [name.lower() for name in exact_name_candidates]
+        exact_name_set = set(exact_name_candidates)
+        _exact_ph = ",".join("?" for _ in exact_name_lower)
+        with self._connect(readonly=True) as conn:
             self._init_schema(conn)
-            exact_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (symbol_name = ? OR qualified_name = ?)
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, normalized_query, normalized_query, strong_fetch_limit]),
-            ).fetchall()
-            consider_rows(exact_rows, channel_rank=0, base=1300.0)
-
+            # IDF-pruned FTS queries: high document-frequency tokens are dropped so
+            # the OR/prefix bm25 scan stays small (see _discriminative_fts_terms).
+            or_fts_terms, prefix_fts_terms, common_fts_terms = self._discriminative_fts_terms(conn, terms)
+            fts_query = _fts_or_query_from_terms(or_fts_terms)
+            fts_prefix_query = _fts_prefix_query_from_terms(prefix_fts_terms)
+            # Exact + case-insensitive name lookup.  Split into one index-backed seek
+            # per column: an `OR` across symbol_name/qualified_name lets SQLite use
+            # NEITHER NOCASE index (it falls back to a full repo scan), and the old
+            # `ORDER BY file_path, start_line` forced a temp-b-tree sort on top.  The
+            # final ranking re-sorts everything by score, so per-channel order only
+            # ever decided an arbitrary LIMIT cut -- drop it.  `COLLATE NOCASE IN`
+            # keeps using idx_symbols_repo_name_nocase / idx_symbols_repo_qual_nocase
+            # (one index seek per alternative; `IN (?)` degenerates to `= ?`).
             ci_exact_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (lower(symbol_name) = ? OR lower(qualified_name) = ?)
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, normalized_query_lower, normalized_query_lower, strong_fetch_limit]),
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}"
+                f" AND symbol_name COLLATE NOCASE IN ({_exact_ph}) LIMIT ?",
+                tuple([*params, *exact_name_lower, strong_fetch_limit]),
             ).fetchall()
-            consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
-
-            if fts_query:
-                fts_rows = conn.execute(
-                    f"""
-                    SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score
-                    FROM symbol_fts
-                    JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
-                    WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
-                    ORDER BY bm25(symbol_fts), s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple(
-                        [
-                            fts_query,
-                            self.repo_id,
-                            *([kind] if kind else []),
-                            *([language] if language else []),
-                            strong_fetch_limit,
-                        ]
-                    ),
-                ).fetchall()
-                consider_rows(fts_rows, channel_rank=2, base=980.0, use_row_score=True)
-
-            if fts_prefix_query and fts_prefix_query != fts_query:
-                fts_prefix_rows = conn.execute(
-                    f"""
-                    SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score
-                    FROM symbol_fts
-                    JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
-                    WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
-                    ORDER BY bm25(symbol_fts), s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple(
-                        [
-                            fts_prefix_query,
-                            self.repo_id,
-                            *([kind] if kind else []),
-                            *([language] if language else []),
-                            strong_fetch_limit,
-                        ]
-                    ),
-                ).fetchall()
-                consider_rows(fts_prefix_rows, channel_rank=3, base=940.0, use_row_score=True)
-
-            like_pattern = f"%{normalized_query_lower}%"
-            substring_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (
-                    lower(symbol_name) LIKE ?
-                    OR lower(qualified_name) LIKE ?
-                    OR lower(signature) LIKE ?
-                )
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
+            ci_exact_rows += conn.execute(
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}"
+                f" AND qualified_name COLLATE NOCASE IN ({_exact_ph}) LIMIT ?",
+                tuple([*params, *exact_name_lower, strong_fetch_limit]),
             ).fetchall()
-            consider_rows(substring_rows, channel_rank=4, base=860.0)
-
-            path_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (
-                    lower(file_path) LIKE ?
-                    OR lower(file_path) LIKE ?
-                )
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, like_pattern, f"%{first_term}%", strong_fetch_limit]),
+        # Case-sensitive matches rank highest (channel 0); the rest are CI-exact.
+        exact_rows = [
+            row
+            for row in ci_exact_rows
+            if row["symbol_name"] in exact_name_set or row["qualified_name"] in exact_name_set
+        ]
+        # Idea D: Collect seed files from exact hits to find their importers.
+        # Files that import a seed file are likely closely related to the query.
+        seed_files = {row["file_path"] for row in ci_exact_rows if row["file_path"]}
+        if seed_files:
+            # Query imports table: find files (source_file) that import any seed file (target_file)
+            placeholders = ",".join("?" for _ in seed_files)
+            importer_rows = conn.execute(
+                f"SELECT DISTINCT source_file FROM imports WHERE repo_id = ? AND target_file IN ({placeholders})",
+                tuple([self.repo_id, *seed_files]),
             ).fetchall()
-            consider_rows(path_rows, channel_rank=5, base=820.0)
+            importing_files_for_boost.update(row["source_file"] for row in importer_rows if row["source_file"])
+        consider_rows(exact_rows, channel_rank=0, base=1300.0)
+        consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
 
-            camel_seed_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql}
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, strong_fetch_limit]),
-            ).fetchall()
-            camel_rows = [
-                row
-                for row in camel_seed_rows
-                if _camel_case_match(
-                    normalized_query,
-                    str(row["symbol_name"]),
-                    str(row["qualified_name"]),
-                )
-            ]
-            consider_rows(camel_rows, channel_rank=6, base=790.0)
+        # Phase 2 (parallel workers): channels 2-6 each run on their own read
+        # connection submitted to _SEARCH_CHANNEL_EXECUTOR.  WAL mode lets readers
+        # run concurrently with zero blocking; each channel runs in a dedicated OS
+        # process, so channels achieve genuine CPU-level parallelism without GIL
+        # contention.  Wall-clock time collapses from sum(channel_times) to
+        # max(channel_times) (~15ms vs ~45ms).
+        # Build the AND query from the IDF-pruned terms rather than the raw
+        # query string.  Zero-hit tokens (e.g. a parameter name the agent wants
+        # to ADD, like 'keep_attrs') have df=0 in the vocab and are not in
+        # or_fts_terms, so they can't kill AND semantics.  We reconstruct a
+        # query string from or_fts_terms (already rarest-first, already pruned)
+        # so _fts_and_query's natural-language guard and length checks still apply.
+        _and_input = " ".join(or_fts_terms) if or_fts_terms else normalized_query
+        fts_and_q = _fts_and_query(_and_input)
+        like_pattern = f"%{normalized_query_lower}%"
+        path_anchor = or_fts_terms[0] if or_fts_terms else first_term
+        first_term_like = f"%{path_anchor}%"
+        path_patterns = [first_term_like]
+        if _query_is_pathy_literal(normalized_query) and like_pattern != first_term_like:
+            path_patterns.insert(0, like_pattern)
 
-            if not scored:
-                if _should_skip_fuzzy_for_precise_query(normalized_query):
-                    return []
-                fuzzy_rows = conn.execute(
-                    f"""
-                    SELECT *, NULL AS score
-                    FROM symbols
-                    WHERE {where_sql}
-                    ORDER BY file_path, start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, fuzzy_fetch_limit]),
-                ).fetchall()
-                fuzzy_scored: list[tuple[float, sqlite3.Row]] = []
-                for row in fuzzy_rows:
-                    symbol_name = str(row["symbol_name"]).lower()
-                    qualified_name = str(row["qualified_name"]).lower()
-                    ratio = max(
-                        difflib.SequenceMatcher(None, normalized_query_lower, symbol_name, autojunk=False).ratio(),
-                        difflib.SequenceMatcher(None, normalized_query_lower, qualified_name, autojunk=False).ratio(),
-                    )
-                    if ratio < 0.58:
-                        continue
-                    fuzzy_scored.append((ratio, row))
-                fuzzy_scored.sort(
-                    key=lambda item: (
-                        -item[0],
-                        str(item[1]["file_path"]),
-                        int(item[1]["start_line"]),
-                        str(item[1]["qualified_name"]),
-                    )
+        # Substring (trigram + direct-scan) LIKE pattern: use the full raw query
+        # only for pathy literals (no |, *, or other regex metacharacters).  For
+        # regex/pipe multi-term queries, the raw query with embedded wildcards
+        # would scan the entire trigram table; fall back to the rarest IDF term.
+        substring_pattern = like_pattern if _query_is_pathy_literal(normalized_query) else first_term_like
+
+        # Frozen parameter tuples for each channel (built once, passed to workers).
+        _fts_extra = tuple([self.repo_id, *([kind] if kind else []), *([language] if language else [])])
+        _base_params = tuple(params)  # repo_id [+ kind] [+ language] [+ candidate_files]
+
+        # Each entry: (sql, params_tuple, channel_rank, base_score, use_row_score)
+        _ch: list[tuple[str, tuple[Any, ...], int, float, bool]] = []
+
+        # Multi-term AND channel (highest FTS precision, base 1100).
+        if fts_and_q:
+            _ch.append(
+                (
+                    f"SELECT s.*, abs(bm25(symbol_fts)) / (10.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_and_q, *_fts_extra, strong_fetch_limit),
+                    2,
+                    1100.0,
+                    True,
                 )
+            )
+
+        # OR channel (high recall, base 980).
+        if fts_query:
+            _ch.append(
+                (
+                    f"SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_query, *_fts_extra, strong_fetch_limit),
+                    2,
+                    980.0,
+                    True,
+                )
+            )
+
+        # Prefix channel (partial-word match, base 940).
+        if fts_prefix_query and fts_prefix_query != fts_query:
+            _ch.append(
+                (
+                    f"SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_prefix_query, *_fts_extra, strong_fetch_limit),
+                    3,
+                    940.0,
+                    True,
+                )
+            )
+
+        # Substring channel via trigram index (base 860).
+        # Skipped when the anchor is a COMMON whole word (df > cap): its trigram
+        # postings (common 3-grams like 'inc','ncl') are enormous, so the LIKE scans
+        # 300-500ms on linux to surface a handful of non-token substring matches --
+        # while FTS bm25 already indexes the whole token and returns it in ~15ms. The
+        # channel only earns its keep for RARE anchors, where it catches substrings
+        # the FTS tokenizer splits apart (e.g. 'mbedde' inside 'Embedder').
+        # NO intra-channel ORDER BY either: `ORDER BY file_path,start_line LIMIT n`
+        # would force a full materialize+sort before the LIMIT (another 2.7s on a
+        # common term); the outer ranker re-sorts, so per-channel order is discarded.
+        if len(normalized_query_lower) < 3:
+            # <3-char queries can't use the trigram index; rare, fall back to direct scan.
+            _ch.append(
+                (
+                    f"SELECT *, NULL AS score FROM symbols"
+                    f" WHERE {where_sql} AND"
+                    f" (lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?)"
+                    f" LIMIT ?",
+                    (*_base_params, substring_pattern, substring_pattern, substring_pattern, strong_fetch_limit),
+                    4,
+                    860.0,
+                    False,
+                )
+            )
+        elif path_anchor not in common_fts_terms:
+            _ch.append(
+                (
+                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
+                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
+                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ?)"
+                    f" LIMIT ?",
+                    (*_base_params, substring_pattern, substring_pattern, strong_fetch_limit),
+                    4,
+                    860.0,
+                    False,
+                )
+            )
+
+        # Path channel via trigram index (base 820).
+        if len(normalized_query_lower) >= 3 and len(path_anchor) >= 3:
+            _path_like_sql = " OR ".join("t.file_path LIKE ?" for _ in path_patterns)
+            _ch.append(
+                (
+                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
+                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
+                    f" WHERE {where_sql_s} AND ({_path_like_sql})"
+                    f" LIMIT ?",
+                    (*_base_params, *path_patterns, strong_fetch_limit),
+                    5,
+                    820.0,
+                    False,
+                )
+            )
+        else:
+            _path_like_sql = " OR ".join("lower(file_path) LIKE ?" for _ in path_patterns)
+            _ch.append(
+                (
+                    f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND ({_path_like_sql}) LIMIT ?",
+                    (*_base_params, *path_patterns, strong_fetch_limit),
+                    5,
+                    820.0,
+                    False,
+                )
+            )
+
+        # Submit all channels in parallel; collect in submission order so that
+        # higher-priority channels (AND > OR > prefix) are merged first.
+        _db = self.db_path
+        # Supplement channels (rank >= 4: substring + path trigram) get a tight
+        # deadline so a common-gram scan self-aborts instead of dominating latency;
+        # the precise FTS/exact channels (rank < 4) keep the full budget.
+        _futures = [
+            _SEARCH_CHANNEL_EXECUTOR.submit(
+                _run_search_channel,
+                _db,
+                sql,
+                ch_params,
+                _SUPPLEMENT_CHANNEL_DEADLINE_S if _rank >= 4 else _SEARCH_CHANNEL_DEADLINE_S,
+            )
+            for sql, ch_params, _rank, _, _ in _ch
+        ]
+        for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch, strict=False):
+            try:
+                # 8 s timeout: a timed-out channel contributes no rows (graceful
+                # degradation) instead of blocking the caller indefinitely.  Normal
+                # queries finish in <200 ms; 8 s is 40x headroom.
                 consider_rows(
-                    [row for _, row in fuzzy_scored[:strong_fetch_limit]],
-                    channel_rank=7,
-                    base=640.0,
+                    _fut.result(timeout=8.0),
+                    channel_rank=_rank,
+                    base=_base_score,
+                    use_row_score=_use_score,
                 )
+            except (TimeoutError, ValueError):
+                pass
 
         ranked = sorted(
             scored.values(),
@@ -3407,6 +6921,55 @@ class CodeContextEngine:
         )
         return [symbol for _, _, symbol in ranked[:limit]]
 
+    def _build_symbol_embeddings(self, conn: sqlite3.Connection, index_version: int) -> None:
+        """Embed every symbol into the persistent vector store -- part of the code
+        index build, run once at index time. No-op unless an embedder is configured
+        (default Null), so non-semantic indexing is unaffected. Keeping embedding
+        here makes the query hot path read-only: it embeds only the query, never
+        documents.
+        """
+        if not self._semantic_ranker.available:
+            return
+        embedder = self._semantic_ranker.embedder
+        dim = int(getattr(embedder, "dim", 0))
+        if dim <= 0:
+            return
+        rows = conn.execute("SELECT * FROM symbols WHERE repo_id = ?", (self.repo_id,)).fetchall()
+        if not rows:
+            return
+        # Skip symbols whose vector is already current. symbol_id encodes the file
+        # content hash, so an unchanged symbol keeps its id across reindexes and is
+        # skipped here; an edited symbol gets a new id and its stale vector is pruned
+        # by _delete_file_index. index_version stays provenance-only -- gating on it
+        # would make every reindex re-embed the whole repo instead of just the delta.
+        fresh = self._ann_symbol_index.existing_stamped_ids(conn, embedder_name=embedder.name, embedding_dim=dim)
+        pending = [sym for sym in (_row_to_symbol(row) for row in rows) if sym.symbol_id not in fresh]
+        if not pending:
+            return
+        logger.debug("[embed] %s: %d symbols to embed (%s)", self.repo_root.name, len(pending), embedder.name)
+        # Batched encoding: ceil(N/batch) model calls (embed_symbols), not one per
+        # symbol -- the difference between minutes and seconds on a large repo.
+        # Truncate source: a few symbols span enormous spans whose full token
+        # sequence blows GPU memory (attention is O(seq^2)). The head carries the
+        # semantic signal; cap chars so every input is bounded. Override via env.
+        max_chars = int(os.environ.get("ATELIER_EMBED_MAX_CHARS", "4000"))
+        source_texts = {
+            sym.symbol_id: self._read_file_slice(sym.file_path, sym.start_byte, sym.end_byte)[:max_chars]
+            for sym in pending
+        }
+        by_id = {sym.symbol_id: sym for sym in pending}
+        vectors = self._semantic_ranker.embed_symbols(pending, source_texts=source_texts)
+        logger.debug("[embed] %s: got %d vectors", self.repo_root.name, len(vectors))
+        new_vectors = {sid: (by_id[sid].content_hash, vec) for sid, vec in vectors.items() if vec and len(vec) == dim}
+        if new_vectors:
+            self._ann_symbol_index.upsert_vectors(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=dim,
+                index_version=index_version,
+                vectors=new_vectors,
+            )
+
     def _search_symbols_semantic_local(
         self,
         query: str,
@@ -3415,21 +6978,453 @@ class CodeContextEngine:
         kind: str | None = None,
         language: str | None = None,
     ) -> list[SymbolRecord]:
-        candidates = self._semantic_symbol_candidates(limit=limit, kind=kind, language=language)
-        return self._semantic_ranker.semantic_search(
-            query,
-            candidates=candidates,
-            limit=limit,
-            source_loader=lambda symbol: self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte),
-        )
+        # Semantic search reads the index-time vector store (_build_symbol_embeddings)
+        # via ANN; the hot path embeds ONLY the query. A configured embedder is the
+        # single enable -- there is no separate ANN flag (ANN vs exact is internal).
+        if not self._semantic_ranker.available:
+            return []
+        return self._search_symbols_semantic_ann(query, limit=limit, kind=kind, language=language)
 
-    def _semantic_symbol_candidates(
+    def _search_symbols_semantic_ann(
         self,
+        query: str,
         *,
         limit: int,
         kind: str | None = None,
         language: str | None = None,
     ) -> list[SymbolRecord]:
+        """Opt-in semantic search over the persistent per-symbol vector store.
+
+        Exact brute-force cosine over packed float32 blobs -- no JSON parsing and
+        no approximate index. The blob store reconstructs with np.frombuffer
+        (~100x faster than json.loads: 2s vs 218s for linux's 1.24M vectors) and
+        the matmul itself is memory-bandwidth-bound (~141ms at linux scale).
+
+        Small repos (≤ _ANN_CACHE_LIMIT vectors): load once, cache as a numpy
+        matrix, rank with a single ``matrix @ query_vec`` product (<10ms warm).
+
+        Large repos (> _ANN_CACHE_LIMIT): stream in _ANN_CHUNK_SIZE rows at a
+        time, frombuffer each chunk, keep a rolling top-K heap -- peak RAM ≈ one
+        chunk (~300 MB at dim=1536, chunk=50k) instead of the full matrix (7.5 GB
+        for linux). No matrix cache in this path.
+
+        N5 (model-id/dim drift) and N16 (index_version staleness) are enforced
+        in both paths via the embedder_name + embedding_dim filters.
+        """
+        # Rows below this threshold are loaded into a cached matrix (fast repeat
+        # queries); above it, chunked streaming avoids OOM on large corpora.
+        # Overridable so memory-constrained hosts can lower the matrix-cache cap.
+        _ANN_CACHE_LIMIT = int(os.environ.get("ATELIER_ANN_CACHE_LIMIT", "200000"))
+        _ANN_CHUNK_SIZE = 50_000  # rows/chunk ≈ 300 MB peak at dim=1536
+
+        embedder = self._semantic_ranker.embedder
+        embedding_dim = embedder.dim
+        if embedding_dim <= 0:
+            return []
+        query_vector = self._semantic_ranker.embed_query(query)
+        if not query_vector:
+            return []
+        index_version = self._current_index_version()
+        try:
+            import numpy as np
+        except ModuleNotFoundError:
+            return []
+
+        qvec = np.asarray(query_vector, dtype=np.float32)
+        # Hydration window: over-fetch to survive kind/language filters.
+        window = limit if (kind is None and language is None) else max(limit * 20, 200)
+
+        cache_key = (embedder.name, embedding_dim, index_version)
+        cached = self._ann_vectors_cache
+
+        # ── small-repo fast path: cached matrix ──────────────────────────────
+        if cached is not None and cached[0] == cache_key:
+            ids, matrix = cached[1], cached[2]
+        else:
+            # Count vectors to choose load strategy without loading data yet. The
+            # store lives in the connection's main schema (an unqualified name
+            # resolves there even with the empty vectors.sqlite attached).
+            with self._connect() as conn:
+                self._init_schema(conn)
+                try:
+                    vec_count: int = conn.execute(
+                        "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
+                        (self._ann_symbol_index.repo_id, embedder.name, embedding_dim),
+                    ).fetchone()[0]
+                except (KeyError, TypeError, ValueError):
+                    vec_count = 0
+
+            if vec_count > _ANN_CACHE_LIMIT:
+                # ── large-repo chunked path (bounded RAM, exact) ──────────────
+                # Stream _ANN_CHUNK_SIZE rows at a time; each chunk's packed blobs
+                # reconstruct with one np.frombuffer (no json.loads, no per-row
+                # Python lists), so peak RAM ≈ one chunk (~300 MB at dim=1536)
+                # instead of the full matrix (7.5 GB for linux). A rolling
+                # min-heap keeps the top-window without a full-corpus sort.
+                import heapq
+
+                _bytes_per_vec = embedding_dim * 4
+                heap: list[tuple[float, str]] = []  # min-heap by score
+                offset = 0
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    while True:
+                        rows = conn.execute(
+                            "SELECT symbol_id, vector_blob FROM symbol_vectors"
+                            " WHERE repo_id=? AND embedder_name=? AND embedding_dim=?"
+                            " LIMIT ? OFFSET ?",
+                            (self._ann_symbol_index.repo_id, embedder.name, embedding_dim, _ANN_CHUNK_SIZE, offset),
+                        ).fetchall()
+                        if not rows:
+                            break
+                        offset += _ANN_CHUNK_SIZE
+                        chunk_ids: list[str] = []
+                        buf = bytearray()
+                        for r in rows:
+                            blob = r[1]
+                            if not isinstance(blob, (bytes, bytearray, memoryview)) or len(blob) != _bytes_per_vec:
+                                continue
+                            chunk_ids.append(str(r[0]))
+                            buf += bytes(blob)
+                        if not chunk_ids:
+                            continue
+                        chunk_vecs = np.frombuffer(bytes(buf), dtype=np.float32).reshape(len(chunk_ids), embedding_dim)
+                        chunk_scores = chunk_vecs @ qvec
+                        for i, score in enumerate(chunk_scores):
+                            if score <= 0:
+                                continue
+                            entry = (float(score), chunk_ids[i])
+                            if len(heap) < window:
+                                heapq.heappush(heap, entry)
+                            elif score > heap[0][0]:
+                                heapq.heapreplace(heap, entry)
+                # Sort heap descending, hydrate.
+                top = sorted(heap, key=lambda x: -x[0])
+                top_ids = [t[1] for t in top]
+                top_scores = {t[1]: t[0] for t in top}
+                hydrated = self._hydrate_symbols_by_id(top_ids, kind=kind, language=language)
+                results: list[SymbolRecord] = []
+                for sid in top_ids:
+                    rec = hydrated.get(sid)
+                    if rec is None:
+                        continue
+                    results.append(rec.model_copy(update={"score": top_scores[sid]}))
+                    if len(results) >= limit:
+                        break
+                return results
+            else:
+                # small repo: load all + cache matrix. load_current_matrix does a
+                # single np.frombuffer over the concatenated blobs, so a cold load
+                # is ms even for tens of thousands of vectors.
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    ids, matrix = self._ann_symbol_index.load_current_matrix(
+                        conn,
+                        embedder_name=embedder.name,
+                        embedding_dim=embedding_dim,
+                    )
+                self._ann_vectors_cache = (cache_key, ids, matrix)
+
+        if len(ids) == 0:
+            return []
+        # Vectorised cosine: unit-normalised vectors → single matrix product.
+        scores = matrix @ qvec
+        order = np.argsort(-scores)
+        results = []
+        pos = 0
+        total = int(order.shape[0])
+        while len(results) < limit and pos < total:
+            batch = order[pos : pos + window]
+            pos += window
+            batch_ids = [ids[int(i)] for i in batch]
+            hydrated = self._hydrate_symbols_by_id(batch_ids, kind=kind, language=language)
+            for i in batch:
+                rec = hydrated.get(ids[int(i)])
+                if rec is None:
+                    continue
+                results.append(rec.model_copy(update={"score": float(scores[int(i)])}))
+                if len(results) >= limit:
+                    break
+        return results
+
+    def warm_query_path(self) -> dict[str, float]:
+        """Warm every one-time cost the first live query would otherwise pay.
+
+        - OS page cache: on a large cold DB the lexical structures (symbols /
+          symbol_trigram / symbol_fts / file_line_fts) are spread thin across
+          the file, and the first query pages them in from disk (measured 33s
+          cold vs <0.4s warm on an 11.9GB DB). No-match probes touch exactly
+          the structures the real channels scan; the page cache is
+          kernel-global, so every process sharing the DB benefits.
+        - centrality map: load the persisted map (or compute+persist once).
+        - ANN vector matrix: resident-cache load via ``prewarm_semantic_matrix``
+          (no-op without an embedder or above the cache cap).
+
+        Fail-open, read-only apart from centrality persistence, safe from a
+        background thread at server startup. Returns per-step seconds.
+        """
+        timings: dict[str, float] = {}
+        _t0 = time.perf_counter()
+        try:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5.0)
+            try:
+                for probe_sql in (
+                    "SELECT COUNT(*) FROM symbols WHERE symbol_name LIKE '%zqx9zzz%'",
+                    "SELECT COUNT(*) FROM symbol_trigram WHERE name LIKE '%zqx9zzz%'",
+                    "SELECT COUNT(*) FROM symbol_fts WHERE symbol_fts MATCH 'zqx9zzz'",
+                    "SELECT COUNT(*) FROM file_line_fts WHERE file_line_fts MATCH 'zqx9zzz'",
+                ):
+                    with contextlib.suppress(sqlite3.Error):
+                        conn.execute(probe_sql).fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            logger.debug("lexical page-cache warm skipped", exc_info=True)
+        timings["page_cache_s"] = round(time.perf_counter() - _t0, 3)
+        _t0 = time.perf_counter()
+        with contextlib.suppress(Exception):
+            self._symbol_centrality_map()
+        timings["centrality_s"] = round(time.perf_counter() - _t0, 3)
+        _t0 = time.perf_counter()
+        with contextlib.suppress(Exception):
+            self.prewarm_semantic_matrix()
+        timings["ann_matrix_s"] = round(time.perf_counter() - _t0, 3)
+        return timings
+
+    def prewarm_semantic_matrix(self) -> bool:
+        """Load the ANN vector matrix into the in-memory cache ahead of the first
+        query so it never pays the cold load (matrix read + unpack: ~200 ms for a
+        24k-vector repo). Returns True when the matrix is resident afterwards.
+
+        No-op (returns False) when no embedder is configured, nothing is stored,
+        or the store exceeds the matrix-cache cap -- those repos use the chunked
+        streaming path, which holds no cached matrix by design. Safe to call from
+        a background thread at index-ready time; idempotent within an index
+        version (the cache key carries index_version, so a reindex re-warms).
+        """
+        ranker = self._semantic_ranker
+        if not getattr(ranker, "available", False):
+            return False
+        embedder = ranker.embedder
+        dim = int(getattr(embedder, "dim", 0))
+        if dim <= 0:
+            return False
+        index_version = self._current_index_version()
+        cache_key = (embedder.name, dim, index_version)
+        cached = self._ann_vectors_cache
+        if cached is not None and cached[0] == cache_key:
+            return True
+        cap = int(os.environ.get("ATELIER_ANN_CACHE_LIMIT", "200000"))
+        with self._connect() as conn:
+            self._init_schema(conn)
+            try:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
+                    (self._ann_symbol_index.repo_id, embedder.name, dim),
+                ).fetchone()[0]
+            except sqlite3.Error:
+                return False
+            if count == 0 or count > cap:
+                return False
+            ids, matrix = self._ann_symbol_index.load_current_matrix(
+                conn, embedder_name=embedder.name, embedding_dim=dim
+            )
+        # Set directly (not inside _reuse_connection) so the cache is not dropped
+        # on scope exit -- the next semantic query finds it warm.
+        self._ann_vectors_cache = (cache_key, ids, matrix)
+        return len(ids) > 0
+
+    def _sqlite_vector_conn(self) -> sqlite3.Connection | None:
+        """Cached per-thread direct connection to vectors.sqlite with the
+        sqlite_vector extension loaded, or None when it is unavailable.
+
+        The extension only operates on a connection's *main* schema, so the vectors
+        DB is opened directly (bare ``symbol_vectors``) instead of via the attached
+        ``vectors`` alias used elsewhere. Kept open for the engine's lifetime so the
+        TurboQuant data stays resident. A missing package or a failed load sets a
+        permanent flag so the numpy fallback is used without re-probing; a merely
+        absent DB file is transient (retried on the next query).
+        """
+        if self._sqlite_vec_disabled:
+            return None
+        conn = getattr(self._sqlite_vec_tls, "conn", None)
+        if conn is not None:
+            return conn
+        ext_path = _sqlite_vector_extension_path()
+        if ext_path is None:
+            self._sqlite_vec_disabled = True
+            return None
+        vpath = self.vectors_db_path
+        if not vpath.exists():
+            return None
+        conn = None
+        try:
+            conn = sqlite3.connect(vpath, timeout=30.0)
+            conn.enable_load_extension(True)
+            conn.load_extension(ext_path)
+            conn.enable_load_extension(False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.execute("PRAGMA mmap_size = 268435456")
+            # Adds vector_blob + backfills from JSON on stores that predate it, so
+            # the scan works without waiting for a full reindex.
+            ensure_symbol_vector_schema(conn)
+        except (sqlite3.Error, AttributeError):
+            # AttributeError: a Python build compiled without enable_load_extension.
+            logger.debug("sqlite-vector unavailable; using numpy path", exc_info=True)
+            if conn is not None:
+                with contextlib.suppress(sqlite3.Error):
+                    conn.close()
+            self._sqlite_vec_disabled = True
+            return None
+        self._sqlite_vec_tls.conn = conn
+        return conn
+
+    def _ensure_sqlite_vector_index(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        embedder_name: str,
+        embedding_dim: int,
+        index_version: int,
+    ) -> bool:
+        """Make ``conn`` ready to TurboQuant-scan symbol_vectors; False → fall back.
+
+        ``vector_init`` is required on every connection. The quantization itself is
+        one-time and persisted in the DB, keyed by ``index_version`` via a small
+        marker table: a reindex re-quantizes exactly once and separate CLI
+        processes reuse a prior build instead of re-quantizing on every invocation.
+        ``preload`` is a per-connection RAM speedup, capped so a huge corpus stays
+        mmap-backed. Readiness is memoised on the thread-local, so the steady state
+        is a single key comparison per query.
+        """
+        tls = self._sqlite_vec_tls
+        key = (embedder_name, embedding_dim, index_version)
+        if getattr(tls, "ready_key", None) == key:
+            return True
+        spec = f"type=FLOAT32,dimension={embedding_dim},distance=COSINE"
+        try:
+            conn.execute("SELECT vector_init('symbol_vectors', 'vector_blob', ?)", (spec,))
+        except sqlite3.Error:
+            logger.debug("sqlite-vector vector_init failed; using numpy path", exc_info=True)
+            return False
+        with self._sqlite_vec_lock:
+            try:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS _sqliteai_quant_state ("
+                    " embedder_name TEXT NOT NULL, embedding_dim INTEGER NOT NULL,"
+                    " index_version INTEGER NOT NULL,"
+                    " PRIMARY KEY (embedder_name, embedding_dim))"
+                )
+                row = conn.execute(
+                    "SELECT index_version FROM _sqliteai_quant_state WHERE embedder_name = ? AND embedding_dim = ?",
+                    (embedder_name, embedding_dim),
+                ).fetchone()
+                if row is None or int(row[0]) != index_version:
+                    # Fully (re)quantize the column for this index version — the
+                    # extension re-quantizes all rows, folding in any added since
+                    # the previous build. Raises (caught below) on a heterogeneous
+                    # column during a model-drift window → numpy fallback.
+                    conn.execute("SELECT vector_quantize('symbol_vectors', 'vector_blob', 'qtype=TURBO4')")
+                    conn.execute(
+                        "INSERT INTO _sqliteai_quant_state (embedder_name, embedding_dim, index_version)"
+                        " VALUES (?, ?, ?)"
+                        " ON CONFLICT(embedder_name, embedding_dim)"
+                        " DO UPDATE SET index_version = excluded.index_version",
+                        (embedder_name, embedding_dim, index_version),
+                    )
+                    conn.commit()
+            except sqlite3.Error:
+                logger.debug("sqlite-vector quantize failed; using numpy path", exc_info=True)
+                return False
+        # Preload the quantized data into RAM once per connection, under the cap
+        # (the scan works without preload, reading the quantized rows via mmap).
+        try:
+            mem_row = conn.execute("SELECT vector_quantize_memory('symbol_vectors', 'vector_blob')").fetchone()
+            mem_bytes = int(mem_row[0]) if mem_row and mem_row[0] is not None else 0
+            if 0 < mem_bytes <= _SQLITE_VEC_PRELOAD_MAX_BYTES:
+                conn.execute("SELECT vector_quantize_preload('symbol_vectors', 'vector_blob')")
+        except sqlite3.Error:
+            logger.debug("sqlite-vector preload skipped", exc_info=True)
+        tls.ready_key = key
+        return True
+
+    def _search_symbols_sqlite_vector(
+        self,
+        query_vector: list[float],
+        *,
+        embedder_name: str,
+        embedding_dim: int,
+        index_version: int,
+        limit: int,
+        window: int,
+        kind: str | None,
+        language: str | None,
+    ) -> list[SymbolRecord] | None:
+        """In-DB TurboQuant ANN over symbol_vectors, replacing the numpy matrix scan.
+
+        Returns ranked records on success, or None to signal the caller to fall
+        back to the numpy path (extension unavailable, not quantizable, or a query
+        error). ``distance`` is cosine distance in [0, 2]; similarity is
+        ``1 - distance``. The scan over-fetches (``window``) so the N5 drift filter
+        and the kind/language hydration filter have candidates to spare.
+        """
+        import struct
+
+        conn = self._sqlite_vector_conn()
+        if conn is None:
+            return None
+        if not self._ensure_sqlite_vector_index(
+            conn,
+            embedder_name=embedder_name,
+            embedding_dim=embedding_dim,
+            index_version=index_version,
+        ):
+            return None
+        try:
+            qblob = struct.pack(f"{embedding_dim}f", *query_vector)
+        except (struct.error, TypeError, ValueError):
+            return None
+        scan_k = max(window, 200)
+        try:
+            rows = conn.execute(
+                "SELECT sv.symbol_id AS sid, v.distance AS dist "
+                "FROM vector_quantize_scan('symbol_vectors', 'vector_blob', ?, ?) AS v "
+                "JOIN symbol_vectors sv ON sv.rowid = v.rowid "
+                "WHERE sv.repo_id = ? AND sv.embedder_name = ? AND sv.embedding_dim = ? "
+                "ORDER BY v.distance",
+                (qblob, scan_k, self.repo_id, embedder_name, embedding_dim),
+            ).fetchall()
+        except sqlite3.Error:
+            logger.debug("sqlite-vector scan failed; using numpy path", exc_info=True)
+            return None
+        if not rows:
+            return []
+        top_ids = [str(r["sid"]) for r in rows]
+        scores = {str(r["sid"]): 1.0 - float(r["dist"]) for r in rows}
+        hydrated = self._hydrate_symbols_by_id(top_ids, kind=kind, language=language)
+        results: list[SymbolRecord] = []
+        for sid in top_ids:
+            rec = hydrated.get(sid)
+            if rec is None:
+                continue
+            results.append(rec.model_copy(update={"score": scores[sid]}))
+            if len(results) >= limit:
+                break
+        return results
+
+    def _hydrate_symbols_by_id(
+        self,
+        symbol_ids: list[str],
+        *,
+        kind: str | None = None,
+        language: str | None = None,
+    ) -> dict[str, SymbolRecord]:
+        """Load full records for the given ids (the semantic-ranking winners),
+        applying the optional kind/language filter in SQL. Only the ranked top
+        slice is hydrated, so the hot path never builds records for non-winners."""
+        if not symbol_ids:
+            return {}
         filters = ["repo_id = ?"]
         params: list[Any] = [self.repo_id]
         if kind:
@@ -3438,21 +7433,19 @@ class CodeContextEngine:
         if language:
             filters.append("language = ?")
             params.append(language)
-        params.append(limit)
+        placeholders = ",".join("?" * len(symbol_ids))
+        filters.append(f"symbol_id IN ({placeholders})")
+        params.extend(symbol_ids)
         where_sql = " AND ".join(filters)
-        with self._connect() as conn:
-            self._init_schema(conn)
+        # Read-only + no _init_schema: we only reach here after vectors were loaded,
+        # so the symbols table exists. Skipping the ~15 CREATE TABLE IF NOT EXISTS
+        # statements per query is most of the semantic hot-path latency.
+        with self._connect(readonly=True) as conn:
             rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql}
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}",
                 tuple(params),
             ).fetchall()
-        return [_row_to_symbol(row) for row in rows]
+        return {str(row["symbol_id"]): _row_to_symbol(row) for row in rows}
 
     def get_symbol(
         self,
@@ -3507,7 +7500,14 @@ class CodeContextEngine:
             raise LookupError("symbol not found")
         symbol = _row_to_symbol(row)
         path = self.repo_root / symbol.file_path
-        source = path.read_bytes()[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+        try:
+            source = path.read_bytes()[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+        except OSError:
+            # The index can reference a file absent from disk (deleted, moved, or
+            # snapshot-excluded since indexing). Return the symbol metadata with an
+            # empty body so callers (explore relationship resolution, node, ...)
+            # degrade instead of crashing on one stale entry.
+            source = ""
         emit_product_local("code_symbol_retrieved", repo_id=self.repo_id, kind=symbol.kind)
         return {**symbol.model_dump(mode="json"), "source": source}
 
@@ -3541,16 +7541,18 @@ class CodeContextEngine:
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             record = _row_to_symbol(row)
-            grouped.setdefault(record.file_path, []).append(
-                {
-                    "name": record.symbol_name,
-                    "qualified_name": record.qualified_name,
-                    "kind": record.kind,
-                    "signature": record.signature,
-                    "line_start": record.start_line,
-                    "line_end": record.end_line,
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": record.symbol_name,
+                "kind": record.kind,
+                "signature": record.signature,
+                "line_start": record.start_line,
+                "line_end": record.end_line,
+            }
+            # Drop qualified_name when it duplicates name (the common case for
+            # module-level symbols) — redundant bytes the agent never needs.
+            if record.qualified_name and record.qualified_name != record.symbol_name:
+                entry["qualified_name"] = record.qualified_name
+            grouped.setdefault(record.file_path, []).append(entry)
         return {"repo_id": self.repo_id, "files": grouped, "symbol_count": len(rows)}
 
     def repo_map(self, *, seed_files: list[str] | None = None, budget_tokens: int = 2000) -> dict[str, Any]:
@@ -3617,7 +7619,7 @@ class CodeContextEngine:
         context_policy = resolve_output_policy("context")
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
         search_query = task
-        lexical_anchor_files = sorted(self._zoekt_candidate_files(search_query, max_files=max(max_symbols * 4, 24)))
+        lexical_anchor_files = self._zoekt_candidate_files(search_query, max_files=max(max_symbols * 4, 24))
         context_seed_files = list(dict.fromkeys([*normalized_seeds, *lexical_anchor_files]))
         repo_map_payload = self.repo_map(seed_files=context_seed_files, budget_tokens=max(200, budget_tokens // 4))
         bounded_max_symbols = max(1, min(max_symbols, context_policy.max_related_symbols))
@@ -3644,7 +7646,12 @@ class CodeContextEngine:
         selected = selected[:bounded_max_symbols]
 
         neighbors = self._import_neighbors(context_seed_files)
-        neighbor_files = self._context_neighbor_files(neighbors)[: context_policy.max_related_symbols]
+        # N9: generated/scaffolding files are dropped from "Related Symbols"
+        # entirely -- they are noise once the hand-written entry points are
+        # surfaced. The cap on related count is applied afterwards.
+        neighbor_files = [path for path in self._context_neighbor_files(neighbors) if not is_generated_path(path)][
+            : context_policy.max_related_symbols
+        ]
         graph_related = self._context_graph_related_symbols(
             selected,
             query=search_query,
@@ -3652,7 +7659,7 @@ class CodeContextEngine:
             max_symbols_per_file=max(1, context_policy.max_symbols_per_file),
         )
         selected_ids = {item.symbol_id for item in selected}
-        related_symbols = list(graph_related)
+        related_symbols = [item for item in graph_related if not is_generated_path(item.file_path)]
         related_ids = {item.symbol_id for item in related_symbols} | selected_ids
         if len(related_symbols) < context_policy.max_related_symbols and neighbor_files:
             neighbor_symbol_limit = max(
@@ -3669,7 +7676,9 @@ class CodeContextEngine:
             related_seed = [
                 symbol
                 for symbol in neighbor_symbols
-                if self._is_context_pack_symbol(symbol) and symbol.symbol_id not in related_ids
+                if self._is_context_pack_symbol(symbol)
+                and symbol.symbol_id not in related_ids
+                and not is_generated_path(symbol.file_path)
             ]
             neighbor_related = self._prioritize_context_symbols(search_query, related_seed)
             related_symbols.extend(neighbor_related)
@@ -3715,11 +7724,20 @@ class CodeContextEngine:
         naive_tokens = 0
         max_code_blocks = max(1, context_policy.max_code_blocks)
         code_block_candidates = self._dedupe_symbols([*selected, *graph_related])
+        naive_file_tokens: dict[str, int] = {}
         for symbol in code_block_candidates:
             if len(packed_symbols) >= max_code_blocks:
                 break
-            full_file = self._read_file(symbol.file_path)
-            naive_tokens += count_tokens(full_file)
+            file_tokens = naive_file_tokens.get(symbol.file_path)
+            if file_tokens is None:
+                # A concurrent autosync reindex may delete the file out from under
+                # us; skip its naive-baseline contribution instead of aborting the
+                # whole pack. Cache per file so multiple symbols sharing a file do
+                # not re-read it.
+                with contextlib.suppress(OSError):
+                    file_tokens = count_tokens(self._read_file(symbol.file_path))
+                naive_file_tokens[symbol.file_path] = file_tokens or 0
+            naive_tokens += naive_file_tokens[symbol.file_path]
             symbol_payload = self.get_symbol(symbol_id=symbol.symbol_id, auto_index=False)
             source_block = self._fit_context_code_block_source(
                 lines=lines,
@@ -3789,8 +7807,11 @@ class CodeContextEngine:
         limit: int = 50,
         ignore_case: bool = False,
     ) -> list[TextMatch]:
-        """Literal text search using ripgrep when available, with a Python fallback."""
+        """Literal text search over the warmed line index, with rg as legacy fallback."""
         search_path = self._resolve_inside_repo(path)
+        indexed = self._search_text_index(query, search_path=search_path, limit=limit, ignore_case=ignore_case)
+        if indexed:
+            return indexed
         if shutil.which("rg") is not None:
             args = [
                 "rg",
@@ -3811,6 +7832,76 @@ class CodeContextEngine:
                 raise RuntimeError(proc.stderr.strip() or "ripgrep failed")
             return self._parse_rg_output(proc.stdout, limit=limit)
         return self._python_text_search(query, search_path, limit=limit, ignore_case=ignore_case)
+
+    def _search_text_index(
+        self,
+        query: str,
+        *,
+        search_path: Path,
+        limit: int,
+        ignore_case: bool,
+    ) -> list[TextMatch]:
+        normalized = query.strip()
+        if not normalized:
+            return []
+        fts_query = _safe_fts_query(normalized)
+        rel = _safe_relpath(self.repo_root, search_path)
+        path_clause = ""
+        path_params: list[Any] = []
+        if search_path != self.repo_root:
+            if search_path.is_file():
+                path_clause = " AND file_path = ?"
+                path_params.append(rel)
+            else:
+                path_clause = " AND (file_path = ? OR file_path LIKE ?)"
+                path_params.extend([rel, f"{rel.rstrip('/')}/%"])
+        query_lower = normalized.lower()
+        rows: list[sqlite3.Row] = []
+        with self._connect() as conn:
+            self._init_schema(conn)
+            if fts_query:
+                rows = conn.execute(
+                    f"""
+                    SELECT file_path, line, text
+                    FROM file_line_fts
+                    WHERE file_line_fts MATCH ? AND repo_id = ?{path_clause}
+                    ORDER BY file_path, line
+                    LIMIT ?
+                    """,
+                    tuple([fts_query, self.repo_id, *path_params, max(limit * 8, 80)]),
+                ).fetchall()
+            if not rows:
+                like = f"%{query_lower if ignore_case else normalized}%"
+                text_expr = "lower(text)" if ignore_case else "text"
+                rows = conn.execute(
+                    f"""
+                    SELECT file_path, line, text
+                    FROM file_line_fts
+                    WHERE repo_id = ?{path_clause} AND {text_expr} LIKE ?
+                    ORDER BY file_path, line
+                    LIMIT ?
+                    """,
+                    tuple([self.repo_id, *path_params, like, max(limit * 8, 80)]),
+                ).fetchall()
+        matches: list[TextMatch] = []
+        for row in rows:
+            text = str(row["text"])
+            haystack = text.lower() if ignore_case else text
+            needle = query_lower if ignore_case else normalized
+            index = haystack.find(needle)
+            if index < 0:
+                continue
+            matches.append(
+                TextMatch(
+                    file_path=str(row["file_path"]),
+                    line=int(row["line"]),
+                    column=index + 1,
+                    text=text,
+                )
+            )
+            if len(matches) >= limit:
+                break
+        return matches
 
     def _should_use_text_substring_search(
         self,
@@ -3844,16 +7935,73 @@ class CodeContextEngine:
         language: str | None,
         file_glob: str | None,
     ) -> bool:
-        hits = self.intel_store.search_symbols(
-            query,
-            limit=20,
-            kind=kind,
-            language=language,
-            scope="repo",
-        )
+        clauses = [
+            "repo_id = ?",
+            "(symbol_name = ? OR qualified_name = ? OR lower(symbol_name) = ? OR lower(qualified_name) = ?)",
+        ]
+        params: list[Any] = [self.repo_id, query, query, query.lower(), query.lower()]
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        if language:
+            clauses.append("language = ?")
+            params.append(language)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                f"""
+                SELECT file_path
+                FROM symbols
+                WHERE {" AND ".join(clauses)}
+                LIMIT 20
+                """,
+                tuple(params),
+            ).fetchall()
+        if file_glob:
+            return any(_matches_file_glob(str(row["file_path"]), file_glob) for row in rows)
+        return bool(rows)
+
+    def _substring_symbol_hits(
+        self,
+        query_lower: str,
+        *,
+        limit: int,
+        file_glob: str | None,
+    ) -> list[SymbolRecord]:
+        like_pattern = f"%{query_lower}%"
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT *, NULL AS score
+                FROM symbols
+                WHERE repo_id = ? AND (
+                    lower(symbol_name) LIKE ?
+                    OR lower(qualified_name) LIKE ?
+                    OR lower(signature) LIKE ?
+                )
+                ORDER BY
+                    CASE WHEN kind IN ('class', 'method', 'function') THEN 0 ELSE 1 END,
+                    CASE WHEN lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? THEN 0 ELSE 1 END,
+                    length(symbol_name),
+                    file_path,
+                    start_line
+                LIMIT ?
+                """,
+                (
+                    self.repo_id,
+                    like_pattern,
+                    like_pattern,
+                    like_pattern,
+                    f"{query_lower}%",
+                    f"{query_lower}%",
+                    max(limit * 12, 120),
+                ),
+            ).fetchall()
+        hits = [_row_to_symbol(row) for row in rows]
         if file_glob:
             hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
-        return bool(_exact_symbol_hits(hits, query))
+        return hits[:limit]
 
     def _tool_text_substring_search(
         self,
@@ -3867,14 +8015,7 @@ class CodeContextEngine:
     ) -> dict[str, Any]:
         search_path = "src/atelier" if (self.repo_root / "src" / "atelier").is_dir() else "."
         query_lower = query.lower()
-        symbol_hits = self.search_symbols(
-            query,
-            limit=max(limit * 40, 200),
-            mode="lexical",
-            file_glob=file_glob,
-            scope="repo",
-            auto_index=False,
-        )
+        symbol_hits = self._substring_symbol_hits(query_lower, limit=max(limit * 40, 200), file_glob=file_glob)
         ranked_symbol_hits = sorted(
             (
                 item
@@ -3964,44 +8105,107 @@ class CodeContextEngine:
             return token.group(1)
         return query
 
+    _zoekt_ready_waited: bool = False
+
+    def _zoekt_wait_ready_once(self, supervisor: Any) -> None:
+        """Bounded first-use wait for the zoekt webserver (once per engine).
+
+        The hot query path never blocks on startup, so queries issued while
+        index shards are still loading silently lose the entire Zoekt channel
+        -- a recall hit, not just latency. A bounded wait exactly once per
+        engine converts that silent quality loss into a small first-query
+        delay; after the first attempt (ready or not) searches never block
+        again and keep the existing degrade-to-empty behaviour.
+        Budget via ATELIER_ZOEKT_READY_TIMEOUT_S (default 5s, 0 disables).
+        """
+        if self._zoekt_ready_waited:
+            return
+        self._zoekt_ready_waited = True
+        try:
+            timeout = float(os.environ.get("ATELIER_ZOEKT_READY_TIMEOUT_S", "5.0"))
+        except ValueError:
+            timeout = 5.0
+        if timeout <= 0:
+            return
+        with contextlib.suppress(Exception):
+            supervisor.server.wait_until_searchable(timeout)
+
     def _zoekt_candidate_files(
         self,
         query: str,
         *,
         path: str = ".",
         max_files: int = 40,
-    ) -> set[str]:
+    ) -> list[str]:
         normalized_query = query.strip()
         if not normalized_query:
-            return set()
+            return []
         try:
             from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
         except Exception:
             logging.exception("Recovered from broad exception handler")
-            return set()
+            return []
         with contextlib.suppress(Exception):
             search_path = self._resolve_inside_repo(path)
             supervisor = get_zoekt_supervisor(self.repo_root)
             if not supervisor.should_route(search_path):
-                return set()
-            if not supervisor.health().ok:
-                return set()
+                return []
+            self._zoekt_wait_ready_once(supervisor)
             result = supervisor.search(
                 query=normalized_query,
                 search_path=search_path,
                 max_files=max(1, min(max_files, 200)),
                 max_chars_per_file=800,
                 include_outline=False,
+                _include_index_age=False,
             )
-            files: set[str] = set()
+            # ordered dedup: zoekt returns files in descending score order;
+            # preserve that order so callers can prefer high-signal files.
+            seen: dict[str, None] = {}
             for match in result.matches:
                 raw_path = Path(match.path)
                 resolved = raw_path if raw_path.is_absolute() else (self.repo_root / raw_path)
                 with contextlib.suppress(ValueError):
                     rel = _safe_relpath(self.repo_root, resolved.resolve())
-                    files.add(rel)
-            return files
-        return set()
+                    seen[rel] = None
+            return list(seen)
+        return []
+
+    def _semantic_candidate_files(self, query: str, *, max_files: int = 40) -> dict[str, float]:
+        """Files whose symbols are the nearest semantic (embedding) neighbours of the
+        query -- an additive recall channel for the explore fusion, mirroring
+        _zoekt_candidate_files.  Fuses ONLY when an embedder is configured and
+        available: the embedder is the gated provider, so with none configured this
+        is a silent no-op (never an error or a "pro-gated" notice).  Graceful --
+        returns an empty dict when embeddings are not indexed or the search fails.
+        Opt out with ATELIER_EXPLORE_SEMANTIC=0.
+
+        Returns ``{file_path: best_cosine}`` (the max cosine over the file's
+        symbols). The caller uses the keys as recall anchors AND the scores as a
+        ranking signal, so a file the embedder ranked highest is promoted rather
+        than scored ~0 on lexical/centrality.
+        """
+        normalized_query = query.strip()
+        if os.environ.get("ATELIER_EXPLORE_SEMANTIC", "1") == "0":
+            return {}
+        if not normalized_query or not getattr(self._semantic_ranker, "available", False):
+            return {}
+        # Cosine floor: drop clearly-dissimilar neighbours that would be noise.
+        # Default 0.35, not 0.55: BGE-code is an asymmetric (query-prefix vs
+        # document) model whose correct matches land at ~0.4-0.55 cosine, so a
+        # 0.55 floor discarded nearly every true semantic anchor before fusion.
+        min_score = float(os.environ.get("ATELIER_SEMANTIC_MIN_SCORE", "0.35"))
+        files: dict[str, float] = {}
+        with contextlib.suppress(Exception):
+            for symbol in self._search_symbols_semantic_local(normalized_query, limit=max(8, max_files)):
+                if (symbol.score or 0.0) < min_score:
+                    break  # results are score-sorted; no point continuing
+                fp = symbol.file_path
+                if fp not in files:  # first occurrence is the file's best (score-desc order)
+                    files[fp] = float(symbol.score or 0.0)
+                if len(files) >= max_files:
+                    break
+        return files
 
     def _zoekt_text_matches(
         self,
@@ -4070,7 +8274,19 @@ class CodeContextEngine:
             )
         targets = cast(list[dict[str, Any]], resolved["targets"])
         primary_target = targets[0]
+        relation_policy = resolve_output_policy("relation")
+        # Bound the intermediate reference set at the source so a very common
+        # identifier cannot inflate the pre-sort collection without limit. The
+        # final policy/limit caps below still apply as a backstop; this ceiling
+        # keeps headroom for dedup + sort while truncating each provider's
+        # contribution as it is collected.
+        collection_ceiling = max(
+            limit,
+            relation_policy.max_related_symbols if relation_policy.max_related_symbols > 0 else 0,
+        )
+        collection_ceiling = max(collection_ceiling * 4, 100)
         references: list[UsageReference] = []
+        ceiling_truncated = False
         for target in targets:
             local_refs = self.intel_store.find_references(
                 symbol_id=str(target["symbol_id"]),
@@ -4079,8 +8295,14 @@ class CodeContextEngine:
                 symbol_name=str(target["symbol_name"]),
             )
             cross_lang_refs = self._cross_lang_usage_references(target)
-            references.extend(local_refs)
-            references.extend(cross_lang_refs)
+            references.extend(local_refs[: max(collection_ceiling - len(references), 0)])
+            references.extend(cross_lang_refs[: max(collection_ceiling - len(references), 0)])
+            if len(references) >= collection_ceiling:
+                # Source-level ceiling fired: the pre-sort set was capped before
+                # the downstream policy cap could weigh in, so the result is
+                # genuinely incomplete regardless of relation_policy.
+                ceiling_truncated = True
+                break
         ordered_references = sorted(
             references,
             key=lambda item: (
@@ -4101,12 +8323,12 @@ class CodeContextEngine:
                 fallback_provenance = "zoekt_text"
                 text_hits = self._zoekt_text_matches(
                     fallback_query,
-                    limit=max(limit * 4, 100),
+                    limit=collection_ceiling,
                     file_glob=file_glob,
                 )
                 if not text_hits:
                     fallback_provenance = "text"
-                    text_hits = self.search_text(fallback_query, path=".", limit=max(limit * 4, 100), ignore_case=False)
+                    text_hits = self.search_text(fallback_query, path=".", limit=collection_ceiling, ignore_case=False)
                 items = [
                     {
                         "file_path": match.file_path,
@@ -4125,7 +8347,6 @@ class CodeContextEngine:
                 items = self._dedupe_usage_items(items)
         if file_glob:
             items = [item for item in items if _matches_file_glob(str(item["file_path"]), file_glob)]
-        relation_policy = resolve_output_policy("relation")
         if not relation_policy.include_snippet:
             for item in items:
                 item.pop("snippet", None)
@@ -4137,7 +8358,7 @@ class CodeContextEngine:
             target=primary_target,
             items=items,
             group_by=group_by,
-            truncated=truncated_by_policy,
+            truncated=truncated_by_policy or ceiling_truncated,
             ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
         )
         full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
@@ -4148,7 +8369,7 @@ class CodeContextEngine:
                     target=primary_target,
                     items=packed_items,
                     group_by=group_by,
-                    truncated=truncated_by_policy or len(packed_items) < len(items),
+                    truncated=truncated_by_policy or ceiling_truncated or len(packed_items) < len(items),
                     ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
                 ),
                 full_total_tokens=full_total_tokens,
@@ -4334,7 +8555,10 @@ class CodeContextEngine:
             payload["ambiguity"] = ambiguity
         relation_policy = resolve_output_policy("relation")
         if relation_policy.max_related_symbols > 0:
-            max_related = relation_policy.max_related_symbols
+            # Respect the caller's explicit limit when it exceeds the compact-policy
+            # default (12). Without this, passing limit=50 still silently truncates
+            # to 12 because the compact policy runs after the traversal.
+            max_related = max(limit, relation_policy.max_related_symbols)
             related_before = len(cast(list[dict[str, Any]], payload.get("related", [])))
             edges_before = len(cast(list[dict[str, Any]], payload.get("edges", [])))
             payload["related"] = cast(list[dict[str, Any]], payload.get("related", []))[:max_related]
@@ -4368,280 +8592,387 @@ class CodeContextEngine:
             self._cache_set(f"code.{direction}", cache_args, packed)
         return packed
 
-    def impact(
+    def _neighborhood(
         self,
-        target: str | None = None,
+        relation: Literal["self", "callers", "callees", "refs"],
         *,
         query: str | None = None,
         symbol_id: str | None = None,
         qualified_name: str | None = None,
         symbol_name: str | None = None,
         file_path: str | None = None,
+        line: int | None = None,
         kind: str | None = None,
         language: str | None = None,
         file_glob: str | None = None,
+        depth: int = 1,
+        limit: int = 20,
+        group_by: Literal["file", "caller", "none"] = "file",
+        snippet_lines: int = 3,
+        snapshot: bool = False,
+        budget_tokens: int = 4000,
         auto_index: bool = True,
-    ) -> ImpactResult:
-        """Approximate impact for a file path or symbol target."""
-        if auto_index:
-            self._ensure_indexed()
-        effective_path = file_path or target
-        uses_symbol_target = bool(query or symbol_id or qualified_name or symbol_name)
-        if not uses_symbol_target and effective_path is None:
-            raise ValueError("path or symbol identifier is required for code impact")
-        if effective_path is not None and not uses_symbol_target:
-            normalized_path = self._normalize_file_arg(effective_path)
-            direct, transitive, _ = self._import_blast_radius(normalized_path)
-            affected_tests = sorted(item for item in {*direct, *transitive} if self._is_test_path(item))
-            reasons_by_file: dict[str, dict[str, set[str]]] = {}
-            for file_path in direct:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="direct_import")
-            for file_path in transitive:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="transitive_import")
-            for file_path in affected_tests:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-            file_symbols = self._symbols_for_files([normalized_path], limit=20)
-            for target_symbol in file_symbols:
-                symbol_display = str(
-                    target_symbol.qualified_name or target_symbol.symbol_name or target_symbol.symbol_id or "?"
-                )
-                refs = self.intel_store.find_references(
-                    symbol_id=target_symbol.symbol_id,
-                    qualified_name=target_symbol.qualified_name,
-                    file_path=target_symbol.file_path,
-                    symbol_name=target_symbol.symbol_name,
-                )
-                for ref in refs:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(ref.file_path),
-                        reason="reference",
-                        symbol=str(ref.caller or symbol_display),
-                    )
-                callers = (
-                    self.intel_store.find_callers(
-                        symbol_id=target_symbol.symbol_id,
-                        qualified_name=target_symbol.qualified_name,
-                        file_path=target_symbol.file_path,
-                        symbol_name=target_symbol.symbol_name,
-                    )
-                    or []
-                )
-                for caller in callers:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(caller.file_path),
-                        reason="caller",
-                        symbol=str(caller.qualified_name or caller.symbol_name),
-                    )
-                callees = (
-                    self.intel_store.find_callees(
-                        symbol_id=target_symbol.symbol_id,
-                        qualified_name=target_symbol.qualified_name,
-                        file_path=target_symbol.file_path,
-                        symbol_name=target_symbol.symbol_name,
-                    )
-                    or []
-                )
-                for callee in callees:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(callee.file_path),
-                        reason="callee",
-                        symbol=str(callee.qualified_name or callee.symbol_name),
-                    )
-            affected_files = self._serialize_affected_files(reasons_by_file)
-            return ImpactResult(
-                target={"type": "file", "path": normalized_path},
-                target_type="file",
-                file_path=normalized_path,
-                affected_files=affected_files,
-                direct_importers=direct,
-                transitive_importers=transitive,
-                affected_tests=affected_tests,
-                risk_level=self._impact_risk_level(len(direct) + len(transitive)),
-                dead_code_candidates=self._dead_code_candidates(normalized_path),
-                provenance=_LOCAL_PROVENANCE,
+    ) -> dict[str, Any]:
+        """Unified symbol-graph access: one resolve+project entry over the shared
+        code index. ``relation`` selects the projection:
+
+        * ``self``    -- the symbol's own definition (``depth``/``group_by``/
+          ``snippet_lines`` ignored).
+        * ``callers`` -- inbound call edges (transitive via ``depth``).
+        * ``callees`` -- outbound call edges (transitive via ``depth``).
+        * ``refs``    -- all references/usages (flat; ``depth`` ignored).
+
+        ``node``/``callers``/``callees``/``usages`` and ``explore``'s relationship
+        pass all funnel through here, so symbol-graph access has a single code
+        path. Each branch still delegates to its existing engine method, so
+        payloads are unchanged -- this is the seam the projections collapse into.
+        """
+        if relation == "self":
+            return self.tool_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                line=line,
+                budget_tokens=budget_tokens,
+                auto_index=auto_index,
             )
+        if relation in ("callers", "callees"):
+            return self._tool_call_graph(
+                relation,
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                depth=depth,
+                limit=limit,
+                snapshot=snapshot,
+                budget_tokens=budget_tokens,
+                auto_index=auto_index,
+            )
+        if relation == "refs":
+            return self.find_references(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                file_glob=file_glob,
+                group_by=group_by,
+                snippet_lines=snippet_lines,
+                limit=limit,
+                auto_index=auto_index,
+                budget_tokens=budget_tokens,
+            )
+        raise ValueError(f"unknown neighborhood relation: {relation!r}")
 
-        resolved = self._resolve_symbol_targets(
-            operation_name="impact",
-            query=query or (target if uses_symbol_target else None),
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name,
-            file_path=file_path,
-            kind=kind,
-            language=language,
-            file_glob=file_glob,
-        )
-        targets = cast(list[dict[str, Any]], resolved.get("targets") or [])
-        if not targets:
-            raise LookupError("no matching symbol was found")
-        return self._impact_for_symbol_targets(
-            targets=targets,
-            query=query or target,
-            ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
-        )
+    @property
+    def intel_db_path(self) -> Path:
+        return self.db_path.parent / "intel.sqlite"
 
-    def _impact_for_symbol_targets(
-        self,
-        *,
-        targets: list[dict[str, Any]],
-        query: str | None,
-        ambiguity: dict[str, Any] | None,
-    ) -> ImpactResult:
-        direct_importers: set[str] = set()
-        transitive_importers: set[str] = set()
-        affected_tests: set[str] = set()
-        dead_code_candidates: set[str] = set()
-        reasons_by_file: dict[str, dict[str, set[str]]] = {}
-        file_targets = sorted(
-            {str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")}
-        )
-        for target in sorted(
-            targets,
-            key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
+    @property
+    def vectors_db_path(self) -> Path:
+        return self.db_path.parent / "vectors.sqlite"
+
+    @property
+    def fts_db_path(self) -> Path:
+        return self.db_path.parent / "fts.sqlite"
+
+    def _init_secondary_schemas(self) -> None:
+        """Create schema in secondary DBs using dedicated connections.
+
+        Each secondary DB is initialised separately (no ATTACH needed here)
+        so table names need no schema prefix.
+        """
+        # --- intel.sqlite ---
+        self.intel_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.intel_db_path, timeout=30.0) as ic:
+            ic.execute("PRAGMA journal_mode = WAL")
+            ic.executescript("""
+                CREATE TABLE IF NOT EXISTS \"references\" (
+                    repo_id TEXT NOT NULL,
+                    symbol_name TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    column INTEGER NOT NULL,
+                    end_column INTEGER NOT NULL,
+                    enclosing_symbol_name TEXT,
+                    enclosing_qualified_name TEXT,
+                    snippet TEXT NOT NULL,
+                    UNIQUE(repo_id, symbol_name, file_path, line, column, enclosing_qualified_name)
+                );
+                CREATE TABLE IF NOT EXISTS call_edges (
+                    repo_id TEXT NOT NULL,
+                    caller_symbol_name TEXT NOT NULL,
+                    caller_qualified_name TEXT NOT NULL,
+                    caller_file_path TEXT NOT NULL,
+                    caller_start_line INTEGER NOT NULL,
+                    caller_end_line INTEGER NOT NULL,
+                    callee_name TEXT NOT NULL,
+                    callee_short_name TEXT NOT NULL DEFAULT '',
+                    call_line INTEGER NOT NULL,
+                    call_column INTEGER NOT NULL,
+                    snippet TEXT NOT NULL,
+                    UNIQUE(repo_id, caller_qualified_name, caller_file_path, call_line, call_column, callee_name)
+                );
+                CREATE TABLE IF NOT EXISTS centrality_map (
+                    repo_id        TEXT NOT NULL,
+                    name_key       TEXT NOT NULL,
+                    score          REAL NOT NULL,
+                    index_version  INTEGER NOT NULL,
+                    PRIMARY KEY (repo_id, name_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_references_name ON \"references\"(repo_id, symbol_name);
+                CREATE INDEX IF NOT EXISTS idx_references_file ON \"references\"(repo_id, file_path);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_callee ON call_edges(repo_id, callee_name);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_callee_short ON call_edges(repo_id, callee_short_name);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_caller ON call_edges(repo_id, caller_file_path, caller_start_line);
+            """)
+
+        # --- vectors.sqlite ---
+        self.vectors_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.vectors_db_path, timeout=30.0) as vc:
+            vc.execute("PRAGMA journal_mode = WAL")
+            vc.executescript("""
+                CREATE TABLE IF NOT EXISTS symbol_vectors (
+                    repo_id        TEXT NOT NULL,
+                    symbol_id      TEXT NOT NULL,
+                    content_hash   TEXT NOT NULL,
+                    embedder_name  TEXT NOT NULL,
+                    embedding_dim  INTEGER NOT NULL,
+                    index_version  INTEGER NOT NULL,
+                    vector_blob    BLOB NOT NULL,
+                    PRIMARY KEY (repo_id, symbol_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance
+                    ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version);
+            """)
+
+        # --- fts.sqlite ---
+        self.fts_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.fts_db_path, timeout=30.0) as fc:
+            fc.execute("PRAGMA journal_mode = WAL")
+            fc.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS file_line_fts USING fts5(
+                    repo_id UNINDEXED,
+                    file_path UNINDEXED,
+                    line UNINDEXED,
+                    text
+                );
+            """)
+
+    def _attach_secondary_dbs(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
+        """Attach intel, vectors, and fts secondary databases to *conn*.
+
+        Read-only connections are opened with uri=True, so URI-mode ATTACH works.
+        Write-mode connections use plain file paths because they are not opened
+        in URI mode (plain sqlite3.connect(path)).  Suppresses errors for missing
+        files (e.g. read-only open before the first write-mode open has created them).
+        """
+        for alias, path in (
+            ("intel", self.intel_db_path),
+            ("vectors", self.vectors_db_path),
+            ("fts", self.fts_db_path),
         ):
-            target_file = str(target["file_path"])
-            symbol_display = str(
-                target.get("qualified_name") or target.get("symbol_name") or target.get("symbol_id") or "?"
-            )
-            self._record_affected_file_reason(
-                reasons_by_file,
-                file_path=target_file,
-                reason="definition",
-                symbol=symbol_display,
-            )
-            direct, transitive, _ = self._import_blast_radius(target_file)
-            direct_importers.update(direct)
-            transitive_importers.update(transitive)
+            if readonly:
+                # Read-only main connection uses uri=True so URI ATTACH works.
+                attach_target = f"file:{path}?mode=ro"
+            else:
+                # Write-mode main connection is not opened with uri=True;
+                # use a plain path so SQLite doesn't reject the URI.
+                attach_target = str(path)
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(f"ATTACH DATABASE ? AS {alias}", (attach_target,))
+            # Match main-DB memory settings on every attached DB.
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(f"PRAGMA {alias}.mmap_size = 268435456")
+                conn.execute(f"PRAGMA {alias}.cache_size = -4096")
+            if not readonly:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"PRAGMA {alias}.journal_mode = WAL")
+                    conn.execute(f"PRAGMA {alias}.synchronous = NORMAL")
 
-            refs = self.intel_store.find_references(
-                symbol_id=cast(str | None, target.get("symbol_id")),
-                qualified_name=cast(str | None, target.get("qualified_name")),
-                file_path=target_file,
-                symbol_name=cast(str | None, target.get("symbol_name")),
-            )
-            for ref in refs:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(ref.file_path),
-                    reason="reference",
-                    symbol=str(ref.caller or symbol_display),
-                )
-
-            callers = (
-                self.intel_store.find_callers(
-                    symbol_id=cast(str | None, target.get("symbol_id")),
-                    qualified_name=cast(str | None, target.get("qualified_name")),
-                    file_path=target_file,
-                    symbol_name=cast(str | None, target.get("symbol_name")),
-                )
-                or []
-            )
-            for caller in callers:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(caller.file_path),
-                    reason="caller",
-                    symbol=str(caller.qualified_name or caller.symbol_name),
-                )
-
-            callees = (
-                self.intel_store.find_callees(
-                    symbol_id=cast(str | None, target.get("symbol_id")),
-                    qualified_name=cast(str | None, target.get("qualified_name")),
-                    file_path=target_file,
-                    symbol_name=cast(str | None, target.get("symbol_name")),
-                )
-                or []
-            )
-            for callee in callees:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(callee.file_path),
-                    reason="callee",
-                    symbol=str(callee.qualified_name or callee.symbol_name),
-                )
-            dead_code_candidates.update(self._dead_code_candidates(target_file))
-
-        for importer in direct_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=importer, reason="direct_import")
-        for importer in transitive_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=importer, reason="transitive_import")
-        for file_path in reasons_by_file:
-            if self._is_test_path(file_path):
-                affected_tests.add(file_path)
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-
-        grouped = self._serialize_affected_files(reasons_by_file)
-        primary_file = file_targets[0] if len(file_targets) == 1 else "<multiple>"
-        impacted_file_count = len(
-            [item for item in grouped if "definition" not in item["reasons"] or len(item["reasons"]) > 1]
-        )
-        return ImpactResult(
-            target={
-                "type": "symbol",
-                "query": query,
-                "match_count": len(targets),
-                "matches": [
-                    {
-                        "symbol_id": str(target.get("symbol_id") or ""),
-                        "qualified_name": str(target.get("qualified_name") or ""),
-                        "symbol_name": str(target.get("symbol_name") or ""),
-                        "file_path": str(target.get("file_path") or ""),
-                        "start_line": int(target.get("start_line") or 0),
-                    }
-                    for target in sorted(
-                        targets,
-                        key=lambda item: (
-                            str(item.get("file_path") or ""),
-                            int(item.get("start_line") or 0),
-                        ),
-                    )[:10]
-                ],
-                "ambiguity": ambiguity,
-            },
-            target_type="symbol",
-            file_path=primary_file,
-            affected_files=grouped,
-            direct_importers=sorted(direct_importers),
-            transitive_importers=sorted(transitive_importers),
-            affected_tests=sorted(affected_tests),
-            risk_level=self._impact_risk_level(impacted_file_count),
-            dead_code_candidates=sorted(dead_code_candidates),
-            provenance=_LOCAL_PROVENANCE,
-        )
-
-    def changed_symbols(self, *, base_ref: str = "HEAD") -> list[SymbolRecord]:
-        """Return indexed symbols whose files changed relative to a git ref."""
-        repo_class = _git_repo_class()
-        if repo_class is None:
-            return []
-        with contextlib.suppress(Exception):
-            repo = repo_class(self.repo_root, search_parent_directories=True)
-            changed = {item.a_path for item in repo.index.diff(base_ref)} | {
-                item.a_path for item in repo.index.diff(None)
-            }
-            return self._symbols_for_files(sorted(item for item in changed if item), limit=500)
-        return []
-
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, readonly: bool = False) -> sqlite3.Connection:
+        scoped = getattr(self._scoped_conn_tls, "conn", None)
+        if scoped is not None:
+            return _ReusedConnection(scoped)  # type: ignore[return-value]
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.execute("PRAGMA busy_timeout = 30000")
+        if readonly:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=30.0)
+        else:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            # Ensure secondary DBs are initialised before attaching.
+            self._init_secondary_schemas()
+        self._apply_pragmas(conn, readonly=readonly)
         conn.row_factory = sqlite3.Row
+        self._attach_secondary_dbs(conn, readonly=readonly)
         return conn
+
+    @contextlib.contextmanager
+    def _reuse_connection(self) -> Iterator[None]:
+        """Within this scope all _connect() calls on this thread share one
+        connection, removing per-query connect + PRAGMA overhead. Reentrant (a
+        nested scope is a no-op). Commits then closes the shared connection on
+        exit; per-call ``with``/``closing`` blocks inside get a proxy whose
+        close()/__exit__ are no-ops, so they cannot tear it down early."""
+        if os.environ.get("NO_REUSE"):  # diagnostic bypass
+            yield
+            return
+        if getattr(self._scoped_conn_tls, "conn", None) is not None:
+            yield
+            return
+        conn = self._connect()
+        self._scoped_conn_tls.conn = conn
+        self._file_cache_tls.cache = {}  # activate per-call file cache (dict[str, bytes])
+        try:
+            yield
+        finally:
+            self._scoped_conn_tls.conn = None
+            self._file_cache_tls.cache = None  # clear file cache
+            # Keep the in-memory vector matrix across tool calls when it is small
+            # enough: re-reading + unpacking the blob store is NOT cheap (317 ms
+            # for a 42k-vector repo, seconds at linux scale), so dropping it made
+            # every interactive semantic query pay a full reload. Retain up to
+            # ATELIER_ANN_CACHE_MAX_MB (default 512) of matrix so the common
+            # single-repo session stays warm; drop anything larger so a giant
+            # corpus never pins RAM (those use the chunked path anyway). The
+            # cache key carries index_version, so a reindex still invalidates it.
+            _cache = self._ann_vectors_cache
+            if _cache is not None:
+                _mtx = _cache[2]
+                _cap_mb = int(os.environ.get("ATELIER_ANN_CACHE_MAX_MB", "512"))
+                if getattr(_mtx, "nbytes", 0) > _cap_mb * 1024 * 1024:
+                    self._ann_vectors_cache = None
+            with contextlib.suppress(Exception):
+                conn.commit()
+            with contextlib.suppress(Exception):
+                conn.close()
+            # Periodic heap trim: return freed Python arenas and glibc pages to
+            # the OS so RSS stays bounded across long sessions.  Every 5 calls
+            # keeps overhead < 1 ms/call on average while trimming promptly after
+            # heavy explore/context_pack runs.
+            self._tool_call_count += 1
+            if self._tool_call_count % 5 == 0:
+                self._trim_heap()
+
+    def _trim_heap(self) -> None:
+        """Return freed memory to the OS after heavy tool calls.
+
+        Runs Python's cyclic GC to reclaim reference cycles, then calls
+        ``malloc_trim(0)`` via libc so the top of the glibc heap is returned
+        to the kernel.  Keeps long-lived MCP sessions from accumulating RSS
+        as Python's allocator holds on to freed arenas between tool calls.
+        No-op (silently) on non-Linux where ``malloc_trim`` is unavailable.
+        """
+        import gc
+
+        gc.collect()
+        try:
+            import ctypes as _ct
+
+            _ct.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+        except Exception:  # noqa: BLE001 -- non-Linux / libc unavailable
+            pass
+
+    def _apply_pragmas(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
+        conn.execute("PRAGMA busy_timeout = 30000")
+        # Use the OS page cache for reads instead of a private anonymous buffer pool.
+        # With a 840 MB code_context.sqlite, the default SQLite page cache (8 MB of
+        # private anonymous mmap) is tiny and provides no meaningful hit rate; the OS
+        # page cache already holds the hot pages.  mmap_size lets SQLite read directly
+        # from those shared pages, converting private-anon RSS to reclaimable
+        # file-backed pages. cache_size is cut to 4 MB to minimise the residual
+        # private buffer while still covering WAL-mode write transactions.
+        conn.execute("PRAGMA mmap_size = 268435456")  # 256 MB mmap ceiling
+        conn.execute("PRAGMA cache_size = -4096")  # 4 MB private page buffer
+        if readonly:
+            return
+        if self._wal_primed:
+            conn.execute("PRAGMA synchronous = NORMAL")
+            return
+        # journal_mode=WAL is a persistent DB-level setting; probe/set it once per
+        # engine instead of on every read-write connection.
+        self._wal_primed = True
+        row = conn.execute("PRAGMA journal_mode").fetchone()
+        current_mode = str(row[0]).lower() if row else ""
+        if current_mode != "wal":
+            # WAL gives concurrent readers + a single writer across processes, so
+            # reads never get "database is locked". The switch only fails while
+            # another connection holds a lock; busy_timeout (set above) lets it
+            # wait for a quiet moment, and once flipped WAL persists on the file.
+            with contextlib.suppress(sqlite3.OperationalError):
+                result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+                if result is not None and str(result[0]).lower() != "wal":
+                    logger.debug("code index WAL switch deferred (journal_mode=%s)", result[0])
+        conn.execute("PRAGMA synchronous = NORMAL")
 
     def connection(self) -> sqlite3.Connection:
         conn = self._connect()
         self._init_schema(conn)
         return conn
 
+    def _schema_current(self, conn: sqlite3.Connection) -> bool:
+        """Read-only probe: True when the schema is fully created AND migrated.
+
+        Lets ``_init_schema`` skip its DDL/write path entirely, so pure-read
+        engines (benchmark harnesses, read-only MCP tools on provisioned DBs)
+        never take a write lock on a live DB another process may be writing.
+        Mirrors every migration below -- any miss falls through to the full
+        write path.
+        """
+        try:
+            objects = {
+                str(r[0])
+                for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','index')").fetchall()
+            }
+            required = {
+                "engine_state",
+                "files",
+                "symbols",
+                "symbol_fts",
+                "symbol_fts_vocab",
+                "symbol_trigram",
+                "imports",
+                "commit_chunks",
+                # newest indexes stand in for the full index set
+                "idx_symbols_repo_lower_name",
+                "idx_symbols_repo_kind",
+            }
+            if not required <= objects:
+                return False
+            # old monolithic tables must have been migrated out of the main DB
+            if objects & {"references", "call_edges", "centrality_map", "file_line_fts"}:
+                return False
+            if "mtime_ns" not in {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}:
+                return False
+            if "signature" in {str(row[1]) for row in conn.execute("PRAGMA table_info(symbol_trigram)")}:
+                return False
+            if (
+                conn.execute("SELECT 1 FROM symbol_trigram LIMIT 1").fetchone() is None
+                and conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone() is not None
+            ):
+                return False  # trigram backfill pending
+            if conn.execute("SELECT 1 FROM engine_state WHERE key = 'index_version'").fetchone() is None:
+                return False
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone() is None:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    if conn.execute("SELECT 1 FROM call_edges LIMIT 1").fetchone() is not None:
+                        return False  # one-time ANALYZE pending
+            return True
+        except sqlite3.Error:
+            return False
+
     def _init_schema(self, conn: sqlite3.Connection) -> None:
-        with contextlib.suppress(sqlite3.OperationalError):
-            conn.execute("PRAGMA journal_mode=WAL")
+        if self._schema_ready:
+            return
+        if self._schema_current(conn):
+            self._schema_ready = True
+            return
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS engine_state (
                 key TEXT PRIMARY KEY,
@@ -4653,6 +8984,7 @@ class CodeContextEngine:
                 language TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
                 size_bytes INTEGER NOT NULL,
+                mtime_ns INTEGER NOT NULL DEFAULT 0,
                 indexed_at TEXT NOT NULL,
                 PRIMARY KEY (repo_id, file_path)
             );
@@ -4681,6 +9013,20 @@ class CodeContextEngine:
                 file_path UNINDEXED,
                 source
             );
+            -- Read-only term->document-frequency view over the FTS index (zero write
+            -- cost, auto-maintained). Powers IDF pruning of common query tokens.
+            CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts_vocab USING fts5vocab(symbol_fts, 'row');
+            CREATE VIRTUAL TABLE IF NOT EXISTS symbol_trigram USING fts5(
+                symbol_id UNINDEXED,
+                name,
+                qualified_name,
+                file_path,
+                tokenize='trigram'
+            );
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_name_nocase
+                ON symbols(repo_id, symbol_name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_qual_nocase
+                ON symbols(repo_id, qualified_name COLLATE NOCASE);
             CREATE TABLE IF NOT EXISTS imports (
                 repo_id TEXT NOT NULL,
                 source_file TEXT NOT NULL,
@@ -4688,38 +9034,17 @@ class CodeContextEngine:
                 target_file TEXT,
                 UNIQUE(repo_id, source_file, raw_import, target_file)
             );
-            CREATE TABLE IF NOT EXISTS "references" (
-                repo_id TEXT NOT NULL,
-                symbol_name TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                line INTEGER NOT NULL,
-                column INTEGER NOT NULL,
-                end_column INTEGER NOT NULL,
-                enclosing_symbol_name TEXT,
-                enclosing_qualified_name TEXT,
-                snippet TEXT NOT NULL,
-                UNIQUE(repo_id, symbol_name, file_path, line, column, enclosing_qualified_name)
-            );
-            CREATE TABLE IF NOT EXISTS call_edges (
-                repo_id TEXT NOT NULL,
-                caller_symbol_name TEXT NOT NULL,
-                caller_qualified_name TEXT NOT NULL,
-                caller_file_path TEXT NOT NULL,
-                caller_start_line INTEGER NOT NULL,
-                caller_end_line INTEGER NOT NULL,
-                callee_name TEXT NOT NULL,
-                call_line INTEGER NOT NULL,
-                call_column INTEGER NOT NULL,
-                snippet TEXT NOT NULL,
-                UNIQUE(repo_id, caller_qualified_name, caller_file_path, call_line, call_column, callee_name)
-            );
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_file ON symbols(repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols(repo_id, symbol_name);
+            -- Covers _hef_exact_symbol_candidates: WHERE repo_id=? AND lower(symbol_name) IN (?)
+            -- Turns the full per-repo scan into O(k) index lookups (k = #query identifiers).
+            -- 742x speedup on large repos (django: 35ms → 0ms).
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_lower_name ON symbols(repo_id, lower(symbol_name));
+            -- Covers _complete_sibling_families: WHERE repo_id=? AND lower(kind)=? ...
+            -- instr(lower(symbol_name),?) scans only the matching-kind rows rather than
+            -- the whole repo, cutting ~200K-row scans to ~20K (10x for 10 kinds).
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_kind ON symbols(repo_id, lower(kind));
             CREATE INDEX IF NOT EXISTS idx_imports_target ON imports(repo_id, target_file);
-            CREATE INDEX IF NOT EXISTS idx_references_name ON "references"(repo_id, symbol_name);
-            CREATE INDEX IF NOT EXISTS idx_references_file ON "references"(repo_id, file_path);
-            CREATE INDEX IF NOT EXISTS idx_call_edges_callee ON call_edges(repo_id, callee_name);
-            CREATE INDEX IF NOT EXISTS idx_call_edges_caller ON call_edges(repo_id, caller_file_path, caller_start_line);
             CREATE TABLE IF NOT EXISTS commit_chunks (
                 commit_sha     TEXT PRIMARY KEY,
                 author_date    INTEGER NOT NULL,
@@ -4733,26 +9058,101 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_commit_author_date ON commit_chunks(author_date);
             CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
             """)
+        # Migration: older DBs predate the files.mtime_ns column used to fast-skip
+        # unchanged files during incremental reindex. CREATE TABLE IF NOT EXISTS
+        # never adds a column to an existing table, so add it here when absent.
+        file_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}
+        if "mtime_ns" not in file_columns:
+            conn.execute("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0")
+        # Migration: old trigram schema had 5 content columns (name, qualified_name,
+        # signature, file_path). Drop and rebuild with the slim 3-column schema
+        # (name, qualified_name, file_path) — signature added ~5x size bloat and
+        # is covered by symbol_fts anyway.
+        with contextlib.suppress(Exception):
+            _trig_cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(symbol_trigram)")}
+            if "signature" in _trig_cols:
+                conn.execute("DROP TABLE IF EXISTS symbol_trigram")
+                conn.execute(
+                    "CREATE VIRTUAL TABLE symbol_trigram USING fts5("
+                    " symbol_id UNINDEXED, name, qualified_name, file_path,"
+                    " tokenize='trigram')"
+                )
+        # Backfill the substring trigram index for DBs built before it existed, so the
+        # substring/path channels use the index instead of full-scanning symbols.
+        if conn.execute("SELECT 1 FROM symbol_trigram LIMIT 1").fetchone() is None:
+            if conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone() is not None:
+                conn.execute(
+                    "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, file_path) "
+                    "SELECT symbol_id, symbol_name, qualified_name, file_path FROM symbols"
+                )
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
+        # Self-heal DBs built before planner statistics were collected: with data
+        # but no sqlite_stat1, SQLite full-scans call_edges (it mis-picks the
+        # repo_id-only index for caller-keyed queries). A one-time guarded ANALYZE
+        # fixes existing DBs without requiring a reindex; new indexes get stats
+        # via PRAGMA optimize at the end of _index_repo_unsafe.
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone() is None:
+            if conn.execute("SELECT 1 FROM call_edges LIMIT 1").fetchone() is not None:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("ANALYZE")
+        # Migration: if these tables still exist in the main DB (old monolithic schema),
+        # move their data to the appropriate secondary DB and drop from main.
+        _main_tables = {
+            str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','index')").fetchall()
+        }
+        for _tbl in ('"references"', "call_edges", "centrality_map"):
+            _bare = _tbl.strip('"')
+            if _bare in _main_tables:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"INSERT OR IGNORE INTO intel.{_tbl} SELECT * FROM {_tbl}")
+                    conn.execute(f"DROP TABLE IF EXISTS {_tbl}")
+        if "file_line_fts" in _main_tables:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("INSERT INTO fts.file_line_fts SELECT repo_id, file_path, line, text FROM file_line_fts")
+                conn.execute("DROP TABLE IF EXISTS file_line_fts")
+        self._schema_ready = True
 
-    def _ensure_indexed(self) -> None:
-        with self._db_lock, self._autosync_lock:
+    def index_ready(self) -> bool:
+        """True once the symbol index has at least one indexed file for this repo."""
+        if self._index_ready_cached:
+            return True
+        try:
             with self._connect() as conn:
                 self._init_schema(conn)
-                row = conn.execute("SELECT COUNT(*) AS n FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()
-                count = int(row["n"]) if row is not None else 0
-            if count == 0:
-                self.index_repo()
-                if self._autosync_enabled:
-                    self._autosync_signature = self._source_tree_signature()
-                    self._autosync_last_sync_ms = int(time.time() * 1000)
-                    self._autosync_state = "idle"
-                    self._autosync_pending_events = 0
-                    self._record_autosync_event(event="initial_index", reason="empty_index_bootstrap", reindexed=True)
-                return
+                row = conn.execute("SELECT 1 FROM files WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return False
+        if row is not None:
+            self._index_ready_cached = True
+            return True
+        return False
+
+    def _ensure_autosync_worker_alive(self) -> None:
+        if not self._autosync_enabled or self._autosync_stop.is_set():
+            return
+        t = self._autosync_thread
+        if t is not None and t.is_alive():
+            return
+        self._autosync_thread = None
+        self._start_autosync_worker()
+
+    def _ensure_indexed(self) -> None:
+        if self.index_ready():
+            # Change detection + reindex is the background autosync worker's job
+            # (it polls every _autosync_poll_ms). Running it inline here would
+            # stat every source file in the repo on every read tool call -- the
+            # per-call tax that made grep/read/explore slow on large repos. Keep
+            # the worker alive and let it own resync; files just edited are
+            # already current via the targeted _reindex_files after each edit.
             if self._autosync_enabled:
-                self._maybe_autosync_reindex_locked()
-        self._ensure_lineage_ready()
+                self._ensure_autosync_worker_alive()
+            self._ensure_lineage_ready()
+            return
+        if self._autosync_enabled:
+            self._ensure_autosync_worker_alive()
+            return
+        # autosync always on in practice; index will be built by the worker
 
     def _excluded(self, path: Path, patterns: list[str]) -> bool:
         rel = _safe_relpath(self.repo_root, path)
@@ -4772,14 +9172,6 @@ class CodeContextEngine:
         except ValueError as exc:
             raise ValueError(f"path escape denied: {value}") from exc
         return resolved
-
-    def _extract_symbols(
-        self, path: Path, rel: str, language: str, source: str, content_hash: str
-    ) -> list[_ExtractedSymbol]:
-        del rel, content_hash
-        if language == "python":
-            return self._extract_python_symbols(source)
-        return self._extract_tag_symbols(path, source, language)
 
     def _extract_python_symbols(self, source: str) -> list[_ExtractedSymbol]:
         try:
@@ -4819,7 +9211,7 @@ class CodeContextEngine:
                     start_line=start_line,
                     end_line=end_line,
                     parent_symbol=parent,
-                    doc_summary=doc.strip().splitlines()[0][:200] if doc else None,
+                    doc_summary=(stripped.splitlines()[0][:200] if doc and (stripped := doc.strip()) else None),
                 )
             )
 
@@ -4841,99 +9233,6 @@ class CodeContextEngine:
 
         walk_body(tree.body)
         return sorted(symbols, key=lambda item: (item.start_line, item.qualified_name))
-
-    def _extract_python_reference_index(
-        self,
-        rel: str,
-        source: str,
-        symbols: list[_ExtractedSymbol],
-    ) -> tuple[list[_IndexedReference], list[_IndexedCallEdge]]:
-        """Extract local references and call edges from Python AST during indexing."""
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            return [], []
-
-        lines = source.splitlines()
-        references: list[_IndexedReference] = []
-        call_edges: list[_IndexedCallEdge] = []
-        seen_refs: set[tuple[str, int, int, str | None]] = set()
-        seen_edges: set[tuple[str, int, int, str]] = set()
-
-        def snippet_for(line: int) -> str:
-            return lines[line - 1].strip() if 1 <= line <= len(lines) else ""
-
-        def containing_symbol(line: int) -> _ExtractedSymbol | None:
-            candidates = [
-                symbol
-                for symbol in symbols
-                if symbol.start_line <= line <= symbol.end_line
-                and symbol.kind in {"function", "async_function", "method", "class"}
-            ]
-            if not candidates:
-                return None
-            return sorted(candidates, key=lambda item: (item.end_line - item.start_line, -item.start_line))[0]
-
-        def add_reference(name: str, node: ast.AST) -> None:
-            line = int(getattr(node, "lineno", 0) or 0)
-            if line <= 0:
-                return
-            column = int(getattr(node, "col_offset", 0) or 0) + 1
-            end_column = int(getattr(node, "end_col_offset", column + len(name) - 1) or (column + len(name) - 1))
-            enclosing = containing_symbol(line)
-            key = (name, line, column, enclosing.qualified_name if enclosing else None)
-            if key in seen_refs:
-                return
-            seen_refs.add(key)
-            references.append(
-                _IndexedReference(
-                    file_path=rel,
-                    symbol_name=name,
-                    line=line,
-                    column=column,
-                    end_column=max(column, end_column),
-                    enclosing_symbol_name=enclosing.name if enclosing else None,
-                    enclosing_qualified_name=enclosing.qualified_name if enclosing else None,
-                    snippet=snippet_for(line),
-                )
-            )
-
-        class Visitor(ast.NodeVisitor):
-            def visit_Name(self, node: ast.Name) -> None:
-                if isinstance(node.ctx, ast.Load):
-                    add_reference(node.id, node)
-                self.generic_visit(node)
-
-            def visit_Attribute(self, node: ast.Attribute) -> None:
-                add_reference(node.attr, node)
-                self.generic_visit(node)
-
-            def visit_Call(self, node: ast.Call) -> None:
-                callee = CodeContextEngine._python_call_name(node.func)
-                caller = containing_symbol(int(getattr(node, "lineno", 0) or 0))
-                if callee and caller is not None:
-                    line = int(getattr(node, "lineno", caller.start_line) or caller.start_line)
-                    column = int(getattr(node, "col_offset", 0) or 0) + 1
-                    edge_key = (caller.qualified_name, line, column, callee)
-                    if edge_key not in seen_edges:
-                        seen_edges.add(edge_key)
-                        call_edges.append(
-                            _IndexedCallEdge(
-                                caller_symbol_name=caller.name,
-                                caller_qualified_name=caller.qualified_name,
-                                caller_file_path=rel,
-                                caller_start_line=caller.start_line,
-                                caller_end_line=caller.end_line,
-                                callee_name=callee,
-                                call_line=line,
-                                call_column=column,
-                                snippet=snippet_for(line),
-                            )
-                        )
-                self.generic_visit(node)
-
-        Visitor().visit(tree)
-        return references, call_edges
 
     @staticmethod
     def _python_call_name(node: ast.AST) -> str | None:
@@ -4976,23 +9275,6 @@ class CodeContextEngine:
                 )
             )
         return symbols
-
-    def _extract_imports(self, path: Path, rel: str, language: str, source: str) -> list[tuple[str, str | None]]:
-        imports: list[tuple[str, str | None]] = []
-        if language == "python":
-            imports.extend(self._python_imports(path, source))
-        elif language in {"typescript", "javascript"}:
-            imports.extend(self._javascript_imports(path, source))
-        elif language == "rust":
-            for match in _RUST_MOD_RE.finditer(source):
-                raw = match.group(1)
-                imports.append((raw, self._resolve_relative_module(path.parent, raw, [".rs"])))
-        elif language == "go":
-            for match in _GO_IMPORT_RE.finditer(source):
-                raw_block = match.group(1) or match.group(2) or ""
-                for raw in re.findall(r"\"([^\"]+)\"", raw_block) or [raw_block]:
-                    imports.append((raw, None))
-        return sorted(set((raw, target) for raw, target in imports if raw and target != rel))
 
     def _python_imports(self, path: Path, source: str) -> list[tuple[str, str | None]]:
         try:
@@ -5139,9 +9421,131 @@ class CodeContextEngine:
         matched = sum(1 for term in query_terms if term and term in lexical)
         return matched >= min(len(query_terms), 3)
 
+    def badge_counts_batch(self, symbol_names: list[str]) -> dict[str, dict[str, int]]:
+        """Return caller/callee/usage counts for multiple symbols in 3 queries.
+
+        Used by the grep badge provider to replace 3xN serial queries with 3
+        bulk ``IN (?)`` queries. Returns a mapping of symbol_name →
+        {callers: N, callees: N, usages: N}; missing symbols map to all zeros.
+        Fail-open: any error returns the zero-filled map so grep never breaks.
+        """
+        if not symbol_names:
+            return {}
+        names = list(dict.fromkeys(symbol_names))  # deduplicate, preserve order
+        ph = ",".join("?" for _ in names)
+        result: dict[str, dict[str, int]] = {n: {"callers": 0, "callees": 0, "usages": 0} for n in names}
+        try:
+            with self._connect() as conn:
+                # callers: other symbols that call each of the badge symbols
+                for row in conn.execute(
+                    f"SELECT callee_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND callee_name IN ({ph}) GROUP BY callee_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["callee_name"])
+                    if name in result:
+                        result[name]["callers"] = int(row["n"])
+                # callees: symbols each badge symbol calls
+                for row in conn.execute(
+                    f"SELECT caller_symbol_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND caller_symbol_name IN ({ph}) GROUP BY caller_symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["caller_symbol_name"])
+                    if name in result:
+                        result[name]["callees"] = int(row["n"])
+                # usages: reference sites of each badge symbol
+                for row in conn.execute(
+                    f'SELECT symbol_name, COUNT(*) AS n FROM "references" '
+                    f"WHERE repo_id = ? AND symbol_name IN ({ph}) GROUP BY symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["symbol_name"])
+                    if name in result:
+                        result[name]["usages"] = int(row["n"])
+        except Exception:
+            logging.exception("Recovered in badge_counts_batch")
+        return result
+
+    def _symbol_popularity_scores(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Batch-compute a usage-frequency popularity score per candidate symbol.
+
+        Popularity blends indexed reference counts (the ``references`` table,
+        keyed by ``symbol_name``) with caller counts (``call_edges``, keyed by
+        ``callee_name``). Both lookups hit existing indexes, so this is cheap and
+        always available -- it never requires git. The raw counts are squashed
+        into [0, 1) so a wildly-popular symbol cannot dominate; popularity is
+        only ever consumed as a low-priority ranking tiebreaker.
+        """
+        names = sorted({symbol.symbol_name for symbol in symbols if symbol.symbol_name})
+        if not names:
+            return {}
+        placeholders = ",".join("?" for _ in names)
+        ref_counts: dict[str, int] = {}
+        caller_counts: dict[str, int] = {}
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                for row in conn.execute(
+                    f'SELECT symbol_name, COUNT(*) AS n FROM "references" '
+                    f"WHERE repo_id = ? AND symbol_name IN ({placeholders}) GROUP BY symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    ref_counts[str(row["symbol_name"])] = int(row["n"])
+                for row in conn.execute(
+                    f"SELECT callee_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND callee_name IN ({placeholders}) GROUP BY callee_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    caller_counts[str(row["callee_name"])] = int(row["n"])
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return {}
+        scores: dict[str, float] = {}
+        for symbol in symbols:
+            raw = ref_counts.get(symbol.symbol_name, 0) + caller_counts.get(symbol.symbol_name, 0)
+            # Diminishing-returns squash into [0, 1): popular-but-correct symbols
+            # rise as a tiebreaker without ever outweighing match quality.
+            scores[symbol.symbol_id] = raw / (raw + 5.0) if raw > 0 else 0.0
+        return scores
+
+    def _symbol_churn_scores(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Per-symbol churn score in [0, 1] from the optional churn provider.
+
+        Returns an empty mapping (no churn signal) unless a provider is injected,
+        keeping ranking free of git/blame cost by default. Churn, like
+        popularity, is consumed only as a low-priority ranking tiebreaker.
+        """
+        provider = self._churn_score_provider
+        if provider is None or not symbols:
+            return {}
+        try:
+            raw = provider(symbols)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return {}
+        return {symbol_id: max(0.0, min(1.0, float(value))) for symbol_id, value in raw.items()}
+
+    def _context_symbol_signals(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Combine usage-frequency and churn into a single tiebreaker per symbol."""
+        if not symbols:
+            return {}
+        popularity = self._symbol_popularity_scores(symbols)
+        churn = self._symbol_churn_scores(symbols)
+        if not popularity and not churn:
+            return {}
+        combined: dict[str, float] = {}
+        for symbol in symbols:
+            combined[symbol.symbol_id] = popularity.get(symbol.symbol_id, 0.0) + churn.get(symbol.symbol_id, 0.0)
+        return combined
+
     def _context_symbol_rank(
-        self, query: str, symbol: SymbolRecord
-    ) -> tuple[int, int, int, int, int, float, str, int, str]:
+        self,
+        query: str,
+        symbol: SymbolRecord,
+        *,
+        popularity: float = 0.0,
+    ) -> tuple[int, int, int, int, int, int, float, float, str, int, str]:
         normalized_query = query.strip().lower()
         symbol_name = symbol.symbol_name.lower()
         qualified_name = symbol.qualified_name.lower()
@@ -5164,20 +9568,36 @@ class CodeContextEngine:
                 tool_boost += 2
             if "mcp" in qualified_name:
                 tool_boost += 1
+        # N9: generated/scaffolding files rank last. This demotion sits AFTER the
+        # authoritative exact-hit signal, so an exact symbol that legitimately
+        # lives in a generated file is still surfaced; it only sinks generated
+        # candidates beneath equally- or weaker-matched hand-written code.
+        not_generated = 0 if is_generated_path(symbol.file_path) else 1
+        # G7: popularity/churn is positioned AFTER every match-quality signal
+        # (exact/prefix/compound/term/tool) and after the lexical/semantic score,
+        # so it can only ever break ties among otherwise-equal candidates. An
+        # exact-symbol hit (exact=1) is always ranked above any non-exact symbol
+        # regardless of how popular the non-exact one is.
         return (
             exact,
+            not_generated,
             prefix,
             compound,
             term_prefix_hits,
             tool_boost,
             float(symbol.score or 0.0),
+            float(popularity),
             symbol.file_path,
             symbol.start_line,
             symbol.qualified_name,
         )
 
     def _prioritize_context_symbols(self, query: str, symbols: list[SymbolRecord]) -> list[SymbolRecord]:
-        ranks = {symbol.symbol_id: self._context_symbol_rank(query, symbol) for symbol in symbols}
+        signals = self._context_symbol_signals(symbols)
+        ranks = {
+            symbol.symbol_id: self._context_symbol_rank(query, symbol, popularity=signals.get(symbol.symbol_id, 0.0))
+            for symbol in symbols
+        }
         return sorted(
             symbols,
             key=lambda symbol: (
@@ -5187,9 +9607,11 @@ class CodeContextEngine:
                 -ranks[symbol.symbol_id][3],
                 -ranks[symbol.symbol_id][4],
                 -ranks[symbol.symbol_id][5],
-                ranks[symbol.symbol_id][6],
-                ranks[symbol.symbol_id][7],
+                -ranks[symbol.symbol_id][6],
+                -ranks[symbol.symbol_id][7],
                 ranks[symbol.symbol_id][8],
+                ranks[symbol.symbol_id][9],
+                ranks[symbol.symbol_id][10],
                 symbol.symbol_id,
             ),
         )
@@ -5311,7 +9733,11 @@ class CodeContextEngine:
                         relation_priority[candidate.symbol_id] = priority
         if not candidates_by_id:
             return []
-        ranks = {symbol_id: self._context_symbol_rank(query, symbol) for symbol_id, symbol in candidates_by_id.items()}
+        signals = self._context_symbol_signals(list(candidates_by_id.values()))
+        ranks = {
+            symbol_id: self._context_symbol_rank(query, symbol, popularity=signals.get(symbol_id, 0.0))
+            for symbol_id, symbol in candidates_by_id.items()
+        }
         ordered = sorted(
             candidates_by_id.values(),
             key=lambda symbol: (
@@ -5322,9 +9748,11 @@ class CodeContextEngine:
                 -ranks[symbol.symbol_id][3],
                 -ranks[symbol.symbol_id][4],
                 -ranks[symbol.symbol_id][5],
-                ranks[symbol.symbol_id][6],
-                ranks[symbol.symbol_id][7],
+                -ranks[symbol.symbol_id][6],
+                -ranks[symbol.symbol_id][7],
                 ranks[symbol.symbol_id][8],
+                ranks[symbol.symbol_id][9],
+                ranks[symbol.symbol_id][10],
                 symbol.symbol_id,
             ),
         )
@@ -5366,112 +9794,6 @@ class CodeContextEngine:
             ).fetchall()
         return [str(row["neighbor"]) for row in rows if row["neighbor"]]
 
-    def _direct_importers(self, rel: str) -> list[str]:
-        with self._connect() as conn:
-            self._init_schema(conn)
-            rows = conn.execute(
-                """
-                SELECT DISTINCT source_file FROM imports
-                WHERE repo_id = ? AND target_file = ?
-                ORDER BY source_file
-                """,
-                (self.repo_id, rel),
-            ).fetchall()
-        return [str(row["source_file"]) for row in rows]
-
-    def _import_blast_radius(self, rel: str) -> tuple[list[str], list[str], set[str]]:
-        direct = self._direct_importers(rel)
-        transitive: list[str] = []
-        seen = set(direct)
-        frontier = set(direct)
-        for _ in range(3):
-            next_frontier: set[str] = set()
-            for item in sorted(frontier):
-                for importer in self._direct_importers(item):
-                    if importer not in seen:
-                        seen.add(importer)
-                        next_frontier.add(importer)
-                        transitive.append(importer)
-            frontier = next_frontier
-            if not frontier:
-                break
-        return direct, transitive, seen
-
-    def _impact_risk_level(self, total: int) -> Literal["low", "medium", "high", "critical"]:
-        if total <= 0:
-            return "low"
-        if total <= 3:
-            return "medium"
-        if total <= 10:
-            return "high"
-        return "critical"
-
-    def _is_test_path(self, file_path: str) -> bool:
-        return "/test" in file_path or Path(file_path).name.startswith("test_")
-
-    def _record_affected_file_reason(
-        self,
-        reasons_by_file: dict[str, dict[str, set[str]]],
-        *,
-        file_path: str,
-        reason: str,
-        symbol: str | None = None,
-    ) -> None:
-        bucket = reasons_by_file.setdefault(file_path, {"reasons": set(), "symbols": set()})
-        bucket["reasons"].add(reason)
-        if symbol:
-            bucket["symbols"].add(symbol)
-
-    def _serialize_affected_files(self, reasons_by_file: dict[str, dict[str, set[str]]]) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for file_path in sorted(reasons_by_file.keys()):
-            item = reasons_by_file[file_path]
-            rows.append(
-                {
-                    "file_path": file_path,
-                    "reasons": sorted(item["reasons"]),
-                    "symbols": sorted(item["symbols"])[:8],
-                    "symbol_count": len(item["symbols"]),
-                }
-            )
-        return rows
-
-    def _group_affected_files(
-        self,
-        *,
-        direct_importers: list[str],
-        transitive_importers: list[str],
-        affected_tests: list[str],
-    ) -> list[dict[str, Any]]:
-        reasons_by_file: dict[str, dict[str, set[str]]] = {}
-        for file_path in direct_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="direct_import")
-        for file_path in transitive_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="transitive_import")
-        for file_path in affected_tests:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-        return self._serialize_affected_files(reasons_by_file)
-
-    def _dead_code_candidates(self, rel: str) -> list[str]:
-        with self._connect() as conn:
-            self._init_schema(conn)
-            rows = conn.execute(
-                """
-                SELECT symbol_name FROM symbols
-                WHERE repo_id = ? AND file_path = ? AND kind IN ('function', 'class', 'async_function')
-                ORDER BY start_line
-                LIMIT 50
-                """,
-                (self.repo_id, rel),
-            ).fetchall()
-        candidates: list[str] = []
-        haystack = "\n".join(self._read_file(path) for path in self._indexed_files() if path != rel)
-        for row in rows:
-            name = str(row["symbol_name"])
-            if not name.startswith("_") and re.search(rf"\b{re.escape(name)}\b", haystack) is None:
-                candidates.append(name)
-        return candidates
-
     def _indexed_files(self) -> list[str]:
         with self._connect() as conn:
             self._init_schema(conn)
@@ -5482,10 +9804,30 @@ class CodeContextEngine:
         return [str(row["file_path"]) for row in rows]
 
     def _read_file(self, rel: str) -> str:
-        return (self.repo_root / rel).read_text(encoding="utf-8", errors="replace")
+        # The index can reference files absent from disk (deleted, moved, or excluded
+        # from a snapshot since indexing). Degrade to empty content so every caller
+        # (explore source + relationships, repo map, rerank, ...) survives instead of
+        # crashing the whole tool call on one stale entry.
+        try:
+            return (self.repo_root / rel).read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            return ""
 
     def _read_file_slice(self, rel: str, start_byte: int, end_byte: int) -> str:
-        data = (self.repo_root / rel).read_bytes()
+        cache: dict[str, bytes] | None = getattr(self._file_cache_tls, "cache", None)
+        if cache is not None:
+            # Inside a _reuse_connection() scope: read each file at most once per
+            # tool call regardless of how many symbols are drawn from it.
+            if rel not in cache:
+                try:
+                    cache[rel] = (self.repo_root / rel).read_bytes()
+                except (OSError, ValueError):
+                    cache[rel] = b""
+            return cache[rel][start_byte:end_byte].decode("utf-8", errors="replace")
+        try:
+            data = (self.repo_root / rel).read_bytes()
+        except (OSError, ValueError):
+            return ""
         return data[start_byte:end_byte].decode("utf-8", errors="replace")
 
     def _load_symbol_source_for_rerank(self, symbol: SymbolRecord) -> str:
@@ -5502,19 +9844,44 @@ class CodeContextEngine:
         symbol: SymbolRecord | dict[str, Any],
         *,
         line_numbers: bool = True,
+        skeleton: bool = False,
     ) -> dict[str, Any]:
         payload = symbol.model_dump(mode="json") if isinstance(symbol, SymbolRecord) else symbol
         file_path = str(payload["file_path"])
         start_line = int(payload["start_line"])
         end_line = int(payload["end_line"])
         source = self._read_file_slice(file_path, int(payload["start_byte"]), int(payload["end_byte"]))
+        # Walk back through the file line by line to capture decorator /
+        # annotation lines that sit above this symbol's start_line but belong
+        # to it structurally (e.g. @functools.lru_cache, @property, @app.route).
+        # Line-based (not byte-based) so we never clip mid-token or overshoot.
+        try:
+            all_file_lines = (self.repo_root / file_path).read_text(errors="replace").splitlines()
+            decorator_prefix: list[str] = []
+            scan = start_line - 2  # 0-indexed line immediately above symbol
+            limit = max(0, scan - 10)  # never look back more than 10 lines
+            while scan >= limit:
+                raw = all_file_lines[scan]
+                stripped = raw.strip()
+                if stripped.startswith("@"):
+                    decorator_prefix.insert(0, raw)
+                    scan -= 1
+                elif stripped == "" or stripped.startswith("#"):
+                    # blank / comment between stacked decorators — skip
+                    scan -= 1
+                else:
+                    break
+        except (OSError, IndexError):
+            decorator_prefix = []
+        if decorator_prefix:
+            start_line = start_line - len(decorator_prefix)
+            source = "\n".join(decorator_prefix) + "\n" + source
         lines = source.splitlines()
         if line_numbers:
-            numbered = [f"{start_line + idx}\t{line}" for idx, line in enumerate(lines)]
-            content = "\n".join(numbered)
+            full_content = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(lines))
         else:
-            content = source
-        return {
+            full_content = source
+        section: dict[str, Any] = {
             "file_path": file_path,
             "start_line": start_line,
             "end_line": end_line,
@@ -5522,8 +9889,39 @@ class CodeContextEngine:
             "symbol_name": payload["symbol_name"],
             "qualified_name": payload["qualified_name"],
             "line_numbers": line_numbers,
-            "content": hard_cap_chars(content, _EXPLORE_SOURCE_SECTION_MAX_CHARS),
         }
+        if skeleton:
+            skel = self._skeletonize_source(
+                source,
+                file_path=file_path,
+                start_line=start_line,
+                language=payload.get("language"),
+                line_numbers=line_numbers,
+            )
+            if skel is not None:
+                from atelier.core.capabilities.repo_map.budget import estimate_tokens
+
+                # Gate + metadata only (use the skeleton iff it is actually
+                # shorter); a char-based estimate gives the same decision at a
+                # fraction of the cost of BPE-encoding every symbol body twice.
+                saved = estimate_tokens(full_content) - estimate_tokens(skel)
+                if saved > 0:
+                    section["content"] = hard_cap_chars(
+                        skel,
+                        _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+                        start_line=start_line,
+                        end_line=end_line,
+                    )
+                    section["skeleton"] = True
+                    section["tokens_saved"] = saved
+                    return section
+        section["content"] = hard_cap_chars(
+            full_content,
+            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            start_line=start_line,
+            end_line=end_line,
+        )
+        return section
 
     def _merge_nearby_source_sections(
         self,
@@ -5546,7 +9944,7 @@ class CodeContextEngine:
             current = merged[-1]
             same_file = str(current["file_path"]) == str(section["file_path"])
             near_or_overlap = int(section["start_line"]) <= int(current["end_line"]) + max(0, gap_lines)
-            if same_file and near_or_overlap:
+            if same_file and near_or_overlap and not current.get("skeleton") and not section.get("skeleton"):
                 line_numbers = bool(current.get("line_numbers", True))
                 current["start_line"] = min(int(current["start_line"]), int(section["start_line"]))
                 current["end_line"] = max(int(current["end_line"]), int(section["end_line"]))
@@ -5580,8 +9978,239 @@ class CodeContextEngine:
             return hard_cap_chars(
                 "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(segment)),
                 _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+                file_path=file_path,
+                start_line=start_line,
+                end_line=end_line,
             )
-        return hard_cap_chars("\n".join(segment), _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+        return hard_cap_chars(
+            "\n".join(segment),
+            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            file_path=file_path,
+            start_line=start_line,
+            end_line=end_line,
+        )
+
+    def _complete_sibling_families(
+        self, symbols: list[SymbolRecord], *, query: str, seed_set: set[str]
+    ) -> list[SymbolRecord]:
+        """Surface sibling families that name-ranked search misses.
+
+        FTS tokenization splits camelCase, so a bare affix query ('embedder')
+        returns the base symbol but not 'OpenAIEmbedder'. For each strong suffix
+        affix -- both the query's own tokens and those of the top selected
+        symbols -- look up same-kind symbols whose name CONTAINS that affix
+        (substring match); when >=3 exist, return the members not already selected
+        so explore presents the whole family. Query-driven probes surface the
+        family even when search ranked unrelated symbols (e.g. trivial variables)
+        above it. Index lookups only, bounded by caps.
+        """
+        if not symbols:
+            return []
+        have_ids = {symbol.symbol_id for symbol in symbols}
+        probes: list[tuple[str, str]] = []
+        seen_probe: set[tuple[str, str]] = set()
+        # Query-driven probes first -- the family the caller actually named, across
+        # the definition kinds, regardless of how search ranked the raw hits.
+        for affix in self._skeleton_affixes(query):
+            for kind in _QUERY_PROBE_KINDS:
+                key = (kind, affix)
+                if key not in seen_probe:
+                    seen_probe.add(key)
+                    probes.append(key)
+        for symbol in symbols[:_EXPLORE_FAMILY_PROBE_SYMBOLS]:
+            kind = (symbol.kind or "").lower()
+            if kind not in _SKELETON_KINDS:
+                continue
+            affixes = self._skeleton_affixes(symbol.symbol_name or symbol.qualified_name)
+            if not affixes:
+                continue
+            key = (kind, affixes[0])  # suffix token -- the dominant family signal
+            if key not in seen_probe:
+                seen_probe.add(key)
+                probes.append(key)
+        if not probes:
+            return []
+        additions: list[SymbolRecord] = []
+        seen_ids: set[str] = set()
+        # Batch probes by affix: one trigram FTS lookup per unique affix instead of
+        # N_kinds separate full-index scans.  The trigram index makes each lookup
+        # O(k_matches) rather than O(N_repo_kind) for instr(), and sharing the scan
+        # across kinds halves the number of SQL round-trips for query-driven probes.
+        per_family_sql_limit = _EXPLORE_FAMILY_PER_FAMILY_CAP * 3
+        affix_to_kinds: dict[str, list[str]] = {}
+        for kind, affix in probes:
+            affix_to_kinds.setdefault(affix, []).append(kind)
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                for affix, batch_kinds in affix_to_kinds.items():
+                    if len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                        break
+                    like_pat = f"%{affix}%"
+                    placeholders = ",".join("?" * len(batch_kinds))
+                    rows = conn.execute(
+                        f"""
+                        SELECT s.*, NULL AS score
+                        FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
+                        WHERE s.repo_id = ? AND lower(s.kind) IN ({placeholders}) AND t.name LIKE ?
+                        LIMIT ?
+                        """,
+                        (self.repo_id, *batch_kinds, like_pat, len(batch_kinds) * per_family_sql_limit),
+                    ).fetchall()
+                    # Partition fetched rows by kind, capping each at per_family_sql_limit.
+                    kind_members: dict[str, list[SymbolRecord]] = {k: [] for k in batch_kinds}
+                    for row in rows:
+                        k = row["kind"].lower()
+                        bucket = kind_members.get(k)
+                        if bucket is not None and len(bucket) < per_family_sql_limit:
+                            bucket.append(_row_to_symbol(row))
+                    for kind in batch_kinds:
+                        if len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                            break
+                        members = kind_members[kind]
+                        if len({m.symbol_id for m in members}) < _SKELETON_MIN_FAMILY:
+                            continue
+                        added = 0
+                        for member in members:
+                            if added >= _EXPLORE_FAMILY_PER_FAMILY_CAP or len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                                break
+                            if member.symbol_id in have_ids or member.symbol_id in seen_ids:
+                                continue
+                            if member.file_path in seed_set:
+                                continue
+                            if int(member.end_line) - int(member.start_line) < _SKELETON_MIN_BODY_LINES:
+                                continue
+                            seen_ids.add(member.symbol_id)
+                            additions.append(member)
+                            added += 1
+        except (sqlite3.Error, OSError, ValueError):
+            logging.exception("Recovered from broad exception handler")
+            return []
+        return additions
+
+    def _select_skeleton_symbols(
+        self,
+        symbols: list[SymbolRecord],
+        *,
+        seed_set: set[str],
+    ) -> tuple[set[str], dict[str, str]]:
+        """Pick redundant sibling symbols to render signatures-only.
+
+        Index-free: groups already-selected, non-seed symbols of the same kind
+        by a shared name affix (>=4 chars, non-generic). A family needs >=3
+        members; the highest-scored member stays full (the exemplar), the rest
+        are skeletoned. Returns (skeleton_symbol_ids, symbol_id -> "affix:kind").
+        """
+        from collections import defaultdict
+
+        candidates: list[SymbolRecord] = []
+        for symbol in symbols:
+            if symbol.file_path in seed_set:
+                continue
+            if (symbol.kind or "").lower() not in _SKELETON_KINDS:
+                continue
+            if int(symbol.end_line) - int(symbol.start_line) < _SKELETON_MIN_BODY_LINES:
+                continue
+            candidates.append(symbol)
+
+        groups: dict[tuple[str, str], list[SymbolRecord]] = defaultdict(list)
+        for symbol in candidates:
+            kind = (symbol.kind or "").lower()
+            for affix in self._skeleton_affixes(symbol.symbol_name or symbol.qualified_name):
+                groups[(kind, affix)].append(symbol)
+
+        assigned: set[str] = set()
+        skeleton_ids: set[str] = set()
+        families: dict[str, str] = {}
+        for (kind, affix), members in sorted(groups.items()):
+            fresh = {member.symbol_id: member for member in members if member.symbol_id not in assigned}
+            if len(fresh) < _SKELETON_MIN_FAMILY:
+                continue
+            ordered = sorted(
+                fresh.values(),
+                key=lambda member: (-(member.score or 0.0), member.qualified_name or member.symbol_name or ""),
+            )
+            assigned.add(ordered[0].symbol_id)
+            for member in ordered[1:]:
+                assigned.add(member.symbol_id)
+                skeleton_ids.add(member.symbol_id)
+                families[member.symbol_id] = f"{affix}:{kind}"
+        return skeleton_ids, families
+
+    def _skeleton_affixes(self, name: str | None) -> list[str]:
+        base = (name or "").split(".")[-1]
+        raw: list[str] = []
+        for snake in base.split("_"):
+            if snake:
+                raw.extend(_CAMEL_BOUNDARY_RE.split(snake))
+        tokens = [token.lower() for token in raw if token]
+        tokens = [token for token in tokens if len(token) >= 4 and token not in _SKELETON_STOPWORDS]
+        if not tokens:
+            return []
+        affixes: list[str] = []
+        if tokens[-1] not in affixes:
+            affixes.append(tokens[-1])
+        if tokens[0] not in affixes:
+            affixes.append(tokens[0])
+        return affixes
+
+    @staticmethod
+    def _signature_header_end(lines: list[str]) -> int:
+        """Index of the line that ends a callable's signature header (``def ...:`` / ``{``)."""
+        for index, line in enumerate(lines[:8]):
+            stripped = line.rstrip()
+            if stripped.endswith((":", "{", "=>")):
+                return index
+        return 0
+
+    def _skeletonize_source(
+        self,
+        source: str,
+        *,
+        file_path: str,
+        start_line: int,
+        language: str | None,
+        line_numbers: bool,
+    ) -> str | None:
+        """Render a symbol body as signature lines only (definitions kept, bodies dropped).
+
+        Reuses tree-sitter definition tags so nested member signatures survive.
+        Returns None when there is nothing meaningful to collapse.
+        """
+        lines = source.splitlines()
+        if len(lines) < 2:
+            return None
+        from atelier.infra.tree_sitter.tags import extract_tags_from_text
+
+        try:
+            tags = extract_tags_from_text(source, file_path, language or None)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return None
+        keep = {0}
+        for tag in tags:
+            if tag.kind == "definition" and 1 <= tag.line <= len(lines):
+                keep.add(tag.line - 1)
+        kept = sorted(index for index in keep if 0 <= index < len(lines))
+        if len(kept) <= 1:
+            # Flat callable (function/method with no nested defs): keep only the
+            # signature header and elide the body. Containers already keep their
+            # member definition lines above, so this only fires for callables.
+            header_end = self._signature_header_end(lines)
+            if header_end + 1 >= len(lines):
+                return None
+            kept = list(range(header_end + 1))
+        rendered: list[str] = []
+        previous: int | None = None
+        for index in kept:
+            if previous is not None and index > previous + 1:
+                rendered.append("\t…")
+            if line_numbers:
+                rendered.append(f"{start_line + index}\t{lines[index]}")
+            else:
+                rendered.append(lines[index])
+            previous = index
+        return "\n".join(rendered)
 
     def _usage_item(self, reference: UsageReference, *, snippet_lines: int) -> dict[str, Any]:
         payload = reference.model_dump(mode="json", exclude_none=True)
@@ -5896,39 +10525,11 @@ class CodeContextEngine:
         )
         if indexed:
             return indexed
-        results: list[UsageReference] = []
-        seen: set[tuple[str, int, int]] = set()
-        for rel in self._indexed_files():
-            path = self.repo_root / rel
-            try:
-                tags = extract_tags(path)
-            except OSError:
-                continue
-            lines = self._read_file(rel).splitlines()
-            for tag in tags:
-                if tag.kind != "reference" or tag.name != target_name:
-                    continue
-                if rel == target_file and target_start <= tag.line <= target_end:
-                    continue
-                line_text = lines[tag.line - 1] if 1 <= tag.line <= len(lines) else ""
-                column = max(1, line_text.find(target_name) + 1) if line_text else 1
-                key = (rel, tag.line, column)
-                if key in seen:
-                    continue
-                seen.add(key)
-                results.append(
-                    UsageReference(
-                        file_path=rel,
-                        line=tag.line,
-                        column=column,
-                        end_line=tag.line,
-                        end_column=column + len(target_name) - 1,
-                        snippet=line_text,
-                        provenance="treesitter",
-                    )
-                )
-        results.sort(key=lambda item: (item.file_path, item.line, item.column))
-        return results
+        # References are indexed for every tree-sitter language at index time, so a miss
+        # here means the symbol has no recorded references. Do NOT re-parse the whole repo
+        # with tree-sitter at query time -- that is O(repo) and can segfault on huge or
+        # generated files. Return empty; find_references() falls back to a cheap text scan.
+        return []
 
     def _indexed_references_for_symbol(
         self,
@@ -5946,6 +10547,7 @@ class CodeContextEngine:
                 FROM "references"
                 WHERE repo_id = ? AND symbol_name = ?
                 ORDER BY file_path, line, column
+                LIMIT 1000
                 """,
                 (self.repo_id, target_name),
             ).fetchall()
@@ -6000,21 +10602,174 @@ class CodeContextEngine:
                 SELECT DISTINCT caller_symbol_name, caller_qualified_name, caller_file_path,
                        caller_start_line, caller_end_line
                 FROM call_edges
-                WHERE repo_id = ? AND (callee_name = ? OR callee_name LIKE ?)
+                WHERE repo_id = ? AND callee_short_name = ?
                 ORDER BY caller_file_path, caller_start_line
+                LIMIT 1000
                 """,
-                (self.repo_id, target_name, f"%.{target_name}"),
+                (self.repo_id, target_name),
             ).fetchall()
-        return [
-            self._call_graph_node_from_indexed_row(
-                file_path=str(row["caller_file_path"]),
-                start_line=int(row["caller_start_line"]),
-                end_line=int(row["caller_end_line"]),
-                symbol_name=str(row["caller_symbol_name"]),
-                qualified_name=str(row["caller_qualified_name"]),
-            )
-            for row in rows
-        ]
+        if not rows:
+            return []
+        # call_edges is denormalized (each row carries the caller's name/file/lines),
+        # so we only need to recover symbol_id + kind. Do it with ONE batched join,
+        # never a per-row lookup (that N+1 is catastrophic for high-fanout callees).
+        keys = [(str(r["caller_file_path"]), int(r["caller_start_line"]), str(r["caller_symbol_name"])) for r in rows]
+        hydrated: dict[tuple[str, int, str], sqlite3.Row] = {}
+        placeholders = ",".join("(?,?,?)" for _ in keys)
+        flat: list[Any] = [self.repo_id]
+        for cf, cs, cn in keys:
+            flat.extend((cf, cs, cn))
+        with self._connect() as conn:
+            self._init_schema(conn)
+            for srow in conn.execute(
+                f"SELECT symbol_id, file_path, start_line, end_line, symbol_name, qualified_name, kind "
+                f"FROM symbols WHERE repo_id = ? AND (file_path, start_line, symbol_name) IN (VALUES {placeholders})",
+                tuple(flat),
+            ).fetchall():
+                hydrated[(str(srow["file_path"]), int(srow["start_line"]), str(srow["symbol_name"]))] = srow
+        nodes: list[CallGraphNode] = []
+        for row in rows:
+            cf = str(row["caller_file_path"])
+            cs = int(row["caller_start_line"])
+            cn = str(row["caller_symbol_name"])
+            cq = str(row["caller_qualified_name"])
+            srow = hydrated.get((cf, cs, cn))
+            if srow is not None:
+                nodes.append(
+                    CallGraphNode(
+                        symbol_id=str(srow["symbol_id"]),
+                        symbol_name=str(srow["symbol_name"]),
+                        qualified_name=str(srow["qualified_name"]),
+                        file_path=str(srow["file_path"]),
+                        kind=str(srow["kind"]),
+                        start_line=int(srow["start_line"]),
+                        end_line=int(srow["end_line"]),
+                        provenance="local_index",
+                    )
+                )
+            else:
+                synthetic_id = "local-call::" + hashlib.sha1(f"{cf}:{cs}:{cq}".encode()).hexdigest()[:16]
+                nodes.append(
+                    CallGraphNode(
+                        symbol_id=synthetic_id,
+                        symbol_name=cn,
+                        qualified_name=cq,
+                        file_path=cf,
+                        kind="function",
+                        start_line=cs,
+                        end_line=int(row["caller_end_line"]),
+                        provenance="local_index",
+                    )
+                )
+        return nodes
+
+    # ------------------------------------------------------------------
+    # G6 -- symbol-level call-graph centrality (with N16 cache guard)
+    # ------------------------------------------------------------------
+
+    def _symbol_centrality_map(self) -> dict[str, float]:
+        """Symbol name -> normalized eigenvector centrality (0..1), cached by index
+        version. Feeds the call-graph importance signal into search ranking so
+        central core symbols outrank peripheral textual matches.
+
+        Persisted to the ``centrality_map`` table (keyed by index_version) so a
+        cold engine -- a server restart, a benchmark rerun, a parallel worker --
+        loads the map instead of recomputing the O(edges) power iteration. A
+        reindex bumps index_version, which invalidates the persisted rows."""
+        version = self._current_index_version()
+        cached = getattr(self, "_centrality_name_map", None)
+        if cached is not None and cached[0] == version:
+            return cached[1]
+        loaded = self._load_centrality_map(version)
+        if loaded is not None:
+            self._centrality_name_map = (version, loaded)
+            return loaded
+        mapping: dict[str, float] = {}
+        try:
+            ranking = self.call_graph_centrality(limit=1_000_000).get("ranking", [])
+            max_ev = max((float(item.get("eigenvector") or 0.0) for item in ranking), default=0.0) or 1.0
+            for item in ranking:
+                name = str(item.get("symbol") or "")
+                if not name:
+                    continue
+                norm_ev = float(item.get("eigenvector") or 0.0) / max_ev
+                for key in (name.lower(), name.split(".")[-1].split("::")[-1].lower()):
+                    if norm_ev > mapping.get(key, 0.0):
+                        mapping[key] = norm_ev
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+        self._persist_centrality_map(version, mapping)
+        self._centrality_name_map = (version, mapping)
+        return mapping
+
+    def _load_centrality_map(self, version: int) -> dict[str, float] | None:
+        """Load the persisted centrality map for the current index_version, or None
+        if absent (first run after an index, or a pre-persistence DB)."""
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    "SELECT name_key, score FROM centrality_map WHERE repo_id = ? AND index_version = ?",
+                    (self.repo_id, version),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        return {str(row["name_key"]): float(row["score"]) for row in rows}
+
+    def _persist_centrality_map(self, version: int, mapping: dict[str, float]) -> None:
+        """Persist the centrality map (best-effort) so future cold engines skip the
+        power iteration. Replaces any prior rows for this repo."""
+        if not mapping:
+            return
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                conn.execute("DELETE FROM centrality_map WHERE repo_id = ?", (self.repo_id,))
+                conn.executemany(
+                    "INSERT OR REPLACE INTO centrality_map(repo_id, name_key, score, index_version) "
+                    "VALUES (?, ?, ?, ?)",
+                    [(self.repo_id, key, value, version) for key, value in mapping.items()],
+                )
+        except sqlite3.OperationalError:
+            logging.exception("Recovered from broad exception handler")
+
+    def call_graph_centrality(self, *, limit: int = 50, use_cache: bool = True) -> dict[str, Any]:
+        """Rank the most important symbols by call-graph centrality.
+
+        Reads the persisted ``call_edges`` graph for this repo and returns degree
+        and (power-iteration) eigenvector centrality per symbol, most central
+        first. ``index_version`` is included so callers can tell which graph
+        snapshot produced a ranking.
+
+        N16: results are cached keyed to ``(index_version, limit)``. Every
+        reindex bumps ``index_version`` (see ``_bump_index_version``), which
+        changes the key, so a graph mutation can never serve a stale ranking.
+        """
+        version = self._current_index_version()
+        cache_key = (version, limit)
+        if use_cache:
+            with self._centrality_cache_lock:
+                cached = self._centrality_cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT caller_qualified_name, callee_name
+                FROM call_edges
+                WHERE repo_id = ?
+                """,
+                (self.repo_id,),
+            ).fetchall()
+        edges = [(str(row["caller_qualified_name"]), str(row["callee_name"])) for row in rows]
+        result = compute_call_graph_centrality(edges, limit=limit)
+        result["index_version"] = version
+        if use_cache:
+            with self._centrality_cache_lock:
+                self._centrality_cache[cache_key] = dict(result)
+        return result
 
     def _fallback_callers_from_references(
         self,
@@ -6159,13 +10914,20 @@ class CodeContextEngine:
                 """,
                 (self.repo_id, target_file, target_start, target_end),
             ).fetchall()
+        target_ext = Path(target_file).suffix
+        target_is_python = target_ext == ".py"
         nodes_by_identity: dict[str, CallGraphNode] = {}
         for row in rows:
             callee_name = str(row["callee_name"])
             short_name = callee_name.rsplit(".", 1)[-1]
             matched = self._indexed_symbol_payloads_for_call_name(callee_name)
-            if matched:
-                for payload in matched:
+            # Keep only definitions in the caller's own language. A Python
+            # function cannot call a TS/JS symbol that merely shares the short
+            # name (e.g. `range`, `min`), so cross-language name collisions are
+            # dropped rather than surfaced as bogus callees.
+            same_lang = [p for p in matched if Path(str(p.get("file_path") or "")).suffix == target_ext]
+            if same_lang:
+                for payload in same_lang:
                     node = CallGraphNode(
                         symbol_id=str(payload["symbol_id"]),
                         symbol_name=str(payload["symbol_name"]),
@@ -6177,6 +10939,11 @@ class CodeContextEngine:
                         provenance=str(payload.get("provenance") or "local_index"),
                     )
                     nodes_by_identity[node.symbol_id] = node
+                continue
+            # No same-language definition: for Python callers, builtins and
+            # ubiquitous container methods have no navigable target and are pure
+            # noise — skip them instead of emitting a synthetic reference node.
+            if target_is_python and short_name in _PY_CALLEE_NOISE:
                 continue
             synthetic_id = f"local-callee::{hashlib.sha1(callee_name.encode('utf-8')).hexdigest()[:16]}"
             if synthetic_id not in nodes_by_identity:
@@ -6315,15 +11082,65 @@ class CodeContextEngine:
         )
 
     def _reindex_files(self, file_paths: list[str]) -> None:
-        if not file_paths:
+        """Incrementally reindex only *file_paths* -- never a whole-repo rebuild.
+
+        Called after an edit (or codemod) touches specific files. Deleting and
+        re-extracting just those files keeps post-edit latency O(edited files).
+        The previous implementation called ``self.index_repo()`` (force=True),
+        which wiped every table and re-parsed the entire repo on every symbol
+        edit -- minutes on large repos (sympy/django) for a one-file change.
+        """
+        rels: list[str] = []
+        existing_paths: list[Path] = []
+        seen: set[str] = set()
+        for raw in file_paths:
+            try:
+                resolved = self._resolve_inside_repo(raw)
+            except ValueError:
+                continue
+            rel = _safe_relpath(self.repo_root, resolved)
+            if rel in seen:
+                continue
+            seen.add(rel)
+            rels.append(rel)
+            if resolved.is_file():
+                existing_paths.append(resolved)
+        if not rels:
             return
-        self.index_repo()
+
+        def _reindex_locked() -> None:
+            with self._index_write_lock(block=True) as acquired:
+                if not acquired:
+                    # Another process is rebuilding the index; it will pick up
+                    # these files. Don't pile on a concurrent write.
+                    return
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    for rel in rels:
+                        self._delete_file_index(conn, rel)
+                    results = (
+                        self._parallel_extract(existing_paths, total=len(existing_paths)) if existing_paths else []
+                    )
+                    if results:
+                        self._apply_file_data_batch(conn, results)
+                    self._bump_index_version(conn)
+
+        if self._autosync_enabled:
+            with self._db_lock, self._autosync_lock:
+                _reindex_locked()
+        else:
+            with self._db_lock:
+                _reindex_locked()
 
     def _current_index_version(self) -> int:
+        if self._index_version_cached is not None:
+            return self._index_version_cached
         with self._connect() as conn:
             self._init_schema(conn)
             row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
-        return int(row["value"]) if row is not None else 0
+        version = int(row["value"]) if row is not None else 0
+        self._index_version_cached = version
+        return version
 
     def _index_snapshot(self) -> dict[str, Any]:
         with self._connect() as conn:
@@ -6372,10 +11189,15 @@ class CodeContextEngine:
             """,
             (str(next_version),),
         )
+        # N16: a reindex (this version bump) must not serve stale neighbours.
+        # The cached HNSW graph is keyed to index_version, but drop it eagerly so
+        # the next query rebuilds against the fresh vectors immediately.
+        self._ann_symbol_index.invalidate()
+        self._index_version_cached = next_version
         return next_version
 
     def _payload_tokens(self, payload: Any) -> int:
-        return count_tokens(_canonical_json(payload))
+        return estimate_tokens(_canonical_json(payload))
 
     def _compute_total_tokens(self, payload: dict[str, Any]) -> int:
         total_tokens = 0
@@ -6429,6 +11251,10 @@ class CodeContextEngine:
         scope: Literal["repo", "external", "deleted"],
     ) -> list[dict[str, Any]]:
         allowed_keys = _DELETED_SEARCH_COMPACT_DEFAULT_KEYS if scope == "deleted" else _SEARCH_COMPACT_DEFAULT_KEYS
+        # For external scope "origin" is the load-bearing field that distinguishes
+        # external symbols from repo symbols, so it must survive compaction.
+        if scope == "external":
+            allowed_keys = allowed_keys | {"origin", "repo_name"}
         compacted = [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
         if scope == "repo":
             result: list[dict[str, Any]] = []
@@ -6485,15 +11311,19 @@ class CodeContextEngine:
         base_tokens_saved: int = 0,
     ) -> dict[str, Any]:
         finalized = dict(payload)
-        tokens_saved = max(0, base_tokens_saved)
-        while True:
-            finalized["tokens_saved"] = tokens_saved
-            total_tokens = self._compute_total_tokens(finalized)
-            updated_tokens_saved = max(base_tokens_saved, full_total_tokens - total_tokens)
-            if updated_tokens_saved == tokens_saved:
-                finalized["total_tokens"] = total_tokens
-                return apply_field_name_shortening(finalized)
-            tokens_saved = updated_tokens_saved
+        # Compute total_tokens from a probe that omits tokens_saved entirely.
+        # Including tokens_saved in the measurement creates a circular dependency:
+        # tokens_saved changes the JSON size → changes total_tokens → changes
+        # tokens_saved.  At digit-count boundaries (e.g. 99 → 100) the ceiling
+        # estimator jumps by 1 token, so the fixed point X + f(X) = full_total
+        # may not exist as an integer and the naive iteration oscillates forever.
+        # Omitting tokens_saved from the probe breaks the cycle with at most a
+        # 1-2 token error on an informational field -- acceptable.
+        probe = {k: v for k, v in finalized.items() if k != "tokens_saved"}
+        total_tokens = self._compute_total_tokens(probe)
+        finalized["tokens_saved"] = max(base_tokens_saved, full_total_tokens - total_tokens)
+        finalized["total_tokens"] = self._compute_total_tokens(finalized)
+        return apply_field_name_shortening(finalized)
 
     def _fit_items_to_budget(
         self,
@@ -6526,6 +11356,22 @@ class CodeContextEngine:
                     return candidate
             return build_payload([])
 
+        # Fast path: pack at the full budget_tokens in one shot.  When all optional
+        # keys are retained (the common case: explore payload ~6K < 9K budget), this
+        # is identical to the binary-search answer but costs 1 BudgetPacker call
+        # instead of log2(budget_tokens)≈14.  Each saved iteration avoids a
+        # build_payload→_finalize_packed_payload→_compute_total_tokens chain (~0.6ms),
+        # saving ~8ms per explore call.
+        fast_packed, _, _ = self._budget.pack(
+            items,
+            budget_tokens,
+            essential_keys=essential_keys,
+            optional_keys_in_drop_order=optional_keys_in_drop_order,
+        )
+        fast_candidate = build_payload(fast_packed)
+        if fast_candidate["total_tokens"] <= budget_tokens:
+            return fast_candidate
+
         low = 0
         high = max(0, budget_tokens)
         while low <= high:
@@ -6544,25 +11390,6 @@ class CodeContextEngine:
                 high = mid - 1
 
         return best_payload
-
-    def _budget_error_payload(
-        self,
-        *,
-        budget_tokens: int,
-        minimum_required_tokens: int,
-        provenance: str,
-    ) -> dict[str, Any]:
-        return self._finalize_packed_payload(
-            {
-                "error": "budget_too_small",
-                "message": "budget_tokens cannot fit the protected top-ranked essentials",
-                "budget_tokens": budget_tokens,
-                "minimum_required_tokens": minimum_required_tokens,
-                "cache_hit": False,
-                "provenance": provenance,
-            },
-            full_total_tokens=max(minimum_required_tokens, 0),
-        )
 
     def _pack_items_payload(
         self,
@@ -6668,9 +11495,25 @@ class CodeContextEngine:
         *,
         budget_tokens: int,
     ) -> dict[str, Any]:
+        # `diff` is the one essential field, so the budget packer never drops it.
+        # A repo-wide rewrite would otherwise emit an unbounded verbatim diff into
+        # the model context; head+tail truncate so large rewrites stay bounded
+        # while small previews pass through untouched. files_changed always lists
+        # every affected file regardless of truncation.
+        diff_lines = (result.diff or "").splitlines(keepends=True)
+        diff_head, diff_tail = 170, 30
+        if len(diff_lines) > diff_head + diff_tail:
+            elided = len(diff_lines) - diff_head - diff_tail
+            diff = (
+                "".join(diff_lines[:diff_head])
+                + f"... ({elided} more diff lines elided; see files_changed)\n"
+                + "".join(diff_lines[-diff_tail:])
+            )
+        else:
+            diff = result.diff
         return self._pack_single_payload(
             {
-                "diff": result.diff,
+                "diff": diff,
                 "files_changed": result.files_changed,
                 "provenance": "ast-grep",
             },
@@ -6835,29 +11678,6 @@ class CodeContextEngine:
             max_end_index = min(max_end_index, max(start_index + 1, end_line))
         snippet_slice = lines[start_index:max_end_index]
         return "\n".join(snippet_slice)
-
-    def _flatten_outline(self, files: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        for file_path in sorted(files):
-            for item in files[file_path]:
-                items.append({"file_path": file_path, **item})
-        return items
-
-    def _group_outline(self, items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        normalized = sorted(
-            items,
-            key=lambda item: (
-                str(item.get("file_path") or ""),
-                int(item.get("line_start") or 0),
-                str(item.get("qualified_name") or item.get("name") or ""),
-                str(item.get("kind") or ""),
-            ),
-        )
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for item in normalized:
-            file_path = str(item["file_path"])
-            grouped.setdefault(file_path, []).append({k: v for k, v in item.items() if k != "file_path"})
-        return grouped
 
     def _normalize_files_path(self, value: str | None) -> str | None:
         if value is None:
@@ -7308,12 +12128,6 @@ class CodeContextEngine:
             "provenance": _LOCAL_PROVENANCE,
         }
 
-    def _file_mtime_ns(self, file_path: str) -> int | None:
-        path = self._resolve_inside_repo(file_path)
-        with contextlib.suppress(OSError):
-            return path.stat().st_mtime_ns
-        return None
-
     def _python_text_search(self, query: str, search_path: Path, *, limit: int, ignore_case: bool) -> list[TextMatch]:
         query_cmp = query.lower() if ignore_case else query
         paths = [search_path] if search_path.is_file() else iter_source_files(search_path)
@@ -7328,20 +12142,6 @@ class CodeContextEngine:
                     if len(matches) >= limit:
                         return matches
         return matches
-
-    def _register_symbol_intel_providers(self) -> None:
-        try:
-            from atelier.infra.code_intel.scip import ScipSymbolIntelProvider
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            return
-        self.intel_store.register(
-            ScipSymbolIntelProvider(
-                repo_root=self.repo_root,
-                repo_id=self.repo_id,
-                state_sync=self._sync_external_artifact_state,
-            )
-        )
 
     def _sync_symbol_intel(self) -> None:
         self.intel_store.refresh()
@@ -7372,6 +12172,7 @@ class CodeContextEngine:
         return 500
 
     def _autosync_status(self) -> dict[str, Any]:
+        watcher_alive = self._file_watcher is not None and self._file_watcher.is_alive()
         return {
             "enabled": self._autosync_enabled,
             "state": self._autosync_state,
@@ -7382,27 +12183,97 @@ class CodeContextEngine:
             "last_event_at": self._autosync_last_event_at,
             "reindex_count": self._autosync_reindex_count,
             "history": list(self._autosync_history),
+            "file_watcher": {
+                "enabled": self._watcher_enabled,
+                "alive": watcher_alive,
+                "debounce_ms": self._watcher_debounce_ms,
+                "gitignore_loaded": self._watcher_gitignore_spec is not None,
+            },
         }
 
     def _source_tree_signature(self) -> str:
         parts: list[str] = []
+        repo_root_str = str(self.repo_root)
         for path in iter_source_files(self.repo_root):
             with contextlib.suppress(OSError):
                 stat = path.stat()
-                rel = _safe_relpath(self.repo_root, path)
+                # iter_source_files yields paths rooted at self.repo_root, so compute the
+                # relative key with a pure-string op. _safe_relpath() would call realpath()
+                # per file -- an O(files x path-depth) syscall storm that made this change
+                # detector take minutes on large repos (e.g. VS Code).
+                rel = os.path.relpath(path, repo_root_str)
                 parts.append(f"{rel}|{stat.st_mtime_ns}|{stat.st_size}")
         digest_input = "\n".join(sorted(parts)).encode("utf-8")
         return hashlib.sha256(digest_input).hexdigest()
 
-    def _maybe_autosync_reindex(self) -> None:
+    def _run_index_subprocess(self, *, force: bool = False) -> bool:
+        """Delegate index building to a fresh child process.
+
+        Keeps the ProcessPoolExecutor and its gigabytes of CoW-forked heap out
+        of the MCP / servicectl parent process. The subprocess runs
+        ``atelier code index``, acquires the SQLite write-lock independently,
+        and exits — releasing all indexing memory on completion.
+
+        Returns True on success, False on error (caller retries on next poll).
+        """
+        cmd = [
+            sys.executable,
+            "-m",
+            "atelier.gateway.cli",
+            "code",
+            "index",
+            "--repo-root",
+            str(self.repo_root),
+            "--no-stats",
+        ]
+        # Pass a custom db-path when the engine was constructed with one so
+        # the subprocess writes to the same SQLite file we read from.
+        if self.db_path != _default_db_path(self.repo_root):
+            cmd.extend(["--db-path", str(self.db_path)])
+        if force:
+            cmd.append("--reindex")
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=600)
+            if result.returncode != 0:
+                stderr_tail = result.stderr[-500:].decode("utf-8", errors="replace").strip()
+                logging.warning(
+                    "code index subprocess failed (rc=%d): %s",
+                    result.returncode,
+                    stderr_tail,
+                )
+                return False
+            # Subprocess wrote a new index_version to SQLite; drop the two
+            # in-process caches keyed on that version so the next read and any
+            # ANN neighbour lookup both reflect the updated state.
+            self._index_version_cached = None
+            self._ann_vectors_cache = None
+            return True
+        except Exception:
+            logging.exception("code index subprocess error for %s", self.repo_root)
+            return False
+
+    def _maybe_autosync_reindex(self, *, _from_watcher: bool = False) -> None:
         if not self._autosync_lock.acquire(blocking=False):
             return
         try:
-            self._maybe_autosync_reindex_locked()
+            self._maybe_autosync_reindex_locked(_from_watcher=_from_watcher)
         finally:
             self._autosync_lock.release()
 
-    def _maybe_autosync_reindex_locked(self) -> None:
+    def _maybe_autosync_reindex_locked(self, *, _from_watcher: bool = False) -> None:
+        # When called from the file watcher we already know a change happened,
+        # so skip the expensive _source_tree_signature() stat walk entirely.
+        if _from_watcher:
+            self._autosync_state = "syncing"
+            self._run_index_subprocess()
+            self._autosync_signature = self._source_tree_signature()
+            self._autosync_last_sync_ms = int(time.time() * 1000)
+            self._autosync_pending_events = 0
+            self._autosync_state = "idle"
+            self._autosync_reindex_count += 1
+            self._record_autosync_event(event="reindex", reason="watcher_triggered", reindexed=True)
+            return
+
         current_signature = self._source_tree_signature()
         if self._autosync_signature is None:
             self._autosync_signature = current_signature
@@ -7422,13 +12293,28 @@ class CodeContextEngine:
             self._record_autosync_event(event="change_detected", reason="within_debounce_window", reindexed=False)
             return
         self._autosync_state = "syncing"
-        self.index_repo(force=False)
+        self._run_index_subprocess()
         self._autosync_signature = self._source_tree_signature()
         self._autosync_last_sync_ms = int(time.time() * 1000)
         self._autosync_pending_events = 0
         self._autosync_state = "idle"
         self._autosync_reindex_count += 1
         self._record_autosync_event(event="reindex", reason="source_signature_changed", reindexed=True)
+
+    def _maybe_refresh_zoekt_index(self) -> None:
+        """Keep the git-repo Zoekt shard fresh at commit granularity.
+
+        Background-only. zoekt-git-index indexes committed git objects, so a
+        working-tree edit can't change its content -- only a HEAD move
+        (commit/checkout/merge) can. The refresh is inherently incremental and
+        no-ops when HEAD is unchanged, so calling it each poll is cheap.
+        """
+        try:
+            from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
+
+            get_zoekt_supervisor(self.repo_root).refresh_index_if_head_changed()
+        except (ImportError, OSError, ValueError):
+            logging.debug("zoekt autosync refresh skipped", exc_info=True)
 
     def _parse_autosync_poll_ms(self, raw_value: str | None) -> int:
         if raw_value is None:
@@ -7450,19 +12336,202 @@ class CodeContextEngine:
 
     def _stop_autosync_worker(self) -> None:
         self._autosync_stop.set()
+        self._stop_file_watcher()
+
+    # --- File watcher (event-driven via watchdog) ---
+
+    def _start_file_watcher(self) -> None:
+        """Start a watchdog Observer that monitors the repo root for source-file changes."""
+        if self._file_watcher is not None:
+            return
+        if Observer is None:
+            self._watcher_enabled = False
+            return
+        try:
+            # Load .gitignore patterns at startup so the handler can filter in-process.
+            self._watcher_gitignore_spec = _watcher_load_gitignore_patterns(self.repo_root)
+            self._watcher_gitignore_mtime = time.time()
+            self._watcher_event_handler = _SourceFileEventHandler(self)
+            self._file_watcher = Observer(timeout=0.5)
+            self._file_watcher.schedule(
+                self._watcher_event_handler,
+                str(self.repo_root),
+                recursive=True,
+            )
+            self._file_watcher.start()
+            logger.debug(
+                "File watcher started on %s (debounce=%dms, gitignore=%s)",
+                self.repo_root,
+                self._watcher_debounce_ms,
+                "loaded" if self._watcher_gitignore_spec is not None else "none",
+            )
+        except OSError as exc:
+            # Common: inotify instance limit (EMFILE/ENOSPC) in containers or
+            # CI. Fall back to polling gracefully.
+            logger.warning(
+                "File watcher unavailable on %s (OSError: %s), falling back to polling",
+                self.repo_root,
+                exc,
+            )
+            self._file_watcher = None
+            self._watcher_enabled = False
+        except Exception:
+            logger.exception("Failed to start file watcher on %s, falling back to polling", self.repo_root)
+            self._file_watcher = None
+            self._watcher_enabled = False
+
+    def _stop_file_watcher(self) -> None:
+        """Stop the watchdog Observer if running."""
+        watcher = self._file_watcher
+        if watcher is not None and watcher.is_alive():
+            try:
+                watcher.stop()
+                watcher.join(timeout=3)
+            except Exception:
+                logger.exception("Error stopping file watcher")
+        self._file_watcher = None
+        self._watcher_event_handler = None
+        self._watcher_gitignore_spec = None
+
+    def _watcher_path_is_ignored(self, path: str) -> bool:
+        """Check if *path* should be ignored by the file watcher.
+
+        Fast path: check hard-skip dirs (.git, etc.) without any I/O.
+        Slow path: consult the loaded .gitignore pathspec (reloaded periodically).
+        """
+        if _watcher_check_ignored_fast(path, _WATCHER_HARD_SKIP_DIRS):
+            return True
+        spec = self._watcher_gitignore_spec
+        if spec is not None:
+            try:
+                rel = os.path.relpath(path, str(self.repo_root))
+                if rel.startswith(".."):
+                    return True  # outside repo root
+                return spec.match_file(rel.replace("\\", "/"))
+            except ValueError:
+                return True
+        # No gitignore spec: conservatively keep the file (reindex on any source change).
+        return False
+
+    def _watcher_reload_gitignore_if_stale(self) -> None:
+        """Reload .gitignore patterns if any .gitignore file has changed on disk."""
+        now = time.time()
+        if now - self._watcher_gitignore_mtime < 30:
+            return  # check at most every 30s
+        self._watcher_gitignore_mtime = now
+        # Quick check: has any .gitignore mtime changed?
+        try:
+            repo_root = self.repo_root
+            for gi in repo_root.rglob(".gitignore"):
+                cached = getattr(self, "_watcher_gi_mtimes", None)
+                current_mtime = gi.stat().st_mtime_ns
+                if cached is None:
+                    self._watcher_gi_mtimes = {}
+                if cached is None or self._watcher_gi_mtimes.get(str(gi)) != current_mtime:
+                    # At least one gitignore changed — full reload.
+                    new_spec = _watcher_load_gitignore_patterns(repo_root)
+                    if new_spec is not None:
+                        self._watcher_gitignore_spec = new_spec
+                        if cached is None:
+                            self._watcher_gi_mtimes = {}
+                        # Update cached mtimes
+                        for gi2 in repo_root.rglob(".gitignore"):
+                            try:
+                                self._watcher_gi_mtimes[str(gi2)] = gi2.stat().st_mtime_ns
+                            except OSError:
+                                pass
+                    return
+        except (OSError, ValueError):
+            logger.debug("gitignore reload check failed", exc_info=True)
+
+    def _notify_watcher_event(self) -> None:
+        """Called by the watchdog event handler when a source file changes.
+
+        Schedules a debounced reindex via the existing autosync machinery.
+        """
+        if not self._autosync_enabled:
+            return
+        # Check if .gitignore files have changed (cheap mtime probe every 30s).
+        self._watcher_reload_gitignore_if_stale()
+        # Respect the watcher-specific debounce window.
+        now_ms = int(time.time() * 1000)
+        last = self._watcher_last_event_ms
+        if now_ms - last < self._watcher_debounce_ms:
+            return  # still within debounce window
+        self._watcher_last_event_ms = now_ms
+        self._autosync_last_event_at = datetime.now(UTC).isoformat()
+        self._autosync_pending_events = max(1, self._autosync_pending_events + 1)
+        self._maybe_autosync_reindex(_from_watcher=True)
+
+    def _parse_watcher_enabled(self, raw_value: str | None) -> bool:
+        if raw_value is None:
+            return Observer is not None  # default: enabled when watchdog is available
+        return raw_value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _parse_watcher_debounce(self, raw_value: str | None) -> int:
+        if raw_value is None:
+            return 2000  # default 2s, matching CodeGraph
+        with contextlib.suppress(ValueError):
+            return max(100, int(raw_value))
+        return 2000
 
     def _autosync_worker_loop(self) -> None:
         try:
-            self._ensure_indexed()
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
-        while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
+            self._deleted_history_adapter().start_background_warmup()
+        except Exception:
+            logging.exception("Failed to start background warmup")
+        # Background-owned initial build: if nothing has populated the index yet
+        # (no external prewarm / `atelier code index`), build it here so the
+        # first tool call hits a warm index instead of paying a cold build on the
+        # request path.
+        if not self.index_ready():
             try:
-                self._maybe_autosync_reindex()
+                self._run_index_subprocess()
+            except Exception:
+                logging.exception("autosync: initial index build failed")
+        # When the file watcher is active, the polling interval is a safety net
+        # only — the watcher handles real-time change detection. Extend to 60s.
+        poll_ms = self._autosync_poll_ms
+        if self._file_watcher is not None and self._file_watcher.is_alive():
+            poll_ms = max(poll_ms, 60000)
+        while not self._autosync_stop.wait(poll_ms / 1000.0):
+            try:
+                if not self.index_ready():
+                    # Still empty (e.g. the initial build lost an index-lock race
+                    # with a concurrent prewarm). Keep retrying until it exists.
+                    self._run_index_subprocess()
+                else:
+                    # Polling-based check is the safety net; skip when watcher is
+                    # active (the watcher already triggers reindex on change).
+                    if self._file_watcher is None or not self._file_watcher.is_alive():
+                        self._maybe_autosync_reindex()
+                self._maybe_refresh_zoekt_index()
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
+
+    def _detected_repo_languages(self) -> frozenset[str]:
+        """Lightweight language detection from file extensions in the symbol index."""
+        ext_map = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+        }
+        langs: set[str] = set()
+        try:
+            with self._connect(readonly=True) as conn:
+                for row in conn.execute(
+                    "SELECT file_path FROM files WHERE repo_id = ? LIMIT 2000",
+                    (self.repo_id,),
+                ):
+                    ext = Path(row[0]).suffix.lower()
+                    if ext in ext_map:
+                        langs.add(ext_map[ext])
+        except sqlite3.Error:
+            pass
+        return frozenset(langs)
 
     def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
         entry = {
@@ -7506,8 +12575,7 @@ class CodeContextEngine:
 
     def _persist_lineage_embedder_metadata(self, conn: sqlite3.Connection, *, name: str, dim: int) -> None:
         conn.executemany(
-            "INSERT INTO engine_state(key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            "INSERT INTO engine_state(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [
                 ("commit_lineage_embedder_name", name),
                 ("commit_lineage_embedder_dim", str(dim)),
@@ -7518,9 +12586,17 @@ class CodeContextEngine:
         """Start background lineage bootstrap if commit_chunks is empty or stale.
 
         Non-blocking: launches a daemon thread. Safe to call multiple times.
+
+        Disabled by default: the commit-summary lineage walker makes one LLM
+        summarize call per commit, which is prohibitively slow on deep-history
+        repos (~26-40 min on VS Code). Opt in with ATELIER_LINEAGE_ENABLED=1.
+        The graveyard walker (deleted/renamed symbols) is independent and stays on.
         """
-        if self._lineage_thread is not None:
+        if os.getenv("ATELIER_LINEAGE_ENABLED") != "1":
             return
+        with self._lineage_lock:
+            if self._lineage_thread is not None:
+                return
         current_head = self._safe_current_head_sha()
         if current_head is None:
             return
@@ -7557,12 +12633,17 @@ class CodeContextEngine:
                 needs_update = True
         if not needs_update:
             return
-        self._lineage_rebuild_full = full_rebuild
-        self._lineage_thread = threading.Thread(
-            target=self._lineage_bootstrap_worker,
-            name=f"atelier-lineage-{self.repo_id[:8]}",
-            daemon=True,
-        )
+        with self._lineage_lock:
+            # Re-check under the lock so two concurrent read tools cannot both pass
+            # the initial guard and each spawn a bootstrap thread.
+            if self._lineage_thread is not None:
+                return
+            self._lineage_rebuild_full = full_rebuild
+            self._lineage_thread = threading.Thread(
+                target=self._lineage_bootstrap_worker,
+                name=f"atelier-lineage-{self.repo_id[:8]}",
+                daemon=True,
+            )
         self._lineage_thread.start()
 
     def _lineage_bootstrap_worker(self) -> None:
@@ -7619,7 +12700,7 @@ class CodeContextEngine:
 
         # Pass 1: summarise all commits (LLM calls — no embedding yet)
         summaries: list[CommitSummary] = []
-        for record in iter_commit_records(self.repo_root, limit=500, since_sha=since_sha):
+        for record in iter_commit_records(self.repo_root, since_sha=since_sha):
             try:
                 commit_obj = repo.revparse_single(record.sha)
                 diff_text = _get_diff_text(repo, commit_obj)

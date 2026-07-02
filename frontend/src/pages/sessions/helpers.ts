@@ -3,40 +3,13 @@ import { type Trace, type RunInspectorData } from "../../api";
 // --- Constants ---
 export const LONG_OUTPUT_THRESHOLD = 400; // chars
 
-// --- Formatters ---
-
-export function fmtUsd(v: number): string {
-  return `$${v.toFixed(3)}`;
-}
-
-export function fmtTok(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-export function parseAt(s: string | null | undefined): Date | null {
-  if (!s) return null;
-  // ms-epoch integers arrive as numeric strings from OpenCode
-  const d = /^\d+$/.test(s) ? new Date(parseInt(s, 10)) : new Date(s);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-export function fmtDate(s: string | null | undefined): string {
-  const d = parseAt(s);
-  return d ? d.toLocaleString() : "—";
-}
-
-export function fmtDuration(secs: number): string {
-  if (secs < 60) return `${Math.round(secs)}s`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`;
-  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-}
+// Formatters (fmtUsd, fmtTok, fmtDate, fmtDuration, parseAt) live in
+// lib/format.ts — the one shared implementation for every page.
 
 // --- Host detection ---
 
 export const HOST_COLORS: Record<string, string> = {
-  atelier: "bg-purple-900/40 text-purple-300 border-purple-700/50",
+  atelier: "bg-brand-900/40 text-brand-300 border-brand-700/50",
   claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
   gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
   copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",
@@ -105,7 +78,10 @@ export function groupTurns(turns: any[]): any[] {
 
     if (prev && isTool && prev.kind === turn.kind) {
       const prevToolName = getNormName(prev);
-      if (prevToolName === toolName) {
+      // Same tool + kind can still target a different file (e.g. two
+      // consecutive file_edit turns) — only collapse when the path matches
+      // too, otherwise we'd drop all but the first turn's path/diff.
+      if (prevToolName === toolName && prev.path === turn.path) {
         prev.count = (prev.count || 1) + 1;
         prev.cost = (prev.cost || 0) + (turn.cost || 0);
         // Sum per-call Atelier savings across grouped turns so the badge
@@ -260,8 +236,8 @@ export function parseInspectorData(
 
   return {
     session_id: sessionId,
-    pinned_blocks: Array.isArray(ledger?.active_reasonblocks)
-      ? ledger.active_reasonblocks
+    pinned_blocks: Array.isArray(ledger?.active_playbooks)
+      ? ledger.active_playbooks
       : [],
     recalled_passages: recalled,
     summarized_events_count: summarizedEventsCount,

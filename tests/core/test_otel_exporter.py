@@ -62,21 +62,11 @@ class TestOtelNoiseFilter:
 class TestApplySilence:
     """Verify that _apply_silence installs the noise filter correctly.
 
-    These tests monkeypatch ``logging.getLogger`` back after each run so they
-    don't leak side-effects across tests.
+    _apply_silence must never monkeypatch ``logging.getLogger`` and must be
+    idempotent (re-running stacks no duplicate filters).
     """
 
-    @pytest.fixture()
-    def _restore_getlogger(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Restore the original logging.getLogger after the test."""
-        orig = logging.getLogger
-
-        def restore() -> None:
-            logging.getLogger = orig  # type: ignore[assignment]
-
-        monkeypatch.setattr("logging.getLogger", orig)
-
-    def test_silences_existing_otel_loggers(self, _restore_getlogger: None) -> None:
+    def test_silences_existing_otel_loggers(self) -> None:
         from atelier.core.service.telemetry.exporters.otel import (
             _apply_silence,
             _sdk_noise_filter,
@@ -95,36 +85,73 @@ class TestApplySilence:
 
         assert _sdk_noise_filter in otel_logger.filters
 
-    def test_wraps_getlogger_for_future_loggers(self, _restore_getlogger: None) -> None:
+    def test_does_not_monkeypatch_getlogger(self) -> None:
+        from atelier.core.service.telemetry.exporters.otel import _apply_silence
+
+        orig_get_logger = logging.getLogger
+        _apply_silence()
+        assert logging.getLogger is orig_get_logger
+
+    def test_filters_future_loggers_via_named_parents(self) -> None:
         from atelier.core.service.telemetry.exporters.otel import (
             _apply_silence,
             _sdk_noise_filter,
         )
 
+        # Clean baseline: drop the filter from the named parents and lastResort.
+        for name in ("opentelemetry", "urllib3.connectionpool", "requests"):
+            parent = logging.getLogger(name)
+            for f in list(parent.filters):
+                if f is _sdk_noise_filter:
+                    parent.removeFilter(f)
+        assert logging.lastResort is not None
+        for f in list(logging.lastResort.filters):
+            if f is _sdk_noise_filter:
+                logging.lastResort.removeFilter(f)
+
         _apply_silence()
 
-        # Create a NEW OTel logger (as the SDK would at import time)
-        new_logger = logging.getLogger("opentelemetry.exporter.otlp")
-        assert _sdk_noise_filter in new_logger.filters
+        # The named parents carry the filter (records logged directly through
+        # them — e.g. urllib3.connectionpool — are dropped at source).
+        for name in ("opentelemetry", "urllib3.connectionpool", "requests"):
+            assert _sdk_noise_filter in logging.getLogger(name).filters, f"{name} parent should carry the filter"
 
-    def test_does_not_double_wrap_getlogger(self, _restore_getlogger: None) -> None:
-        from atelier.core.service.telemetry.exporters.otel import _apply_silence
+        # An opentelemetry.* child logger created lazily *after* init must be
+        # covered. Logger-level filters do not cascade to children, so with no
+        # root handlers the child's record falls back to ``logging.lastResort``
+        # (the implicit stderr handler) — where the filter is installed. Verify
+        # lastResort carries the filter and that it rejects the lazily-created
+        # child's record while passing a non-OTel record.
+        assert _sdk_noise_filter in logging.lastResort.filters
+        lazy_child = logging.getLogger("opentelemetry.sdk._logs._internal.export.lazy_child")
+        otel_record = lazy_child.makeRecord(
+            lazy_child.name, logging.WARNING, "", 0, "Exception while exporting logs.", (), None
+        )
+        keep_record = logging.LogRecord("atelier.keep.me", logging.WARNING, "", 0, "visible", (), None)
+        # Handler.filter returns False to reject, or the record itself to accept.
+        assert logging.lastResort.filter(otel_record) is False
+        assert logging.lastResort.filter(keep_record)
+
+    def test_idempotent_no_filter_stacking(self) -> None:
+        from atelier.core.service.telemetry.exporters.otel import (
+            _apply_silence,
+            _sdk_noise_filter,
+        )
+
+        parent = logging.getLogger("opentelemetry")
+        for f in list(parent.filters):
+            if f is _sdk_noise_filter:
+                parent.removeFilter(f)
+        assert logging.lastResort is not None
+        for f in list(logging.lastResort.filters):
+            if f is _sdk_noise_filter:
+                logging.lastResort.removeFilter(f)
 
         _apply_silence()
-        _apply_silence()  # second call — must not cause infinite recursion
+        _apply_silence()  # re-init must not stack duplicate filters
 
-        # Verify a new OTel logger still gets the filter
-        test_logger = logging.getLogger("opentelemetry.sdk._logs.test")
-        noise_filter_cls = self._get_noise_filter_cls()
-        assert any(
-            isinstance(f, noise_filter_cls) for f in test_logger.filters
-        ), "filter should be applied after double _apply_silence"
-
-    @staticmethod
-    def _get_noise_filter_cls() -> type:
-        from atelier.core.service.telemetry.exporters.otel import _OtelNoiseFilter
-
-        return _OtelNoiseFilter
+        assert [f for f in parent.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
+        assert [f for f in logging.lastResort.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
 
 
 # --------------------------------------------------------------------------- #

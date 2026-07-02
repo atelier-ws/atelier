@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.memory_arbitration import arbitrate
+from atelier.core.capabilities.memory_arbitration.arbiter import _similar_blocks
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.storage.memory_store import MemoryStore
@@ -180,6 +181,15 @@ class MemoryService:
         clean_direction = self._vote_direction(direction)
         clean_scope = self._fact_scope(scope) if scope else None
         target_agent = agent_id or "shared"
+        if clean_scope is None:
+            matched_scopes = {
+                str((block.metadata or {}).get("fact_scope") or (block.metadata or {}).get("scope") or "")
+                for block in self._store.list_blocks(target_agent, include_tombstoned=False, limit=500)
+                if (block.metadata or {}).get("kind") == "memory_fact"
+                and str((block.metadata or {}).get("fact", "")) == clean_fact
+            }
+            if len(matched_scopes) > 1:
+                raise ValueError("fact exists in multiple scopes; specify scope to disambiguate vote_fact")
         match = self._find_fact_block(target_agent, clean_fact, scope=clean_scope)
         if match is None:
             raise ValueError("no matching stored fact found for vote_fact")
@@ -201,7 +211,7 @@ class MemoryService:
         metadata["last_vote"] = {"direction": clean_direction, "reason": clean_reason, "at": voted_at}
         metadata["fact_scope"] = fact_scope
 
-        stored = self._upsert_block(match.model_copy(update={"metadata": metadata}))
+        stored = self._upsert_block(match.model_copy(update={"metadata": metadata}), dedup=False)
         return MemoryVoteResult(
             id=stored.id,
             fact=clean_fact,
@@ -319,21 +329,31 @@ class MemoryService:
             reason=str(metadata.get("reason") or ""),
         )
 
-    def _upsert_block(self, block: MemoryBlock) -> MemoryBlock:
+    def _upsert_block(self, block: MemoryBlock, *, dedup: bool = True) -> MemoryBlock:
+        if not dedup:
+            # Caller already resolved an exact existing block (e.g. vote_fact),
+            # so routing through arbitrate() would let a NOOP verdict silently
+            # drop the update or an UPDATE verdict reapply it to a different
+            # similar block. Persist the resolved block directly (the store's
+            # optimistic version check still guards concurrent writers).
+            return self._store.upsert_block(block, actor=f"agent:{block.agent_id}", reason="direct-update")
+        candidates = {item.id: item for item in _similar_blocks(block, self._store, k=5)}
         decision = arbitrate(block, self._store, self._embedder)
         target = None
         if decision.target_block_id:
-            for item in self._store.list_blocks(block.agent_id, include_tombstoned=True, limit=500):
-                if item.id == decision.target_block_id:
-                    target = item
-                    break
+            target = candidates.get(decision.target_block_id)
 
         actor = f"agent:{block.agent_id}"
         if decision.op == "NOOP" and target is not None:
             return target
         if decision.op == "UPDATE" and target is not None:
             return self._store.upsert_block(
-                target.model_copy(update={"value": decision.merged_value or block.value}),
+                target.model_copy(
+                    update={
+                        "value": decision.merged_value or block.value,
+                        "metadata": {**(target.metadata or {}), **(block.metadata or {})},
+                    }
+                ),
                 actor=actor,
                 reason=decision.reason,
             )

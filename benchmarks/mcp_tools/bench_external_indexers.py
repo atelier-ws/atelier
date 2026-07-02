@@ -21,6 +21,7 @@ import csv
 import hashlib
 import json
 import os
+import select
 import shutil
 import socket
 import statistics
@@ -30,7 +31,7 @@ import tempfile
 import time
 import urllib.request
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -73,7 +74,6 @@ def run_cmd(
 class ToolBenchResult:
     tool: str
     ok: bool
-    correctness: float
     median_ms: float
     p95_ms: float
     median_tokens: int
@@ -93,11 +93,13 @@ class SerenaRunner:
         home_dir: Path,
         project_name: str = "atelier-bench",
         port: int | None = None,
+        language: str = "python",
     ) -> None:
         self.project_root = project_root
         self.home_dir = home_dir
         self.project_name = project_name
         self.port = port if port is not None else _find_free_port()
+        self.language = language
         self.proc: subprocess.Popen[str] | None = None
 
     def _env(self) -> dict[str, str]:
@@ -109,9 +111,7 @@ class SerenaRunner:
         if self.home_dir.exists():
             shutil.rmtree(self.home_dir)
         self.home_dir.mkdir(parents=True, exist_ok=True)
-        init = run_cmd(
-            ["serena", "init", "-b", "LSP"], cwd=self.project_root, timeout=300, env=self._env()
-        )
+        init = run_cmd(["serena", "init", "-b", "LSP"], cwd=self.project_root, timeout=300, env=self._env())
         if init.returncode != 0:
             raise RuntimeError(init.stderr[:1200] or init.stdout[:1200])
         create = run_cmd(
@@ -123,7 +123,7 @@ class SerenaRunner:
                 "--name",
                 self.project_name,
                 "--language",
-                "python",
+                self.language,
             ],
             cwd=self.project_root,
             timeout=600,
@@ -143,9 +143,7 @@ class SerenaRunner:
         )
         for _ in range(80):
             try:
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{self.port}/heartbeat", timeout=2
-                ) as res:
+                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/heartbeat", timeout=2) as res:
                     if res.status == 200:
                         return
             except Exception:
@@ -182,22 +180,18 @@ class SerenaRunner:
 
 
 class CodeIndexRunner:
-    def __init__(self, repo_root: Path, workspace_root: Path, code_index_repo: Path) -> None:
-        self.repo_root = repo_root
-        self.workspace_root = workspace_root
-        self.code_index_repo = code_index_repo
-        self.project_root: Path | None = None
-        self.python_bin: Path | None = None
+    """Persistent worker: one subprocess per repo that indexes once, then
+    serves search_code queries over a stdin/stdout line protocol.
 
-    def _script(self, *, rebuild: bool) -> str:
-        rebuild_block = (
-            """
-IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
-"""
-            if rebuild
-            else ""
-        )
-        return f"""
+    A fresh ``python -c`` per query costs ~0.5s of interpreter + import
+    overhead vs ~0.08s for the search itself, so one-shot mode made benchmark
+    runs ~12x slower and reported latencies that measured the harness, not
+    the tool.
+    """
+
+    _MARKER = "__CIDX__"
+
+    _WORKER_SCRIPT = """
 import json
 import sys
 from pathlib import Path
@@ -216,60 +210,124 @@ from mcp.server.fastmcp import Context
 lifespan = CodeIndexerContext(base_path="", settings=ProjectSettings("", skip_load=True))
 ctx = Context(request_context=_BootstrapRequestContext(lifespan), fastmcp=mcp)
 ProjectManagementService(ctx).initialize_project(str(repo_root))
-{rebuild_block}
-result = SearchService(ctx).search_code(
-    pattern=sys.argv[3],
-    regex=False,
-    file_pattern="*.py",
-    max_results=50,
-    context_lines=0,
-    case_sensitive=False,
-)
-print(json.dumps(result, ensure_ascii=False))
+IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
+print("__CIDX__" + json.dumps({"ready": True}), flush=True)
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    req = json.loads(line)
+    try:
+        result = SearchService(ctx).search_code(
+            pattern=req["pattern"],
+            regex=False,
+            file_pattern=req.get("file_pattern", "*"),
+            max_results=50,
+            context_lines=0,
+            case_sensitive=False,
+        )
+    except Exception as exc:  # report per-query failures without dying
+        result = {"__cidx_error__": str(exc)}
+    print("__CIDX__" + json.dumps(result, ensure_ascii=False), flush=True)
 """
 
-    def start(self) -> None:
-        tool_workspace = external_workspace_root(self.workspace_root)
-        self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
-        self.python_bin = ensure_code_index_runtime(self.code_index_repo)
-        self.project_root = prepare_repo_snapshot(
-            self.repo_root, tool_workspace, "code-index-target"
-        )
-        proc = run_cmd(
-            [
-                str(self.python_bin),
-                "-c",
-                self._script(rebuild=True),
-                str(self.project_root),
-                str(self.code_index_repo),
-                "classify_command",
-            ],
-            cwd=self.code_index_repo,
-            timeout=1800,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+    def __init__(self, repo_root: Path, workspace_root: Path, code_index_repo: Path) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.code_index_repo = code_index_repo
+        self.project_root: Path | None = None
+        self.python_bin: Path | None = None
+        self.proc: subprocess.Popen[str] | None = None
+        self._stderr_file: Any = None
 
-    def query(self, pattern: str) -> dict[str, Any]:
-        if self.python_bin is None or self.project_root is None:
-            raise RuntimeError("code-index-mcp not initialized")
-        proc = run_cmd(
+    def start(self, *, python_bin: Path | None = None) -> None:
+        tool_workspace = external_workspace_root(self.workspace_root)
+        # When the caller already wired ensure_code_index_checkout +
+        # ensure_code_index_runtime externally, don't redo the work (and
+        # keep python_bin exactly as given -- it's already absolute, and
+        # .venv/bin/python is a symlink to the shared uv-managed interpreter,
+        # so .resolve() would follow it straight past the venv and lose its
+        # site-packages, breaking every dependency uv sync installed there).
+        if python_bin is not None:
+            self.python_bin = python_bin
+        else:
+            self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
+            self.python_bin = ensure_code_index_runtime(self.code_index_repo)
+        self.project_root = prepare_repo_snapshot(self.repo_root, tool_workspace, "code-index-target")
+        # Deliberately not a context manager: the file outlives start() and is
+        # closed in stop() alongside the worker it captures stderr for.
+        self._stderr_file = tempfile.TemporaryFile(mode="w+", prefix="cidx-worker-")  # noqa: SIM115
+        self.proc = subprocess.Popen(
             [
                 str(self.python_bin),
                 "-c",
-                self._script(rebuild=False),
+                self._WORKER_SCRIPT,
                 str(self.project_root),
                 str(self.code_index_repo),
-                pattern,
             ],
-            cwd=self.code_index_repo,
-            timeout=300,
+            cwd=str(self.code_index_repo),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self._stderr_file,
+            text=True,
+            bufsize=1,
         )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-        result = json.loads(proc.stdout)
-        assert isinstance(result, dict)
-        return result
+        # Ready marker arrives after initialize_project + deep index rebuild.
+        self._read_response(timeout=1800)
+
+    def _stderr_tail(self) -> str:
+        try:
+            self._stderr_file.seek(0)
+            tail = self._stderr_file.read()[-1200:]
+            assert isinstance(tail, str)
+            return tail
+        except Exception:
+            return ""
+
+    def _read_response(self, timeout: float) -> dict[str, Any]:
+        assert self.proc is not None and self.proc.stdout is not None
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.stop()
+                raise TimeoutError(f"code-index-mcp worker timed out after {timeout:.0f}s")
+            ready, _, _ = select.select([self.proc.stdout], [], [], remaining)
+            if not ready:
+                continue  # loop re-checks the deadline
+            line = self.proc.stdout.readline()
+            if not line:
+                err = self._stderr_tail()
+                self.stop()
+                raise RuntimeError(f"code-index-mcp worker died: {err}")
+            if not line.startswith(self._MARKER):
+                continue  # stray library output on stdout
+            result = json.loads(line[len(self._MARKER) :])
+            assert isinstance(result, dict)
+            if "__cidx_error__" in result:
+                raise RuntimeError(str(result["__cidx_error__"]))
+            return result
+
+    def query(self, pattern: str, file_pattern: str = "*") -> dict[str, Any]:
+        if self.proc is None or self.proc.stdin is None:
+            raise RuntimeError("code-index-mcp not initialized")
+        request = json.dumps({"pattern": pattern, "file_pattern": file_pattern}, ensure_ascii=False)
+        self.proc.stdin.write(request + "\n")
+        self.proc.stdin.flush()
+        return self._read_response(timeout=300)
+
+    def stop(self) -> None:
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+        if self._stderr_file is not None:
+            with suppress(Exception):
+                self._stderr_file.close()
+            self._stderr_file = None
 
 
 def ensure_workspace(workspace: Path) -> None:
@@ -285,11 +343,16 @@ def _find_free_port() -> int:
 SNAPSHOT_IGNORE_NAMES = {
     ".git",
     ".venv",
+    ".venv-build",
     ".atelier-benchmarks",
     ".codegraph",
     ".mcp-vector-search",
     "node_modules",
     "reports",
+    "benchmarks",
+    "build",
+    "build_dist",
+    "dist",
     ".bench-work",
     ".cocoindex_code",
     ".serena",
@@ -299,21 +362,90 @@ SNAPSHOT_IGNORE_NAMES = {
 }
 
 
+def _is_ignored_snapshot_name(name: str) -> bool:
+    # Exact-match the curated set, and prefix-match any virtualenv (.venv,
+    # .venv-build, .venv-*) so build venvs never get copied/hashed into a
+    # provider snapshot. Indexing third-party site-packages is slow, pollutes
+    # results, and copies gigabytes of artifacts per shard.
+    return name in SNAPSHOT_IGNORE_NAMES or name.startswith(".venv")
+
+
+def _snapshot_relpaths(repo_root: Path) -> list[str] | None:
+    """Repo-relative paths to snapshot: tracked + untracked files git would keep
+    (honoring .gitignore / .git/info/exclude / global excludes), with the
+    harness's own ignore list applied on top.
+
+    Returns ``None`` when ``repo_root`` is not a git work tree (or git is
+    unavailable), so callers fall back to a plain recursive walk.
+    """
+    if shutil.which("git") is None:
+        return None
+    proc = run_cmd(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-x",
+            ".venv*",  # skip untracked build venvs git itself does not ignore
+            "-z",
+        ],
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        return None
+    rels = (rel for rel in proc.stdout.split("\0") if rel)
+    return [rel for rel in rels if not any(_is_ignored_snapshot_name(part) for part in rel.split("/"))]
+
+
+def _copy_one(src: Path, dst: Path) -> None:
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_symlink():
+            if src.exists():
+                dst.symlink_to(os.readlink(src))
+            return
+        if src.is_file():
+            shutil.copy2(src, dst)
+    except FileNotFoundError:
+        # File vanished between listing and copy (volatile output written
+        # concurrently); skip it rather than aborting the whole snapshot.
+        return
+
+
 def _copy_repo_tree(src_dir: Path, dst_dir: Path) -> None:
     dst_dir.mkdir(parents=True, exist_ok=True)
+    rels = _snapshot_relpaths(src_dir)
+    if rels is None:
+        _copy_repo_tree_walk(src_dir, dst_dir)
+        return
+    for rel in rels:
+        _copy_one(src_dir / rel, dst_dir / rel)
+
+
+def _copy_repo_tree_walk(src_dir: Path, dst_dir: Path) -> None:
+    """Fallback copy when ``src_dir`` is not a git work tree: honor only the
+    harness ignore list."""
+    dst_dir.mkdir(parents=True, exist_ok=True)
     for entry in src_dir.iterdir():
-        if entry.name in SNAPSHOT_IGNORE_NAMES:
+        if _is_ignored_snapshot_name(entry.name):
             continue
         target = dst_dir / entry.name
-        if entry.is_symlink():
-            if entry.exists():
-                target.symlink_to(os.readlink(entry))
+        try:
+            if entry.is_symlink():
+                if entry.exists():
+                    target.symlink_to(os.readlink(entry))
+                continue
+            if entry.is_dir():
+                _copy_repo_tree_walk(entry, target)
+                continue
+            if entry.is_file():
+                shutil.copy2(entry, target)
+        except FileNotFoundError:
             continue
-        if entry.is_dir():
-            _copy_repo_tree(entry, target)
-            continue
-        if entry.is_file():
-            shutil.copy2(entry, target)
 
 
 def prepare_repo_snapshot(repo_root: Path, workspace_root: Path, name: str) -> Path:
@@ -325,11 +457,31 @@ def prepare_repo_snapshot(repo_root: Path, workspace_root: Path, name: str) -> P
 
 def repo_cache_key(repo_root: Path) -> str:
     digest = hashlib.sha256()
+    rels = _snapshot_relpaths(repo_root)
+    if rels is not None:
+        # Hash exactly what the snapshot will contain so the key tracks the
+        # gitignore-aware file set and their contents.
+        for rel in sorted(rels):
+            path = repo_root / rel
+            try:
+                if path.is_symlink():
+                    digest.update(f"link:{rel}:{os.readlink(path)}".encode())
+                    continue
+                if not path.is_file():
+                    continue
+                digest.update(f"file:{rel}".encode())
+                with path.open("rb") as handle:
+                    while chunk := handle.read(1024 * 1024):
+                        digest.update(chunk)
+            except FileNotFoundError:
+                continue
+        return digest.hexdigest()[:16]
+    # Fallback: recursive walk honoring the harness ignore list.
     stack = [repo_root]
     while stack:
         current = stack.pop()
         for entry in sorted(current.iterdir(), key=lambda item: item.name):
-            if entry.name in SNAPSHOT_IGNORE_NAMES:
+            if _is_ignored_snapshot_name(entry.name):
                 continue
             relative = entry.relative_to(repo_root).as_posix()
             if entry.is_dir():
@@ -389,6 +541,7 @@ def install_external_tools(workspace: Path) -> None:
     ensure_workspace(workspace)
     commands = [
         ["npm", "i", "-g", "@colbymchenry/codegraph"],
+        ["uv", "tool", "install", "-p", "3.13", "serena-agent"],
         ["uv", "tool", "install", "--upgrade", "cocoindex-code[full]"],
         [
             "uv",
@@ -398,10 +551,23 @@ def install_external_tools(workspace: Path) -> None:
             "https://github.com/jgravelle/jcodemunch-mcp/releases/download/v1.108.22/jcodemunch_mcp-1.108.22-py3-none-any.whl",
         ],
     ]
+    # Best-effort: a missing package manager (npm/uv) or a single failed install
+    # must not abort the whole matrix. Warn and continue so every provider whose
+    # tool *did* install (plus the self-provisioning ones) still runs.
+    failures: list[str] = []
     for cmd in commands:
         proc = run_cmd(cmd, cwd=workspace, timeout=1800)
         if proc.returncode != 0:
-            raise RuntimeError(f"install failed: {' '.join(cmd)}\n{proc.stderr[:1200]}")
+            label = " ".join(cmd)
+            detail = (proc.stderr or proc.stdout or "").strip()[:800]
+            failures.append(f"  {label}\n    {detail}")
+            print(f"[install] WARNING: failed to install: {label}", file=sys.stderr)
+    if failures:
+        print(
+            "[install] Some external provider tools could not be installed; "
+            "those providers will report startup_failed:\n" + "\n".join(failures),
+            file=sys.stderr,
+        )
 
 
 def external_workspace_root(workspace_root: Path) -> Path:
@@ -411,7 +577,13 @@ def external_workspace_root(workspace_root: Path) -> Path:
 
 
 def default_benchmark_root(repo_root: Path) -> Path:
-    return repo_root.parent / "benchmarks" / repo_root.name
+    # Scratch/cache root for mcp_tools benchmark runs (repo snapshots, external
+    # indexer installs, per-shard artifacts) -- lives inside the repo under
+    # benchmarks/mcp_tools/results/, not a sibling directory outside the
+    # checkout. Gitignored (see benchmarks/mcp_tools/results/.gitignore); the
+    # committed results.csv/summary.csv for `atelier eval mcp` stay at the
+    # shared reports/benchmark/mcp/ location every other suite uses.
+    return repo_root / "benchmarks" / "mcp_tools" / "results"
 
 
 def ensure_code_index_checkout(code_index_repo: Path) -> Path:
@@ -444,9 +616,50 @@ def ensure_code_index_runtime(code_index_repo: Path) -> Path:
     return python_bin
 
 
-def bench_atelier(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_tools_root() -> Path:
+    """Shared location for self-provisioned external comparator binaries."""
+    root = Path.home() / ".atelier" / "_bench_tools"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def ensure_universal_ctags() -> tuple[Path, Path]:
+    """Build universal-ctags from source (no root required); return (ctags, readtags).
+
+    Idempotent: a prior build is reused. Requires a C toolchain (gcc/make/autoconf/
+    automake/pkg-config) on PATH. JSON output is unavailable without libjansson, so
+    the runner consumes the native tags format via readtags instead.
+    """
+    prefix = bench_tools_root() / "ctags"
+    ctags = prefix / "bin" / "ctags"
+    readtags = prefix / "bin" / "readtags"
+    if ctags.exists() and readtags.exists():
+        return ctags, readtags
+    src = bench_tools_root() / "ctags-src"
+    if src.exists():
+        shutil.rmtree(src)
+    clone = run_cmd(
+        ["git", "clone", "--depth", "1", "https://github.com/universal-ctags/ctags.git", str(src)],
+        timeout=600,
+    )
+    if clone.returncode != 0:
+        raise RuntimeError(clone.stderr[:1200] or clone.stdout[:1200])
+    steps = [
+        ["./autogen.sh"],
+        ["./configure", f"--prefix={prefix}"],
+        ["make", f"-j{os.cpu_count() or 2}"],
+        ["make", "install"],
+    ]
+    for step in steps:
+        proc = run_cmd(step, cwd=src, timeout=1800)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ctags build failed at '{' '.join(step)}': " + (proc.stderr[:800] or proc.stdout[:800]))
+    if not (ctags.exists() and readtags.exists()):
+        raise RuntimeError("ctags build did not produce ctags/readtags binaries")
+    return ctags, readtags
+
+
+def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools._env import configure_benchmark_runtime
@@ -455,7 +668,7 @@ def bench_atelier(
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "atelier-repo")
     runtime_root = Path(tempfile.mkdtemp(prefix="atelier-root-", dir=tool_workspace))
     configure_benchmark_runtime(runtime_root, workspace_root=snapshot_root)
-    from atelier.gateway.adapters.mcp_server import tool_code
+    from benchmarks.mcp_tools._env import call_code_op
 
     times: list[float] = []
     toks: list[int] = []
@@ -471,7 +684,7 @@ def bench_atelier(
     }
     for _ in range(iterations):
         t0 = time.perf_counter()
-        resp = tool_code(request)
+        resp = call_code_op(request)
         elapsed = (time.perf_counter() - t0) * 1000
         payload = json.dumps(resp, ensure_ascii=False)
         times.append(elapsed)
@@ -480,7 +693,6 @@ def bench_atelier(
     return ToolBenchResult(
         tool="atelier",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -492,9 +704,7 @@ def bench_atelier(
     )
 
 
-def bench_atelier_zoekt(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_atelier_zoekt(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools._env import configure_benchmark_runtime
@@ -537,7 +747,6 @@ def bench_atelier_zoekt(
     return ToolBenchResult(
         tool="atelier-zoekt",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -549,9 +758,7 @@ def bench_atelier_zoekt(
     )
 
 
-def bench_serena(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_serena(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     tool_workspace = external_workspace_root(workspace_root)
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "serena-repo")
     runner = SerenaRunner(
@@ -579,7 +786,6 @@ def bench_serena(
         return ToolBenchResult(
             tool="serena",
             ok=True,
-            correctness=1.0,
             median_ms=statistics.median(times),
             p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
             median_tokens=int(statistics.median(toks)),
@@ -605,9 +811,7 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     sample = ""
     for _ in range(iterations):
         t0 = time.perf_counter()
-        proc = run_cmd(
-            ["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300
-        )
+        proc = run_cmd(["codegraph", "query", "-p", str(repo_root), "-l", "20", "-j", query], timeout=300)
         elapsed = (time.perf_counter() - t0) * 1000
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
@@ -618,7 +822,6 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     return ToolBenchResult(
         tool="codegraph",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -636,25 +839,25 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
 def bench_code_index(
     repo_root: Path, workspace_root: Path, code_index_repo: Path, query: str, iterations: int
 ) -> ToolBenchResult:
-    runner = CodeIndexRunner(
-        repo_root=repo_root, workspace_root=workspace_root, code_index_repo=code_index_repo
-    )
+    runner = CodeIndexRunner(repo_root=repo_root, workspace_root=workspace_root, code_index_repo=code_index_repo)
     runner.start()
     times: list[float] = []
     toks: list[int] = []
     sample = ""
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        resp = runner.query(query)
-        elapsed = (time.perf_counter() - t0) * 1000
-        payload = json.dumps(resp, ensure_ascii=False)
-        times.append(elapsed)
-        toks.append(token_count(payload))
-        sample = payload[:280]
+    try:
+        for _ in range(iterations):
+            t0 = time.perf_counter()
+            resp = runner.query(query)
+            elapsed = (time.perf_counter() - t0) * 1000
+            payload = json.dumps(resp, ensure_ascii=False)
+            times.append(elapsed)
+            toks.append(token_count(payload))
+            sample = payload[:280]
+    finally:
+        runner.stop()
     return ToolBenchResult(
         tool="code-index-mcp",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -676,9 +879,7 @@ def bench_code_index(
     )
 
 
-def bench_ccc(
-    repo_root: Path, workspace_root: Path, query: str, iterations: int
-) -> ToolBenchResult:
+def bench_ccc(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     tool_workspace = external_workspace_root(workspace_root)
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "ccc-repo")
     init = run_cmd(["ccc", "init", "--force"], cwd=snapshot_root, timeout=300)
@@ -707,7 +908,6 @@ def bench_ccc(
     return ToolBenchResult(
         tool="cocoindex-code",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -742,7 +942,6 @@ def bench_jcodemunch(repo_root: Path, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="jcodemunch-mcp",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -789,7 +988,6 @@ def run_external_benchmarks(
                 ToolBenchResult(
                     tool=name,
                     ok=False,
-                    correctness=0.0,
                     median_ms=0.0,
                     p95_ms=0.0,
                     median_tokens=0,
@@ -803,14 +1001,12 @@ def run_external_benchmarks(
 
 def render_table(results: list[ToolBenchResult]) -> str:
     lines = [
-        "| Tool | Status | Correctness | Median ms | P95 ms | Median tokens | Runs |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        "| Tool | Status | Median ms | P95 ms | Median tokens | Runs |",
+        "|---|---|---:|---:|---:|---:|",
     ]
     for r in results:
         status = "ok" if r.ok else "failed"
-        lines.append(
-            f"| {r.tool} | {status} | {r.correctness * 100:.1f}% | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |"
-        )
+        lines.append(f"| {r.tool} | {status} | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |")
     return "\n".join(lines)
 
 
@@ -823,7 +1019,6 @@ def write_csv(results: list[ToolBenchResult], path: Path) -> None:
                 "query",
                 "tool",
                 "status",
-                "correctness",
                 "median_ms",
                 "p95_ms",
                 "median_tokens",
@@ -840,7 +1035,6 @@ def write_csv(results: list[ToolBenchResult], path: Path) -> None:
                     "query": result.query,
                     "tool": result.tool,
                     "status": "ok" if result.ok else "failed",
-                    "correctness": result.correctness,
                     "median_ms": result.median_ms,
                     "p95_ms": result.p95_ms,
                     "median_tokens": result.median_tokens,
@@ -869,9 +1063,7 @@ def main() -> None:
     repo_root = Path(args.repo_root).resolve()
     workspace_root = Path(args.workspace_root).resolve()
     code_index_repo = (
-        Path(args.code_index_repo).resolve()
-        if args.code_index_repo
-        else (workspace_root / "code-index-mcp").resolve()
+        Path(args.code_index_repo).resolve() if args.code_index_repo else (workspace_root / "code-index-mcp").resolve()
     )
     ensure_workspace(workspace_root)
 

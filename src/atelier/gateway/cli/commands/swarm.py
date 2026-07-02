@@ -28,8 +28,9 @@ from atelier.core.capabilities.swarm import (
     spawn_swarm_coordinator,
     stop_swarm_run,
 )
-from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.core.capabilities.swarm.fitness import FitnessDirection, build_fitness_spec
+from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend, SwarmExecMode
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 DEFAULT_RUNNER_PROMPT = (
     "The authoritative task spec is stored at {spec}.\n\n"
@@ -44,9 +45,76 @@ DEFAULT_RUNNER_PROMPT = (
 RUNNER_CHOICES = click.Choice([profile["id"] for profile in list_swarm_runner_profiles()], case_sensitive=False)
 
 
-@click.group("swarm")
-def swarm_group() -> None:
-    """Coordinate isolated child attempts in separate git worktrees."""
+def _list_running_swarms(root: Path) -> list[SwarmRunState]:
+    """Return all swarms with status == 'running', newest first."""
+    return [s for s in list_swarm_runs(root) if s.status == "running"]
+
+
+def _resolve_run_id(root: Path, run_id: str | None, command_name: str) -> str:
+    """Return *run_id* when given, or auto-select the single running swarm.
+
+    Raises :class:`click.ClickException` when zero or multiple running
+    swarms exist — in the multiple case a table of candidates is shown.
+    """
+    if run_id is not None:
+        return run_id
+    running = _list_running_swarms(root)
+    if len(running) == 0:
+        raise click.ClickException(
+            f"No run_id given and no running swarms found.  "
+            f"Usage: atelier swarm {command_name} <RUN_ID>"
+        )
+    if len(running) == 1:
+        return running[0].run_id
+    # Multiple running swarms — show them and ask for one.
+    lines = [
+        "Multiple running swarms — specify one:\n",
+        "run_id                           status   runner           model               wave  accept fail live planned/max  created_at",
+        "--------------------------------------------------------------------------------------------------------------------------------",
+    ]
+    for state in running:
+        r = sum(1 for child in state.children if child.status == "running")
+        f = sum(1 for child in state.children if child.status == "failed")
+        runner_label = state.runner_name[:16]
+        model_label = (state.runner_model or "-")[:18]
+        latest_wave = state.waves[-1] if state.waves else None
+        planned = latest_wave.planned_runs if latest_wave is not None else 0
+        max_runs = latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
+        lines.append(
+            f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>8} {f:<4} {r:<4} {planned:>3}/{max_runs:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+    lines.append(f"\nUsage: atelier swarm {command_name} <RUN_ID>")
+    raise click.ClickException("\n".join(lines))
+
+
+@click.group("swarm", invoke_without_command=True)
+@click.pass_context
+def swarm_group(ctx: click.Context) -> None:
+    """Coordinate isolated child attempts in separate git worktrees.
+
+    Without a subcommand, lists currently running swarms.
+    """
+    if ctx.invoked_subcommand is None:
+        running = _list_running_swarms(Path(ctx.obj["root"]))
+        if not running:
+            click.echo("No running swarms.")
+            return
+        lines = [
+            "run_id                           status   runner           model               wave  accept fail live planned/max  created_at",
+            "--------------------------------------------------------------------------------------------------------------------------------",
+        ]
+        for state in running:
+            running_children = sum(1 for child in state.children if child.status == "running")
+            failed = sum(1 for child in state.children if child.status == "failed")
+            runner_label = state.runner_name[:16]
+            model_label = (state.runner_model or "-")[:18]
+            latest_wave = state.waves[-1] if state.waves else None
+            planned = latest_wave.planned_runs if latest_wave is not None else 0
+            max_runs = latest_wave.max_runs if latest_wave is not None else (state.max_runs or state.runs)
+            lines.append(
+                f"{state.run_id:<32} {state.status:<9} {runner_label:<16} {model_label:<18} {state.current_wave:<5} {len(state.accepted_child_ids):>8} {failed:<4} {running_children:<4} {planned:>3}/{max_runs:<7} {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        click.echo("\n".join(lines))
 
 
 @swarm_group.command("list")
@@ -151,6 +219,76 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
     show_default=True,
     help="Remove child worktrees after completion instead of leaving them for inspection.",
 )
+@click.option(
+    "--reducer",
+    type=click.Choice(["merge", "best", "union", "vote"], case_sensitive=False),
+    default="merge",
+    show_default=True,
+    help="How candidates are combined: merge (solve), best (optimize/tune), union (search/audit), vote (verify).",
+)
+@click.option(
+    "--mode",
+    "exec_mode",
+    type=click.Choice(["edit", "readonly"], case_sensitive=False),
+    default="edit",
+    show_default=True,
+    help="edit = worktrees + patches (default); readonly = parallel reasoning, no diffs.",
+)
+@click.option(
+    "--job-kind",
+    default="solve",
+    show_default=True,
+    help="Free-form job label (solve, optimize, search, audit, verify, ...).",
+)
+@click.option(
+    "--search-space",
+    "search_space",
+    multiple=True,
+    help="Glob(s) candidates may change (optimize/migrate). Repeatable.",
+)
+@click.option(
+    "--quorum",
+    default=0,
+    show_default=True,
+    type=int,
+    help="vote reducer: votes required for consensus. 0 => simple majority.",
+)
+@click.option(
+    "--fitness-cmd",
+    "fitness_cmd",
+    help="optimize: shell command run in each worktree that emits the metric. Implies --reducer best.",
+)
+@click.option(
+    "--metric-parse",
+    default="stdout_float",
+    show_default=True,
+    help="Parse the metric: json:<dotted.key> | regex:<pat> | stdout_float | exit_code.",
+)
+@click.option(
+    "--direction",
+    type=click.Choice(["min", "max"], case_sensitive=False),
+    default="min",
+    show_default=True,
+    help="Whether lower or higher metric is better.",
+)
+@click.option(
+    "--gate-cmd",
+    "gate_cmd",
+    help="optimize: correctness gate command that must exit 0 for a candidate to count.",
+)
+@click.option(
+    "--baseline",
+    default="auto",
+    show_default=True,
+    help="optimize: baseline to beat. 'auto' measures HEAD once before wave 1, or pass a number.",
+)
+@click.option(
+    "--improve-margin",
+    default=0.0,
+    show_default=True,
+    type=float,
+    help="optimize: required improvement over baseline to accept a candidate.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable run metadata.")
 @click.argument("child_command", nargs=-1, type=str)
 @click.pass_context
@@ -169,6 +307,17 @@ def swarm_start(
     runner_model: str | None,
     runner_args: tuple[str, ...],
     cleanup: bool,
+    reducer: str,
+    exec_mode: str,
+    job_kind: str,
+    search_space: tuple[str, ...],
+    quorum: int,
+    fitness_cmd: str | None,
+    metric_parse: str,
+    direction: str,
+    gate_cmd: str | None,
+    baseline: str,
+    improve_margin: float,
     as_json: bool,
     child_command: tuple[str, ...],
 ) -> None:
@@ -178,6 +327,7 @@ def swarm_start(
     ``--runner`` profile. The child command receives a per-child
     ``ATELIER_ROOT``, workspace root, and ``ATELIER_SWARM_SPEC_PATH``.
     """
+    require_pro("swarm", "Multi-worktree swarm runs")
 
     if runs < 1:
         raise click.ClickException("--runs must be >= 1")
@@ -185,6 +335,17 @@ def swarm_start(
         raise click.ClickException("--max-waves must be >= 0")
     if max_evaluator_failures < 1:
         raise click.ClickException("--max-evaluator-failures must be >= 1")
+    fitness_spec = build_fitness_spec(
+        metric_command=fitness_cmd or "",
+        metric_parse=metric_parse,
+        direction=cast(FitnessDirection, direction),
+        gate_command=gate_cmd,
+        baseline=baseline,
+        improve_margin=improve_margin,
+        objective=job_kind if job_kind != "solve" else "",
+    )
+    # A supplied fitness implies a measured best-of-N; promote the default reducer.
+    effective_reducer = "best" if (fitness_spec is not None and reducer == "merge") else reducer
     repo_root = discover_repo_root(Path.cwd())
     root = Path(ctx.obj["root"])
     try:
@@ -226,6 +387,12 @@ def swarm_start(
         evaluator_backend=cast(SwarmEvaluatorBackend, evaluator_backend),
         evaluator_model=evaluator_model or "",
         max_evaluator_failures=max_evaluator_failures,
+        job_kind=job_kind,
+        reducer_name=effective_reducer,
+        exec_mode=cast(SwarmExecMode, exec_mode),
+        search_space=list(search_space),
+        fitness_spec=fitness_spec,
+        quorum=quorum,
     )
     if detach:
         coordinator_pid, log_path = spawn_swarm_coordinator(root, repo_root, state_path)
@@ -256,13 +423,18 @@ def swarm_start(
 
 
 @swarm_group.command("status")
-@click.argument("run_id")
+@click.argument("run_id", required=False)
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable output.")
 @click.pass_context
-def swarm_status(ctx: click.Context, run_id: str, as_json: bool) -> None:
-    """Show persisted coordinator state for RUN_ID."""
+def swarm_status(ctx: click.Context, run_id: str | None, as_json: bool) -> None:
+    """Show persisted coordinator state for RUN_ID.
 
-    state_path = resolve_state_path(ctx.obj["root"], run_id)
+    Omitting RUN_ID auto-selects the single running swarm.  When multiple
+    swarms are running, lists them and asks you to specify one.
+    """
+    root = Path(ctx.obj["root"])
+    run_id = _resolve_run_id(root, run_id, "status")
+    state_path = resolve_state_path(root, run_id)
     if not state_path.exists():
         raise click.ClickException(f"unknown swarm run: {run_id}")
     state = load_swarm_state(state_path)
@@ -378,7 +550,7 @@ def swarm_apply(
             click.echo(f"  > {command}")
             try:
                 # We use shell=True because commands are formatted strings with paths and multiple refs
-                subprocess.run(command, shell=True, check=True, cwd=ctx.obj["root"])
+                subprocess.run(command, shell=True, check=True, cwd=state.repo_root)
             except subprocess.CalledProcessError as exc:
                 raise click.ClickException(f"Command failed: {command}\n{exc}") from exc
         click.echo("\nSuccessfully applied all changes.")
@@ -396,18 +568,19 @@ def swarm_apply(
 
 
 @swarm_group.command("stop")
-@click.argument("run_id")
+@click.argument("run_id", required=False)
 @click.option("--cleanup", is_flag=True, help="Also remove the child git worktrees.")
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable output.")
 @click.pass_context
-def swarm_stop(ctx: click.Context, run_id: str, cleanup: bool, as_json: bool) -> None:
+def swarm_stop(ctx: click.Context, run_id: str | None, cleanup: bool, as_json: bool) -> None:
     """Stop a running swarm coordinator and optionally clean up its worktrees."""
-
-    state_path = resolve_state_path(ctx.obj["root"], run_id)
+    root = Path(ctx.obj["root"])
+    run_id = _resolve_run_id(root, run_id, "stop")
+    state_path = resolve_state_path(root, run_id)
     if not state_path.exists():
         raise click.ClickException(f"unknown swarm run: {run_id}")
     state = stop_swarm_run(
-        root=ctx.obj["root"],
+        root=root,
         state_path=state_path,
         cleanup=cleanup,
     )
@@ -418,23 +591,31 @@ def swarm_stop(ctx: click.Context, run_id: str, cleanup: bool, as_json: bool) ->
 
 
 @swarm_group.command("logs")
-@click.argument("run_id")
+@click.argument("run_id", required=False)
 @click.option("--child-id", help="Show a specific child log instead of the coordinator log.")
 @click.option("--stderr", is_flag=True, help="Read stderr instead of stdout for child logs.")
-@click.option("--tail", default=40, show_default=True, type=int, help="Number of lines to print.")
+@click.option("--tail", "-n", default=40, show_default=True, type=int, help="Number of lines to print.")
 @click.pass_context
 def swarm_logs(
     ctx: click.Context,
-    run_id: str,
+    run_id: str | None,
     child_id: str | None,
     stderr: bool,
     tail: int,
 ) -> None:
-    """Tail coordinator or child logs for a swarm run."""
+    """Show log output for a swarm run.
 
+    Without --child-id, shows the coordinator log.  With --child-id, shows that
+    child's stdout (or stderr with --stderr).  Use -n to control how many recent
+    lines are shown (default 40).
+
+    Omitting RUN_ID auto-selects the single running swarm.
+    """
+    root = Path(ctx.obj["root"])
+    run_id = _resolve_run_id(root, run_id, "logs")
     try:
         content = read_swarm_log(
-            Path(ctx.obj["root"]),
+            root,
             run_id,
             child_id=child_id,
             stderr=stderr,

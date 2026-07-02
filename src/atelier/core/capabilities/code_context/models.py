@@ -39,7 +39,7 @@ class SymbolRecord(BaseModel):
     end_line: int
     parent_symbol: str | None = None
     doc_summary: str | None = None
-    documentation: list[str] | None = None  # raw SCIP SymbolInformation.documentation strings
+    documentation: list[str] | None = None  # raw symbol documentation strings
     snippet: str | None = None
     content_hash: str
     score: float | None = None
@@ -130,27 +130,9 @@ class ContextPack(BaseModel):
     provenance: str = "local"
 
 
-class ImpactResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    target: dict[str, Any]
-    target_type: Literal["file", "symbol"]
-    file_path: str
-    affected_files: list[dict[str, Any]]
-    direct_importers: list[str]
-    transitive_importers: list[str]
-    affected_tests: list[str]
-    risk_level: Literal["low", "medium", "high", "critical"]
-    dead_code_candidates: list[str]
-    cache_hit: bool = False
-    tokens_saved: int = 0
-    provenance: str = "local"
-
-
 __all__ = [
     "ContextPack",
     "CrossLangReference",
-    "ImpactResult",
     "IndexStats",
     "IndexedFileRecord",
     "RouteRecord",

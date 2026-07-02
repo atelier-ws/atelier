@@ -6,7 +6,7 @@ Cursor is an AI-native IDE built on VS Code that supports MCP servers via
 This adapter wraps Atelier's reasoning context and rubric gates so Cursor's
 agent (the Cursor Tab / Composer) can:
 
-- Retrieve relevant ReasonBlocks before tackling a task
+- Retrieve relevant Playbooks before tackling a task
 - Run rubric gates to validate results
 - Rescue from failures with recovery hints
 - Record traces for post-run analysis
@@ -21,8 +21,8 @@ Or manually — add to ``~/.cursor/mcp.json``::
       "mcpServers": {
         "atelier": {
           "type": "stdio",
-          "command": "atelier-mcp",
-          "args": []
+          "command": "atelier",
+          "args": ["mcp"]
         }
       }
     }
@@ -134,13 +134,13 @@ class CursorAdapter(AgentAdapter):
         """Return installation instructions for Cursor IDE integration."""
         return (
             "# Cursor IDE ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
-            "2. atelier init && atelier-mcp    # verify MCP server starts\n"
+            "1. pip install atelier-ws\n"
+            "2. atelier init && atelier mcp    # verify MCP server starts\n"
             "3. Add to ~/.cursor/mcp.json:\n"
             '   { "mcpServers": {\n'
             '       "atelier": {\n'
             '           "type": "stdio",\n'
-            '           "command": "atelier-mcp",\n'
+            '           "command": "atelier",\n'
             '           "args": []\n'
             "       }\n"
             "   }}\n"

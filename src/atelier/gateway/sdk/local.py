@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
-from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
+from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability, ingest_failed_trace
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
-    ReasonBlock,
+    Playbook,
     RescueResult,
     Rubric,
     RubricResult,
@@ -18,18 +18,15 @@ from atelier.core.foundation.models import (
     TraceLearning,
     TraceStatus,
     ValidationResult,
-    to_jsonable,
 )
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.rubric_gate import run_rubric
-from atelier.core.improvement.failure_analyzer import analyze_failures
 from atelier.gateway.adapters.runtime import ContextRuntime
 from atelier.gateway.sdk.client import (
     AtelierClient,
     ContextResult,
     EvalRecord,
     EvalRunResult,
-    FailureAnalysisResult,
     LessonDecisionResult,
     LessonInboxResult,
     MemoryArchiveResult,
@@ -156,16 +153,8 @@ class LocalClient(AtelierClient):
             }
         )
         self.store.record_trace(trace)
+        ingest_failed_trace(self.store, trace)
         return TraceRecordResult(id=trace.id)
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        limit: int = 100,
-    ) -> FailureAnalysisResult:
-        traces = self.store.list_traces(domain=domain, status="failed", limit=limit)
-        return FailureAnalysisResult(clusters=analyze_failures([to_jsonable(t) for t in traces]))
 
     def get_savings(self) -> SavingsSummary:
         return SavingsSummary.model_validate(CostTracker(self.root).total_savings())
@@ -282,18 +271,18 @@ class LocalClient(AtelierClient):
             }
         )
 
-    def _list_reasonblocks(
+    def _list_playbooks(
         self,
         *,
         domain: str | None = None,
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
+    ) -> list[Playbook]:
         return self.store.list_blocks(domain=domain, include_deprecated=include_deprecated)
 
-    def _search_reasonblocks(self, *, query: str, limit: int = 20) -> list[ReasonBlock]:
+    def _search_playbooks(self, *, query: str, limit: int = 20) -> list[Playbook]:
         return self.store.search_blocks(query, limit=limit)
 
-    def _get_reasonblock(self, block_id: str) -> ReasonBlock | None:
+    def _get_playbook(self, block_id: str) -> Playbook | None:
         return self.store.get_block(block_id)
 
     def _list_rubrics(self, *, domain: str | None = None) -> list[Rubric]:

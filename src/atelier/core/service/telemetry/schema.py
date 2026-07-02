@@ -37,7 +37,7 @@ EVENTS: dict[str, EventSpec] = {
     "cli_command_completed": EventSpec({"command_name": STR, "session_id": STR, "duration_ms_bucket": STR, "ok": BOOL}),
     "mcp_tool_called": EventSpec({"tool_name": STR, "session_id": STR, "duration_ms_bucket": STR, "ok": BOOL}),
     "api_request": EventSpec({"endpoint": STR, "method": STR, "status_code": INT, "duration_ms_bucket": STR}),
-    "reasonblock_retrieved": EventSpec(
+    "playbook_retrieved": EventSpec(
         {
             "block_id_hash": STR,
             "domain": STR,
@@ -46,12 +46,8 @@ EVENTS: dict[str, EventSpec] = {
             "session_id": STR,
         }
     ),
-    "reasonblock_applied": EventSpec(
-        {"block_id_hash": STR, "domain": STR, "retrieval_score": FLOAT, "session_id": STR}
-    ),
-    "reasonblock_rejected": EventSpec(
-        {"block_id_hash": STR, "domain": STR, "rejection_reason": STR, "session_id": STR}
-    ),
+    "playbook_applied": EventSpec({"block_id_hash": STR, "domain": STR, "retrieval_score": FLOAT, "session_id": STR}),
+    "playbook_rejected": EventSpec({"block_id_hash": STR, "domain": STR, "rejection_reason": STR, "session_id": STR}),
     "plan_check_passed": EventSpec({"domain": STR, "rule_count": INT, "session_id": STR}),
     "plan_check_blocked": EventSpec({"domain": STR, "blocking_rule_id": STR, "severity": STR, "session_id": STR}),
     "plan_check_overridden": EventSpec({"domain": STR, "blocking_rule_id": STR, "session_id": STR}),
@@ -64,7 +60,6 @@ EVENTS: dict[str, EventSpec] = {
             "session_id": STR,
         }
     ),
-    "failure_cluster_matched": EventSpec({"cluster_id_hash": STR, "domain": STR, "session_id": STR}),
     "rescue_offered": EventSpec({"cluster_id_hash": STR, "rescue_type": STR, "session_id": STR}),
     "rescue_accepted": EventSpec({"cluster_id_hash": STR, "session_id": STR}),
     "frustration_signal_behavioral": EventSpec({"signal_type": STR, "session_id": STR}),
@@ -123,7 +118,6 @@ ENUMS: dict[tuple[str, str], set[str]] = {
         "frustration_signal_behavioral",
         "signal_type",
     ): {
-        "loop_detected",
         "retry_burst",
         "file_revert",
         "abandon_after_error",
@@ -250,5 +244,5 @@ def _example_value(key: str, expected: PropertyTypes) -> Any:
     if key == "surface":
         return "cli_input"
     if key == "signal_type":
-        return "loop_detected"
+        return "retry_burst"
     return "example"

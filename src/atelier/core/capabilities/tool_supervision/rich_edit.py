@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import json
 import logging
+import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.source_projection import (
+    MinifiedEditError,
     ProjectionEditError,
     ProjectionMapping,
     apply_compact_projection_edit,
     apply_compact_projection_edits,
+    apply_minified_edit,
+    language_for_minify,
 )
 
+from . import command_discipline
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
 from .path_safety import PROTECTED_PARTS
 from .symbol_edit import SymbolEditError, record_symbol_edit_memory, resolve_symbol_edit
@@ -45,7 +52,7 @@ def _parse_target(raw_path: str) -> TargetSpec:
     if "#cell=" in raw_path:
         path, cell = raw_path.split("#cell=", 1)
         return TargetSpec(path=path, cell=cell)
-    match = re.search(r"#(\d+)(?:-(\d+))?$", raw_path)
+    match = re.search(r":L(\d+)(?:-L(\d+))?$", raw_path, re.IGNORECASE)
     if match:
         return TargetSpec(
             path=raw_path[: match.start()],
@@ -55,15 +62,17 @@ def _parse_target(raw_path: str) -> TargetSpec:
     return TargetSpec(path=raw_path)
 
 
-def _resolve(root: Path, raw_path: str) -> Path:
+def _resolve(root: Path, raw_path: str, allowed_roots: list[Path] | None = None) -> Path:
     spec = _parse_target(raw_path)
     path = Path(spec.path)
     resolved = path if path.is_absolute() else root / path
     resolved = resolved.resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"path escape denied: {raw_path}") from exc
+    roots = [root, *(allowed_roots or [])]
+    if not any(resolved == r or resolved.is_relative_to(r) for r in roots):
+        raise ValueError(
+            f"path escape denied: {raw_path} is outside the workspace root {root} — "
+            "use the host's native tools for files outside the workspace"
+        )
     if any(part in PROTECTED_PARTS for part in resolved.parts):
         raise ValueError(f"protected path denied: {raw_path}")
     return resolved
@@ -71,6 +80,18 @@ def _resolve(root: Path, raw_path: str) -> Path:
 
 def _normalize_typography(text: str) -> str:
     return text.translate(_SMART_QUOTES)
+
+
+_ALL_WS = re.compile(r"\s+")
+_TRAILING_COMMA_BEFORE_CLOSER = re.compile(r",([)\]\}])")
+# Minimum stripped length before a contained new_string counts as "already
+# applied" — guards against trivially short coincidental matches.
+_REFORMAT_NOOP_MIN_CHARS = 24
+
+
+def _strip_formatting(text: str) -> str:
+    """Strip all whitespace and trailing commas so formatter rewraps compare equal."""
+    return _TRAILING_COMMA_BEFORE_CLOSER.sub(r"\1", _ALL_WS.sub("", text))
 
 
 def _placeholder_pattern(old_string: str) -> re.Pattern[str] | None:
@@ -92,6 +113,7 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     matched_lines = matched.splitlines()
     if len(new_lines) <= 1 or not old_lines or not matched_lines:
         return new
+    trailing_newline = "\n" if new.endswith("\n") else ""
     base_indent_text = _leading_whitespace(matched_lines[0]) if matched_lines else ""
     if not base_indent_text and len(old_lines) > 1:
         base_indent_text = _leading_whitespace(old_lines[1])
@@ -113,12 +135,17 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     matched_indent = len(matched_lines[0]) - len(matched_lines[0].lstrip())
     delta = matched_indent - old_indent
     if delta <= 0:
-        return "\n".join(new_lines)
+        return "\n".join(new_lines) + trailing_newline
     prefix = " " * delta
-    return "\n".join((prefix + line if line.strip() else line) for line in new_lines)
+    return "\n".join((prefix + line if line.strip() else line) for line in new_lines) + trailing_newline
 
 
-def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_string: str) -> tuple[str, int, int]:
+def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_string: str) -> tuple[str, int, int, str]:
+    """Replace old_string with new_string, returning (new_content, line_start, line_end, match_mode).
+
+    match_mode is one of: "noop", "exact", "normalized", "placeholder", "fuzzy".
+    Raises ValueError when the string cannot be located with sufficient confidence.
+    """
     lines = content.splitlines(keepends=True)
     start_offset = 0
     end_offset = len(content)
@@ -131,6 +158,11 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
 
     index = scoped.find(old_string)
     matched = old_string
+    match_mode = "exact"
+    if index != -1 and old_string and scoped.count(old_string) > 1:
+        raise ValueError(
+            "old_string is not unique within the resolved scope; add surrounding context to identify a single match"
+        )
     if index == -1:
         normalized_content = _normalize_typography(scoped)
         normalized_old = _normalize_typography(old_string)
@@ -138,6 +170,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         if normalized_index != -1:
             index = normalized_index
             matched = scoped[index : index + len(old_string)]
+            match_mode = "normalized"
     if index == -1:
         placeholder = _placeholder_pattern(old_string)
         if placeholder:
@@ -145,8 +178,18 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             if match:
                 index = match.start()
                 matched = match.group(0)
+                match_mode = "placeholder"
     if index != -1:
-        replacement = _adapt_indentation(old_string, new_string, matched)
+        # Exact matches replace verbatim: the caller's new_string is authoritative.
+        # Indentation adaptation is only a courtesy for whitespace-divergent matches
+        # (normalized/placeholder/fuzzy). Applying it to an exact match whose anchor
+        # begins inside an indented block wrongly re-indents replacement lines that
+        # legitimately dedent (e.g. a module-level constant inserted after a list
+        # literal), turning a valid edit into a SyntaxError.
+        if match_mode == "exact":
+            replacement = new_string
+        else:
+            replacement = _adapt_indentation(old_string, new_string, matched)
         absolute = start_offset + index
         line_start = content[:absolute].count("\n") + 1
         line_end = line_start + matched.count("\n")
@@ -154,7 +197,42 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             content[:absolute] + replacement + content[absolute + len(matched) :],
             line_start,
             line_end,
+            match_mode,
         )
+
+    # Idempotency fallback: every locate rung missed old_string, but the edit
+    # may simply have been applied already (stale retry).
+    if old_string and new_string and new_string in scoped:
+        idx = scoped.find(new_string)
+        absolute = start_offset + idx
+        line_start = content[:absolute].count("\n") + 1
+        line_end = line_start + new_string.count("\n")
+        return content, line_start, line_end, "noop"
+
+    # Formatter-tolerant variant: a post-edit formatter may have rewrapped the
+    # previously applied new_string, so compare with all whitespace stripped.
+    if old_string and new_string:
+        flat_new = _strip_formatting(new_string)
+        if len(flat_new) >= _REFORMAT_NOOP_MIN_CHARS and flat_new in _strip_formatting(scoped):
+            line = spec.start_line or 1
+            return content, line, line, "noop"
+
+    # Minified-projection fallback: old_string may have been copied from a
+    # minified read view (comments and blank lines stripped, inline
+    # whitespace collapsed). Re-minify the live file, match in minified space,
+    # then splice back onto the untransformed source. Skipped for line-scoped
+    # edits, whose disk line numbers are authoritative.
+    if spec.start_line is None:
+        minify_lang = language_for_minify(spec.path)
+        if minify_lang is not None:
+            try:
+                minified_content, minified_start, minified_end = apply_minified_edit(
+                    content, minify_lang, old_string, new_string, path=spec.path
+                )
+            except MinifiedEditError:
+                pass
+            else:
+                return minified_content, minified_start, minified_end, "minified"
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
@@ -162,6 +240,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             content[:start_offset] + fuzzed + content[end_offset:],
             line_start + content[:start_offset].count("\n"),
             line_end + content[:start_offset].count("\n"),
+            "fuzzy",
         )
     raise ValueError("old_string not found in file")
 
@@ -216,7 +295,7 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
             target -= 1
         cells.insert(target + (1 if action == "move_after" else 0), cell)
         return
-    if edit.get("overwrite") and spec.cell is not None:
+    if (edit.get("replace") or edit.get("overwrite")) and spec.cell is not None:
         index = _cell_index(cells, spec.cell)
         try:
             replacement = json.loads(str(edit.get("new_string", "")))
@@ -246,11 +325,127 @@ def _atomic_write(path: Path, text: str) -> None:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
         handle.write(text)
         tmp = Path(handle.name)
+    if path.exists():
+        # tmp.replace() discards the destination's metadata, stripping the exec
+        # bit from scripts/hooks. Carry the original mode (and other stat) over.
+        with contextlib.suppress(OSError):
+            shutil.copystat(path, tmp)
+            os.chmod(tmp, os.stat(path).st_mode)
     tmp.replace(path)
 
 
+def _build_retry_hint(
+    root: Path,
+    backups: dict[Path, bytes | None],
+    edit: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Build a retry_with hint so the caller can retry without a separate re-read turn.
+
+    Sources the failing edit's own file (pre-edit backup when available, disk
+    otherwise), locates the unique line containing the first non-blank line of
+    old_string, and ships that exact region back so the model can correct
+    old_string inline.
+    """
+    if not edit:
+        return None
+    old_string = str(edit.get("old_string") or "")
+    raw_path = str(edit.get("file_path") or edit.get("path") or "")
+    if not old_string or not raw_path:
+        return None
+    try:
+        path = _resolve(root, raw_path)
+    except Exception:  # noqa: BLE001 — hint is best-effort
+        return None
+
+    payload = backups.get(path)
+    if payload is not None:
+        try:
+            disk_content = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    else:
+        try:
+            disk_content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    # Already-applied detection against the whole file: a line-scoped edit may
+    # miss content that a formatter moved or rewrapped outside the scope.
+    new_string = str(edit.get("new_string") or "")
+    if new_string:
+        flat_new = _strip_formatting(new_string)
+        if len(flat_new) >= _REFORMAT_NOOP_MIN_CHARS and flat_new in _strip_formatting(disk_content):
+            return {
+                "already_applied": True,
+                "hint": (
+                    "edit appears already applied — the file already contains new_string "
+                    "(possibly reformatted); do not retry this edit"
+                ),
+            }
+
+    old_lines = old_string.splitlines()
+    first_anchor = next((line.strip() for line in old_lines if line.strip()), None)
+    if not first_anchor:
+        return None
+
+    disk_lines = disk_content.splitlines(keepends=True)
+    anchor_positions = [i for i, line in enumerate(disk_lines) if first_anchor in line]
+    if len(anchor_positions) != 1:
+        return None
+    # Unique anchor — extract a window the same size as old_string ± 2 lines
+    n_lines = max(len(old_lines), 1)
+    start = anchor_positions[0]
+    end = min(len(disk_lines), start + n_lines + 2)
+    excerpt = "".join(disk_lines[start:end])
+    clean_path = re.sub(r":L\d+.*$", "", raw_path, flags=re.IGNORECASE)
+    return {
+        "path": f"{clean_path}:L{start + 1}-L{end}",
+        "old_string": excerpt,
+        "hint": "exact disk content at nearest anchor — replace old_string with this",
+    }
+
+
+def _parse_gate_message(
+    path: Path,
+    new_content: str,
+    parse_err: SyntaxError,
+    applied: list[dict[str, Any]],
+) -> str:
+    """Build an actionable parse-gate error with the broken region inline.
+
+    Without the snippet agents retry the identical edit (the failure is in the
+    would-be content they never see), then defect to shell-based writes.
+    """
+    lineno = parse_err.lineno or 1
+    lines = new_content.splitlines()
+    lo = max(0, lineno - 6)
+    hi = min(len(lines), lineno + 5)
+    snippet = "\n".join(f"{i + 1}: {lines[i]}" for i in range(lo, hi))
+    fuzzy_note = ""
+    for entry in applied:
+        entry_path = re.sub(r":L\d+(-L\d+)?$", "", str(entry.get("path", "")), flags=re.IGNORECASE).split("#")[0]
+        mode = entry.get("match_mode")
+        if entry_path.endswith(path.name) and mode in ("normalized", "placeholder", "fuzzy"):
+            fuzzy_note = (
+                f" (old_string matched via {mode} mode — it may have anchored at the"
+                " wrong spot or covered less text than intended)"
+            )
+            break
+    return (
+        f"post-edit parse error in {path.name} at line {lineno}: {parse_err.msg}"
+        f" — edit rolled back{fuzzy_note}. Would-be content around the error:\n{snippet}\n"
+        "Do NOT resend the same edit. Extend old_string to cover the full region you are"
+        " replacing (e.g. the entire block through its closing brace); scope with"
+        ' "file.py:L10-L20" to disambiguate, or rewrite the whole file with replace=true.'
+    )
+
+
 def apply_rich_edits(
-    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True
+    edits: list[dict[str, Any]],
+    *,
+    repo_root: str | Path | None = None,
+    atomic: bool = True,
+    allowed_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """Apply rich Atelier edits in memory, writing each touched file once."""
     root = _repo_root(repo_root)
@@ -259,9 +454,12 @@ def apply_rich_edits(
     applied: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     resolved_symbol_edits = []
+    _current_edit: dict[str, Any] | None = None  # tracks the edit in-flight for error hints
+    _current_edit_idx: int = -1
 
     try:
-        for edit in edits:
+        for _current_edit_idx, edit in enumerate(edits):
+            _current_edit = edit
             if str(edit.get("kind") or "") == "symbol":
                 resolved = resolve_symbol_edit(edit, repo_root=root)
                 resolved_symbol_edits.append(resolved)
@@ -276,7 +474,7 @@ def apply_rich_edits(
             if not raw_path:
                 raise ValueError("file_path is required")
             spec = _parse_target(raw_path)
-            path = _resolve(root, raw_path)
+            path = _resolve(root, raw_path, allowed_roots=allowed_roots)
             if path not in backups:
                 backups[path] = path.read_bytes() if path.exists() else None
             content = file_state.get(path)
@@ -351,34 +549,134 @@ def apply_rich_edits(
                 )
                 continue
 
-            if edit.get("overwrite") or (not path.exists() and not edit.get("old_string")):
-                file_state[path] = str(edit.get("new_string", ""))
-                applied.append({"path": raw_path, "kind": "overwrite"})
+            _replace = edit.get("replace") or edit.get("overwrite")  # overwrite is the legacy name
+            if _replace or (not path.exists() and not edit.get("old_string")):
+                # replace=true replaces the WHOLE file. A #line range only ever scopes
+                # old_string matching, so replace+range is a contradiction: the
+                # range gets silently dropped and the entire file is replaced. Reject
+                # it loudly rather than truncate the file the caller meant to scope.
+                if _replace and spec.start_line is not None:
+                    rng = (
+                        f":L{spec.start_line}"
+                        if spec.start_line == spec.end_line
+                        else f":L{spec.start_line}-L{spec.end_line}"
+                    )
+                    raise ValueError(
+                        f"replace=true replaces the entire file and ignores the {rng} line "
+                        f"range on {spec.path!r}; drop the range to replace the whole file, or "
+                        "use old_string/projection to edit just those lines"
+                    )
+                new_string = str(edit.get("new_string", ""))
+                # Guard the other half of the footgun: an empty new_string would zero
+                # out a non-empty file (and an empty file is valid Python, so the parse
+                # gate below never catches it). Refuse unless the caller is creating a
+                # new/empty file or explicitly supplies replacement content.
+                if _replace and not new_string and content.strip():
+                    raise ValueError(
+                        f"overwrite=true with an empty new_string would truncate non-empty file "
+                        f"{spec.path!r} to nothing; pass the full replacement content, or use "
+                        "old_string to remove a specific region"
+                    )
+                file_state[path] = new_string
+                applied.append({"path": raw_path, "kind": "replace"})
+                continue
+
+            # Guard: replacement edits (old_string or line-scoped) on a
+            # non-existent file are always an error — the caller must use
+            # replace=true or omit old_string to create a new file.
+            if not path.exists():
+                raise ValueError(
+                    f"file {spec.path!r} does not exist — use replace=true or omit old_string to create a new file"
+                )
+
+            # Line-range direct replacement: when a :Lx-Ly scope is in the
+            # path and new_string is explicitly provided (even "" to delete those
+            # lines), replace the range verbatim — old_string is not required.
+            # If old_string IS also given, fall through to _replace_in_scope so
+            # it can do its normal scoped search within the narrowed range.
+            if spec.start_line is not None and "new_string" in edit and not edit.get("old_string"):
+                lines = content.splitlines(keepends=True)
+                lo = max(0, spec.start_line - 1)  # 0-indexed inclusive start
+                hi = min(len(lines), spec.end_line or spec.start_line)  # 0-indexed exclusive end
+                new_string = str(edit.get("new_string", ""))
+                repl = new_string.splitlines(keepends=True)
+                # Ensure the last replacement line ends with \n so surrounding
+                # content stays correctly separated after the splice.
+                if repl and not repl[-1].endswith("\n"):
+                    repl[-1] += "\n"
+                file_state[path] = "".join(lines[:lo] + repl + lines[hi:])
+                applied.append(
+                    {
+                        "path": raw_path,
+                        "hunks": [{"line_start": spec.start_line, "line_end": spec.end_line or spec.start_line}],
+                        "match_mode": "range",
+                    }
+                )
                 continue
 
             old_string = str(edit.get("old_string", ""))
             if not old_string:
-                raise ValueError("old_string is required unless overwrite=true or creating a new file")
-            new_content, line_start, line_end = _replace_in_scope(
+                raise ValueError("old_string is required unless replace=true or creating a new file")
+            new_content, line_start, line_end, match_mode = _replace_in_scope(
                 content, spec, old_string, str(edit.get("new_string", ""))
             )
             file_state[path] = new_content
             applied_entry: dict[str, Any] = {
                 "path": raw_path,
                 "hunks": [{"line_start": line_start, "line_end": line_end}],
+                "match_mode": match_mode,
             }
+            # Include the resulting file lines around the change so callers
+            # can confirm the edit without a separate read/explore turn.
+            _ctx_lines = new_content.splitlines()
+            _ctx_start = max(0, line_start - 2)
+            _ctx_end = min(len(_ctx_lines), line_end + 3)
+            _ctx_snippet = "\n".join(_ctx_lines[_ctx_start:_ctx_end])
+            if match_mode == "noop":
+                applied_entry["already_applied"] = True
+                # Explicit note with current file content: prevents the model
+                # from retrying an edit that already succeeded on a prior call.
+                applied_entry["note"] = (
+                    f"edit already applied — do NOT retry this edit. "
+                    f"File already contains new_string at line {line_start}. "
+                    f"Current file content around that line:\n{_ctx_snippet}"
+                )
+            else:
+                # Show the result of the change for immediate verification.
+                applied_entry["result"] = _ctx_snippet
             if resolved_symbol_edits and raw_path == resolved_symbol_edits[-1].scoped_file_path:
                 applied_entry["kind"] = "symbol"
                 applied_entry["symbol_id"] = resolved_symbol_edits[-1].symbol_id
             applied.append(applied_entry)
 
+        # Parse gate: verify every touched Python file compiles before writing.
+        # This catches structural corruption (e.g. a fuzzy match that ate a
+        # neighboring function) without requiring a separate lint turn.
+        for path, new_content in file_state.items():
+            if path.suffix == ".py":
+                try:
+                    ast.parse(new_content)
+                except SyntaxError as parse_err:
+                    raise ValueError(_parse_gate_message(path, new_content, parse_err, applied)) from parse_err
+
         for path, content in file_state.items():
             _atomic_write(path, content)
-        if resolved_symbol_edits:
-            from atelier.core.capabilities.code_context import CodeContextEngine
+        if file_state:
+            command_discipline.note_workspace_changed()
+        # Synchronously reindex every written file so the DB index_version is
+        # bumped before the edit response is returned. Combined with the
+        # _index_version_cached = None reset in mcp_server.py this ensures the
+        # next explore call gets a cache miss and re-queries the fresh FTS5
+        # index rather than returning stale pre-edit results.
+        if file_state:
+            try:
+                from atelier.core.capabilities.code_context import CodeContextEngine
 
-            engine = CodeContextEngine(root)
-            engine._reindex_files([item.repo_file_path for item in resolved_symbol_edits])
+                _idx_engine = CodeContextEngine(root, autosync_enabled=False)
+                _idx_engine._reindex_files(list(file_state.keys()))
+            except Exception:
+                logging.exception("Non-fatal: post-edit reindex failed")
+        if resolved_symbol_edits:
             for resolved in resolved_symbol_edits:
                 record_symbol_edit_memory(resolved)
         return {"applied": applied, "failed": [], "rolled_back": False, "writes": len(file_state)}
@@ -387,7 +685,33 @@ def apply_rich_edits(
         if isinstance(exc, SymbolEditError | ProjectionEditError):
             failed.append(exc.to_dict())
         else:
-            failed.append({"error": str(exc)})
+            # Identify which edit in the batch failed so the caller can
+            # pinpoint the problem without re-reading the whole response.
+            _edit_file = ""
+            _old_snip = ""
+            if _current_edit is not None:
+                _raw_path = str(_current_edit.get("file_path") or _current_edit.get("path") or "")
+                # Strip :Lx-Ly and #cell= suffixes for display
+                _edit_file = _parse_target(_raw_path).path if _raw_path else ""
+                _old_s = str(_current_edit.get("old_string", ""))
+                if _old_s:
+                    _old_snip = _old_s[:120] + ("…" if len(_old_s) > 120 else "")
+            err: dict[str, Any] = {
+                "error": str(exc),
+                "edit_index": _current_edit_idx,
+                **(({"edit_file": _edit_file}) if _edit_file else {}),
+                **(({"old_string_snippet": _old_snip}) if _old_snip else {}),
+            }
+            # Rich retry hint: when old_string wasn't found, ship the nearest
+            # disk region so the follow-up edit doesn't need a re-read turn.
+            if "old_string not found" in str(exc) or "not found in file" in str(exc):
+                hint = _build_retry_hint(root, backups, _current_edit)
+                if hint and hint.get("already_applied"):
+                    err["already_applied"] = True
+                    err["hint"] = hint["hint"]
+                elif hint:
+                    err["retry_with"] = hint
+            failed.append(err)
         if atomic:
             for path, payload in backups.items():
                 if payload is None:
@@ -396,7 +720,12 @@ def apply_rich_edits(
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(payload)
-            return {"applied": [], "failed": failed, "rolled_back": True}
+            envelope: dict[str, Any] = {"applied": [], "failed": failed, "rolled_back": True}
+            already = [str(entry.get("path")) for entry in applied if entry.get("already_applied")]
+            if already:
+                envelope["already_applied"] = already
+                envelope["note"] = "already_applied edits were found on disk pre-rollback and remain in effect"
+            return envelope
         for path, content in file_state.items():
             with contextlib.suppress(Exception):
                 _atomic_write(path, content)

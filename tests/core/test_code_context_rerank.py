@@ -62,7 +62,7 @@ def test_search_reranker_reorders_top_window_and_preserves_tail() -> None:
         hits,
         mode="hybrid",
         scope="repo",
-        source_loader=lambda symbol: (f"def {symbol.symbol_name}() -> str:\n    return '{symbol.symbol_name}'\n"),
+        source_loader=lambda symbol: f"def {symbol.symbol_name}() -> str:\n    return '{symbol.symbol_name}'\n",
     )
 
     assert [symbol.symbol_id for symbol in reranked] == ["s6", "s5", "s4", "s2", "s3", "s1", "s7"]
@@ -125,7 +125,7 @@ def test_search_symbols_reranks_after_filters_before_final_limit(tmp_path: Path,
     monkeypatch.setattr(
         engine._semantic_ranker,
         "reciprocal_rank_fuse",
-        lambda _lexical, _semantic, limit: [local_hits[0], commit_hit, *local_hits[1:]][:limit],
+        lambda _lexical, _semantic, limit, semantic_additive_k=0: [local_hits[0], commit_hit, *local_hits[1:]][:limit],
     )
 
     class _FakeReranker:
@@ -185,6 +185,7 @@ def test_search_symbols_reranks_after_filters_before_final_limit(tmp_path: Path,
 def test_tool_search_cache_keys_include_rerank_fingerprint(tmp_path: Path, monkeypatch) -> None:
     _write_symbol_file(tmp_path, "src/helper.py", "helper")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code-context.sqlite")
+    monkeypatch.setattr(type(engine._semantic_ranker), "available", property(lambda self: True))
     monkeypatch.setattr(engine, "_ensure_indexed", lambda: None)
     monkeypatch.setattr(engine, "_sync_symbol_intel", lambda: None)
 

@@ -1,0 +1,52 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] (empty response, status=200)
+
+=== Turn 2 (REPEAT) ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host communicate with main process RPC protocol"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/infra/code_intel/zoekt/server.py","src/atelier/infra/code_intel/lsp/transport.py","src/atelier/core/capabilities/mcp_integration/loader.py","src/atelier/core/capabilities/tool_supervision/bash_exec.py","src/a
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host"}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files":["src/atelier/core/capabilities/quality_router/execution_contract.py","src/atelier/core/capabilities/web_fetch.py","src/atelier/core/service/api.py","src/atelier/core/foundation/store.py","src/atelier/gateway/cli/commands/sessions.py","scripts/build_host_skills.sh","
+[assistant] I searched the repo and there's no "extension host" component here — this is the Atelier codebase (a Python tooling project), and "extension host" is a VS Code / Electron-editor concept. So I'll answer the general architecture question.
+
+## How the extension host talks to the main process (VS Code model)
+
+The extension host is a **separate process** from the main (renderer/window) process. They never share memory or call each other directly — all communication goes over a **message-passing RPC channel**.
+
+**The pieces:**
+
+1. **Separate process.** Extensions run in a dedicated Node.js process (the "extension host"), isolated from the UI. This keeps a misbehaving extension from freezing the editor's rendering and keeps extensions off the UI thread entirely.
+
+2. **A duplex byte stream connects them.** Depending on the setup, that transport is a socket, a Node `MessagePort`/IPC channel, or a WebSocket (for remote/web scenarios). Everything below is layered on top of this single stream.
+
+3. **RPC protocol on top of the stream.** VS Code uses an internal RPC layer (`RPCProtocol` over an `IMessagePassingProtocol`). Messages are length-prefixed and serialized (JSON, with special handling for `Buffer`/`VSBuffer` and `URI` objects). Each message is a request, a reply, or an event/cancellation.
+
+4. **Proxies and "shapes."** Both sides agree on a set of typed interfaces declared in `extHost.protocol.ts`:
+   - `MainThreadXxx` services live in the main process.
+   - `ExtHostXxx` services live in the extension host.
+   - Each side gets **proxy objects** for the other side's services (`getProxy(...)`). Calling a method on a proxy serializes the call, ships it over the stream, runs it on the far side, and returns a `Promise` with the result. So what looks like a normal async method call is actually a marshalled round-trip.
+
+5. **The `vscode` API is a facade.** When an extension calls `vscode.window.showInformationMessage(...)`, that runs in the extension host, which invokes a `MainThread*` proxy; the real work happens in the main process, and the result comes back over the same channel. Async-only by design — there are no synchronous cross-process calls.
+
+**Implications you'll feel as an extension author:**
+- Every API that crosses the boundary is `Promise`-based.
+- You can't pass live object references across — only serializable data (hence `URI`, `Position`, etc. are plain data types).
+- Heavy/blocking work in an extension can't hang the UI, but a chatty extension can still create latency from RPC round-trips.
+
+If you actually meant an "extension host" inside *this* repo (or a different project), point me at it and I'll trace the real code path instead of describing the VS Code model.

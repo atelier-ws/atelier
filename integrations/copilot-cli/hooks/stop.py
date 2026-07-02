@@ -8,7 +8,6 @@ Payload from Copilot CLI: {sessionId, transcriptPath, stopReason, timestamp, cwd
 """
 
 import collections
-import hashlib
 import json
 import os
 import sys
@@ -24,8 +23,55 @@ def _atelier_root() -> Path:
     return Path(os.environ.get("ATELIER_ROOT", "") or Path.home() / ".atelier")
 
 
-def _workspace_savings_path(workspace: str) -> Path:
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode()).hexdigest()[:12]
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
+
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _session_savings_path(workspace: str) -> Path:
+    """Resolve the per-session savings path, mirroring the MCP writer.
+
+    Delegates host segregation to the canonical `session_dir()` helper
+    (`atelier.core.foundation.paths`) rather than re-deriving
+    `_get_host_session_sidecar_path()` /`_workspace_savings_path()` from
+    mcp_server.py by hand. The old fallback to CLAUDE_CODE_SESSION_ID "for
+    parity" was itself a real cross-host collision bug: a copilot-cli session
+    and a Claude Code session that happened to share an id (or a stale
+    CLAUDE_CODE_SESSION_ID left over in the environment) would silently
+    corrupt each other's savings.jsonl. Only GITHUB_COPILOT_SESSION_ID
+    identifies a copilot-cli session. The host is hardcoded to "copilot" (not
+    `detect_host()`) since this file is only ever invoked by copilot-cli.
+
+    1. If GITHUB_COPILOT_SESSION_ID is set ->
+       session_dir(root, "copilot", sid) / "savings.jsonl".
+    2. Else workspaces/<sha256(resolve(ATELIER_WORKSPACE_ROOT or cwd))[:12]>/
+       session_savings.jsonl. The hash input is ATELIER_WORKSPACE_ROOT or the
+       cwd -- NOT payload["cwd"] -- so it agrees with the MCP when the env var
+       is present.
+    """
+    sid = os.environ.get("GITHUB_COPILOT_SESSION_ID", "").strip()
+    if sid:
+        try:
+            from atelier.core.foundation.paths import session_dir
+        except ImportError:
+            pass
+        else:
+            return session_dir(_atelier_root(), "copilot", sid) / "savings.jsonl"
+    workspace = str(Path(os.environ.get("ATELIER_WORKSPACE_ROOT") or workspace).resolve())
+    h = _workspace_key(workspace)
     return _atelier_root() / "workspaces" / h / "session_savings.jsonl"
 
 
@@ -97,10 +143,11 @@ def _read_events_stats(transcript_path: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _read_workspace_savings(workspace: str) -> dict[str, int]:
-    path = _workspace_savings_path(workspace)
+def _read_workspace_savings(workspace: str) -> dict[str, float]:
+    path = _session_savings_path(workspace)
     tokens_saved = 0
     calls_saved = 0
+    usd_saved = 0.0
     if path.exists():
         for raw in path.read_text(encoding="utf-8").splitlines():
             raw = raw.strip()
@@ -108,11 +155,19 @@ def _read_workspace_savings(workspace: str) -> dict[str, int]:
                 continue
             try:
                 entry = json.loads(raw)
-                tokens_saved += int(entry.get("tokens_saved") or 0)
-                calls_saved += int(entry.get("calls_saved") or 0)
             except json.JSONDecodeError:
-                pass
-    return {"tokens_saved": tokens_saved, "calls_saved": calls_saved}
+                continue
+            # Field names match the MCP writer's savings rows
+            # ({tokens, calls, cost_saved_usd, calls_usd}); the pre-priced USD
+            # is summed directly so the summary never shows a stale $0.
+            tokens_saved += int(entry.get("tokens") or 0)
+            calls_saved += int(entry.get("calls") or 0)
+            usd_saved += float(entry.get("cost_saved_usd") or 0) + float(entry.get("calls_usd") or 0)
+            # Compaction-credit rows carry their pre-priced dollars under "usd"
+            # (mirror savings_summary.py); add it so those dollars aren't dropped.
+            if entry.get("kind") == "compaction":
+                usd_saved += float(entry.get("usd") or 0)
+    return {"tokens_saved": tokens_saved, "calls_saved": calls_saved, "usd_saved": usd_saved}
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +186,7 @@ def _fmt_tok(n: int) -> str:
     return str(n)
 
 
-def _format_summary(stats: dict[str, Any], savings: dict[str, int]) -> str:
+def _format_summary(stats: dict[str, Any], savings: dict[str, float]) -> str:
     out = stats["output_tokens"]
     calls = stats["tool_calls"]
     tools_used = stats["tools_used"]
@@ -142,6 +197,7 @@ def _format_summary(stats: dict[str, Any], savings: dict[str, int]) -> str:
 
     tokens_saved = int(savings.get("tokens_saved") or 0)
     calls_saved = int(savings.get("calls_saved") or 0)
+    usd_saved = float(savings.get("usd_saved") or 0.0)
 
     lines = [f"tool calls: {calls}"]
 
@@ -157,7 +213,7 @@ def _format_summary(stats: dict[str, Any], savings: dict[str, int]) -> str:
     else:
         lines.append(f"tokens out: {_fmt_tok(out)}")
 
-    lines.append(f"savings: $0.0000 · {tokens_saved:,} tokens saved · {calls_saved} calls avoided")
+    lines.append(f"savings: ${usd_saved:.4f} · {tokens_saved:,} tokens saved · {calls_saved} calls avoided")
     lines.append(f"top tools: {tools_str}")
 
     return "\n".join(lines)

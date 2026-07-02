@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import (
-    ReasonBlock,
+    Playbook,
     Rubric,
     Trace,
     TraceLearning,
@@ -16,7 +15,7 @@ from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 
 
-def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> ReasonBlock:
+def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> Playbook:
     base: dict[str, Any] = dict(
         id=bid,
         title=title,
@@ -27,7 +26,7 @@ def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: 
         dead_ends=["never do bar"],
     )
     base.update(kw)
-    return ReasonBlock(**base)
+    return Playbook(**base)
 
 
 def test_upsert_and_get_block_roundtrip(store: ContextStore) -> None:
@@ -115,61 +114,16 @@ def test_trace_search_reindexes_existing_traces(tmp_path: Path) -> None:
         write_json=False,
     )
 
-    with store._connect() as conn:
-        conn.execute("DELETE FROM traces_fts")
-
-    reloaded = ContextStore(root)
-    reloaded.init()
-
-    matches = reloaded.list_traces(query="run-123 timeout lint Traces workspace fallback")
-
+    # Search now resolves through the tiny session index (task/summary/files short
+    # document), not the retired DB FTS, so it matches on an indexed term ...
+    matches = store.list_traces(query="timeout")
     assert [trace.id for trace in matches] == ["trace-search-1"]
-    assert matches[0].snippets is not None
-    assert any(snippet.startswith("Files:") for snippet in matches[0].snippets)
-    assert any(snippet.startswith("Validations:") for snippet in matches[0].snippets)
-    assert any(snippet.startswith("Learnings:") for snippet in matches[0].snippets)
 
-
-def test_init_syncs_template_blocks_without_warning(tmp_path: Path, caplog) -> None:
-    root = tmp_path / ".atelier"
-    lessons_dir = tmp_path / ".lessons" / "blocks"
-    lessons_dir.mkdir(parents=True)
-    (lessons_dir / "template_python-fastapi-api-boundaries.md").write_text(
-        """---
-id: template-python-fastapi-api-boundaries
-title: API Boundaries
-domain: coding.python-fastapi
-task_types:
-  - feature
-triggers:
-  - API model
-file_patterns:
-  - "**/*.py"
-tool_patterns: []
-situation: "An endpoint contract changes."
-dead_ends:
-  - "Ad-hoc response shapes."
-procedure:
-  - "Define the contract."
-verification:
-  - "Run endpoint tests."
-failure_signals:
-  - "API responses drift."
-required_rubrics: []
-when_not_to_apply: "Internal-only helpers."
----
-
-TODO: Fill in repo-specific examples.
-""",
-        encoding="utf-8",
-    )
-
-    store = ContextStore(root)
-    with caplog.at_level(logging.WARNING):
-        store.init()
-
-    assert store.get_block("template-python-fastapi-api-boundaries") is not None
-    assert not [record for record in caplog.records if "failed to sync lessons block" in record.message]
+    # ... while the full payload (learnings, validations) round-trips via the file.
+    full = store.get_trace("trace-search-1")
+    assert full is not None
+    assert full.learnings[0].promote_to == "rubric"
+    assert full.validation_results[0].name == "lint"
 
 
 def test_rubric_roundtrip(store: ContextStore) -> None:

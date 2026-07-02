@@ -60,8 +60,9 @@ export default function ProjectionInspector() {
   }, [payload?.content, comparison?.content]);
   const changedLineCount = comparisonRows.filter((row) => row.changed).length;
 
-  const loadProjection = async () => {
+  const loadProjection = async (shouldCommit: () => boolean = () => true) => {
     if (!path.trim()) {
+      if (!shouldCommit()) return;
       setPayload(null);
       setError(null);
       return;
@@ -71,13 +72,15 @@ export default function ProjectionInspector() {
       const response = await api.fileProjection(path, {
         view: view === "range" ? "range" : view,
         range: view === "range" ? range || undefined : undefined,
-        maxLines: Number.isFinite(maxLines) ? maxLines : 200,
+        maxLines: Number.isFinite(maxLines) && maxLines > 0 ? maxLines : 200,
       });
+      if (!shouldCommit()) return;
       setPayload(response);
       setComparison(null);
       setComparisonError(null);
       setError(null);
     } catch (err) {
+      if (!shouldCommit()) return;
       setPayload(null);
       setComparison(null);
       setComparisonError(null);
@@ -85,12 +88,19 @@ export default function ProjectionInspector() {
         err instanceof Error ? err.message : "Failed to load projection"
       );
     } finally {
-      setLoading(false);
+      if (shouldCommit()) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadProjection();
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void loadProjection(() => !cancelled);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [path, view, range, maxLines]);
 
   const loadExactComparison = async () => {
@@ -179,7 +189,11 @@ export default function ProjectionInspector() {
             <div className="space-y-2">
               <FieldLabel>Summary max lines</FieldLabel>
               <Input
-                value={Number.isFinite(maxLines) ? String(maxLines) : "200"}
+                value={
+                  Number.isFinite(maxLines) && maxLines > 0
+                    ? String(maxLines)
+                    : "200"
+                }
                 onChange={(event) =>
                   updateParam("max_lines", event.target.value)
                 }
@@ -235,7 +249,7 @@ export default function ProjectionInspector() {
 
           {segmentPreview.length > 0 && (
             <Card className="space-y-3">
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                 Segment preview
               </div>
               <div className="space-y-2 font-mono text-xs">
@@ -249,7 +263,7 @@ export default function ProjectionInspector() {
                     </span>
                     <span
                       className={
-                        segment.exact ? "text-emerald-400" : "text-amber-300"
+                        segment.exact ? "text-emerald-300" : "text-amber-300"
                       }
                     >
                       {segment.kind}
@@ -266,7 +280,7 @@ export default function ProjectionInspector() {
           )}
 
           <Card className="space-y-3">
-            <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
               Content preview
             </div>
             <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap border border-neutral-800 bg-black/30 p-4 text-sm text-neutral-200">
@@ -277,7 +291,7 @@ export default function ProjectionInspector() {
           {payload.projection.view === "compact" && !comparison && (
             <Card className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+                <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                   Exact comparison
                 </div>
                 <Button
@@ -301,7 +315,7 @@ export default function ProjectionInspector() {
 
           {comparison && (
             <Card className="space-y-3">
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                 Exact comparison
               </div>
               <div className="flex flex-wrap gap-2">
@@ -336,7 +350,7 @@ export default function ProjectionInspector() {
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-neutral-800 bg-black/20 p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
+      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">
         {label}
       </div>
       <div className="mt-1 text-sm text-neutral-100">{value}</div>
@@ -367,7 +381,7 @@ function ComparisonPane({
               : "grid grid-cols-[auto_1fr] gap-3 border-b border-neutral-900/60 px-3 py-1.5"
           }
         >
-          <span className="text-neutral-500">{row.line}</span>
+          <span className="text-neutral-400">{row.line}</span>
           <span>
             {side === "compact" ? row.compact || " " : row.exact || " "}
           </span>

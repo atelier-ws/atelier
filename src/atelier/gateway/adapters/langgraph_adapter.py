@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict
 
 from atelier.gateway.adapters.adapter_base import AdapterDecision, AdapterMode, AgentAdapter
 from atelier.gateway.sdk import AtelierClient
-from atelier.gateway.sdk.client import FailureAnalysisResult, SavingsSummary
+from atelier.gateway.sdk.client import SavingsSummary
 
 
 class LangGraphConfig(BaseModel):
@@ -59,7 +59,6 @@ class LangGraphAdapter(AgentAdapter):
     - ``edge_rubric_gate``      - rubric check on a conditional edge
     - ``node_failure_recovery`` - failure analysis when a node raises
     - ``graph_savings``         - cost-savings summary for a completed graph run
-    - ``graph_failure_clusters``- cluster repeated failures across a graph run
     """
 
     host: str = "langgraph"
@@ -140,17 +139,12 @@ class LangGraphAdapter(AgentAdapter):
         """Return cost-savings summary for the current graph run."""
         return self.benchmark_report()
 
-    def graph_failure_clusters(self, *, node_name: str | None = None, limit: int = 100) -> FailureAnalysisResult:
-        """Cluster repeated failures across a graph run."""
-        domain = self._domain_for(node_name) if node_name else self.default_domain
-        return self.failure_clusters(domain=domain, limit=limit)
-
     @classmethod
     def install(cls) -> str:
         """Return installation instructions for LangGraph integration."""
         return (
             "# LangGraph ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init\n"
             "3. Instantiate LangGraphAdapter in your graph builder:\n"
             "    atelier = LangGraphAdapter(client=AtelierClient.local(), mode='suggest')\n"

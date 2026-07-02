@@ -11,7 +11,7 @@ def test_mcp_server_defaults_to_service_and_project_lessons() -> None:
     assert 'os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")' in content
     assert 'os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())' in content
     assert '"ATELIER_LESSONS_ROOT"' in content
-    assert 'os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".lessons")' in content
+    assert 'os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".atelier/lessons")' in content
 
 
 def test_codex_installer_defaults_to_service_backed_mcp_and_project_lessons() -> None:
@@ -19,5 +19,5 @@ def test_codex_installer_defaults_to_service_backed_mcp_and_project_lessons() ->
 
     assert "ATELIER_MCP_MODE" not in content
     assert 'export ATELIER_ROOT="\\${HOME}/.atelier"' not in content
-    # Codex installer now relies on atelier-mcp defaults for service URL and lessons root
+    # Codex installer now relies on atelier mcp defaults for service URL and lessons root
     assert 'ATELIER_SERVICE_URL="http://127.0.0.1:8787"' not in content

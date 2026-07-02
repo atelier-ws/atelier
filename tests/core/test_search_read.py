@@ -41,7 +41,7 @@ def test_detect_lang_fallback() -> None:
 
 
 def test_safe_args_accepts_plain_query() -> None:
-    _assert_safe_args("ReasonBlock", "src/")  # must not raise
+    _assert_safe_args("Playbook", "src/")  # must not raise
 
 
 def test_safe_args_rejects_semicolons() -> None:
@@ -133,15 +133,15 @@ def test_cluster_snippets_score_higher_for_dense() -> None:
 def test_search_read_finds_matches_in_fixture_dir(tmp_path: Path) -> None:
     # Write a small corpus
     (tmp_path / "alpha.py").write_text(
-        "class ReasonBlock:\n    def __init__(self):\n        self.data = {}\n",
+        "class Playbook:\n    def __init__(self):\n        self.data = {}\n",
         encoding="utf-8",
     )
     (tmp_path / "beta.py").write_text(
-        "from alpha import ReasonBlock\n\ndef use():\n    rb = ReasonBlock()\n    return rb\n",
+        "from alpha import Playbook\n\ndef use():\n    rb = Playbook()\n    return rb\n",
         encoding="utf-8",
     )
 
-    result = search_read(query="ReasonBlock", path=str(tmp_path))
+    result = search_read(query="Playbook", path=str(tmp_path))
 
     assert isinstance(result, SearchReadResult)
     assert len(result.matches) >= 1
@@ -301,3 +301,36 @@ def test_search_read_to_dict_omits_empty_metadata_fields() -> None:
 def test_search_read_rejects_injection_attempt(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="search_read rejected"):
         search_read(query="foo; rm -rf /", path=str(tmp_path))
+
+
+def test_search_read_rejects_dotdot_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Workspace is a subdir; a relative ../ path that climbs out must be rejected.
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOPSECRET needle\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+
+    with pytest.raises(ValueError, match="escapes the workspace"):
+        search_read(query="needle", path="../secret.txt")
+
+
+def test_search_read_does_not_follow_symlinked_result_out_of_base(tmp_path: Path) -> None:
+    # A symlink inside the searched tree that points outside it must not be read.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "loot.py").write_text("SECRET = 'needle'\n", encoding="utf-8")
+
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "real.py").write_text("value = 'needle'\n", encoding="utf-8")
+    link = base / "loot.py"
+    try:
+        link.symlink_to(outside / "loot.py")
+    except (OSError, NotImplementedError):
+        pytest.skip("platform does not support symlinks")
+
+    result = search_read(query="needle", path=str(base))
+    for match in result.matches:
+        for snippet in match.snippets:
+            assert "SECRET" not in snippet.text

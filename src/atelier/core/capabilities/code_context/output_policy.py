@@ -58,23 +58,9 @@ CONTEXT_COMPACT = OutputPolicy(
     max_results=16,
     max_related_symbols=8,
     max_code_blocks=3,
-    max_code_block_chars=750,
+    max_code_block_chars=2000,  # per-section; total bounded by budget_tokens in engine
     max_total_tokens=5000,
     max_symbols_per_file=4,
-    container_outline_only=True,
-)
-
-NODE_OUTLINE_COMPACT = OutputPolicy(
-    include_code=False,
-    include_docstring=False,
-    include_snippet=False,
-    include_edges=False,
-    max_results=1,
-    max_related_symbols=24,
-    max_code_blocks=0,
-    max_code_block_chars=0,
-    max_total_tokens=2400,
-    max_symbols_per_file=24,
     container_outline_only=True,
 )
 
@@ -96,7 +82,6 @@ _POLICY_BY_OPERATION = {
     "search": SEARCH_COMPACT,
     "relation": RELATION_COMPACT,
     "context": CONTEXT_COMPACT,
-    "outline": NODE_OUTLINE_COMPACT,
     "node": NODE_CODE_COMPACT,
 }
 
@@ -105,7 +90,26 @@ def resolve_output_policy(operation: str) -> OutputPolicy:
     return _POLICY_BY_OPERATION.get(operation, SEARCH_COMPACT)
 
 
-def hard_cap_chars(text: str, max_chars: int) -> str:
+def hard_cap_chars(
+    text: str,
+    max_chars: int,
+    *,
+    file_path: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> str:
+    """Cap *text* to *max_chars*, appending a truncation marker.
+
+    When *start_line* and *end_line* are provided the marker includes the line
+    range so the reader knows where the missing content sits::
+
+        ... [truncated — L42-L80]
+
+    The file path is intentionally omitted from the marker — it is already
+    present in the surrounding section header, and repeating it (with the word
+    "read") caused agents to reflexively issue read calls even when the
+    skeleton they had was sufficient.
+    """
     if max_chars <= 0:
         return TRUNCATION_MARKER
     if len(text) <= max_chars:
@@ -113,6 +117,8 @@ def hard_cap_chars(text: str, max_chars: int) -> str:
     marker = TRUNCATION_MARKER
     if max_chars <= len(marker):
         return marker
+    if start_line is not None and end_line is not None:
+        marker = f"... [truncated — L{start_line}-L{end_line}]"
     available_chars = max_chars - len(marker)
     cut = text[:available_chars]
     newline_floor = int(available_chars * 0.8)
@@ -128,7 +134,6 @@ def hard_cap_chars(text: str, max_chars: int) -> str:
 __all__ = [
     "CONTEXT_COMPACT",
     "NODE_CODE_COMPACT",
-    "NODE_OUTLINE_COMPACT",
     "RELATION_COMPACT",
     "SEARCH_COMPACT",
     "TRUNCATION_MARKER",

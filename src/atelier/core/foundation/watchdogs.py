@@ -24,7 +24,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from atelier.core.foundation.models import ReasonBlock, Severity
+from atelier.core.foundation.models import Playbook, Severity
 
 
 def _step_matches_phrase(step: str, phrase: str) -> bool:
@@ -104,7 +104,7 @@ class WatchdogProfileDefinition:
 class Watchdog(Protocol):
     name: str
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None: ...
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -141,7 +141,7 @@ class RepeatedCommandFailure:
     def __init__(self, failure_threshold: int = 2) -> None:
         self.failure_threshold = failure_threshold
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         sigs = [sig for _, ok, sig in state.command_results if not ok]
         counts = Counter(sigs)
         for sig, n in counts.items():
@@ -151,7 +151,7 @@ class RepeatedCommandFailure:
                     severity="high",
                     message=f"Same command failed {n}x with error signature {sig}.",
                     suggestion=(
-                        "Stop retrying. Search ReasonBlocks for this failure mode "
+                        "Stop retrying. Search Playbooks for this failure mode "
                         "and adjust the approach before re-running."
                     ),
                 )
@@ -164,7 +164,7 @@ class RepeatedToolCall:
     def __init__(self, repeat_threshold: int = 3) -> None:
         self.repeat_threshold = repeat_threshold
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         counts = Counter(state.tool_calls)
         for (tool, sig), n in counts.items():
             if n >= self.repeat_threshold:
@@ -183,7 +183,7 @@ class RepeatedToolCall:
 class KnownDeadEnd:
     name = "known_dead_end"
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         for block in blocks:
             for dead in block.dead_ends:
                 for step in state.plan:
@@ -192,7 +192,7 @@ class KnownDeadEnd:
                             watchdog=self.name,
                             severity="high",
                             message=f"Plan contains known dead end: {dead!r}",
-                            suggestion=(f"Apply procedure from ReasonBlock '{block.title}' instead."),
+                            suggestion=(f"Apply procedure from Playbook '{block.title}' instead."),
                         )
         return None
 
@@ -200,13 +200,13 @@ class KnownDeadEnd:
 class SkippedVerification:
     name = "skipped_verification"
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         if state.declared_success and not state.validation_passed:
             return WatchdogAlert(
                 watchdog=self.name,
                 severity="high",
                 message="Agent declared success without verified validation.",
-                suggestion=("Run the rubric gate before accepting the result. " "No success without validation."),
+                suggestion=("Run the rubric gate before accepting the result. No success without validation."),
             )
         return None
 
@@ -217,13 +217,13 @@ class ContextBloat:
     def __init__(self, threshold_chars: int = 50_000) -> None:
         self.threshold_chars = threshold_chars
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         if state.tool_outputs_chars > self.threshold_chars:
             return WatchdogAlert(
                 watchdog=self.name,
                 severity="medium",
-                message=(f"Tool outputs accumulated {state.tool_outputs_chars} chars. " "Likely stale repeated logs."),
-                suggestion=("Compress trace to: files changed, errors seen, assumptions " "tested, current blocker."),
+                message=(f"Tool outputs accumulated {state.tool_outputs_chars} chars. Likely stale repeated logs."),
+                suggestion=("Compress trace to: files changed, errors seen, assumptions tested, current blocker."),
             )
         return None
 
@@ -242,7 +242,7 @@ HIGH_RISK_TOOLS = {
 class HighRiskAction:
     name = "high_risk_action"
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         for tool, _ in state.tool_calls:
             if tool in HIGH_RISK_TOOLS and not state.rubric_run:
                 return WatchdogAlert(
@@ -262,7 +262,7 @@ class SecondGuessing:
     def __init__(self, cycle_threshold: int = 1) -> None:
         self.cycle_threshold = cycle_threshold
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         per_file: dict[str, list[str]] = {}
         for path, action in state.file_events:
             per_file.setdefault(path, []).append(action)
@@ -290,12 +290,12 @@ class BudgetExhaustion:
 
     name = "budget_exhaustion"
 
-    def check(self, state: SessionState, blocks: Sequence[ReasonBlock]) -> WatchdogAlert | None:
+    def check(self, state: SessionState, blocks: Sequence[Playbook]) -> WatchdogAlert | None:
         if state.budget_max_tool_calls is not None and len(state.tool_calls) > state.budget_max_tool_calls:
             return WatchdogAlert(
                 watchdog=self.name,
                 severity="high",
-                message=(f"Tool call count {len(state.tool_calls)} exceeds budget " f"{state.budget_max_tool_calls}."),
+                message=(f"Tool call count {len(state.tool_calls)} exceeds budget {state.budget_max_tool_calls}."),
                 suggestion="Summarize-and-plan before continuing.",
             )
         if state.budget_max_repeated_commands is not None:
@@ -305,9 +305,7 @@ class BudgetExhaustion:
                     return WatchdogAlert(
                         watchdog=self.name,
                         severity="high",
-                        message=(
-                            f"Command {cmd!r} repeated {n}x exceeds budget " f"{state.budget_max_repeated_commands}."
-                        ),
+                        message=(f"Command {cmd!r} repeated {n}x exceeds budget {state.budget_max_repeated_commands}."),
                         suggestion="Summarize-and-plan before continuing.",
                     )
         if state.budget_max_estimated_tokens is not None and state.estimated_tokens > state.budget_max_estimated_tokens:
@@ -315,7 +313,7 @@ class BudgetExhaustion:
                 watchdog=self.name,
                 severity="high",
                 message=(
-                    f"Estimated tokens {state.estimated_tokens} exceeds budget " f"{state.budget_max_estimated_tokens}."
+                    f"Estimated tokens {state.estimated_tokens} exceeds budget {state.budget_max_estimated_tokens}."
                 ),
                 suggestion="Summarize-and-plan before continuing.",
             )
@@ -531,7 +529,7 @@ def _build_watchdog(key: str, weight: float) -> Watchdog:
 
 def run_watchdogs(
     state: SessionState,
-    blocks: Sequence[ReasonBlock],
+    blocks: Sequence[Playbook],
     watchdogs: Sequence[Watchdog] | None = None,
 ) -> list[WatchdogAlert]:
     watchdogs = watchdogs or default_watchdogs()

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from atelier.core.capabilities.tool_supervision.sql_tool import (
+    _bound_cell,
     detect_dialect,
     discover_connection,
     lint_sql,
@@ -72,3 +76,32 @@ def test_sql_sqlite_introspection_actions(tmp_path: Path) -> None:
     matched = {m["table"] for m in found["matches"]}
     assert "users" in matched  # matched by table name
     assert "orders" in matched  # matched by user_id column
+
+
+def test_bound_cell_spills_full_text_when_truncated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A large TEXT cell used to be clipped with the rest silently discarded.
+    With T7 spill enabled (default), the full cell is persisted and a recovery
+    hint names the path.
+    """
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path / "spill"))
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)  # default on
+    full = "y" * 5000 + "TAIL-MARKER"
+    out = _bound_cell(full)
+    assert "TAIL-MARKER" not in out  # dropped from the truncated cell
+    assert "spilled to" in out
+    match = re.search(r"spilled to (\S+\.txt);", out)
+    assert match is not None
+    recovered = Path(match.group(1)).read_text(encoding="utf-8")
+    assert recovered == full
+
+
+def test_bound_cell_no_spill_hint_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "0")
+    out = _bound_cell("y" * 5000)
+    assert "spilled to" not in out
+    assert "truncated" in out
+
+
+def test_bound_cell_passes_small_values_through() -> None:
+    assert _bound_cell("short") == "short"
+    assert _bound_cell(None) is None

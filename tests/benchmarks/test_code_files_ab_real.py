@@ -57,23 +57,21 @@ def _write_fixture_repo(root: Path) -> None:
     (root / "docs").mkdir(parents=True, exist_ok=True)
 
     (root / "src" / "atelier" / "auth.py").write_text(
-        "class AuthService:\n" "    def login(self, email: str) -> bool:\n" "        return bool(email)\n",
+        "class AuthService:\n    def login(self, email: str) -> bool:\n        return bool(email)\n",
         encoding="utf-8",
     )
     (root / "src" / "atelier" / "routes.py").write_text(
-        "def route_login() -> str:\n" "    return '/login'\n",
+        "def route_login() -> str:\n    return '/login'\n",
         encoding="utf-8",
     )
     (root / "tests" / "test_auth.py").write_text(
-        "from src.atelier.auth import AuthService\n\n"
-        "def test_login() -> None:\n"
-        "    assert AuthService().login('x')\n",
+        "from src.atelier.auth import AuthService\n\ndef test_login() -> None:\n    assert AuthService().login('x')\n",
         encoding="utf-8",
     )
     (root / "docs" / "readme.md").write_text("# Fixture\n", encoding="utf-8")
     for idx in range(1, 10):
         (root / "src" / "atelier" / f"module_{idx}.py").write_text(
-            "def run() -> str:\n" f"    return 'module_{idx}'\n",
+            f"def run() -> str:\n    return 'module_{idx}'\n",
             encoding="utf-8",
         )
         (root / "tests" / f"test_module_{idx}.py").write_text(
@@ -106,6 +104,7 @@ def _baseline_recursive_listing(repo_root: Path) -> str:
 def test_code_files_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     t0 = time.perf_counter()
     native_text = _baseline_recursive_listing(tmp_path)

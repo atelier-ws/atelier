@@ -19,7 +19,7 @@ import logging
 import os
 import re
 import typing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +82,8 @@ def _age(ts: str) -> str:
 
 
 def _dur(t0: str, t1: str) -> str:
+    if not t0 or not t1:
+        return ""
     try:
         a = datetime.fromisoformat(t0.replace("Z", "+00:00"))
         b = datetime.fromisoformat(t1.replace("Z", "+00:00"))
@@ -124,6 +126,90 @@ def _rule(label: str = "") -> None:
         click.echo(f"{_DIM}{'─' * _W}{_RESET}")
 
 
+def render_overview(root: Path, *, days: int = 7, n_runs: int = 8) -> str:
+    """Render the terminal dashboard: a windowed spend/savings rollup + recent runs.
+
+    Composes the same ``build_insights`` aggregation the ``insights`` CLI and the
+    web Savings page read, so every surface agrees on the numbers. Plain text by
+    design — the legacy ``_render_dashboard`` ANSI plumbing is intentionally not
+    reused (that was the surface asking for a beauty treatment).
+    """
+    from atelier.infra.runtime.insights import _bar, build_insights
+    from atelier.infra.runtime.session_report import build_report, list_run_files
+
+    until = datetime.now(UTC)
+    since = until - timedelta(days=days)
+    window = build_insights(root, since=since, until=until)
+
+    width = 60
+    lines: list[str] = [f"Atelier · last {days} days", "─" * width]
+
+    # At-a-glance
+    if window.session_count:
+        avg_min = int(window.total_duration_seconds / window.session_count / 60)
+        total_h, rem = divmod(int(window.total_duration_seconds), 3600)
+        lines.append(f"  Sessions   {window.session_count}   (avg {avg_min} min · total {total_h}h {rem // 60}m)")
+    else:
+        lines.append("  Sessions   0")
+    lines.append(f"  AI spend   ${window.total_cost_usd:.2f}")
+    if window.total_cost_usd > 0:
+        frac = window.total_atelier_savings_usd / window.total_cost_usd
+        lines.append(
+            f"  Saved      ${window.total_atelier_savings_usd:.2f}   ({frac * 100:.0f}% of spend)   {_bar(frac)}"
+        )
+    else:
+        lines.append(f"  Saved      ${window.total_atelier_savings_usd:.2f}")
+
+    # Cost by model
+    if window.cost_by_model:
+        lines.append("")
+        lines.append("  Cost by model")
+        for model, cost in list(window.cost_by_model.items())[:4]:
+            frac = cost / window.total_cost_usd if window.total_cost_usd > 0 else 0.0
+            lines.append(f"    {model:<20}${cost:>7.2f}  {frac * 100:>3.0f}%  {_bar(frac, 14)}")
+
+    # Top tools
+    if window.cost_by_tool:
+        lines.append("")
+        lines.append("  Top tools")
+        for tool, cost in list(window.cost_by_tool.items())[:4]:
+            lines.append(f"    {tool:<20}${cost:>7.2f}")
+
+    # Recent runs
+    rows_added = False
+    for run_file in list_run_files(root)[:n_runs]:
+        try:
+            snap: dict[str, Any] = json.loads(run_file.read_text(encoding="utf-8"))
+            report = build_report(snap, root)
+        except Exception:  # noqa: BLE001 - best-effort per-run row; skip unreadable files
+            continue
+        if not rows_added:
+            lines.append("")
+            lines.append("  Recent runs")
+            rows_added = True
+        sid = (report.session_id or str(snap.get("run_id") or snap.get("id") or ""))[:6] or "?"
+        agent = str(snap.get("agent") or "-")[:10]
+        task_line = (str(snap.get("task") or "").strip().splitlines() or [""])[0]
+        task = (task_line[:26] + "…") if len(task_line) > 26 else (task_line or "-")
+        status = str(snap.get("status") or "?")
+        mark = {"success": "✓", "complete": "✓", "failed": "✗", "error": "✗"}.get(status, "•")
+        age = _age(str(snap.get("updated_at") or snap.get("created_at") or ""))
+        lines.append(
+            f"    {sid:<7}{agent:<11}{task:<28}{mark} ${report.total_cost_usd:>6.2f}  "
+            f"saved ${report.total_atelier_savings_usd:>5.2f}  {age}"
+        )
+
+    if window.session_count or rows_added:
+        lines.append("")
+        lines.append("  → drill into a run:  atelier session report <id>")
+        lines.append("    open in browser:   atelier dashboard open")
+    else:
+        lines.append("")
+        lines.append("  No sessions yet — run any AI command, then check back.")
+
+    return "\n".join(lines)
+
+
 def _render_dashboard(root: Path, *, line_mode: bool, n_runs: int, session_id: str | None) -> None:
     """Render the runs dashboard (same output as the old atelier-status binary)."""
 
@@ -153,50 +239,64 @@ def _render_dashboard(root: Path, *, line_mode: bool, n_runs: int, session_id: s
 
 
 def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id: str | None) -> None:
-    runs_dir = root / "runs"
+    sessions_dir = root / "sessions"
 
     # Resolve ledger path
     ledger_path: str | None = None
     if session_id:
-        candidate = runs_dir / f"{session_id}.json"
-        if candidate.exists():
+        from atelier.core.foundation.paths import find_session_dir
+
+        existing = find_session_dir(root, session_id)
+        candidate = (existing / "run.json") if existing is not None else None
+        if candidate is not None and candidate.exists():
             ledger_path = str(candidate)
-    elif runs_dir.is_dir():
-        files = sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
+    elif sessions_dir.is_dir():
+        files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)
         if files:
             ledger_path = str(files[0])
     if not ledger_path:
         ledger_path = "NONE"
 
-    # Load savings data
+    # Load savings from the canonical per-session ledger (store A) — the same
+    # source the statusline, `atelier savings` CLI, and web Savings page read,
+    # so the dashboard's saved totals agree with every other surface.
+    from atelier.core.capabilities.savings_summary import _price_savings_row
+
     savings_map: dict[str, float] = {}
     routing_map: dict[str, float] = {}
     compaction_map: dict[str, float] = {}
     routing_total = 0.0
     compaction_total = 0.0
-    savings_path = root / "live_savings_events.jsonl"
-    if savings_path.exists():
-        for line in savings_path.read_text().splitlines():
+    sessions_root = root / "sessions"
+    if sessions_root.is_dir():
+        for sidecar in sessions_root.glob("**/savings.jsonl"):
+            rid = sidecar.parent.name
             try:
-                d = json.loads(line)
-                rid = d.get("session_id")
-                cost = float(d.get("cost_saved_usd", 0.0) or 0.0)
-                lever = str(d.get("lever") or d.get("tool_name") or "")
-                bucket = (
-                    "routing" if "routing" in lever.lower() else "compaction" if "compact" in lever.lower() else "other"
-                )
-                if rid:
-                    savings_map[rid] = savings_map.get(rid, 0.0) + cost
-                    if bucket == "routing":
-                        routing_map[rid] = routing_map.get(rid, 0.0) + cost
-                        routing_total += cost
-                    elif bucket == "compaction":
-                        compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
-                        compaction_total += cost
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                # Best-effort per-row savings aggregation; skip malformed records.
-                logger.debug("dashboard cost aggregation failed", exc_info=True)
+                sidecar_lines = sidecar.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for line in sidecar_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(d, dict) or d.get("kind") == "session_end":
+                    continue
+                _pt, usd, _calls, calls_usd, _up = _price_savings_row(d)
+                cost = usd + calls_usd
+                if cost <= 0:
+                    continue
+                savings_map[rid] = savings_map.get(rid, 0.0) + cost
+                kind = str(d.get("kind") or "")
+                if kind == "routing":
+                    routing_map[rid] = routing_map.get(rid, 0.0) + cost
+                    routing_total += cost
+                elif kind == "compaction":
+                    compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
+                    compaction_total += cost
 
     # Load cost + token data from DB
     cost_map: dict[str, float] = {}
@@ -208,28 +308,51 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         try:
             import sqlite3
 
+            from atelier.core.capabilities.pricing import usage_cost_usd
+            from atelier.core.capabilities.savings_summary import resolve_model_id
+            from atelier.core.foundation.store import ContextStore
+
+            cstore = ContextStore(root)
+            token_rows = cstore.token_rows()
+            for trow in token_rows:
+                sid = trow["session_id"]
+                inp, out, cr, th = (
+                    trow["input_tokens"],
+                    trow["output_tokens"],
+                    trow["cached_input_tokens"],
+                    trow["thinking_tokens"],
+                )
+                cost_map[sid] = cost_map.get(sid, 0.0) + usage_cost_usd(
+                    resolve_model_id(trow.get("model")),
+                    input_tokens=inp or 0,
+                    output_tokens=out or 0,
+                    cache_read_tokens=cr or 0,
+                    thinking_tokens=th or 0,
+                )
+                tokens_map[sid] = tokens_map.get(sid, 0) + (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
+            total_runs_in_db = len(token_rows)
+            db_runs = cstore.list_trace_payloads(limit=1000)
+
+            # context_budget remains in atelier.db (separate table, not traces).
+            # Group by model so each row is priced with its own rate, then
+            # overwrite the trace-derived totals (one session can span models).
+            budget_cost: dict[str, float] = {}
+            budget_tokens: dict[str, int] = {}
             with sqlite3.connect(str(db_path)) as conn:
                 for row in conn.execute(
-                    "SELECT id, json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host FROM traces"
+                    "SELECT session_id, model, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) "
+                    "FROM context_budget GROUP BY session_id, model"
                 ):
-                    rid, inp, out, cr, th, _h = row
-                    c = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
-                    cost_map[rid] = c
-                    tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
-
-                total_runs_in_db = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
-
-                for row in conn.execute(
-                    "SELECT session_id, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) FROM context_budget GROUP BY session_id"
-                ):
-                    rid, inp, out, cr = row
-                    cost = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
-                    cost_map[rid] = cost
-                    tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0)
-
-                for row in conn.execute("SELECT payload FROM traces ORDER BY created_at DESC LIMIT 1000"):
-                    p = json.loads(row[0])
-                    db_runs.append(p)
+                    rid, model, inp, out, cr = row
+                    budget_cost[rid] = budget_cost.get(rid, 0.0) + usage_cost_usd(
+                        resolve_model_id(model),
+                        input_tokens=inp or 0,
+                        output_tokens=out or 0,
+                        cache_read_tokens=cr or 0,
+                    )
+                    budget_tokens[rid] = budget_tokens.get(rid, 0) + (inp or 0) + (out or 0) + (cr or 0)
+            cost_map.update(budget_cost)
+            tokens_map.update(budget_tokens)
         except Exception:
             logging.exception("dashboard trace read failed")
             # Best-effort SQLite trace read; dashboard still renders without DB data.
@@ -312,8 +435,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     all_run_entries: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
-    if runs_dir.is_dir():
-        for rf in sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True):
+    if sessions_dir.is_dir():
+        for rf in sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True):
             try:
                 d = json.loads(rf.read_text())
                 rid = d.get("session_id") or rf.stem
@@ -426,7 +549,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         _box_line(meta_line)
 
     _rule()
-    _box_line(f"{_DIM}store: {root}   runs dir: {runs_dir}{_RESET}")
+    _box_line(f"{_DIM}store: {root}   runs dir: {sessions_dir}{_RESET}")
     _rule()
 
 
@@ -449,8 +572,7 @@ def _render_optimization_summary(result: Any) -> None:
     click.echo("Optimization Autopilot")
     click.echo("─────────────────────────────────────────────────")
     click.echo(
-        f"Analysed your last 7 days: {result.sessions_analysed} sessions, "
-        f"{result.replayable_tasks} replayable tasks"
+        f"Analysed your last 7 days: {result.sessions_analysed} sessions, {result.replayable_tasks} replayable tasks"
     )
     click.echo("")
     click.echo(f"Current setting: {result.current_policy.name}")
@@ -474,7 +596,7 @@ def _render_optimization_summary(result: Any) -> None:
     click.echo(f"Confidence: {result.confidence.title()}")
     click.echo(f"  {result.confidence_reason}")
     click.echo(
-        f"Golden corpus: {result.golden.passed}/{result.golden.total} well-formed tasks " f"({result.golden.score:.0%})"
+        f"Golden corpus: {result.golden.passed}/{result.golden.total} well-formed tasks ({result.golden.score:.0%})"
     )
 
 

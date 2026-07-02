@@ -10,7 +10,7 @@ This skill activates automatically when you receive coding tasks. You can also i
 
 Atelier provides:
 
-- **ReasonBlocks**: Proven procedures for specific domains (Shopify, PDP, tracker, etc.)
+- **Playbooks**: Proven procedures for specific domains (Shopify, PDP, tracker, etc.)
 - **Rubrics**: Verification gates to ensure you didn't miss critical steps
 - **Rescue procedures**: What to do when you hit repeated failures
 
@@ -19,7 +19,7 @@ Atelier provides:
 | Command             | What it does                      |
 | ------------------- | --------------------------------- |
 | `/atelier:status`   | Show current run state            |
-| `/atelier:context`  | Show loaded ReasonBlocks + rubric |
+| `/atelier:context`  | Show loaded Playbooks + rubric |
 | `/atelier:settings` | Show Atelier configuration        |
 
 ## MCP Tools
@@ -27,7 +27,7 @@ Atelier provides:
 You have these tools via the `atelier` MCP server:
 
 ```python
-# Before a task - get relevant ReasonBlock context
+# Before a task - get relevant Playbook context
 context(task="...", domain="...", tools=[...])
 
 # On repeated failure - get rescue procedure
@@ -62,14 +62,13 @@ memory(session_id="run_123")
 search(query="publish_product function", path="src/")
 
 # Deterministic batch edits (optional — host MultiEdit remains default)
-edit(edits=[{"path": "src/foo.py", "old_string": "...", "new_string": "..."}])
+edit(edits=[{"path": "src/foo.py", "old": "...", "new": "..."}])
 
 # Read-only SQL inspection
 sql(connection_alias="default", sql="SELECT * FROM products LIMIT 5")
 
 # Code index operations
 code(op="search", repo_root=".", query="publish_product")
-code(op="impact", repo_root=".", file_path="src/foo.py")
 
 # Advise before host-native /compact — get preserve/reinject hints
 compact(session_id="run_123")
@@ -81,7 +80,7 @@ compact(session_id="run_123")
 # Review pending lesson candidates
 atelier lesson inbox(domain="beseam.shopify.publish", limit=10)
 
-# Approve or reject a candidate (approved → ReasonBlock)
+# Approve or reject a candidate (approved → Playbook)
 atelier lesson decide(lesson_id="les_001", decision="approve", reviewer="atelier:code", reason="...")
 ```
 

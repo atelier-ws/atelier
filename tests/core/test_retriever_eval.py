@@ -9,11 +9,11 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.runtime import AtelierRuntimeCore
 from atelier.gateway.cli import cli
 
-_GROUND_TRUTH_PATH = Path(__file__).resolve().parents[2] / "src" / "benchmarks" / "retrieval" / "ground_truth.jsonl"
+_GROUND_TRUTH_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "retrieval" / "ground_truth.jsonl"
 _BASELINE_FLOOR = {
     "query_count": 26,
     "recall_at_5": 0.70,
@@ -87,7 +87,7 @@ def _ensure_eval_blocks_exist(runtime: AtelierRuntimeCore) -> set[str]:
         tool_patterns = [str(item) for case in block_cases for item in case.get("tools", [])][:5]
 
         runtime.store.upsert_block(
-            ReasonBlock(
+            Playbook(
                 id=block_id,
                 title=block_id.replace("-", " ").title(),
                 domain=domain,
@@ -181,68 +181,6 @@ def _evaluate(rt: AtelierRuntimeCore, cases: list[dict[str, Any]], *, limit: int
         "mean_distinct_domains_per_query": distinct_domain_total / query_count,
         "cases": per_query,
     }
-
-
-def _cold_start_block_in_top_five(tmp_path: Path) -> bool:
-    runtime = _init_runtime(tmp_path / "cold-start")
-    now = datetime.now(UTC)
-
-    runtime.store.upsert_block(
-        ReasonBlock(
-            id="eval-cold-start-trace-playbook",
-            title="Cold Start Retrieval Trace Playbook",
-            domain="coding",
-            triggers=["retrieval trace", "candidate count", "token budget"],
-            file_patterns=["src/atelier/core/capabilities/context_reuse/**"],
-            tool_patterns=["search"],
-            situation="When a retrieval pipeline needs candidate-level trace coverage.",
-            dead_ends=["guessing why candidates disappeared without per-candidate evidence"],
-            procedure=[
-                "Emit candidate count for every retrieval call",
-                "Record BM25, FTS, and base rank per block",
-                "Capture token_budget_evicted and wrong_domain drop reasons",
-            ],
-            verification=["retrieval trace includes candidate drop reasons"],
-            success_count=0,
-            failure_count=0,
-            created_at=now,
-            updated_at=now,
-        )
-    )
-
-    for idx in range(6):
-        runtime.store.upsert_block(
-            ReasonBlock(
-                id=f"eval-legacy-trace-playbook-{idx}",
-                title=f"Legacy Retrieval Trace Playbook {idx}",
-                domain="coding",
-                triggers=["retrieval trace", "candidate count", "token budget"],
-                file_patterns=["src/atelier/core/capabilities/context_reuse/**"],
-                tool_patterns=["search"],
-                situation="When adding generic retrieval trace logging.",
-                dead_ends=["adding logs without rank attribution"],
-                procedure=[
-                    "Add generic retrieval trace logs",
-                    "Print candidate information without drop reasons",
-                ],
-                verification=["logs emitted"],
-                success_count=24,
-                failure_count=1,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-
-    ranked = runtime.context_reuse.retrieve(
-        task="Add retrieval trace for candidate count and token budget drop reasons",
-        domain="coding",
-        files=["src/atelier/core/capabilities/context_reuse/capability.py"],
-        tools=["search"],
-        errors=["wrong_domain reason missing from retrieval trace"],
-        limit=5,
-    )
-    # print(f"DEBUG: ranked ids: {[item.block.id for item in ranked]}")
-    return any(item.block.id == "eval-cold-start-trace-playbook" for item in ranked)
 
 
 def test_context_retrieval_eval_metrics(retrieval_eval_runtime: AtelierRuntimeCore) -> None:

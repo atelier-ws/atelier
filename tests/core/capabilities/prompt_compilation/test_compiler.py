@@ -72,7 +72,7 @@ def _sample_blocks() -> list[PromptBlock]:
         ),
         _block(
             id="rb/team",
-            kind=BlockKind.REASONBLOCK,
+            kind=BlockKind.PLAYBOOK,
             content="Always preserve deterministic order",
             stability=Stability.BRANCH,
         ),
@@ -86,7 +86,7 @@ def test_stable_blocks_sort_before_volatile() -> None:
         BlockKind.TOOL_SCHEMA,
         BlockKind.SYSTEM,
         BlockKind.REPO_SUMMARY,
-        BlockKind.REASONBLOCK,
+        BlockKind.PLAYBOOK,
         BlockKind.USER_TASK,
         BlockKind.SCRATCHPAD,
     ]

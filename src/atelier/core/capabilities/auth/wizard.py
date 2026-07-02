@@ -1,4 +1,5 @@
 """Interactive provider authentication wizard."""
+
 from __future__ import annotations
 
 import os
@@ -51,7 +52,14 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
     "ollama": {
         "name": "Ollama (Local models, free)",
         "link": "https://ollama.ai",
-        "fields": [{"name": "OLLAMA_HOST", "label": "Host URL (default: http://localhost:11434)", "secret": False, "default": "http://localhost:11434"}],
+        "fields": [
+            {
+                "name": "OLLAMA_HOST",
+                "label": "Host URL (default: http://localhost:11434)",
+                "secret": False,
+                "default": "http://localhost:11434",
+            }
+        ],
         "test_model": "llama3.2",
         "litellm_prefix": "ollama/",
     },
@@ -68,7 +76,12 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "fields": [
             {"name": "AWS_ACCESS_KEY_ID", "label": "AWS Access Key ID", "secret": True},
             {"name": "AWS_SECRET_ACCESS_KEY", "label": "AWS Secret Access Key", "secret": True},
-            {"name": "AWS_REGION_NAME", "label": "AWS Region (e.g. us-east-1)", "secret": False, "default": "us-east-1"},
+            {
+                "name": "AWS_REGION_NAME",
+                "label": "AWS Region (e.g. us-east-1)",
+                "secret": False,
+                "default": "us-east-1",
+            },
         ],
         "test_model": "bedrock/anthropic.claude-haiku-4-5-v1:0",
         "litellm_prefix": "bedrock/",
@@ -78,8 +91,17 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "link": "https://portal.azure.com",
         "fields": [
             {"name": "AZURE_API_KEY", "label": "Azure API Key", "secret": True},
-            {"name": "AZURE_API_BASE", "label": "Azure Endpoint URL (e.g. https://xxx.openai.azure.com/)", "secret": False},
-            {"name": "AZURE_API_VERSION", "label": "API Version (e.g. 2024-02-01)", "secret": False, "default": "2024-02-01"},
+            {
+                "name": "AZURE_API_BASE",
+                "label": "Azure Endpoint URL (e.g. https://xxx.openai.azure.com/)",
+                "secret": False,
+            },
+            {
+                "name": "AZURE_API_VERSION",
+                "label": "API Version (e.g. 2024-02-01)",
+                "secret": False,
+                "default": "2024-02-01",
+            },
         ],
         "test_model": "azure/gpt-4o-mini",
         "litellm_prefix": "azure/",
@@ -89,7 +111,12 @@ PROVIDER_CONFIGS: dict[str, dict[str, Any]] = {
         "link": "https://cloud.google.com/vertex-ai",
         "fields": [
             {"name": "VERTEXAI_PROJECT", "label": "GCP Project ID", "secret": False},
-            {"name": "VERTEXAI_LOCATION", "label": "Region (e.g. us-central1)", "secret": False, "default": "us-central1"},
+            {
+                "name": "VERTEXAI_LOCATION",
+                "label": "Region (e.g. us-central1)",
+                "secret": False,
+                "default": "us-central1",
+            },
             {"name": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account JSON path", "secret": False},
         ],
         "test_model": "vertex_ai/gemini-2.0-flash",
@@ -126,16 +153,32 @@ def load_saved_credentials() -> dict[str, str]:
 
 
 def save_credentials(credentials: dict[str, str]) -> None:
-    """Save credentials to ~/.atelier/.env"""
+    """Save credentials to ~/.atelier/.env with owner-only permissions."""
     path = credentials_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    parent = path.parent
+    parent_existed = parent.exists()
+    parent.mkdir(parents=True, exist_ok=True)
+    # The directory holds secret credentials; restrict it to the owner. Only
+    # tighten permissions on a directory we just created so we never relax or
+    # silently override an operator's deliberate setup on a pre-existing dir.
+    if not parent_existed:
+        os.chmod(parent, 0o700)
     # Merge with existing
     existing = load_saved_credentials()
     existing.update(credentials)
     lines = ["# Atelier provider credentials — managed by `atelier auth`", ""]
     for k, v in sorted(existing.items()):
         lines.append(f'{k}="{v}"')
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Create (or truncate) the file with owner-only permissions before writing
+    # any secrets, so the keys are never briefly world-readable on disk.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    finally:
+        # If the file already existed its mode is unchanged by os.open, so
+        # enforce owner-only perms explicitly to repair any prior loose state.
+        os.chmod(path, 0o600)
     # Set in current process env
     for k, v in credentials.items():
         os.environ[k] = v
@@ -163,15 +206,15 @@ def validate_provider(provider_id: str, credentials: dict[str, str]) -> tuple[bo
             os.environ[key] = credentials[key]
 
     try:
-        import litellm
+        from atelier.infra.internal_llm.litellm_client import chat_with_result
 
         test_model = cfg["test_model"]
-        response = litellm.completion(
+        result = chat_with_result(
+            [{"role": "user", "content": "hi"}],
             model=test_model,
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=5,
+            extra_kwargs={"max_tokens": 5},
         )
-        return True, f"✓ Connected to {cfg['name']} ({response.model or test_model})"
+        return True, f"✓ Connected to {cfg['name']} ({result.model or test_model})"
     except Exception as exc:  # noqa: BLE001 - validation surfaces any failure to the user
         return False, f"✗ Failed: {str(exc)[:200]}"
     finally:

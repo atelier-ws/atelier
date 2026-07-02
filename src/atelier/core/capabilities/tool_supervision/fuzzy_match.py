@@ -93,6 +93,11 @@ def bounded_levenshtein(a: str, b: str, max_distance: int) -> int | None:
 
 _DMP_THRESHOLD = 0.5
 
+# Minimum similarity between the matched window and old_string before accepting a
+# DMP-located replacement.  Values below this floor indicate a bad guess that
+# would corrupt the file — we reject and surface a useful error instead.
+_FUZZY_SIMILARITY_FLOOR = 0.90
+
 
 def _make_dmp(content_len: int) -> _DMP:
     dmp = _DMP()
@@ -100,6 +105,20 @@ def _make_dmp(content_len: int) -> _DMP:
     dmp.Match_Distance = max(content_len, 1000)
     dmp.Match_MaxBits = 0  # no pattern-size limit (default 32 breaks long patterns)
     return dmp
+
+
+def _preserve_window_newline(window: str, new_string: str) -> str:
+    """Keep the replaced window's trailing newline when new_string lacks one.
+
+    The fuzzy path replaces whole source lines, so the window always ends with
+    a newline (unless at EOF). Dropping it would glue the following line onto
+    the last line of new_string — e.g. a function body onto its signature —
+    which can still parse and therefore slip past the parse gate.
+    An empty new_string is a deletion and intentionally removes the newline.
+    """
+    if window.endswith("\n") and new_string and not new_string.endswith("\n"):
+        return new_string + "\n"
+    return new_string
 
 
 def _find_exact_normalized_candidates(content: str, old_string: str) -> list[FuzzyCandidate]:
@@ -136,50 +155,199 @@ def _find_exact_normalized_candidates(content: str, old_string: str) -> list[Fuz
     return candidates
 
 
+def _count_end_line_idx(lines: list[str], start_idx: int, n_old_lines: int) -> int:
+    """Count-based window end: consume n_old_lines non-blank lines from start_idx."""
+    consumed = 0
+    end_idx = start_idx
+    while consumed < n_old_lines and end_idx < len(lines):
+        if lines[end_idx].strip():
+            consumed += 1
+        end_idx += 1
+    return end_idx
+
+
+def _anchor_end_line_idx(
+    lines: list[str],
+    start_idx: int,
+    n_old_lines: int,
+    old_string: str,
+) -> int:
+    """R3: locate the window end by finding the last non-blank line of old_string.
+
+    Candidate anchor lines are ranked by distance from the expected window end
+    (start + n_old_lines), so a generic last line (e.g. ")") occurring early in
+    the window cannot truncate the replacement region.
+    Falls back to the count-based approach when the anchor can't be located.
+    """
+    old_lines = old_string.splitlines()
+    last_anchor_raw = next((line for line in reversed(old_lines) if line.strip()), None)
+    if last_anchor_raw:
+        norm_last = normalize_for_fuzzy(last_anchor_raw)
+        expected_end = start_idx + n_old_lines  # exclusive end if no drift
+        search_end = min(start_idx + n_old_lines * 3 + 2, len(lines))
+        candidates = [
+            i + 1  # exclusive end (line index after the last anchor)
+            for i in range(start_idx, search_end)
+            if normalize_for_fuzzy(lines[i].rstrip("\n")) == norm_last
+        ]
+        if candidates:
+            return min(candidates, key=lambda end: abs(end - expected_end))
+    return _count_end_line_idx(lines, start_idx, n_old_lines)
+
+
+_FUZZY_AMBIGUITY_MARGIN = 0.05
+
+
+def _fuzzy_window_candidates(
+    content: str,
+    lines: list[str],
+    offsets: list[int],
+    old_string: str,
+) -> list[FuzzyCandidate]:
+    """Windows whose normalized similarity to old_string clears the floor.
+
+    Scans every plausible start line (a cheap first-line pre-filter keeps the
+    full-window scoring proportional to the number of near matches, not the file
+    size) and returns candidates sorted best-first. DMP alone returns only the
+    first acceptable location, which silently mis-anchors onto the first of
+    several similar blocks (duplicated text); ranking all candidates lets the
+    caller pick the global best and detect ties.
+    """
+    old_lines = old_string.splitlines()
+    first_anchor = next((line for line in old_lines if line.strip()), "")
+    norm_first = normalize_for_fuzzy(first_anchor)
+    norm_old = normalize_for_fuzzy(old_string)
+    n_old_lines = max(1, len(old_lines))
+
+    def _similarity(start_idx: int, end_idx: int) -> float:
+        window = content[offsets[start_idx] : offsets[end_idx]]
+        return SequenceMatcher(None, norm_old, normalize_for_fuzzy(window), autojunk=False).ratio()
+
+    candidates: list[FuzzyCandidate] = []
+    for start_idx in range(len(lines)):
+        norm_line = normalize_for_fuzzy(lines[start_idx].rstrip("\n"))
+        if norm_first and SequenceMatcher(None, norm_first, norm_line).quick_ratio() < 0.6:
+            continue
+        ends = {
+            _anchor_end_line_idx(lines, start_idx, n_old_lines, old_string),
+            _count_end_line_idx(lines, start_idx, n_old_lines),
+        }
+        end_idx = max(ends, key=lambda end: _similarity(start_idx, end))
+        ratio = _similarity(start_idx, end_idx)
+        if ratio >= _FUZZY_SIMILARITY_FLOOR:
+            candidates.append(
+                FuzzyCandidate(
+                    start_line=start_idx + 1,
+                    end_line=end_idx,
+                    start_offset=offsets[start_idx],
+                    end_offset=offsets[end_idx],
+                    distance=0,
+                    ratio=ratio,
+                )
+            )
+    candidates.sort(key=lambda candidate: candidate.ratio, reverse=True)
+    return candidates
+
+
 def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple[str, int, int]:
     """Fuzzy-replace old_string with new_string inside content.
 
-    Uses diff-match-patch for character-level location, then snaps to line
-    boundaries so the replacement always covers complete source lines (same
-    semantics as the previous Levenshtein window approach).
+    Matching ladder (strict → loose):
+      R2  whitespace/typography-normalized exact, unique match
+      R3  anchor match: DMP locates start; last non-blank line of old_string
+          pins the window end (replaces fragile "count N lines" approach)
+      R5  DMP location with similarity gate (≥ _FUZZY_SIMILARITY_FLOOR)
 
     Returns (new_content, 1-based line_start, 1-based line_end).
+    Raises ValueError when no match meets the similarity floor.
     """
     lines = content.splitlines(keepends=True)
     offsets: list[int] = [0]
     for line in lines:
         offsets.append(offsets[-1] + len(line))
 
+    # R2: exact normalized, unique
     exact_candidates = _find_exact_normalized_candidates(content, old_string)
     if len(exact_candidates) == 1:
         candidate = exact_candidates[0]
-        new_content = content[: candidate.start_offset] + new_string + content[candidate.end_offset :]
+        replacement = _preserve_window_newline(content[candidate.start_offset : candidate.end_offset], new_string)
+        new_content = content[: candidate.start_offset] + replacement + content[candidate.end_offset :]
         return new_content, candidate.start_line, candidate.end_line
+    if len(exact_candidates) > 1:
+        # Multiple equally good targets — surface the ambiguity instead of
+        # letting DMP pick one arbitrarily.
+        raise FuzzyAmbiguousMatchError(exact_candidates)
 
+    # R3 / R5: prefer the globally best-scoring window over DMP's first hit.
+    # DMP returns only the first acceptable location, so with duplicated blocks
+    # it silently anchors onto the wrong one even when old_string targets a
+    # later block. Rank all candidates, take the best, and refuse on a true tie.
+    candidates = _fuzzy_window_candidates(content, lines, offsets, old_string)
+    if candidates:
+        best = candidates[0]
+        rivals = [
+            other
+            for other in candidates[1:]
+            if other.start_offset != best.start_offset and best.ratio - other.ratio <= _FUZZY_AMBIGUITY_MARGIN
+        ]
+        if rivals:
+            raise FuzzyAmbiguousMatchError([best, *rivals])
+        replacement = _preserve_window_newline(content[best.start_offset : best.end_offset], new_string)
+        new_content = content[: best.start_offset] + replacement + content[best.end_offset :]
+        return new_content, best.start_line, best.end_line
+
+    # Fallback: no pre-filtered window cleared the floor (e.g. the first line of
+    # old_string diverges too much for the cheap pre-filter). Use DMP's single
+    # location for a best-effort match and a helpful similarity message.
     dmp = _make_dmp(len(content))
     match_char = dmp.match_main(content, old_string, 0)
     if match_char == -1:
         raise ValueError("old_string not found in file")
 
-    # Which line contains match_char?
+    # Check for a second DMP match — DMP silently picks the first; a second
+    # hit means the old_string is ambiguous and we must not guess.
+    second_match = dmp.match_main(content, old_string, match_char + 1)
+    if second_match != -1 and second_match != match_char:
+        lines_tmp = content.splitlines(keepends=True)
+        offsets_tmp: list[int] = [0]
+        for _l in lines_tmp:
+            offsets_tmp.append(offsets_tmp[-1] + len(_l))
+        first_line = max(0, bisect_right(offsets_tmp, match_char) - 1) + 1
+        second_line = max(0, bisect_right(offsets_tmp, second_match) - 1) + 1
+        n = max(1, len(old_string.splitlines()))
+        raise FuzzyAmbiguousMatchError(
+            [
+                FuzzyCandidate(first_line, first_line + n - 1, match_char, match_char, 0, 1.0),
+                FuzzyCandidate(second_line, second_line + n - 1, second_match, second_match, 0, 1.0),
+            ]
+        )
+
     start_line_idx = max(0, bisect_right(offsets, match_char) - 1)
     n_old_lines = max(1, len(old_string.splitlines()))
+    norm_old = normalize_for_fuzzy(old_string)
 
-    # Replace the same number of logical lines as old_string spans.
-    # When the content has extra blank lines (e.g. blank-line drift),
-    # skip over them so the replacement boundary stays anchored to the
-    # last non-blank line that holds old_string content.
-    consumed = 0
-    end_line_idx = start_line_idx
-    while consumed < n_old_lines and end_line_idx < len(lines):
-        if lines[end_line_idx].strip():
-            consumed += 1
-        end_line_idx += 1
+    def _window_similarity(end_idx: int) -> float:
+        window = content[offsets[start_line_idx] : offsets[end_idx]]
+        return SequenceMatcher(None, norm_old, normalize_for_fuzzy(window), autojunk=False).ratio()
+
+    window_ends = {
+        _anchor_end_line_idx(lines, start_line_idx, n_old_lines, old_string),
+        _count_end_line_idx(lines, start_line_idx, n_old_lines),
+    }
+    end_line_idx = max(window_ends, key=_window_similarity)
+
+    similarity = _window_similarity(end_line_idx)
+    if similarity < _FUZZY_SIMILARITY_FLOOR:
+        raise ValueError(
+            f"old_string not found in file "
+            f"(best match similarity {similarity:.2f} < {_FUZZY_SIMILARITY_FLOOR:.2f}; "
+            "re-read the file and supply exact disk content as old_string)"
+        )
 
     region_start = offsets[start_line_idx]
     region_end = offsets[end_line_idx]
-
-    new_content = content[:region_start] + new_string + content[region_end:]
+    replacement = _preserve_window_newline(content[region_start:region_end], new_string)
+    new_content = content[:region_start] + replacement + content[region_end:]
     return new_content, start_line_idx + 1, end_line_idx
 
 
@@ -227,9 +395,13 @@ def find_fuzzy_candidates(
 
 
 __all__ = [
+    "_FUZZY_SIMILARITY_FLOOR",
     "FuzzyAmbiguousMatchError",
     "FuzzyCandidate",
+    "_anchor_end_line_idx",
+    "_count_end_line_idx",
     "_find_exact_normalized_candidates",
+    "_preserve_window_newline",
     "apply_fuzzy_replace",
     "bounded_levenshtein",
     "find_fuzzy_candidates",

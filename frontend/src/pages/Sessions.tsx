@@ -16,14 +16,8 @@ import {
 } from "lucide-react";
 import { api, type Trace, type SessionSummary } from "../api";
 import { MetricCard, SectionHeader, cx } from "../components/WorkbenchUI";
-import {
-  fmtUsd,
-  fmtTok,
-  fmtDate,
-  fmtDuration,
-  extractHost,
-  HOST_COLORS,
-} from "./sessions/helpers";
+import { fmtUsd, fmtDate, fmtDuration, fmtRelativeTime } from "../lib/format";
+import { extractHost, HOST_COLORS } from "./sessions/helpers";
 import { StatusDot } from "./sessions/StatusBadge";
 import { SessionExplorerDetail } from "./sessions/SessionDetail";
 
@@ -46,7 +40,7 @@ function highlightSearchText(value: string, query: string): ReactNode {
     terms.includes(part.toLowerCase()) ? (
       <mark
         key={i}
-        className="bg-purple-500/30 text-purple-200 rounded-[1px] px-0.5 border border-purple-500/20"
+        className="bg-brand-500/30 text-brand-200 rounded-[1px] px-0.5 border border-brand-500/20"
       >
         {part}
       </mark>
@@ -72,15 +66,6 @@ function resolveSessionModel(
     trace?.model ||
     null
   );
-}
-
-function preferNonZeroMetric(
-  primary?: number | null,
-  fallback?: number | null
-): number {
-  if ((primary ?? 0) > 0) return primary ?? 0;
-  if ((fallback ?? 0) > 0) return fallback ?? 0;
-  return primary ?? fallback ?? 0;
 }
 
 // Latest activity timestamp for a session — prefers session-summary fields
@@ -121,6 +106,10 @@ export default function Sessions() {
   const tracesRequestSeq = useRef(0);
   const [summaries, setSummaries] = useState<SessionSummary[] | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hostFilter, setHostFilter] = useState("all");
+  const [workspaceFilter, setWorkspaceFilter] = useState("all");
+  const [availableHosts, setAvailableHosts] = useState<string[]>([]);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState<string[]>([]);
 
   // Pre-compute a summary lookup map to eliminate repeated .find() calls
   // in the sort comparator and inside each map callback — O(m + n) instead of
@@ -132,22 +121,42 @@ export default function Sessions() {
     return m;
   }, [summaries]);
 
+  // Deduplicate traces by session_id — one entry per real session. The
+  // workspace filter is now applied server-side (api.traces()'s workspace
+  // param), covering full history instead of just this loaded page.
+  // Prefer traces that have a task description when multiple share the same session_id.
+  const displayTraces = useMemo(() => {
+    if (!traces) return null;
+    const seen = new Map<string, Trace>();
+    for (const t of traces) {
+      const sid = t.session_id || t.id;
+      const existing = seen.get(sid);
+      if (!existing || (!existing.task && t.task)) seen.set(sid, t);
+    }
+    return Array.from(seen.values());
+  }, [traces]);
+
   const fetchTracesPage = useCallback(
     (offset: number) => {
       const requestSeq = ++tracesRequestSeq.current;
       setLoadingTraces(true);
       setErr(null);
       api
-        .traces(50, offset, "all", "all", query)
+        .traces(50, offset, "all", hostFilter, workspaceFilter, query)
         .then((res) => {
           if (requestSeq !== tracesRequestSeq.current) return;
+          // Defensive: older/mismatched backends may omit metrics facets —
+          // never let a missing wire field crash the render.
+          setAvailableHosts(res.metrics?.hosts ?? []);
+          setAvailableWorkspaces(res.metrics?.workspaces ?? []);
+          const items = res.items ?? [];
           if (offset === 0) {
-            setTraces(res.items);
-            setHasMore(res.items.length >= 50);
+            setTraces(items);
+            setHasMore(items.length >= 50);
             setPage(0);
           } else {
-            setTraces((prev) => (prev ? [...prev, ...res.items] : res.items));
-            setHasMore(res.items.length >= 50);
+            setTraces((prev) => (prev ? [...prev, ...items] : items));
+            setHasMore(items.length >= 50);
             setPage(offset / 50);
           }
           setLoadingTraces(false);
@@ -158,7 +167,7 @@ export default function Sessions() {
           setLoadingTraces(false);
         });
     },
-    [query]
+    [query, hostFilter, workspaceFilter]
   );
 
   const fetchSummaries = useCallback(() => {
@@ -181,10 +190,10 @@ export default function Sessions() {
     return () => clearTimeout(timer);
   }, [searchInput, setSearchParams, searchParams]);
 
-  // Fetch traces on query change — no date filter; history is unbounded.
+  // Fetch traces on query/host/workspace filter change — no date filter; history is unbounded.
   useEffect(() => {
     fetchTracesPage(0);
-  }, [query, fetchTracesPage]);
+  }, [query, hostFilter, workspaceFilter, fetchTracesPage]);
 
   // Fetch session summaries for cost/token stats in sidebar cards.
   // Use a very large window so the History list is independent of the
@@ -198,10 +207,33 @@ export default function Sessions() {
     fetchTracesPage((page + 1) * 50);
   };
 
+  // Auto-refresh must replace the currently loaded range in place —
+  // appending via fetchTracesPage's offset paging (meant for user-initiated
+  // Load More) would duplicate the last page's items on every 30s tick.
+  const refreshTraces = useCallback(() => {
+    const requestSeq = ++tracesRequestSeq.current;
+    const loadedCount = (page + 1) * 50;
+    setErr(null);
+    api
+      .traces(loadedCount, 0, "all", hostFilter, workspaceFilter, query)
+      .then((res) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setAvailableHosts(res.metrics?.hosts ?? []);
+        setAvailableWorkspaces(res.metrics?.workspaces ?? []);
+        const items = res.items ?? [];
+        setTraces(items);
+        setHasMore(items.length >= loadedCount);
+      })
+      .catch((e) => {
+        if (requestSeq !== tracesRequestSeq.current) return;
+        setErr(String(e));
+      });
+  }, [query, page, hostFilter, workspaceFilter]);
+
   const refresh = useCallback(() => {
-    fetchTracesPage(page * 50);
+    refreshTraces();
     fetchSummaries();
-  }, [fetchTracesPage, fetchSummaries, page]);
+  }, [refreshTraces, fetchSummaries]);
 
   // Periodically refresh data every 30 seconds
   useEffect(() => {
@@ -210,12 +242,12 @@ export default function Sessions() {
   }, [refresh]);
 
   return (
-    <div className="flex h-[calc(100vh-180px)] overflow-hidden border border-neutral-800/80 bg-[#070707] shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-180px)] overflow-hidden border border-neutral-800/80 bg-surface-sunken">
       {/* Sidebar — master list */}
       <aside
         className={cx(
-          "flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#0a0a0a] transition-all duration-200 ease-in-out overflow-hidden",
-          sidebarCollapsed ? "w-12" : "w-80"
+          "flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-neutral-800 bg-surface transition-all duration-200 ease-in-out overflow-hidden",
+          sidebarCollapsed ? "w-full md:w-12" : "w-full md:w-80"
         )}
       >
         {sidebarCollapsed ? (
@@ -224,26 +256,29 @@ export default function Sessions() {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(false)}
-              className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
+              className="w-6 h-6 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
               title="Expand sidebar"
             >
               <ChevronRight size={14} />
             </button>
-            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500 [writing-mode:vertical-lr]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400 [writing-mode:vertical-lr]">
               History
             </span>
           </div>
         ) : (
           /* ── Expanded: full sidebar ── */
           <>
-            <div className="p-4 border-b border-neutral-800 space-y-4 bg-[#0d0d0d]">
+            <div className="p-4 border-b border-neutral-800 space-y-4 bg-surface-raised">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 whitespace-nowrap">
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 whitespace-nowrap">
                     History
                   </h2>
+                  <span className="text-[10px] text-neutral-400 shrink-0">
+                    All time
+                  </span>
                   {loadingTraces && (
-                    <span className="text-[10px] text-purple-500 animate-pulse shrink-0">
+                    <span className="text-[10px] text-brand-400 shrink-0">
                       Scanning...
                     </span>
                   )}
@@ -252,7 +287,7 @@ export default function Sessions() {
                   <button
                     type="button"
                     onClick={refresh}
-                    className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
+                    className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                     title="Refresh sessions"
                   >
                     <RefreshCw size={14} />
@@ -260,7 +295,7 @@ export default function Sessions() {
                   <button
                     type="button"
                     onClick={() => setSidebarCollapsed(true)}
-                    className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
+                    className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                     title="Collapse sidebar"
                   >
                     <ChevronLeft size={14} />
@@ -273,26 +308,54 @@ export default function Sessions() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search sessions, tasks, models..."
-                  className="w-full bg-[#141414] border border-neutral-800 px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-purple-600 transition-all rounded-sm shadow-inner"
+                  className="w-full bg-surface-overlay border border-neutral-800 px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-brand-600 transition-all rounded-sm shadow-inner"
                 />
                 {searchInput && (
                   <button
                     type="button"
                     onClick={() => setSearchInput("")}
-                    className="px-2 border border-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
+                    className="px-2 border border-neutral-800 text-neutral-400 hover:text-neutral-300 transition-colors"
                   >
                     <X size={14} />
                   </button>
                 )}
               </div>
+              <div className="flex gap-2">
+                <select
+                  aria-label="Filter by host"
+                  value={hostFilter}
+                  onChange={(e) => setHostFilter(e.target.value)}
+                  className="flex-1 min-w-0 bg-surface-overlay border border-neutral-800 px-2 py-1.5 text-[10px] text-neutral-300 outline-none focus:border-brand-600"
+                >
+                  <option value="all">All hosts</option>
+                  {availableHosts.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Filter by workspace"
+                  value={workspaceFilter}
+                  onChange={(e) => setWorkspaceFilter(e.target.value)}
+                  className="flex-1 min-w-0 bg-surface-overlay border border-neutral-800 px-2 py-1.5 text-[10px] text-neutral-300 outline-none focus:border-brand-600"
+                >
+                  <option value="all">All workspaces</option>
+                  {availableWorkspaces.map((w) => (
+                    <option key={w} value={w} title={w}>
+                      {w.split("/").pop() || w}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {err && (
-                <div className="p-4 text-xs text-red-500 font-mono">{err}</div>
+                <div className="p-4 text-xs text-red-300 font-mono">{err}</div>
               )}
 
-              {traces
+              {displayTraces
                 ?.slice()
                 .sort((a, b) => {
                   const sa = sessionsMap?.get(a.session_id || a.id);
@@ -304,35 +367,14 @@ export default function Sessions() {
                   const isActive = id === sid;
                   const summary = sessionsMap?.get(sid);
                   const sessionModel = resolveSessionModel(summary, t);
-                  // "Input" = bytes the model freshly processed = new
-                  // input + cache_write. Anthropic's raw input_tokens
-                  // excludes cW even though cW is also new input the
-                  // model paid to ingest. Mirrors the stop-hook formatter.
-                  const newIn = preferNonZeroMetric(
-                    summary?.input_tokens,
-                    t.input_tokens
-                  );
-                  const cacheWrite = preferNonZeroMetric(
-                    summary?.cache_write_tokens,
-                    t.cache_creation_input_tokens
-                  );
-                  const inputTokens = newIn + cacheWrite;
-                  const outputTokens = preferNonZeroMetric(
-                    summary?.output_tokens,
-                    t.output_tokens
-                  );
-                  const cacheRead = preferNonZeroMetric(
-                    summary?.cached_input_tokens,
-                    t.cached_input_tokens
-                  );
-                  // Show cR / cW so users see both cache categories.
-                  const cacheLabel =
-                    cacheWrite > 0
-                      ? `${fmtTok(cacheRead)} / ${fmtTok(cacheWrite)}`
-                      : fmtTok(cacheRead);
                   const host = extractHost(t);
                   const hostTextClass =
-                    HOST_COLORS[host]?.split(" ")[1] || "text-neutral-500";
+                    HOST_COLORS[host]?.split(" ")[1] || "text-neutral-400";
+                  // _live sessions are still running in the RunLedger and
+                  // haven't committed a final status to SQLite yet.
+                  const displayStatus = t._live ? "running" : t.status;
+                  const costPrefix =
+                    summary?.cost_status === "estimated" ? "~" : "";
 
                   return (
                     <button
@@ -345,16 +387,19 @@ export default function Sessions() {
                       className={cx(
                         "w-full border-b border-neutral-800 p-3.5 text-left transition-all hover:bg-neutral-800/40 group/card",
                         isActive
-                          ? "bg-purple-900/10 border-r-2 border-r-purple-500 shadow-[inset_0_0_28px_rgba(168,85,247,0.08)]"
+                          ? "bg-brand-900/10 border-r-2 border-r-brand-500 shadow-[inset_0_0_28px_rgba(168,85,247,0.08)]"
                           : ""
                       )}
                     >
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2">
-                          <StatusDot status={t.status} className="shrink-0" />
+                          <StatusDot
+                            status={displayStatus}
+                            className="shrink-0"
+                          />
                           <span
                             className={cx(
-                              "shrink-0 text-[8px] font-mono uppercase tracking-[0.18em]",
+                              "shrink-0 text-[10px] font-mono uppercase tracking-[0.18em]",
                               hostTextClass
                             )}
                             title={host}
@@ -363,7 +408,7 @@ export default function Sessions() {
                           </span>
                           {sessionModel && (
                             <span
-                              className="min-w-0 truncate text-[9px] font-mono text-sky-200"
+                              className="min-w-0 truncate text-[10px] font-mono text-sky-200"
                               title={sessionModel}
                             >
                               {sessionModel}
@@ -372,13 +417,13 @@ export default function Sessions() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span
-                            className="shrink-0 text-[9px] font-mono text-neutral-500"
-                            title={t.created_at}
+                            className="shrink-0 text-[10px] font-mono text-neutral-400"
+                            title={fmtDate(t.created_at)}
                           >
-                            {fmtDate(t.created_at)}
+                            {fmtRelativeTime(t.created_at)}
                           </span>
                           <span
-                            className="shrink-0 text-[9px] font-mono text-neutral-400"
+                            className="shrink-0 text-[10px] font-mono text-neutral-400"
                             title={
                               summary
                                 ? String(
@@ -409,33 +454,22 @@ export default function Sessions() {
                         {highlightSearchText(t.task || "Untitled Task", query)}
                       </p>
 
-                      <div className="grid grid-cols-3 gap-1.5 rounded-sm border border-neutral-800/60 bg-black/20 p-2">
+                      <div className="grid grid-cols-2 gap-1.5 rounded-sm border border-neutral-800/60 bg-surface-sunken/70 p-2">
                         {(
                           [
                             [
                               "Cost",
-                              summary ? fmtUsd(summary.total_cost_usd) : "—",
-                              "text-red-500/90",
+                              summary
+                                ? `${costPrefix}${fmtUsd(summary.total_cost_usd)}`
+                                : "—",
+                              "text-red-300",
                             ],
                             [
                               "Saved",
                               summary
                                 ? fmtUsd(summary.total_atelier_savings_usd)
                                 : "—",
-                              "text-emerald-500/90",
-                            ],
-
-                            ["Input", fmtTok(inputTokens), "text-neutral-400"],
-                            [
-                              "Output",
-                              fmtTok(outputTokens),
-                              "text-neutral-400",
-                            ],
-                            ["Cache", cacheLabel, "text-neutral-400"],
-                            [
-                              "Turns",
-                              summary ? String(summary.total_turns) : "—",
-                              "text-neutral-400",
+                              "text-emerald-300",
                             ],
                           ] as [string, string, string][]
                         ).map(([label, value, valCls]) => (
@@ -443,7 +477,7 @@ export default function Sessions() {
                             key={label}
                             className="flex items-center justify-between gap-2 rounded-sm border border-neutral-800/50 bg-neutral-950/40 px-2 py-1.5"
                           >
-                            <div className="truncate text-[8px] font-mono tracking-[0.18em] uppercase text-neutral-500 leading-none">
+                            <div className="truncate text-[10px] font-mono tracking-[0.18em] uppercase text-neutral-400 leading-none">
                               {label}
                             </div>
                             <div
@@ -471,7 +505,7 @@ export default function Sessions() {
               )}
 
               {!loadingTraces && traces?.length === 0 && (
-                <div className="p-12 text-center text-xs text-neutral-500 italic font-mono">
+                <div className="p-12 text-center text-xs text-neutral-400 italic font-mono">
                   No sessions found
                 </div>
               )}
@@ -535,12 +569,12 @@ function EmptyState({ summaries }: { summaries: SessionSummary[] | null }) {
         />
       </div>
 
-      <div className="border border-neutral-800 bg-[#0d0d0d] p-16 text-center rounded-sm">
-        <Terminal size={48} className="mx-auto mb-6 text-neutral-500" />
-        <h3 className="text-xs font-bold text-neutral-500 mb-2 uppercase tracking-[0.4em]">
+      <div className="border border-neutral-800 bg-surface-raised p-16 text-center rounded-sm">
+        <Terminal size={48} className="mx-auto mb-6 text-neutral-400" />
+        <h3 className="text-xs font-bold text-neutral-400 mb-2 uppercase tracking-[0.4em]">
           Select History
         </h3>
-        <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
+        <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
           Explore the internal reasoning logs, tool executions, and file diffs
           for any past agent run.
         </p>

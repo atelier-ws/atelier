@@ -21,13 +21,13 @@ STYLE_IMPORT_RESPONSE_SCHEMA: dict[str, Any] = {
 }
 
 STYLE_IMPORT_SYSTEM_PROMPT = f"""\
-You extract procedural engineering rules from Markdown for Atelier ReasonBlocks.
+You extract procedural engineering rules from Markdown for Atelier Playbooks.
 Prompt version: {STYLE_IMPORT_PROMPT_VERSION}.
 
 Return only JSON matching this contract:
 - procedural: true only when the chunk tells engineers what to do, avoid, verify, or gate.
 - title: concise rule title, no marketing copy.
-- body: one paragraph in the project's ReasonBlock style.
+- body: one paragraph in the project's Playbook style.
 - triggers: short phrases that should cause retrieval.
 - procedure: concrete steps an AI coding agent can follow.
 - verification: observable checks, commands, or review evidence.
@@ -45,10 +45,7 @@ def build_messages(*, file_path: str, chunk_range: tuple[int, int], text: str) -
         {
             "role": "user",
             "content": (
-                f"Source file: {file_path}\n"
-                f"Line range: {chunk_range[0]}-{chunk_range[1]}\n\n"
-                "Markdown chunk:\n"
-                f"{text}"
+                f"Source file: {file_path}\nLine range: {chunk_range[0]}-{chunk_range[1]}\n\nMarkdown chunk:\n{text}"
             ),
         },
     ]

@@ -64,16 +64,36 @@ def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[P
                 continue
             input_usd = float(rates.get("input", 0.0))
             output_usd = float(rates.get("output", 0.0))
+
+            # Optional per-request long-context premium tier:
+            #   long_context: {threshold, input, output, cache_read, cache_write}
+            lc = rates.get("long_context")
+            lc_threshold = int(lc.get("threshold", 200_000)) if isinstance(lc, dict) else 0
+
+            def _lc_tier(
+                name: str,
+                lc: object = lc,
+                lc_threshold: int = lc_threshold,
+            ) -> tuple[PricingTier, ...]:
+                if not isinstance(lc, dict):
+                    return ()
+                value = lc.get(name)
+                if value is None:
+                    return ()
+                return (PricingTier(threshold_tokens=lc_threshold, rate=float(value)),)
+
             overrides[str(model_id)] = {
                 "input": input_usd,
                 "output": output_usd,
                 "cache_read": float(rates.get("cache_read", 0.0)),
                 "cache_write": float(rates.get("cache_write", 0.0)),
+                "cache_write_1h": float(rates.get("cache_write_1h", 0.0)),
+                "context_window": int(rates.get("context_window", 0) or 0),
                 "thinking": float(rates.get("thinking", output_usd)),
-                "input_tiers": (),
-                "output_tiers": (),
-                "cache_read_tiers": (),
-                "cache_write_tiers": (),
+                "input_tiers": _lc_tier("input"),
+                "output_tiers": _lc_tier("output"),
+                "cache_read_tiers": _lc_tier("cache_read"),
+                "cache_write_tiers": _lc_tier("cache_write"),
                 "thinking_tiers": (),
             }
     except Exception as e:
@@ -118,8 +138,14 @@ _warned_unknown_models: set[str] = set()
 
 
 def _load_litellm_model_cost() -> dict[str, object]:
-    """Import LiteLLM's pricing catalog without surfacing optional AWS preload noise."""
+    """Load the model pricing catalog.
+
+    Uses litellm's live ``model_cost`` dict when the package is installed
+    (fresher data, includes any runtime overrides).  Falls back to the
+    bundled ``model_prices.json`` snapshot so pricing works without litellm.
+    """
     import importlib
+    import json
 
     previous_litellm_log = os.environ.get("LITELLM_LOG")
     if previous_litellm_log is None:
@@ -127,17 +153,25 @@ def _load_litellm_model_cost() -> dict[str, object]:
 
     try:
         litellm = importlib.import_module("litellm")
-        model_cost = getattr(litellm, "model_cost", {})
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return {}
+        model_cost = getattr(litellm, "model_cost", None)
+        if model_cost:
+            return cast(dict[str, object], model_cost)
+    except Exception:  # noqa: BLE001
+        pass  # fall through to bundled snapshot
     finally:
         if previous_litellm_log is None:
             os.environ.pop("LITELLM_LOG", None)
         else:
             os.environ["LITELLM_LOG"] = previous_litellm_log
 
-    return cast(dict[str, object], model_cost)
+    # Bundled snapshot — refreshed at release build time from the locked litellm
+    # version; always available offline, no litellm import required at runtime.
+    _bundle = Path(__file__).parent.parent.parent / "infra" / "model_prices.json"
+    try:
+        return cast(dict[str, object], json.loads(_bundle.read_text()))
+    except Exception:
+        logging.exception("Failed to load bundled model_prices.json")
+        return {}
 
 
 with_model_cost: dict[str, object] = {}  # populated lazily on first _load_pricing_table() call
@@ -148,11 +182,24 @@ with_model_cost: dict[str, object] = {}  # populated lazily on first _load_prici
 
 
 _TOKENS_PER_MILLION = 1_000_000.0
+# Anthropic prices a 1h-TTL cache write at 2x base input vs 1.25x for the 5m
+# default -- i.e. 1.6x the 5m cache-write rate. Used to derive the 1h rate when a
+# model card omits an explicit cache_write_1h.
+_CACHE_WRITE_1H_OVER_5M = 1.6
 _DATE_SUFFIX_RE = re.compile(r"(?:-\d{8}|-\d{4}-\d{2}-\d{2})(?:-v\d+:\d+)?$")
 _LATEST_SUFFIX_RE = re.compile(r"-latest$")
 _PREVIEW_SUFFIX_RE = re.compile(r"-preview(?:-[a-z0-9.]+)*$", re.IGNORECASE)
 _ANTHROPIC_VERSION_RE = re.compile(r"^(claude-(?:opus|sonnet|haiku)-\d+)-\d+$")
 _TIER_SUFFIX_RE = re.compile(r"_above_(\d+)k_tokens$")
+
+# Vendor prefixes that denote flat-rate subscription usage rather than a real
+# provider/model namespace. The tail after the slash is frequently a real,
+# separately-billable model id (e.g. "copilot/gpt-5" -> "gpt-5"); generating
+# that as an alias would resolve straight through to the underlying model's
+# real per-token API rate and massively overbill usage that GitHub Copilot's
+# flat subscription fee already covers. See copilot.py's ``copilot/<model>``
+# namespacing.
+_SUBSCRIPTION_VENDOR_PREFIXES = frozenset({"copilot"})
 
 
 @dataclass(frozen=True)
@@ -171,6 +218,8 @@ class ModelPricing:
         output:      Cost per 1M output (completion) tokens in USD.
         cache_read:  Cost per 1M cache-read tokens in USD (0 if not applicable).
         cache_write: Cost per 1M cache-write tokens in USD (0 if not applicable).
+        cache_write_1h: Cost per 1M 1h-TTL cache-write tokens in USD
+                     (0 falls back to ``cache_write``).
         thinking:    Cost per 1M reasoning/thinking tokens in USD.
         known:       ``True`` when pricing was explicitly configured for this
                      model; ``False`` when the model id was not found and the
@@ -182,7 +231,9 @@ class ModelPricing:
     output: float
     cache_read: float = 0.0
     cache_write: float = 0.0
+    cache_write_1h: float = 0.0
     thinking: float = 0.0
+    context_window: int = 0
     input_tiers: tuple[PricingTier, ...] = ()
     output_tiers: tuple[PricingTier, ...] = ()
     cache_read_tiers: tuple[PricingTier, ...] = ()
@@ -218,14 +269,24 @@ class ModelPricing:
         output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
         thinking_tokens: int = 0,
     ) -> dict[str, float]:
-        """Compute USD cost breakdown for the given token counts."""
+        """Compute USD cost breakdown for the given token counts.
+
+        ``cache_write_tokens`` is the total cache-creation count; the 1h-TTL
+        subset (``cache_write_1h_tokens``) is repriced at the 1h rate and folded
+        into the ``cache_write`` bucket.
+        """
+        cw_1h = min(max(cache_write_1h_tokens, 0), cache_write_tokens)
+        cw_5m = cache_write_tokens - cw_1h
+        rate_1h = self.cache_write_1h or (self.cache_write * _CACHE_WRITE_1H_OVER_5M)
         return {
             "input": self._cost_for_tokens(input_tokens, self.input, self.input_tiers),
             "output": self._cost_for_tokens(output_tokens, self.output, self.output_tiers),
             "cache_read": self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers),
-            "cache_write": self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers),
+            "cache_write": self._cost_for_tokens(cw_5m, self.cache_write, self.cache_write_tiers)
+            + cw_1h * rate_1h / _TOKENS_PER_MILLION,
             "thinking": self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
         }
 
@@ -235,15 +296,88 @@ class ModelPricing:
         output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
         thinking_tokens: int = 0,
     ) -> float:
-        """Compute total USD cost for the given token counts."""
+        """Compute total USD cost for the given token counts.
+
+        ``cache_write_tokens`` is the *total* cache-creation count; the 1h-TTL
+        subset (``cache_write_1h_tokens``) is repriced at the 1h rate (2x input
+        = cache_write x 1.6 when a model card omits an explicit cache_write_1h).
+        """
+        cw_1h = min(max(cache_write_1h_tokens, 0), cache_write_tokens)
+        cw_5m = cache_write_tokens - cw_1h
+        rate_1h = self.cache_write_1h or (self.cache_write * _CACHE_WRITE_1H_OVER_5M)
         return round(
             self._cost_for_tokens(input_tokens, self.input, self.input_tiers)
             + self._cost_for_tokens(output_tokens, self.output, self.output_tiers)
             + self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers)
-            + self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers)
+            + self._cost_for_tokens(cw_5m, self.cache_write, self.cache_write_tiers)
+            + cw_1h * rate_1h / _TOKENS_PER_MILLION
             + self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
+            8,
+        )
+
+    def long_context_threshold(self) -> int:
+        """Per-request long-context threshold in tokens (0 = no premium tier).
+
+        Derived from the first tier of any token category (LiteLLM encodes the
+        premium as ``*_above_200k_tokens``; YAML overrides as ``long_context``).
+        """
+        thresholds = [
+            tiers[0].threshold_tokens
+            for tiers in (self.input_tiers, self.output_tiers, self.cache_read_tiers, self.cache_write_tiers)
+            if tiers
+        ]
+        return min(thresholds) if thresholds else 0
+
+    def request_cost_usd(
+        self,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cache_read_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
+        long_context: bool = False,
+    ) -> float:
+        """Per-request cost with flat rates (Anthropic billing semantics).
+
+        Unlike :meth:`cost_usd` (progressive tiers over aggregate counts),
+        Anthropic bills the *whole request* at premium rates once its context
+        exceeds the long-context threshold. Callers bucket usage per request
+        and pass ``long_context=True`` for the premium bucket.
+        ``cache_write_tokens`` is the 5m-TTL portion; 1h-TTL writes go in
+        ``cache_write_1h_tokens``.
+        """
+
+        def _premium(base: float, tiers: tuple[PricingTier, ...]) -> float:
+            return tiers[0].rate if (long_context and tiers) else base
+
+        rate_in = _premium(self.input, self.input_tiers)
+        rate_out = _premium(self.output, self.output_tiers)
+        rate_cr = _premium(self.cache_read, self.cache_read_tiers)
+        rate_cw = _premium(self.cache_write, self.cache_write_tiers)
+        base_1h = self.cache_write_1h or self.cache_write
+        # 1h writes scale by the 5m write long-context multiplier. When only the
+        # 1h rate is configured (no 5m base to derive the ratio from), fall back
+        # to the input-side premium multiplier so long_context still applies.
+        if self.cache_write > 0:
+            cw_multiplier = rate_cw / self.cache_write
+        elif long_context and self.input > 0:
+            cw_multiplier = rate_in / self.input
+        else:
+            cw_multiplier = 1.0
+        rate_cw1 = base_1h * cw_multiplier
+        return round(
+            (
+                input_tokens * rate_in
+                + output_tokens * rate_out
+                + cache_read_tokens * rate_cr
+                + cache_write_tokens * rate_cw
+                + cache_write_1h_tokens * rate_cw1
+            )
+            / _TOKENS_PER_MILLION,
             8,
         )
 
@@ -302,6 +436,16 @@ def _extract_tiers(entry: dict[str, object], prefix: str) -> tuple[PricingTier, 
     return tuple(sorted(tiers, key=lambda tier: tier.threshold_tokens))
 
 
+def _int_or_zero(value: object) -> int:
+    """Coerce a catalog value to int, tolerating junk (LiteLLM's sample_spec)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float | tuple[PricingTier, ...]] | None:
     if not isinstance(raw_entry, dict):
         return None
@@ -320,6 +464,8 @@ def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float 
         "output": _rate("output_cost_per_token"),
         "cache_read": _rate("cache_read_input_token_cost"),
         "cache_write": _rate("cache_creation_input_token_cost"),
+        "cache_write_1h": _rate("cache_creation_input_token_cost_above_1hr"),
+        "context_window": _int_or_zero(raw_entry.get("max_input_tokens")),
         "thinking": _rate("output_cost_per_reasoning_token") or _rate("output_cost_per_token"),
         "input_tiers": _extract_tiers(raw_entry, "input_cost_per_token"),
         "output_tiers": _extract_tiers(raw_entry, "output_cost_per_token"),
@@ -356,8 +502,9 @@ def _alias_candidates(model_id: str) -> set[str]:
         _add(anthropic_match.group(1))
 
     if "/" in model_id and model_id.count("/") == 1:
-        _, tail = model_id.split("/", 1)
-        _add(tail)
+        vendor, tail = model_id.split("/", 1)
+        if vendor not in _SUBSCRIPTION_VENDOR_PREFIXES:
+            _add(tail)
 
     return aliases
 
@@ -403,6 +550,8 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
             "output": 0.0,
             "cache_read": 0.0,
             "cache_write": 0.0,
+            "cache_write_1h": 0.0,
+            "context_window": 0,
             "thinking": 0.0,
             "input_tiers": (),
             "output_tiers": (),
@@ -419,7 +568,18 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
         if pricing_entry is None:
             continue
         _register_entry(table, priorities, model_id, pricing_entry)
+        # Subscription-tier entries (GitHub Copilot, etc.) have zero per-token
+        # pricing and no input_cost_per_token field.  Their provider-stripped
+        # alias ("github_copilot/claude-sonnet-4.6" → "claude-sonnet-4.6")
+        # would shadow real Anthropic entries when litellm is not installed.
+        # Only generate the bare-name provider alias for entries with real pricing.
+        _has_token_price = bool(isinstance(raw_entry, dict) and raw_entry.get("input_cost_per_token")) or bool(
+            isinstance(raw_entry, dict) and raw_entry.get("output_cost_per_token")
+        )
         for alias in _alias_candidates(model_id):
+            _slash_alias = "/" in model_id and alias == model_id.split("/", 1)[1]
+            if _slash_alias and not _has_token_price:
+                continue
             _register_entry(table, priorities, alias, pricing_entry, priority=_alias_priority(model_id))
 
     # Apply disk-based overrides from built-in and global config
@@ -493,7 +653,9 @@ def get_model_pricing(model_id: str) -> ModelPricing:
     if hit := _lookup(model_id):
         return hit
 
-    # 2. Alias candidates on the raw id (strips "copilot/" prefix etc.)
+    # 2. Alias candidates on the raw id (strips vendor prefixes, e.g. "openai/"
+    #    -- but NOT subscription-only prefixes like "copilot/", see
+    #    _SUBSCRIPTION_VENDOR_PREFIXES)
     for alias in _alias_candidates(model_id):
         if hit := _lookup(alias):
             return hit
@@ -511,7 +673,7 @@ def get_model_pricing(model_id: str) -> ModelPricing:
     # 4. Unknown — log once, return zero-cost sentinel
     if model_id and model_id not in _PLACEHOLDER_MODEL_IDS and model_id not in _warned_unknown_models:
         _warned_unknown_models.add(model_id)
-        logger.warning(
+        logger.debug(
             "atelier.pricing: no entry for model %r — costs for this model will be reported as $0. "
             "Upgrade LiteLLM or call override_pricing() to fix.",
             model_id,
@@ -527,6 +689,7 @@ def usage_cost_usd(
     output_tokens: int = 0,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
     thinking_tokens: int = 0,
 ) -> float:
     """Compute usage cost for a model via the shared pricing catalog."""
@@ -535,6 +698,7 @@ def usage_cost_usd(
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
+        cache_write_1h_tokens=cache_write_1h_tokens,
         thinking_tokens=thinking_tokens,
     )
 
@@ -546,6 +710,7 @@ def usage_cost_breakdown_usd(
     output_tokens: int = 0,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
     thinking_tokens: int = 0,
 ) -> dict[str, float]:
     """Compute usage cost breakdown for a model via the shared pricing catalog."""
@@ -554,6 +719,7 @@ def usage_cost_breakdown_usd(
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
+        cache_write_1h_tokens=cache_write_1h_tokens,
         thinking_tokens=thinking_tokens,
     )
 

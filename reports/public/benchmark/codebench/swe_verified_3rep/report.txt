@@ -1,0 +1,130 @@
+
+=== CodeBench head-to-head ===
+metric                      baseline       atelier
+cost_usd                     34.6605       29.3836
+  - input        : $       1.9459              
+  - output       : $      38.8676              
+  - cache_read   : $      94.6606              
+  - cache_write  : $      29.4732              
+  - input        :               $       2.5585
+  - output       :               $      37.5842
+  - cache_read   :               $      68.3348
+  - cache_write  :               $      24.8021
+duration_ms                7,194,434     8,602,891
+num_turns                      1,052           811
+input_tokens                 170,660       174,536
+cache_read_tokens         34,269,843    25,706,441
+cache_write_tokens           996,191       892,767
+thinking_tokens                    0             0
+output_tokens                380,068       382,956
+saved_usd                     0.0000        5.2770
+saved_tokens                       0     8,660,062
+
+atelier cost saving : +15.2%  (Eval target ~47-50%)
+atelier time saving : -19.6%  (Eval target ~40%)
+
+=== Per-task medians (clean runs) ===
+
+| Task | Arm | Cost | Tokens | Time | Tool calls | Reps |
+| --- | --- | --- | --- | --- | --- | --- |
+| django__django-11138 | atelier | 37% cheaper | 53.3% fewer | 45.3% slower | 45% fewer | 3 |
+| django__django-11333 | atelier | 30.1% pricier | 7% more | 413.3% slower | even | 3 |
+| matplotlib__matplotlib-14623 | atelier | 51.2% cheaper | 67.5% fewer | 10% slower | 52% fewer | 3 |
+| pydata__xarray-3095 | atelier | 113.3% pricier | 149.5% more | 113.3% slower | 107.7% more | 3 |
+| pydata__xarray-3305 | atelier | 31.2% cheaper | 28.9% fewer | 24.9% faster | 13.3% fewer | 3 |
+| pylint-dev__pylint-6386 | atelier | 12.8% pricier | 8.8% fewer | 27.9% slower | 3.1% fewer | 3 |
+| pytest-dev__pytest-8399 | atelier | 56.3% pricier | 79.5% more | 81.6% slower | 71.4% more | 3 |
+| scikit-learn__scikit-learn-12682 | atelier | 39.3% cheaper | 51.3% fewer | 3.2% slower | 37.9% fewer | 3 |
+| sphinx-doc__sphinx-10673 | atelier | 18.9% pricier | 14.4% more | 31.9% slower | 8.7% fewer | 3 |
+| sphinx-doc__sphinx-8120 | atelier | 72.3% cheaper | 78.5% fewer | 45.7% faster | 69.2% fewer | 3 |
+| sympy__sympy-13091 | atelier | 23.8% pricier | 6.2% more | 69.6% slower | 29.8% fewer | 3 |
+| sympy__sympy-13877 | atelier | 90.8% cheaper | 97.7% fewer | 89.3% faster | 100% fewer | 3 |
+
+| Task | Arm | cost_usd | tokens | time_s | tool_calls | reps |
+| --- | --- | --- | --- | --- | --- | --- |
+| django__django-11138 | baseline | 1.6273 | 1,489,420 | 240.4 | 40 | 3 |
+| django__django-11138 | atelier | 1.0250 | 695,459 | 349.2 | 22 | 3 |
+| django__django-11333 | baseline | 0.1205 | 86,910 | 22.7 | 3 | 3 |
+| django__django-11333 | atelier | 0.1567 | 93,018 | 116.6 | 3 | 3 |
+| matplotlib__matplotlib-14623 | baseline | 0.8403 | 749,173 | 163.6 | 25 | 3 |
+| matplotlib__matplotlib-14623 | atelier | 0.4101 | 243,788 | 180.0 | 12 | 3 |
+| pydata__xarray-3095 | baseline | 0.4358 | 365,694 | 76.6 | 13 | 3 |
+| pydata__xarray-3095 | atelier | 0.9294 | 912,478 | 163.4 | 27 | 3 |
+| pydata__xarray-3305 | baseline | 0.5111 | 439,030 | 83.1 | 15 | 3 |
+| pydata__xarray-3305 | atelier | 0.3516 | 312,222 | 62.4 | 13 | 3 |
+| pylint-dev__pylint-6386 | baseline | 1.0374 | 1,149,567 | 207.9 | 32 | 3 |
+| pylint-dev__pylint-6386 | atelier | 1.1697 | 1,048,196 | 265.8 | 31 | 3 |
+| pytest-dev__pytest-8399 | baseline | 0.2174 | 180,313 | 41.2 | 7 | 3 |
+| pytest-dev__pytest-8399 | atelier | 0.3397 | 323,666 | 74.9 | 12 | 3 |
+| scikit-learn__scikit-learn-12682 | baseline | 1.2615 | 1,264,205 | 188.3 | 29 | 3 |
+| scikit-learn__scikit-learn-12682 | atelier | 0.7663 | 615,510 | 194.4 | 18 | 3 |
+| sphinx-doc__sphinx-10673 | baseline | 1.8782 | 2,046,614 | 358.2 | 52 | 2 |
+| sphinx-doc__sphinx-10673 | atelier | 2.2334 | 2,340,846 | 472.3 | 47 | 3 |
+| sphinx-doc__sphinx-8120 | baseline | 0.9840 | 944,561 | 173.5 | 26 | 3 |
+| sphinx-doc__sphinx-8120 | atelier | 0.2729 | 203,208 | 94.2 | 8 | 3 |
+| sympy__sympy-13091 | baseline | 1.2754 | 1,152,169 | 241.2 | 47 | 3 |
+| sympy__sympy-13091 | atelier | 1.5790 | 1,223,108 | 409.2 | 33 | 3 |
+| sympy__sympy-13877 | baseline | 1.0629 | 1,121,863 | 310.3 | 30 | 3 |
+| sympy__sympy-13877 | atelier | 0.0980 | 25,606 | 33.2 | 0 | 3 |
+
+=== Per-rep spread (min / median / max -- noise check) ===
+
+| Task | Arm | cost_usd | tokens | reps |
+| --- | --- | --- | --- | --- |
+| django__django-11138 | baseline | 0.8236 / 1.6273 / 1.9403 | 578,954 / 1,489,420 / 2,102,406 | 3 |
+| django__django-11138 | atelier | 0.8367 / 1.0250 / 2.8038 | 506,332 / 695,459 / 4,406,682 | 3 |
+| django__django-11333 | baseline | 0.1024 / 0.1205 / 0.2244 | 66,508 / 86,910 / 198,946 | 3 |
+| django__django-11333 | atelier | 0.1523 / 0.1567 / 0.1727 | 91,879 / 93,018 / 116,149 | 3 |
+| matplotlib__matplotlib-14623 | baseline | 0.6923 / 0.8403 / 1.0476 | 666,566 / 749,173 / 1,133,079 | 3 |
+| matplotlib__matplotlib-14623 | atelier | 0.3644 / 0.4101 / 0.6302 | 212,997 / 243,788 / 506,893 | 3 |
+| pydata__xarray-3095 | baseline | 0.3520 / 0.4358 / 0.7630 | 302,408 / 365,694 / 704,442 | 3 |
+| pydata__xarray-3095 | atelier | 0.4313 / 0.9294 / 1.1441 | 352,093 / 912,478 / 1,196,226 | 3 |
+| pydata__xarray-3305 | baseline | 0.4355 / 0.5111 / 0.5447 | 357,782 / 439,030 / 453,556 | 3 |
+| pydata__xarray-3305 | atelier | 0.2607 / 0.3516 / 0.4211 | 274,033 / 312,222 / 403,942 | 3 |
+| pylint-dev__pylint-6386 | baseline | 0.8269 / 1.0374 / 1.4894 | 732,247 / 1,149,567 / 1,422,630 | 3 |
+| pylint-dev__pylint-6386 | atelier | 1.0619 / 1.1697 / 1.7982 | 871,009 / 1,048,196 / 1,769,273 | 3 |
+| pytest-dev__pytest-8399 | baseline | 0.1881 / 0.2174 / 0.3659 | 178,894 / 180,313 / 381,612 | 3 |
+| pytest-dev__pytest-8399 | atelier | 0.1947 / 0.3397 / 0.3982 | 143,267 / 323,666 / 388,320 | 3 |
+| scikit-learn__scikit-learn-12682 | baseline | 1.0747 / 1.2615 / 1.3647 | 1,094,948 / 1,264,205 / 1,294,768 | 3 |
+| scikit-learn__scikit-learn-12682 | atelier | 0.7629 / 0.7663 / 0.8424 | 581,781 / 615,510 / 663,874 | 3 |
+| sphinx-doc__sphinx-10673 | baseline | 1.8608 / 1.8782 / 1.8956 | 1,844,580 / 2,046,614 / 2,248,649 | 2 |
+| sphinx-doc__sphinx-10673 | atelier | 1.4580 / 2.2334 / 2.2364 | 1,314,055 / 2,340,846 / 2,365,563 | 3 |
+| sphinx-doc__sphinx-8120 | baseline | 0.7954 / 0.9840 / 1.1268 | 824,340 / 944,561 / 987,386 | 3 |
+| sphinx-doc__sphinx-8120 | atelier | 0.2652 / 0.2729 / 0.3022 | 182,957 / 203,208 / 222,763 | 3 |
+| sympy__sympy-13091 | baseline | 1.2180 / 1.2754 / 1.7770 | 1,073,644 / 1,152,169 / 2,736,770 | 3 |
+| sympy__sympy-13091 | atelier | 1.3970 / 1.5790 / 1.9239 | 1,166,230 / 1,223,108 / 1,331,478 | 3 |
+| sympy__sympy-13877 | baseline | 0.5332 / 1.0629 / 1.3527 | 457,899 / 1,121,863 / 1,430,938 | 3 |
+| sympy__sympy-13877 | atelier | 0.0855 / 0.0980 / 0.1079 | 25,300 / 25,606 / 26,499 | 3 |
+
+=== Per-task correctness and cost ===
+
+| Task | Arm | Correct | Score | vs baseline | Cost | Cost delta | Winner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| django__django-11138 | atelier | 3/3 | 1 | 0 | $4.6655 | 6.2% pricier | baseline |
+| django__django-11138 | baseline | 3/3 | 1 | baseline | $4.3912 | baseline | baseline |
+| django__django-11333 | atelier | 0/3 | 0 | -0.667 | $0.4818 | 7.7% pricier | baseline |
+| django__django-11333 | baseline | 2/3 | 0.667 | baseline | $0.4473 | baseline | baseline |
+| matplotlib__matplotlib-14623 | atelier | 3/3 | 1 | 0 | $1.4047 | 45.6% cheaper | atelier |
+| matplotlib__matplotlib-14623 | baseline | 3/3 | 1 | baseline | $2.5802 | baseline | atelier |
+| pydata__xarray-3095 | atelier | 3/3 | 1 | 0 | $2.5047 | 61.5% pricier | baseline |
+| pydata__xarray-3095 | baseline | 3/3 | 1 | baseline | $1.5507 | baseline | baseline |
+| pydata__xarray-3305 | atelier | 3/3 | 1 | 0 | $1.0334 | 30.7% cheaper | atelier |
+| pydata__xarray-3305 | baseline | 3/3 | 1 | baseline | $1.4912 | baseline | atelier |
+| pylint-dev__pylint-6386 | atelier | 3/3 | 1 | 0 | $4.0298 | 20.2% pricier | baseline |
+| pylint-dev__pylint-6386 | baseline | 3/3 | 1 | baseline | $3.3537 | baseline | baseline |
+| pytest-dev__pytest-8399 | atelier | 3/3 | 1 | 0 | $0.9326 | 20.9% pricier | baseline |
+| pytest-dev__pytest-8399 | baseline | 3/3 | 1 | baseline | $0.7714 | baseline | baseline |
+| scikit-learn__scikit-learn-12682 | atelier | 3/3 | 1 | 0 | $2.3715 | 35.9% cheaper | atelier |
+| scikit-learn__scikit-learn-12682 | baseline | 3/3 | 1 | baseline | $3.7009 | baseline | atelier |
+| sphinx-doc__sphinx-10673 | atelier | 2/3 | 0.667 | -0.333 | $5.9278 | 5.1% cheaper | baseline |
+| sphinx-doc__sphinx-10673 | baseline | 3/3 | 1 | baseline | $6.2486 | baseline | baseline |
+| sphinx-doc__sphinx-8120 | atelier | 3/3 | 1 | 0.333 | $0.8403 | 71.1% cheaper | atelier |
+| sphinx-doc__sphinx-8120 | baseline | 2/3 | 0.667 | baseline | $2.9062 | baseline | atelier |
+| sympy__sympy-13091 | atelier | 3/3 | 1 | 0 | $4.8999 | 14.7% pricier | baseline |
+| sympy__sympy-13091 | baseline | 3/3 | 1 | baseline | $4.2704 | baseline | baseline |
+| sympy__sympy-13877 | atelier | 0/3 | 0 | -1 | $0.2914 | 90.1% cheaper | baseline |
+| sympy__sympy-13877 | baseline | 3/3 | 1 | baseline | $2.9489 | baseline | baseline |
+Runs ok     : baseline 35/36  atelier 36/36
+Valid       : baseline 36/36  atelier 36/36
+Correct     : baseline 34/36 avg=0.944  atelier 29/36 avg=0.806
+Chart data  : summary.csv, task_metrics.csv, model_audit.csv, task_correctness.csv, pairwise_quality.csv, quality_adjusted_summary.csv

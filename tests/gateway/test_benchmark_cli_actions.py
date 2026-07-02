@@ -31,77 +31,6 @@ def test_help_command_shows_root_command_help(tmp_path: Path) -> None:
     assert "benchmark" in root_help.output
 
 
-def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(monkeypatch, tmp_path: Path) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench"])
-
-    assert result.exit_code == 0, result.output
-    trial_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench trial"]
-    summary_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench summary"]
-    assert len(trial_calls) == 20
-    assert len(summary_calls) == 1
-    assert {cmd[cmd.index("--mode") + 1] for cmd in trial_calls} == {"on", "off"}
-    assert {cmd[cmd.index("--task") + 1] for cmd in trial_calls} == {
-        "hello-world",
-        "fix-pandas-version",
-        "incompatible-python-fasttext",
-        "csv-to-parquet",
-        "fibonacci-server",
-        "simple-web-scraper",
-        "fix-git",
-        "swe-bench-fsspec",
-        "swe-bench-langcodes",
-        "grid-pattern-transform",
-    }
-    manifest = json.loads((tmp_path / "terminalbench" / "benchmark-manifest.json").read_text("utf-8"))
-    assert manifest["suite"] == "terminalbench"
-    assert manifest["protocol"]["baseline_arm"] == "off"
-    assert manifest["corpus"]["tasks"][0] == "hello-world"
-    evidence = json.loads((tmp_path / "terminalbench" / "benchmark-evidence.json").read_text("utf-8"))
-    assert evidence["suite"] == "terminalbench"
-    assert evidence["artifacts"]["runs_jsonl"]["path"].endswith("runs.jsonl")
-    gate = json.loads((tmp_path / "terminalbench" / "benchmark-gate.json").read_text("utf-8"))
-    assert gate["suite"] == "terminalbench"
-    assert gate["passed"] is False
-
-
-def test_benchmark_terminalbench_require_pass_exits_nonzero_after_writing_artifacts(
-    monkeypatch, tmp_path: Path
-) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench", "--require-pass"])
-
-    assert result.exit_code != 0
-    assert "no paired benchmark evidence is available" in result.output
-    assert (tmp_path / "terminalbench" / "benchmark-manifest.json").is_file()
-    assert (tmp_path / "terminalbench" / "benchmark-evidence.json").is_file()
-    assert (tmp_path / "terminalbench" / "benchmark-gate.json").is_file()
-
-
 def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
@@ -124,49 +53,29 @@ def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) 
     assert "candidate cost was higher" in failed.output
 
 
-def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    captured: dict[str, object] = {}
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-
-    def fake_run_swe_eval(**kwargs: object) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr(benchmark_cmds, "_run_swe_eval", fake_run_swe_eval)
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe"])
-
-    assert result.exit_code == 0, result.output
-    assert captured["subset"] == "lite"
-    assert captured["split"] == "dev"
-    assert captured["slice_expr"] == "0:5"
-    assert captured["workers"] == 1
-    assert captured["proxy_upstream"] == "http://localhost:11434/v1"
-
-
-def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -174,63 +83,71 @@ def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> Non
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
+            "codebench",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
     cmd, label, env = calls[0]
-    assert label == "AtelierBench"
-    assert cmd[:3] == ["python", "-m", "benchmarks.atelierbench.run"]
-    assert "--tasks" in cmd and cmd[cmd.index("--tasks") + 1] == "all"
+    assert label == "CodeBench"
+    assert cmd[:3] == ["python", "-m", "benchmarks.codebench.run"]
+    assert cmd[3] == "all"
+    assert "--tasks" not in cmd
     assert "--arms" in cmd
     assert cmd[cmd.index("--cli-driver") + 1] == "claude"
     assert cmd[cmd.index("--timeout") + 1] == "1800"
-    assert cmd[cmd.index("--max-output-tokens") + 1] == "8192"
+    assert "--max-output-tokens" not in cmd
     assert cmd[cmd.index("--rate-limit-rpm") + 1] == "0.0"
     assert cmd[cmd.index("--rate-limit-tpm") + 1] == "0"
     assert cmd[cmd.index("--jobs") + 1] == "1"
     assert cmd[cmd.index("--parallel-scope") + 1] == "task"
-    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
-    manifest = json.loads((tmp_path / "atelierbench" / "benchmark-manifest.json").read_text("utf-8"))
-    assert manifest["suite"] == "atelierbench"
+    assert env == {"CODEBENCH_TASKS_DIR": str(codebench_tasks_dir.resolve())}
+    manifest = json.loads((tmp_path / "codebench" / "benchmark-manifest.json").read_text("utf-8"))
+    assert manifest["suite"] == "codebench"
     assert manifest["protocol"]["baseline_arm"] == "baseline"
     assert manifest["protocol"]["arm_agents"] == {
         "atelier": "atelier:code",
         "baseline": "host-default",
     }
-    assert manifest["corpus"]["tasks"][0]["id"] == "task1"
-    evidence = json.loads((tmp_path / "atelierbench" / "benchmark-evidence.json").read_text("utf-8"))
-    assert evidence["suite"] == "atelierbench"
+    assert manifest["corpus"]["tasks"][0]["id"] == "cg_vscode"
+    assert manifest["artifacts"]["model_audit_csv"] == "model_audit.csv"
+    assert manifest["artifacts"]["task_correctness_csv"] == "task_correctness.csv"
+    assert manifest["artifacts"]["pairwise_quality_csv"] == "pairwise_quality.csv"
+    evidence = json.loads((tmp_path / "codebench" / "benchmark-evidence.json").read_text("utf-8"))
+    assert evidence["suite"] == "codebench"
     assert evidence["artifacts"]["results_jsonl"]["path"].endswith("results.jsonl")
-    gate = json.loads((tmp_path / "atelierbench" / "benchmark-gate.json").read_text("utf-8"))
-    assert gate["suite"] == "atelierbench"
+    assert evidence["artifacts"]["quality_adjusted_summary_csv"]["path"].endswith("quality_adjusted_summary.csv")
+    gate = json.loads((tmp_path / "codebench" / "benchmark-gate.json").read_text("utf-8"))
+    assert gate["suite"] == "codebench"
     assert gate["passed"] is False
 
 
-def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_accepts_eval_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -238,58 +155,52 @@ def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
+            "codebench",
             "--arm",
             "baseline",
             "--arm",
             "atelier",
-            "--arm",
-            "eval",
             "--model",
             "llama3.2",
-            "--transport",
-            "api",
-            "--api-provider",
-            "ollama",
-            "--launch-ollama",
             "--bridge-wait",
             "0",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "AtelierBench"
-    assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier", "eval"]
+    assert label == "CodeBench"
+    assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier"]
     assert cmd[cmd.index("--model") + 1] == "llama3.2"
-    assert cmd[cmd.index("--transport") + 1] == "api"
-    assert cmd[cmd.index("--api-provider") + 1] == "ollama"
-    assert "--launch-ollama" in cmd
-    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
+    assert "--transport" not in cmd
+    assert env == {"CODEBENCH_TASKS_DIR": str(codebench_tasks_dir.resolve())}
 
 
-def test_benchmark_atelierbench_judge_defaults_to_runner_transport(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_judge_defaults_to_runner_transport(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -297,14 +208,12 @@ def test_benchmark_atelierbench_judge_defaults_to_runner_transport(monkeypatch, 
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
-            "--transport",
-            "cli",
+            "codebench",
             "--model",
             "claude-sonnet-4-6",
             "--judge",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
@@ -314,30 +223,33 @@ def test_benchmark_atelierbench_judge_defaults_to_runner_transport(monkeypatch, 
     assert "--judge-provider" not in cmd
     assert "--judge-model" not in cmd
     assert "--judge-transport" not in cmd
-    assert cmd[cmd.index("--transport") + 1] == "cli"
+    assert "--transport" not in cmd
     assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-6"
 
 
-def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_openrouter_claude_preset_passes_agent_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -345,9 +257,7 @@ def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(monkey
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
-            "--transport",
-            "cli",
+            "codebench",
             "--model",
             "openrouter/owl-alpha",
             "--openrouter-claude",
@@ -356,41 +266,44 @@ def test_benchmark_atelierbench_openrouter_claude_preset_passes_agent_env(monkey
             "--agent-env",
             "EXTRA_FLAG=1",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "AtelierBench"
+    assert label == "CodeBench"
     assert "--agent-env" in cmd
     assert "EXTRA_FLAG=1" in cmd
     assert "ANTHROPIC_BASE_URL=https://openrouter.ai/api" in cmd
     assert "ANTHROPIC_API_KEY=" in cmd
     assert "ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY" in cmd
-    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
+    assert env == {"CODEBENCH_TASKS_DIR": str(codebench_tasks_dir.resolve())}
 
 
-def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_generic_claude_provider_flags_pass_through(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -398,9 +311,7 @@ def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(monke
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
-            "--transport",
-            "cli",
+            "codebench",
             "--model",
             "provider/model-x",
             "--claude-base-url",
@@ -411,39 +322,42 @@ def test_benchmark_atelierbench_generic_claude_provider_flags_pass_through(monke
             "PROVIDER_API_KEY",
             "--clear-claude-api-key",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
-    assert label == "AtelierBench"
+    assert label == "CodeBench"
     assert "ANTHROPIC_BASE_URL=https://provider.example/api" in cmd
     assert "ANTHROPIC_AUTH_TOKEN=PROVIDER_AUTH" in cmd
     assert "ANTHROPIC_API_KEY=PROVIDER_API_KEY" in cmd
-    assert env == {"ATELIERBENCH_TASKS_DIR": str(atelierbench_tasks_dir.resolve())}
+    assert env == {"CODEBENCH_TASKS_DIR": str(codebench_tasks_dir.resolve())}
 
 
-def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_forwards_cli_driver_and_jobs(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -451,7 +365,7 @@ def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_pa
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
+            "codebench",
             "--cli-driver",
             "codex",
             "--jobs",
@@ -463,13 +377,13 @@ def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_pa
             "--cli-extra-arg",
             'model_reasoning_effort="medium"',
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, _env = calls[0]
-    assert label == "AtelierBench"
+    assert label == "CodeBench"
     assert cmd[cmd.index("--cli-driver") + 1] == "codex"
     assert cmd[cmd.index("--jobs") + 1] == "3"
     assert cmd[cmd.index("--parallel-scope") + 1] == "arm"
@@ -477,26 +391,29 @@ def test_benchmark_atelierbench_forwards_cli_driver_and_jobs(monkeypatch, tmp_pa
     assert '--cli-extra-arg=model_reasoning_effort="medium"' in cmd
 
 
-def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_named_aws_claude_preset_passes_env(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_atelierbench_run_dir", lambda repo_root: tmp_path / "atelierbench")
+    monkeypatch.setattr(benchmark_cmds, "_codebench_run_dir", lambda repo_root: tmp_path / "codebench")
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -504,36 +421,34 @@ def test_benchmark_atelierbench_named_aws_claude_preset_passes_env(monkeypatch, 
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
-            "--transport",
-            "cli",
+            "codebench",
             "--cli-driver",
             "claude",
             "--claude-provider-preset",
             "aws-claude",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code == 0, result.output
     cmd, label, _env = calls[0]
-    assert label == "AtelierBench"
+    assert label == "CodeBench"
     assert "CLAUDE_CODE_USE_BEDROCK=1" in cmd
     assert "AWS_REGION=AWS_REGION" in cmd
 
 
-def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_rejects_claude_flags_for_non_claude_driver(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
-    atelierbench_tasks_dir = tmp_path / "atelierbench-tasks"
-    atelierbench_tasks_dir.mkdir()
+    codebench_tasks_dir = tmp_path / "codebench-tasks"
+    codebench_tasks_dir.mkdir()
 
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(
         benchmark_cmds,
-        "_ensure_atelierbench_tasks_dir",
-        lambda repo_root, path: atelierbench_tasks_dir,
+        "_ensure_codebench_tasks_dir",
+        lambda repo_root, path: codebench_tasks_dir,
     )
 
     result = runner.invoke(
@@ -542,19 +457,17 @@ def test_benchmark_atelierbench_rejects_claude_flags_for_non_claude_driver(monke
             "--root",
             str(root),
             "benchmark",
-            "atelierbench",
-            "--transport",
-            "cli",
+            "codebench",
             "--cli-driver",
             "copilot",
             "--openrouter-claude",
             "--task-source-dir",
-            str(atelierbench_tasks_dir),
+            str(codebench_tasks_dir),
         ],
     )
 
     assert result.exit_code != 0
-    assert "--openrouter-claude only applies to --transport cli --cli-driver claude." in result.output
+    assert "openrouter-claude only supports CLI drivers: claude" in result.output
 
 
 def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> None:
@@ -563,7 +476,7 @@ def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> Non
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_resolve_mcp_jobs", lambda jobs, repo_root: 6)
+    monkeypatch.setattr(benchmark_cmds, "_resolve_mcp_jobs", lambda jobs, repo_root, suite_names=None: 6)
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
@@ -571,7 +484,7 @@ def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> Non
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "mcp"])
 
     assert result.exit_code == 0, result.output
     cmd, _label, _env = calls[0]
@@ -592,7 +505,7 @@ def test_benchmark_mcp_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp", "--jobs", "3"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "mcp", "--jobs", "3"])
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
@@ -609,67 +522,97 @@ def test_benchmark_auto_jobs_uses_full_cpu_up_to_cap(monkeypatch) -> None:
 
     monkeypatch.setattr(benchmark_cmds, "cpu_count", lambda: 64)
     assert benchmark_cmds._auto_jobs(40, hard_cap=32) == 32
-    assert benchmark_cmds._resolve_provider_jobs(0, ["a"] * 40) == 32
 
 
-def test_benchmark_providers_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_swe_wraps_multiswe_runner(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+    calls: list[tuple[list[str], str]] = []
 
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
-        "_workspace_dir",
-        lambda suite, repo_root, run_id: tmp_path / "workspace",
-    )
-    monkeypatch.setattr(
-        benchmark_cmds,
         "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+        lambda cmd, cwd, label, env=None, check=True: calls.append((cmd, label)) or 0,
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers", "--jobs", "4"])
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "benchmark",
+            "swe",
+            "--language",
+            "go",
+            "--language",
+            "rust",
+            "--per-language-limit",
+            "5",
+            "--jobs",
+            "2",
+            "--no-grade",
+        ],
+    )
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
-    cmd, label, _env = calls[0]
-    assert label == "provider benchmark"
-    assert "--jobs" in cmd
-    assert cmd[cmd.index("--jobs") + 1] == "4"
+    cmd, label = calls[0]
+    assert label == "benchmark swe"
+    assert cmd[:3] == ["python", "-m", "benchmarks.codebench.multiswe_run"]
+    assert cmd[cmd.index("--arms") + 1 : cmd.index("--arms") + 3] == ["baseline", "atelier"]
+    assert cmd[cmd.index("--languages") + 1 : cmd.index("--languages") + 3] == ["go", "rust"]
+    assert cmd[cmd.index("--per-language-limit") + 1] == "5"
+    assert cmd[cmd.index("--jobs") + 1] == "2"
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-8"
+    assert "--no-grade" in cmd
+    assert cmd[cmd.index("--out") + 1] == str(tmp_path / "swe")
 
 
-def test_benchmark_providers_defaults_to_auto_and_cache_root(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_swe_defaults_to_grading(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
+    calls: list[list[str]] = []
 
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
     monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
-        "_workspace_dir",
-        lambda suite, repo_root, run_id: tmp_path / "workspace",
+        "_run",
+        lambda cmd, cwd, label, env=None, check=True: calls.append(cmd) or 0,
     )
-    monkeypatch.setattr(benchmark_cmds, "_resolve_provider_jobs", lambda jobs, providers: 3)
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_cache_dir",
-        lambda suite, repo_root: tmp_path / "cache",
-    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe", "--limit", "1"])
+
+    assert result.exit_code == 0, result.output
+    cmd = calls[0]
+    assert "--no-grade" not in cmd
+    assert cmd[cmd.index("--limit") + 1] == "1"
+    assert cmd[cmd.index("--grade-workers") + 1] == "4"
+
+
+def test_benchmark_swe_forwards_suite(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
     monkeypatch.setattr(
         benchmark_cmds,
         "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
+        lambda cmd, cwd, label, env=None, check=True: calls.append(cmd) or 0,
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers"])
-
+    result = runner.invoke(
+        cli,
+        ["--root", str(root), "benchmark", "swe", "--suite", "swe-bench-verified", "--limit", "2"],
+    )
     assert result.exit_code == 0, result.output
-    cmd, label, _env = calls[0]
-    assert label == "provider benchmark"
-    assert cmd[cmd.index("--jobs") + 1] == "3"
-    assert cmd[cmd.index("--cache-root") + 1] == str((tmp_path / "cache").resolve())
+    assert calls[0][calls[0].index("--suite") + 1] == "swe-bench-verified"
+
+    calls.clear()
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe", "--limit", "1"])
+    assert result.exit_code == 0, result.output
+    assert calls[0][calls[0].index("--suite") + 1] == "multi-swe-bench"

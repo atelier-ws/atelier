@@ -96,7 +96,7 @@ if [[ "${ATELIER_ENFORCE_NATIVE_DENY:-0}" == "1" ]]; then
 else
     ATELIER_DENY_TOOLS_JSON='[]'
 fi
-ATELIER_MCP_TOOLS_JSON='["mcp__atelier__symbols", "mcp__atelier__node", "mcp__atelier__callers", "mcp__atelier__callees", "mcp__atelier__usages", "mcp__atelier__impact", "mcp__atelier__pattern", "mcp__atelier__explore", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
+ATELIER_MCP_TOOLS_JSON='["mcp__atelier__symbols", "mcp__atelier__node", "mcp__atelier__callers", "mcp__atelier__callees", "mcp__atelier__usages", "mcp__atelier__codemod", "mcp__atelier__code_search", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__bash", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
 ATELIER_BASH_ALLOWS_JSON='["Bash(git *)", "Bash(gh *)", "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)", "Bash(uv run ruff *)", "Bash(uv run atelier *)", "Bash(uv run uvicorn *)", "Bash(uv sync *)", "Bash(uv add *)", "Bash(uv pip *)", "Bash(uv lock *)", "Bash(npm run *)", "Bash(npm install *)", "Bash(npm test *)", "Bash(npx tsc *)", "Bash(make *)", "Bash(docker-compose *)", "Bash(docker compose *)"]'
 
 # --------------------------------------------------------------------------- #
@@ -164,7 +164,7 @@ configure_project_enforcement() {
     }
 
 
-uv run python "$MODE_RENDERER" >/dev/null || python3 "$MODE_RENDERER" >/dev/null
+uv run python "$MODE_RENDERER" >/dev/null 2>&1 || python3 "$MODE_RENDERER" >/dev/null 2>&1 || true
 STAGING_DIR="${HOME}/.atelier/claude-plugin"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".
@@ -191,6 +191,43 @@ run "chmod +x '$STAGING_DIR/scripts/'*.sh 2>/dev/null || true"
 run "chmod +x '$STAGING_DIR/hooks/'*.sh '$STAGING_DIR/hooks/'*.py 2>/dev/null || true"
 PLUGIN_DIR="$STAGING_DIR"
 INSTALL_SOURCE_DIR="$STAGING_DIR"
+
+# Write the Python interpreter path so _run_hook.sh can find atelier in all
+# install modes (binary, dev-venv, uv-tool, pip).  Probe in preference order:
+#   1. uv run from the repo (dev / local checkout)
+#   2. uv tool venv python (uv tool install atelier)
+#   3. system python3/python (pip install atelier)
+# Binary-mode installs have no importable Python; the file is left absent and
+# hooks degrade gracefully via their try/except guards.
+if ! $DRY_RUN; then
+    _ATELIER_PY=""
+    # 1. dev / local checkout
+    if [[ -z "${_ATELIER_PY}" ]] && command -v uv >/dev/null 2>&1; then
+        _ATELIER_PY="$(cd "${ATELIER_REPO}" && uv run python -c "import sys; print(sys.executable)" 2>/dev/null || true)"
+        [[ -n "${_ATELIER_PY}" ]] && "${_ATELIER_PY}" -c "import atelier" 2>/dev/null || _ATELIER_PY=""
+    fi
+    # 2. uv tool venv
+    if [[ -z "${_ATELIER_PY}" ]]; then
+        for _py in "${HOME}/.local/share/uv/tools/atelier/bin/python" "${HOME}/.local/share/uv/tools/atelier/bin/python3"; do
+            if [[ -x "${_py}" ]] && "${_py}" -c "import atelier" 2>/dev/null; then
+                _ATELIER_PY="${_py}"; break
+            fi
+        done
+    fi
+    # 3. system python (pip install)
+    if [[ -z "${_ATELIER_PY}" ]]; then
+        for _py in python3 python; do
+            if command -v "${_py}" >/dev/null 2>&1 && "$(command -v "${_py}")" -c "import atelier" 2>/dev/null; then
+                _ATELIER_PY="$(command -v "${_py}")"; break
+            fi
+        done
+    fi
+    if [[ -n "${_ATELIER_PY}" && -x "${_ATELIER_PY}" ]]; then
+        echo "${_ATELIER_PY}" > "${STAGING_DIR}/atelier-python"
+        info "Stored atelier python: ${_ATELIER_PY}"
+    fi
+fi
+
 if $PRINT_ONLY; then
     echo ""
     echo "=== Atelier Claude Code - Install Steps ==="
@@ -210,7 +247,7 @@ if $PRINT_ONLY; then
         echo "Step 4 - Project local Claude agents are projected into ${WORKSPACE}/.claude/agents"
     else
         echo "Step 3 - Register MCP in Claude user scope:"
-        echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
+        echo "  claude mcp add --scope user atelier -- atelier mcp --host claude"
     fi
     echo ""
     echo "After install, in Claude Code: /atelier:explore"
@@ -305,59 +342,11 @@ if [ "$STRUCT_FAIL" -ne 0 ]; then
 fi
 info "Structural validation passed"
 
-# ---- refresh atelier-mcp from local source ---------------------------------
-# The MCP server runs from `uv tool install`'s isolated site-packages, NOT
-# from a live source link. Without this step, any change you make under src/
-# (e.g. capability fixes that affect savings emission) won't reach Claude
-# until you re-run install.sh. Reinstall here so install_claude.sh is the
-# single command that keeps plugin assets AND the MCP runtime in sync.
-refresh_atelier_tool() {
-    if ! command -v uv >/dev/null 2>&1; then
-        warn "uv not on PATH — skipping atelier-mcp refresh"
-        return 0
-    fi
-    local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
-    local pkg_spec="${ATELIER_REPO}[${extras}]"
-    local bin_dir="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
-    local tool_dir="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
-
-    if $DRY_RUN; then
-        echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
-        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper"
-        return 0
-    fi
-
-    info "Refreshing atelier-mcp from ${ATELIER_REPO}"
-    UV_TOOL_BIN_DIR="$bin_dir" UV_TOOL_DIR="$tool_dir" \
-        uv tool install --reinstall "$pkg_spec" >/dev/null 2>&1 || {
-            warn "uv tool install --reinstall failed; MCP may run stale code"
-            return 0
-        }
-
-    # uv replaces atelier-mcp with the raw Python entry point. Restore the
-    # bash wrapper so local installs keep a stable entrypoint path.
-    local mcp_path="${bin_dir}/atelier-mcp"
-    local wrapped_path="${bin_dir}/atelier-mcp.real"
-    local real_target="${tool_dir}/atelier/bin/atelier-mcp"
-    if [[ -e "$mcp_path" || -L "$mcp_path" ]]; then
-        rm -f "$wrapped_path" "$mcp_path"
-        ln -s "$real_target" "$wrapped_path"
-        cat > "$mcp_path" <<EOF
-#!/usr/bin/env bash
-exec "$wrapped_path" "\$@"
-EOF
-        chmod +x "$mcp_path"
-        info "atelier-mcp wrapper restored"
-    fi
-}
-
-refresh_atelier_tool
-
 # ---- plugin install ---------------------------------------------------------
 if $DRY_RUN; then
     echo "  [dry-run] claude plugin validate ${PLUGIN_DIR}"
     echo "  [dry-run] claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
-    echo "  [dry-run] reinstall ${PLUGIN_REF}"
+    echo "  [dry-run] claude plugin install ${PLUGIN_REF}"
 else
     info "Validating plugin package with Claude CLI at ${PLUGIN_DIR}"
     if ! claude plugin validate "${PLUGIN_DIR}" 2>&1 | grep -q "Validation passed"; then
@@ -395,11 +384,11 @@ if $WORKSPACE_SET; then
     info "Project-level .mcp.json is not needed with the Claude plugin — skipping"
 else
     if $DRY_RUN; then
-        echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"
+        echo "  [dry-run] claude mcp add --scope user atelier -- atelier mcp --host claude"
     else
         info "Registering atelier MCP server in Claude user scope"
         claude mcp remove --scope user atelier 2>/dev/null || true
-        claude mcp add --scope user atelier -- atelier-mcp --host claude
+        claude mcp add --scope user atelier -- atelier mcp --host claude
     fi
 fi
 
@@ -428,7 +417,12 @@ PYEOF
     if $DRY_RUN; then
         echo "  [dry-run] project workspace-local Claude agents into ${WORKSPACE}/.claude/agents"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        # Use an interpreter that can import atelier (pydantic et al). The bare
+        # system python3 usually can't; _ATELIER_PY was resolved above to the
+        # dev-venv / uv-tool / pip interpreter. Projection is best-effort — a
+        # failure must NOT abort the remaining workspace setup (hooks,
+        # statusLine, enforcement), so swallow non-zero exits with a warning.
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "${_ATELIER_PY:-python3}" - <<PYEOF || warn "workspace-local Claude agent projection failed (non-fatal); skipping"
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_workspace_claude_overrides
 
@@ -438,51 +432,6 @@ PYEOF
     fi
 fi
 
-# ---- Claude hook settings ---------------------------------------------------
-run "mkdir -p '$CLAUDE_SETTINGS_DIR'"
-
-if $DRY_RUN; then
-    echo "  [dry-run] merge PreToolUse Atelier loop hook into ${CLAUDE_SETTINGS}"
-else
-    if [ ! -f "${CLAUDE_SETTINGS}" ]; then
-        info "Creating ${CLAUDE_SETTINGS}"
-        echo "{}" > "${CLAUDE_SETTINGS}"
-    fi
-    HOOK_SCRIPT=$(mktemp /tmp/atelier_hook_XXXXXX)
-    cat > "${HOOK_SCRIPT}" << 'PYEOF'
-import json
-import sys
-
-path = sys.argv[1]
-hook_command = "echo '{\"systemMessage\": \"Atelier loop required: call task before editing and use rescue on repeated failures.\"}'"
-
-with open(path) as f:
-    d = json.load(f)
-
-hooks = d.setdefault("hooks", {})
-pre_tool_use = hooks.setdefault("PreToolUse", [])
-
-matcher = "Edit|Write"
-for entry in pre_tool_use:
-    if entry.get("matcher") == matcher:
-        for h in entry.get("hooks", []):
-            if h.get("type") == "command" and "Atelier loop required" in h.get("command", ""):
-                print("[atelier:claude] Atelier loop PreToolUse hook already present")
-                sys.exit(0)
-
-pre_tool_use.append({
-    "matcher": matcher,
-    "hooks": [{"type": "command", "command": hook_command}]
-})
-
-with open(path, "w") as f:
-    json.dump(d, f, indent=2)
-    f.write("\n")
-print("[atelier:claude] Atelier loop PreToolUse hook merged into " + path)
-PYEOF
-    python3 "${HOOK_SCRIPT}" "${CLAUDE_SETTINGS}"
-    rm -f "${HOOK_SCRIPT}"
-fi
 
 # ---- permissions: allow Atelier MCP (and optionally deny native tools) ------
 # By default this preserves Claude's normal permission prompt for native tools.
@@ -490,7 +439,13 @@ fi
 apply_enforcement_to_settings "${CLAUDE_SETTINGS}"
 
 # ---- statusLine setting in ~/.claude/settings.json -------------------------
+# ATELIER_STATUSLINE_COMPACT=1 installs the compact layout (model · ctx % ·
+# cost · savings · background tasks) instead of the full token breakdown.
 STATUSLINE_SCRIPT="${INSTALL_SOURCE_DIR}/scripts/statusline.sh"
+STATUSLINE_CMD="${STATUSLINE_SCRIPT}"
+if [[ -n "${ATELIER_STATUSLINE_COMPACT:-}" ]]; then
+    STATUSLINE_CMD="ATELIER_STATUS_COMPACT=1 ${STATUSLINE_SCRIPT}"
+fi
 if $DRY_RUN; then
     echo "  [dry-run] set statusLine in ${CLAUDE_SETTINGS} → ${STATUSLINE_SCRIPT}"
 elif [ -f "${STATUSLINE_SCRIPT}" ]; then
@@ -501,7 +456,7 @@ path = Path("${CLAUDE_SETTINGS}")
 if not path.exists():
     path.write_text("{}\n")
 data = json.loads(path.read_text(encoding="utf-8") or "{}")
-data["statusLine"] = {"type": "command", "command": "${STATUSLINE_SCRIPT}", "padding": 1}
+data["statusLine"] = {"type": "command", "command": "${STATUSLINE_CMD}", "padding": 1}
 data["subagentStatusLine"] = {"type": "command", "command": "${STATUSLINE_SCRIPT}", "padding": 1}
 data["agent"] = "atelier:code"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

@@ -1,7 +1,7 @@
 """Per-call cost tracking and savings-delta computation.
 
 Records every LLM call performed during an agent run with model, token
-counts, USD cost, and the lessons (ReasonBlocks) injected into the prompt.
+counts, USD cost, and the lessons (Playbooks) injected into the prompt.
 
 Persists two artifacts under the atelier store root:
 

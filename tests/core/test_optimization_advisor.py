@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from atelier.core.capabilities.optimization.complexity import score_complexity
 from atelier.core.capabilities.optimization.golden_runner import run_golden_suite
 from atelier.core.capabilities.optimization.optimizer import (
@@ -14,6 +16,7 @@ from atelier.core.capabilities.optimization.policy import (
     preset_policy,
     save_policy,
 )
+from atelier.core.capabilities.optimization.shadow import build_shadow_state
 from atelier.core.foundation.models import Trace, UsageEntry
 
 
@@ -54,6 +57,13 @@ def test_complexity_scores_risky_migration_above_explanation() -> None:
 
     assert migration.score > explain.score
     assert migration.label in {"medium", "hard"}
+
+
+@pytest.fixture(autouse=True)
+def _entitle_savings_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This module exercises the Pro savings engine; treat the install as licensed
+    # so load_current_policy returns the configured policy, not the Free baseline.
+    monkeypatch.setattr("atelier.core.capabilities.licensing.feature_active", lambda *a, **k: True)
 
 
 def test_policy_roundtrip_preserves_preset(tmp_path: Path) -> None:
@@ -105,3 +115,44 @@ def test_golden_optimization_corpus_has_at_least_50_well_formed_tasks() -> None:
 
     assert result.total >= 50
     assert result.failures == []
+
+
+def test_shadow_daily_cap_enforced_when_baseline_is_zero() -> None:
+    # Intentional guardrail (M5): with a zero 7-day baseline the maximum
+    # allowed daily cap is 0, so any positive explicit max_daily_spend_usd is
+    # rejected. A new/zero-history account must not authorize real spend off a
+    # baseline it has no evidence for. The CLI caller wraps this ValueError in
+    # a click.ClickException, so it surfaces as a clean user-facing error.
+    with pytest.raises(ValueError, match="cannot exceed 25%"):
+        build_shadow_state(
+            policy="balanced",
+            days=7,
+            baseline_weekly_cost_usd=0.0,
+            max_daily_spend_usd=1000.0,
+        )
+
+
+def test_shadow_zero_baseline_defaults_to_zero_cap_without_raising() -> None:
+    # When no explicit cap is given the requested cap derives from the (zero)
+    # baseline, equals the maximum allowed (0), and is accepted -- the guard
+    # only rejects an *explicit* positive cap that exceeds the baseline-derived
+    # ceiling, never the implicit default.
+    state = build_shadow_state(
+        policy="balanced",
+        days=7,
+        baseline_weekly_cost_usd=0.0,
+    )
+    assert state.max_daily_spend_usd == 0.0
+    assert state.estimated_weekly_spend_usd == 0.0
+
+
+def test_shadow_positive_cap_within_baseline_ceiling_is_accepted() -> None:
+    # Positive control: a non-zero baseline admits a cap up to 25% of the
+    # trailing daily baseline. $70/wk -> $10/day -> ceiling $2.50/day.
+    state = build_shadow_state(
+        policy="balanced",
+        days=7,
+        baseline_weekly_cost_usd=70.0,
+        max_daily_spend_usd=2.0,
+    )
+    assert state.max_daily_spend_usd == 2.0

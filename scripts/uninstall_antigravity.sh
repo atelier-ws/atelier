@@ -40,7 +40,7 @@ else
 fi
 
 info()  { echo "[atelier:uninstall:antigravity] $*"; }
-run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+run()   { $DRY_RUN && echo "  [dry-run] $*" || "$@"; }
 
 if [ -f "$MCP_JSON" ]; then
     if $DRY_RUN; then

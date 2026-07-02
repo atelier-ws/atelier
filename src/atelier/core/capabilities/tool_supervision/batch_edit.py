@@ -43,16 +43,18 @@ def _repo_root() -> Path:
     return Path.cwd()
 
 
-def _resolve_path(path: str, repo_root: Path) -> Path:
-    """Resolve *path* to an absolute Path, enforcing it stays inside *repo_root*."""
+def _resolve_path(path: str, repo_root: Path, allowed_roots: list[Path] | None = None) -> Path:
+    """Resolve *path* to an absolute Path, enforcing it stays inside *repo_root* or *allowed_roots*."""
     p = Path(path)
     if not p.is_absolute():
         p = repo_root / p
     p = p.resolve()
-    try:
-        p.relative_to(repo_root.resolve())
-    except ValueError as exc:
-        raise ValueError(f"Path escape denied: {path!r} is outside the repo root") from exc
+    roots = [repo_root.resolve(), *(allowed_roots or [])]
+    if not any(p == r or p.is_relative_to(r) for r in roots):
+        raise ValueError(
+            f"Path escape denied: {path!r} is outside the repo root — "
+            "use the host's native tools for files outside the workspace"
+        )
     if any(part in PROTECTED_PARTS for part in p.parts):
         raise ValueError(f"Protected path denied: {path!r}")
     return p
@@ -101,10 +103,15 @@ def _apply_replace_range(content: str, line_start: int, line_end: int, new_strin
     lines = content.splitlines(keepends=True)
     if line_start < 1 or line_end > len(lines) or line_start > line_end:
         raise ValueError(
-            f"replace_range: line_start={line_start}, line_end={line_end} out of range "
-            f"(file has {len(lines)} lines)"
+            f"replace_range: line_start={line_start}, line_end={line_end} out of range (file has {len(lines)} lines)"
         )
-    replacement = new_string if new_string.endswith("\n") else new_string + "\n"
+    # Force a trailing newline only when the span is followed by more lines;
+    # replacing the final span must preserve the file's original trailing-newline
+    # state (forcing one would mutate files that end without a newline).
+    if line_end < len(lines):
+        replacement = new_string if new_string.endswith("\n") else new_string + "\n"
+    else:
+        replacement = new_string
     new_lines = [*lines[: line_start - 1], replacement, *lines[line_end:]]
     return "".join(new_lines), line_start, line_end
 
@@ -120,6 +127,7 @@ def apply_batch_edit(
     atomic: bool = True,
     backup_base: Path | None = None,
     repo_root: Path | None = None,
+    allowed_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """Apply *edits* and return a result envelope.
 
@@ -136,6 +144,9 @@ def apply_batch_edit(
         ``.atelier/run/<session_id>/batch_edit_backup/`` relative to *repo_root*.
     repo_root:
         Repository root.  Defaults to the process cwd.
+    allowed_roots:
+        Additional directories outside *repo_root* that edits may target.
+        Populated from Claude Code's ``additionalDirectories`` setting.
 
     Returns
     -------
@@ -160,7 +171,7 @@ def apply_batch_edit(
     for edit in edits:
         raw_path = edit.get("path", "")
         try:
-            resolved = _resolve_path(str(raw_path), repo_root)
+            resolved = _resolve_path(str(raw_path), repo_root, allowed_roots=allowed_roots)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
             failed.append({"path": str(raw_path), "error": str(exc)})

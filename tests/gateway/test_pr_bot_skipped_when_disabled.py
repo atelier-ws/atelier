@@ -3,23 +3,27 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
 
 
-def test_pr_bot_skips_when_disabled_without_side_effects(tmp_path: Path) -> None:
+def test_pr_bot_skips_when_disabled_without_side_effects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / ".atelier"
     runner = CliRunner()
 
+    # Run outside a git repo so `init` skips the ~40s code-index bootstrap and
+    # project-setup writes; this test only needs an initialized store.
+    monkeypatch.chdir(tmp_path)
     init = runner.invoke(cli, ["--root", str(root), "init"])
     assert init.exit_code == 0, init.output
 
     store = ContextStore(root)
-    block = ReasonBlock(
+    block = Playbook(
         id="rb.lesson.disabled",
         title="Disabled path block",
         domain="coding",

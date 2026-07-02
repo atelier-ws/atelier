@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -18,8 +17,12 @@ def _atelier_root() -> Path:
 
 
 def _session_state_path(cwd: str | None = None) -> Path:
+    # Canonical hashing lives in atelier.core.foundation.paths.workspace_key --
+    # import it rather than keeping a local copy in sync by hand.
+    from atelier.core.foundation.paths import workspace_key
+
     workspace = cwd or os.environ.get("CODEX_WORKSPACE_ROOT") or os.getcwd()
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = workspace_key(workspace)
     return _atelier_root() / "workspaces" / h / "session_state.json"
 
 
@@ -47,16 +50,30 @@ def main() -> int:
         if session_id:
             _write_session_state(session_id, cwd or None)
 
-        from atelier.core.capabilities.plugin_runtime import codex_update_notification
-
-        output = codex_update_notification(
-            _atelier_root(),
-            current_version=os.environ.get("ATELIER_VERSION", "0.0.0"),
-        )
-        stdout = output.get("stdout") if isinstance(output, dict) else None
-        if stdout:
-            sys.stdout.write(json.dumps(stdout) + "\n")
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
+        # Check for update notification from daemon/MCP auto-update
+        state_path = _atelier_root() / "update_state.json"
+        if state_path.exists():
+            update_data = json.loads(state_path.read_text("utf-8"))
+            if (
+                isinstance(update_data, dict)
+                and update_data.get("current_version")
+                and update_data.get("previous_version")
+                and update_data["current_version"] != update_data["previous_version"]
+                and not update_data.get("notified")
+            ):
+                prev_ver = update_data["previous_version"]
+                cur_ver = update_data["current_version"]
+                method = update_data.get("method", "auto")
+                msg = (
+                    f"Atelier updated from {prev_ver} → {cur_ver} (via {method}). "
+                    "Release notes: https://github.com/atelier-ws/atelier/releases"
+                )
+                sys.stdout.write(json.dumps({"systemMessage": msg}) + "\n")
+                sys.stdout.flush()
+                # Mark as notified
+                update_data["notified"] = True
+                state_path.write_text(json.dumps(update_data, indent=2), encoding="utf-8")
+    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0
 

@@ -42,21 +42,6 @@ async function getText(path: string): Promise<string> {
   return res.text();
 }
 
-export interface OverviewStats {
-  total_traces: number;
-  total_blocks: number;
-  total_rubrics: number;
-  total_clusters: number;
-  total_raw_tokens_estimate: number;
-  total_saved_tokens_estimate: number;
-  total_compressed_tokens_estimate: number;
-  average_compression_ratio: number;
-  estimated_total_cost_usd: number;
-  estimated_saved_cost_usd: number;
-  usd_per_1k_tokens: number;
-  is_estimate: boolean;
-}
-
 export interface SwarmArtifactRef {
   kind: string;
   label: string;
@@ -396,7 +381,7 @@ export interface TraceLearning {
   kind: "worked" | "did_not_work" | "next_rule" | "risk" | "note";
   text: string;
   evidence?: string;
-  promote_to?: "memory" | "reasonblock" | "rubric" | "none" | null;
+  promote_to?: "memory" | "playbook" | "rubric" | "none" | null;
 }
 
 export interface Trace {
@@ -574,7 +559,7 @@ export interface NestedTrace {
   created_at: string;
 }
 
-export interface ReasonBlock {
+export interface Playbook {
   id: string;
   domain: string;
   title: string;
@@ -611,29 +596,6 @@ export interface Cluster {
   suggested_eval_case: string;
   suggested_prompt: string;
   severity: string;
-}
-
-export interface SavingsPerOp {
-  op_key: string;
-  domain?: string;
-  task_sample?: string;
-  baseline_cost_usd: number;
-  last_cost_usd: number;
-  current_cost_usd: number;
-  delta_vs_last_usd: number;
-  delta_vs_base_usd: number;
-  pct_vs_base: number;
-  calls_count: number;
-}
-
-export interface SavingsSummary {
-  operations_tracked: number;
-  total_calls: number;
-  would_have_cost_usd: number;
-  actually_cost_usd: number;
-  saved_usd: number;
-  saved_pct: number;
-  per_operation: SavingsPerOp[];
 }
 
 export interface SavingsByDay {
@@ -1151,21 +1113,6 @@ export interface OptimizationsSummary {
   }>;
 }
 
-export interface CallEntry {
-  session_id: string;
-  domain?: string;
-  task?: string;
-  operation: string;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cost_usd: number;
-  lessons_used: string[];
-  op_key: string;
-  at: string;
-}
-
 export interface Rubric {
   id: string;
   domain: string;
@@ -1199,7 +1146,11 @@ export interface HostAdapter {
   status: string;
   active_domains: string[];
   mcp_tools: string[];
-  last_seen?: string | null;
+  // Real per-host last-import time + count (RawArtifact.created_at --
+  // wall-clock import time -- not Trace.created_at, which is the session's
+  // own start time). See _host_import_stats() in api.py.
+  last_import_at?: string | null;
+  imported_session_count?: number;
   atelier_version?: string | null;
   description?: string | null;
   install_command?: string | null;
@@ -1661,7 +1612,7 @@ export interface TelemetrySummary {
   commands_by_day: { day: string; count: number }[];
   top_commands: { name: string; count: number }[];
   agent_hosts: { name: string; count: number }[];
-  top_reasonblocks: { block_id_hash: string; count: number; domain: string }[];
+  top_playbooks: { block_id_hash: string; count: number; domain: string }[];
   retrieval_score_distribution: { name: string; count: number }[];
   plan_checks: Record<string, number>;
   frustration_behavioral: { name: string; count: number }[];
@@ -1698,46 +1649,11 @@ export interface TraceListResponse {
     };
     hosts: string[];
     domains: string[];
-  };
-}
-
-export interface TUISession {
-  session_id: string;
-  started_at: string;
-  ended_at: string | null;
-  model: string;
-  provider: string;
-  mode: string;
-  total_cost_usd: number;
-  total_savings_usd: number;
-  cache_efficiency_pct: number;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
-  turns: number;
-  tool_calls: number;
-}
-
-export interface TUIAnalytics {
-  sessions: TUISession[];
-  summary: {
-    total_sessions: number;
-    total_cost_usd: number;
-    total_savings_usd: number;
-    avg_cache_efficiency_pct: number;
-    total_turns: number;
-    total_tool_calls: number;
+    workspaces: string[];
   };
 }
 
 export const api = {
-  overview: (days?: number) => {
-    const params = new URLSearchParams();
-    if (days) params.set("days", String(days));
-    const suffix = params.size ? `?${params.toString()}` : "";
-    return get<OverviewStats>(`/overview${suffix}`);
-  },
   granularAnalytics: (
     agent?: string,
     category?: string,
@@ -1795,6 +1711,7 @@ export const api = {
     offset = 0,
     domain?: string,
     host?: string,
+    workspace?: string,
     query?: string,
     days?: number
   ) => {
@@ -1803,6 +1720,7 @@ export const api = {
     params.set("offset", String(offset));
     if (domain && domain !== "all") params.set("domain", domain);
     if (host && host !== "all") params.set("host", host);
+    if (workspace && workspace !== "all") params.set("workspace", workspace);
     if (query) params.set("query", query);
     if (days) params.set("days", String(days));
     return get<TraceListResponse>(`/traces?${params.toString()}`);
@@ -1810,9 +1728,8 @@ export const api = {
   trace: (id: string) => get<Trace>(`/v1/traces/${id}`),
   ledger: (session_id: string) => get<any>(`/ledgers/${session_id}`),
   clusters: () => get<Cluster[]>("/clusters"),
-  blocks: () => get<ReasonBlock[]>("/blocks"),
-  block: (id: string) => get<ReasonBlock>(`/blocks/${id}`),
-  savings: () => get<SavingsSummary>("/savings"),
+  blocks: () => get<Playbook[]>("/blocks"),
+  block: (id: string) => get<Playbook>(`/blocks/${id}`),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
   optimizationsSummary: (windowDays = 14) =>
@@ -1856,7 +1773,6 @@ export const api = {
     post<WorkflowCurrentDetail>("/v1/workflow/current/stop", {
       reason: reason || null,
     }),
-  calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
   mcp_status: () => get<MCPStatus[]>("/mcp/status"),
@@ -1975,7 +1891,6 @@ export const api = {
   sessions: (since = "7d", limit = 200) =>
     get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
   sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
-  getTuiSessions: () => get<TUIAnalytics>("/analytics/tui-sessions"),
   memoryFacts: (vendor?: string) => {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);

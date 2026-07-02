@@ -13,9 +13,22 @@ from math import isfinite
 from typing import Any, Literal
 
 from atelier.core.capabilities.model_routing.cache_cost import cache_eviction_cost_usd
+from atelier.core.capabilities.model_routing.complexity import (
+    signals_from_state,
+    tier_for_complexity,
+    tier_routing_enabled,
+)
 from atelier.core.capabilities.model_routing.stickiness import decrement_stickiness
 from atelier.core.capabilities.model_routing.stickiness import (
     stickiness_remaining as _stickiness_remaining,
+)
+from atelier.core.capabilities.model_routing.success_predictor import (
+    SuccessTable,
+    features_from_state,
+    learned_routing_enabled,
+    learned_routing_min_samples,
+    learned_routing_threshold,
+    p_weak_succeeds,
 )
 from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlan
 from atelier.core.capabilities.pricing import ModelPricing
@@ -122,6 +135,7 @@ class ModelRecommendation:
     decision: str = "baseline"
     baseline_tier: ModelTier | None = None
     sticky_until_tool_calls: int = 0
+    p_weak_succeeds: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -136,6 +150,7 @@ class ModelRecommendation:
             "decision": self.decision,
             "baseline_tier": self.baseline_tier,
             "sticky_until_tool_calls": self.sticky_until_tool_calls,
+            "p_weak_succeeds": self.p_weak_succeeds,
         }
 
 
@@ -144,13 +159,6 @@ def _detect_local_slm() -> str | None:
     import os
 
     return os.environ.get("OLLAMA_BASE_URL") or os.environ.get("ATELIER_LOCAL_SLM_URL") or None
-
-
-def _local_slm_model() -> str:
-    """Return the preferred local SLM model name from env or a sensible default."""
-    import os
-
-    return os.environ.get("ATELIER_LOCAL_SLM_MODEL", "llama3.2:3b")
 
 
 class ModelRouter:
@@ -204,6 +212,16 @@ class ModelRouter:
         reasons.append(phase_reason)
 
         tier = self._tier_for_score(score)
+
+        # T9 (opt-in): learned routing-confidence over the heuristic step-down.
+        # Default-off; only consulted when ATELIER_LEARNED_ROUTING is on.  None
+        # means "uncertain" -> the heuristic step-down rule is used unchanged.
+        p_weak = self._predict_weak_success(tool_name, task_text, state)
+
+        # N1 (opt-in): complexity-scored tier routing.  Default-off so the
+        # baseline decision above is unchanged for existing callers/tests.
+        tier = self._apply_complexity_tier(tier, task_text, state, reasons, p_weak=p_weak)
+
         model = self._models[tier]
 
         cache_affinity_model = _clean_string(state.get("cache_affinity_model"))
@@ -231,6 +249,7 @@ class ModelRouter:
             reasons=reasons,
             score=score,
             cache_affinity_model=cache_affinity_model,
+            p_weak_succeeds=p_weak,
         )
 
     def recommend(
@@ -324,12 +343,112 @@ class ModelRouter:
             "cache_cost_usd": recommendation.cache_cost_usd,
             "quality_gain_usd_estimated": recommendation.quality_gain_usd_estimated,
             "sticky_until_tool_calls": recommendation.sticky_until_tool_calls,
+            "p_weak_succeeds": recommendation.p_weak_succeeds,
         }
         try:
             sink(payload)
         except Exception:
             logging.exception("Recovered from broad exception handler")
             return
+
+    def _predict_weak_success(
+        self,
+        tool_name: str,
+        task_text: str,
+        state: Mapping[str, Any],
+    ) -> float | None:
+        """Learned P(weak model succeeds) for this turn, or ``None`` (T9).
+
+        Default-off: returns ``None`` unless the learned layer is opted in via
+        ``session_state["learned_routing"]`` or ``ATELIER_LEARNED_ROUTING``.
+        The outcome-frequency table is supplied read-only by the caller as
+        ``session_state["learned_routing_table"]`` (a ``SuccessTable`` built from
+        persisted route outcomes); without it the prediction is ``None`` and the
+        router stays purely heuristic.
+        """
+        if not learned_routing_enabled(state):
+            return None
+        table = state.get("learned_routing_table")
+        if not isinstance(table, SuccessTable):
+            return None
+        features = features_from_state(tool_name, task_text, state)
+        return p_weak_succeeds(
+            features,
+            table=table,
+            min_samples=learned_routing_min_samples(state),
+        )
+
+    def _apply_complexity_tier(
+        self,
+        baseline_tier: ModelTier,
+        task_text: str,
+        state: Mapping[str, Any],
+        reasons: list[str],
+        *,
+        p_weak: float | None = None,
+    ) -> ModelTier:
+        """Apply complexity-scored tier routing when opted in (N1).
+
+        Returns ``baseline_tier`` unchanged unless tier routing is enabled via
+        ``session_state["tier_routing"]`` or ``ATELIER_TIER_ROUTING``.  When
+        enabled it may step **up** (escalation preserved -- hard work never
+        downgraded) or step **down** by one level for clearly simple work.
+
+        T9 (opt-in): when the learned routing-confidence layer is enabled, the
+        heuristic step-down is *gated* by ``p_weak`` -- the downgrade is only
+        taken when a weak model is predicted to succeed with confidence >= the
+        learned threshold.  ``p_weak`` of ``None`` (uncertain / no data) or below
+        threshold falls back to the heuristic step-down.  The learned layer only
+        ever gates the existing one-level clamp; it never widens the downgrade
+        and never relaxes the safety floor.
+        """
+        if not tier_routing_enabled(state):
+            return baseline_tier
+
+        signals = signals_from_state(task_text, state)
+        result = tier_for_complexity(signals)
+        complexity_tier = result.model_tier  # "cheap" | "medium" | "expensive"
+        reasons.extend(result.reasons)
+
+        rank: dict[str, int] = {"cheap": 0, "medium": 1, "expensive": 2}
+        ranks: list[ModelTier] = ["cheap", "medium", "expensive"]
+        base_rank = rank[baseline_tier]
+        complexity_rank = rank[complexity_tier]
+
+        # Step up: complexity (incl. escalation/cross-project/error signals)
+        # outranks the baseline -> take the stronger tier.  Never downgrades.
+        if complexity_rank > base_rank:
+            reasons.append(f"tier_routing: step up {baseline_tier} -> {complexity_tier}")
+            return complexity_tier  # type: ignore[return-value]
+
+        # Step down (silent): only for clearly simple work with no risk signals.
+        # Drop exactly one level toward the complexity tier and never below it.
+        # The clamp below is the SAFETY FLOOR and is identical whether or not the
+        # learned layer is engaged -- learned routing only decides *whether* to
+        # take this same step, never how far it goes.
+        if complexity_rank < base_rank and not result.stepped_up and not signals.escalate and not signals.cross_project:
+            stepped = ranks[max(complexity_rank, base_rank - 1)]
+            # T9 gate: when learned routing is on, only downgrade if a weak model
+            # is confidently predicted to succeed; uncertain (None) or below the
+            # threshold defers to holding the baseline (no heuristic downgrade).
+            if learned_routing_enabled(state):
+                threshold = learned_routing_threshold(state)
+                if p_weak is None:
+                    reasons.append(
+                        f"learned_routing: no calibrated estimate -> hold {baseline_tier} (heuristic fallback)"
+                    )
+                    return baseline_tier
+                if p_weak < threshold:
+                    reasons.append(
+                        f"learned_routing: p_weak {p_weak:.3f} < threshold {threshold:.3f} -> hold {baseline_tier}"
+                    )
+                    return baseline_tier
+                reasons.append(f"learned_routing: p_weak {p_weak:.3f} >= threshold {threshold:.3f} -> allow step down")
+            reasons.append(f"tier_routing: step down {baseline_tier} -> {stepped}")
+            return stepped
+
+        reasons.append(f"tier_routing: hold {baseline_tier}")
+        return baseline_tier
 
     def _compute_route_tier(self, tier: ModelTier, score: int, state: Mapping[str, Any]) -> RouteTier:
         """Map scored ModelTier to semantic RouteTier.

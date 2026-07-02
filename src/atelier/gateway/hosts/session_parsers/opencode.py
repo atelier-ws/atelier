@@ -47,6 +47,19 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# Tool names (including MCP-provided ones, commonly suffixed like
+# ``atelier_edit`` or prefixed like ``filesystem_write_file``) that actually
+# write to disk. Everything else that merely references a ``filePath`` --
+# read/grep/glob/list/search tools -- is recorded as a plain touched path,
+# not a synthesized edit+diff (see OpenCodeImporter.import_session).
+_FILE_WRITE_TOOL_NAMES = {"edit", "write", "multiedit", "patch", "apply_patch", "create"}
+
+
+def _is_file_write_tool(name: str) -> bool:
+    lowered = name.strip().lower()
+    return lowered in _FILE_WRITE_TOOL_NAMES or lowered.endswith("edit") or lowered.endswith("write")
+
+
 def find_opencode_sessions(db_path: Path | None = None) -> list[dict[str, Any]]:
     if db_path is None:
         db_path = Path.home() / ".local/share/opencode/opencode.db"
@@ -63,8 +76,67 @@ def find_opencode_sessions(db_path: Path | None = None) -> list[dict[str, Any]]:
         finally:
             conn.close()
     except sqlite3.Error:
-        logger.exception("[atelier] opencode: failed to read sessions from %s", db_path)
+        logger.exception("opencode: failed to read sessions from %s", db_path)
         return []
+
+
+def serialize_opencode_session(session_id: str, db_path: Path) -> str:
+    """Serialize an OpenCode session's messages+parts into normalized JSONL.
+
+    Module-level so recall indexing can reuse it without constructing an importer
+    (which needs a ContextStore).
+    """
+    lines: list[str] = []
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+
+        # Interleave messages and parts by time_created
+        # We use a UNION to get a combined stream of events
+        sql = """
+            SELECT 'message' as etype, id, data, time_created, NULL as role
+            FROM message
+            WHERE session_id = ?
+            UNION ALL
+            SELECT 'part' as etype, p.id, p.data, p.time_created, json_extract(m.data, '$.role') as role
+            FROM part p
+            JOIN message m ON p.message_id = m.id
+            WHERE p.session_id = ?
+            ORDER BY time_created ASC
+        """
+
+        rows = conn.execute(sql, (session_id, session_id)).fetchall()
+        for r in rows:
+            if r["etype"] == "message":
+                lines.append(
+                    json.dumps(
+                        {
+                            "_type": "message",
+                            "id": r["id"],
+                            "timestamp": r["time_created"],
+                            "data": json.loads(r["data"] or "{}"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                lines.append(
+                    json.dumps(
+                        {
+                            "_type": "part",
+                            "id": r["id"],
+                            "role": r["role"],
+                            "timestamp": r["time_created"],
+                            "data": json.loads(r["data"] or "{}"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+        conn.close()
+    except Exception:
+        logger.exception("opencode: failed to read messages from %s", db_path)
+    return "\n".join(lines)
 
 
 class OpenCodeImporter:
@@ -73,28 +145,45 @@ class OpenCodeImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, db_path: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, db_path: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         resolved_db_path = db_path or (Path.home() / ".local/share/opencode/opencode.db")
         if not resolved_db_path.exists():
             return []
 
         all_sessions = list(find_opencode_sessions(resolved_db_path))
-        logger.info("[atelier] opencode: discovering sessions (found %d)", len(all_sessions))
+        # Rank by last activity (time_updated), falling back to time_created
+        # for sessions never updated -- matches session_recall.py's change
+        # key so an active session isn't starved by older, never-updated ones
+        # once `limit` is applied.
+        all_sessions.sort(key=lambda row: row.get("time_updated") or row.get("time_created") or 0, reverse=True)
+        total = len(all_sessions)
+        if limit is not None:
+            all_sessions = all_sessions[:limit]
+        logger.info(
+            "opencode: discovering sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
         imported_ids = []
         for i, session_row in enumerate(all_sessions):
             if i % 10 == 0 and i > 0:
-                logger.info("[atelier] opencode: importing %d/%d...", i, len(all_sessions))
-            tid = self._import_session(session_row, resolved_db_path, force=force)
+                logger.info("opencode: importing %d/%d...", i, len(all_sessions))
+            tid = self.import_session(session_row, resolved_db_path, force=force)
             if tid:
                 imported_ids.append(tid)
 
         return imported_ids
 
-    def _import_session(self, session_row: dict[str, Any], db_path: Path, *, force: bool = False) -> str | None:
+    def import_session(self, session_row: dict[str, Any], db_path: Path, *, force: bool = False) -> str | None:
         session_id: str = session_row["id"]
         artifact_id = f"opencode-{session_id}"
         existing = self.store.get_raw_artifact(artifact_id)
-        session_mtime = _ms_to_dt(session_row.get("time_created"))
+        # time_created is immutable; an active session keeps landing new
+        # turns under the same id with a bumped time_updated. Keying the
+        # dedup mtime on time_created alone means it never advances, so new
+        # turns are silently dropped until force=True. Match
+        # session_recall.py's change-detection key.
+        session_mtime = _ms_to_dt(session_row.get("time_updated") or session_row.get("time_created"))
 
         if not force and existing and existing.source_file_mtime and session_mtime <= existing.source_file_mtime:
             return None
@@ -122,7 +211,7 @@ class OpenCodeImporter:
         tools_called: dict[str, int] = {}
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
-        files_touched: dict[str, FileEditRecord] = {}
+        files_touched: dict[str, str | FileEditRecord] = {}
         commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
 
@@ -158,14 +247,24 @@ class OpenCodeImporter:
         seen_event_ids: set[str] = set()
         previous_unidentified_event = ""
 
-        for line in redacted.splitlines():
-            line = line.strip()
-            if not line:
+        # The whole-file redacted text is already stored in the RawArtifact
+        # above. Applying redact() here before json.loads() would corrupt
+        # valid JSON because the credential pattern (`\S[^\r\n]*`) consumes
+        # to end-of-line, eating the record's closing bracket and silently
+        # dropping the turn/usage/tool-call it belongs to. Instead we parse
+        # raw and redact only the specific string values we extract into
+        # Trace fields (task, commands, diffs).
+        for raw_line in raw_content.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
                 continue
             try:
-                ev = json.loads(line)
+                ev = json.loads(stripped)
+            except json.JSONDecodeError:
+                logger.debug("Skipping malformed JSON line in OpenCode session: %s...", stripped[:50])
+                continue
             except Exception:
-                logging.exception("Recovered from broad exception handler")
+                logger.exception("Recovered from unexpected error during JSON parsing")
                 continue
 
             etype = ev.get("_type")
@@ -176,10 +275,10 @@ class OpenCodeImporter:
                     continue
                 seen_event_ids.add(event_identity)
                 previous_unidentified_event = ""
-            elif line == previous_unidentified_event:
+            elif stripped == previous_unidentified_event:
                 continue
             else:
-                previous_unidentified_event = line
+                previous_unidentified_event = stripped
             data = ev.get("data") or {}
 
             if etype == "message":
@@ -205,19 +304,24 @@ class OpenCodeImporter:
                     curr_tool_calls.append((tool_name, state_inp))
                     cmd = str(state_inp.get("command", "") or state_inp.get("cmd", "")).strip()
                     if cmd:
-                        commands_run.append(cmd[:200])
+                        commands_run.append(redact(cmd[:200]))
                     # OpenCode tool inputs use camelCase filePath
                     fp = state_inp.get("filePath") or state_inp.get("file_path") or state_inp.get("path")
-                    # Only record actual files (not bare directories)
-                    if fp and "." in str(fp).rsplit("/", 1)[-1]:
+                    if fp:
                         fpath_str = str(fp)
                         if fpath_str not in files_touched:
-                            diff_text = _compute_diff(fpath_str, state_inp)
-                            files_touched[fpath_str] = FileEditRecord(
-                                path=fpath_str,
-                                diff=diff_text[:4096],
-                                event="edit",
-                            )
+                            if _is_file_write_tool(tool_name):
+                                diff_text = redact(_compute_diff(fpath_str, state_inp))
+                                files_touched[fpath_str] = FileEditRecord(
+                                    path=fpath_str,
+                                    diff=diff_text[:4096],
+                                    event="edit",
+                                )
+                            else:
+                                # Read-only reference (read/grep/glob/...):
+                                # track the path without a synthesized diff
+                                # or triggering a file-edit snapshot.
+                                files_touched[fpath_str] = fpath_str
                 elif ptype == "step-finish":
                     ts_tok = data.get("tokens") or {}
                     in_t = int(ts_tok.get("input", 0) or 0)
@@ -240,7 +344,7 @@ class OpenCodeImporter:
                         cached_input_tokens=cache_r,
                         cache_creation_input_tokens=cache_w,
                         source_type="opencode.step_finish",
-                        source_id=event_id or _sha256(line)[:16],
+                        source_id=event_id or _sha256(stripped)[:16],
                         created_at=_ms_to_dt(ev.get("time_created")),
                     )
                     if usage_entry is not None:
@@ -255,6 +359,15 @@ class OpenCodeImporter:
                             tool_out_tokens[t_name] = tool_out_tokens.get(t_name, 0) + dist_in
                         curr_tool_calls = []
 
+        if curr_tool_calls:
+            # A session interrupted before its final step-finish still had
+            # tool calls in flight; tally them even without a token
+            # distribution to attribute (no usage event ever arrived for
+            # them), rather than silently dropping them from tools_called.
+            for t_name, _t_args in curr_tool_calls:
+                tools_called[t_name] = tools_called.get(t_name, 0) + 1
+            curr_tool_calls = []
+
         usage_summary = summarize_usage_entries(usage_entries, fallback_model=model_seen)
 
         trace = Trace(
@@ -263,7 +376,7 @@ class OpenCodeImporter:
             agent="atelier:code",
             host="opencode",
             domain="coding",
-            task=str(session_row.get("title") or "untitled opencode session"),
+            task=redact(str(session_row.get("title") or "untitled opencode session")),
             status="success",
             files_touched=list(files_touched.values()),
             tools_called=[
@@ -291,64 +404,16 @@ class OpenCodeImporter:
             usage_entries=usage_summary["usage_entries"],
             model_usages=usage_summary["model_usages"],
             created_at=session_mtime,
+            workspace_path=str(session_row.get("directory") or "") or None,
         )
         self.store.record_trace(trace, write_json=False)
 
         # Best-effort: snapshot current on-disk state of every edited file
-        if files_touched:
-            snapshot_edited_files(self.store, list(files_touched.values()), session_id=session_id, source="opencode")
+        file_records = [r for r in files_touched.values() if isinstance(r, FileEditRecord)]
+        if file_records:
+            snapshot_edited_files(self.store, file_records, session_id=session_id, source="opencode")
 
         return trace.id
 
     def _serialize_session(self, session_id: str, db_path: Path) -> str:
-        lines: list[str] = []
-        try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
-
-            # Interleave messages and parts by time_created
-            # We use a UNION to get a combined stream of events
-            sql = """
-                SELECT 'message' as etype, id, data, time_created, NULL as role
-                FROM message
-                WHERE session_id = ?
-                UNION ALL
-                SELECT 'part' as etype, p.id, p.data, p.time_created, json_extract(m.data, '$.role') as role
-                FROM part p
-                JOIN message m ON p.message_id = m.id
-                WHERE p.session_id = ?
-                ORDER BY time_created ASC
-            """
-
-            rows = conn.execute(sql, (session_id, session_id)).fetchall()
-            for r in rows:
-                if r["etype"] == "message":
-                    lines.append(
-                        json.dumps(
-                            {
-                                "_type": "message",
-                                "id": r["id"],
-                                "timestamp": r["time_created"],
-                                "data": json.loads(r["data"] or "{}"),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                else:
-                    lines.append(
-                        json.dumps(
-                            {
-                                "_type": "part",
-                                "id": r["id"],
-                                "role": r["role"],
-                                "timestamp": r["time_created"],
-                                "data": json.loads(r["data"] or "{}"),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-
-            conn.close()
-        except Exception:
-            logger.exception("[atelier] opencode: failed to read messages from %s", db_path)
-        return "\n".join(lines)
+        return serialize_opencode_session(session_id, db_path)

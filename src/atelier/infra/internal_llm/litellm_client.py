@@ -102,28 +102,40 @@ def chat_with_result(
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
     cache_metadata: dict[str, Any] | None = None,
+    api_key: str | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
 ) -> InternalLLMChatResult:
     """Call LiteLLM and optionally parse a JSON response.
 
     JSON mode is attempted via ``response_format``; providers that reject it
     (some Bedrock / Vertex models) transparently fall back to a plain call and
     the content is JSON-parsed afterward.
+
+    ``extra_kwargs`` are forwarded verbatim to ``litellm.completion`` for
+    provider-specific parameters (e.g. ``seed`` for OpenAI prefix caching,
+    ``extra_body={"cachedContent": ...}`` for Gemini context caching,
+    ``max_tokens`` for a connectivity probe). This keeps every litellm call on
+    the user's path routed through this single infra wrapper.
     """
     litellm = _litellm_module()
     chosen_model = _resolve_model(model)
     request_messages = _apply_cache_control(messages, chosen_model=chosen_model, cache_metadata=cache_metadata)
+    request_kwargs: dict[str, Any] = {"model": chosen_model, "messages": request_messages}
+    if api_key:
+        request_kwargs["api_key"] = api_key
+    if extra_kwargs:
+        request_kwargs.update(extra_kwargs)
     try:
         if json_schema is None:
-            response = litellm.completion(model=chosen_model, messages=request_messages)
+            response = litellm.completion(**request_kwargs)
         else:
             try:
                 response = litellm.completion(
-                    model=chosen_model,
-                    messages=request_messages,
+                    **request_kwargs,
                     response_format={"type": "json_object"},
                 )
             except Exception:  # noqa: BLE001 - provider may reject response_format; retry plain
-                response = litellm.completion(model=chosen_model, messages=request_messages)
+                response = litellm.completion(**request_kwargs)
     except Exception as exc:
         if isinstance(exc, LiteLLMUnavailable):
             raise
@@ -164,7 +176,29 @@ def chat(
     return dict(result.parsed_json or {})
 
 
-__all__ = ["LiteLLMUnavailable", "chat", "chat_with_result", "summarize"]
+def tool_completion(
+    *,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    model: str | None = None,
+    tool_choice: str = "auto",
+) -> Any:
+    """Run a tool-calling completion and return the raw LiteLLM response.
+
+    Kept in this module so the ``litellm`` import stays within the infra
+    boundary; callers (e.g. the agentic reviewer) inspect
+    ``response.choices[0].message.tool_calls`` on the returned object.
+    """
+    litellm = _litellm_module()
+    return litellm.completion(
+        model=_resolve_model(model),
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+
+
+__all__ = ["LiteLLMUnavailable", "chat", "chat_with_result", "summarize", "tool_completion"]
 
 
 def _apply_cache_control(

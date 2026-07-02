@@ -2,8 +2,9 @@
 """PostToolUse hook — capture file diffs into the active RunLedger.
 
 Fires after Edit, Write, or MultiEdit. Computes the diff and appends a
-``file_edit`` event to ``runs/<session_id>.json`` so it shows up in the
-Atelier traces dashboard.
+``file_edit`` event to the session's ``run.json`` (see
+``atelier.core.foundation.paths.session_dir``) so it shows up in the Atelier
+traces dashboard.
 
 Fail-open: any error exits silently (code 0) — never blocks the agent.
 """
@@ -26,11 +27,27 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def _session_state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = _workspace_key(workspace)
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
@@ -53,11 +70,6 @@ def _atelier_root() -> Path:
     if state.get("atelier_root"):
         return Path(state["atelier_root"])
     return Path.home() / ".atelier"
-
-
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +116,8 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
     diff = ""
 
     if tool_name == "Edit":
-        old = tool_input.get("old_string", "")
-        new = tool_input.get("new_string", "")
+        old = tool_input.get("old") or tool_input.get("old_string", "")
+        new = tool_input.get("new") or tool_input.get("new_string", "")
         if old or new:
             diff = _unified_diff(old, new, file_path)
         if not diff:
@@ -115,8 +127,8 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
         edits = tool_input.get("edits") or []
         parts: list[str] = []
         for edit in edits:
-            old = edit.get("old_string", "")
-            new = edit.get("new_string", "")
+            old = edit.get("old") or edit.get("old_string", "")
+            new = edit.get("new") or edit.get("new_string", "")
             if old or new:
                 parts.append(_unified_diff(old, new, file_path))
         diff = "\n".join(p for p in parts if p)
@@ -135,10 +147,18 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
 # ---------------------------------------------------------------------------
 
 
+# Cap the stored diff: run.json is rewritten in full on every edit (O(n^2) over a
+# session), so an unbounded diff from a large Write/refactor would bloat it badly.
+_MAX_DIFF_CHARS = 4000
+
+
 def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
-    """Append a file_edit event to runs/<session_id>.json atomically."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    """Append a file_edit event to the session's run.json atomically."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -149,6 +169,8 @@ def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
 
     events: list[dict[str, Any]] = data.setdefault("events", [])
     short_path = Path(file_path).name
+    if len(diff) > _MAX_DIFF_CHARS:
+        diff = diff[:_MAX_DIFF_CHARS] + f"\n...[diff truncated, {len(diff)} chars total]"
     events.append(
         {
             "kind": "file_edit",
@@ -200,23 +222,12 @@ def main() -> int:
 
     tool_input: dict[str, Any] = payload.get("tool_input", {}) or {}
 
-    # Autopilot (M5): run scoped verification on the touched file and surface
-    # any counterexamples. Fail-open.
-    edited_path = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
-    if edited_path:
-        try:
-            from atelier.core.capabilities.autopilot.factory import run_and_emit
-
-            run_and_emit("post_edit", {"touched_files": [edited_path]})
-        except (ImportError, OSError, ValueError):
-            pass
-
     try:
         file_path, diff = _compute_diff(tool_name, tool_input)
         if not file_path or not diff:
             return 0
 
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             return 0
 

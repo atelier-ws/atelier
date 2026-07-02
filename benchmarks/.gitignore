@@ -1,5 +1,13 @@
-benchmarks/mcp_tools/fixtures/downloaded/
+mcp_tools/fixtures/downloaded/
 outputs-smoke/
 terminalbench/outputs/
 swe/outputs/
 swe/outputs_smoke/
+jobs/
+codebench/outputs/
+codebench/.tiktoken-cache
+# timestamped run dirs — only published/ is tracked in git
+[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T*/
+[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*/
+20[0-9][0-9]-*/
+*.flow

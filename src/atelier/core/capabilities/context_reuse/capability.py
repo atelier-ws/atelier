@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -11,13 +12,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation._graph import Graph as _Graph
+from atelier.core.foundation._graph import pagerank as _pagerank
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import (
     ScoredBlock,
     TaskContext,
-    deduplicate_by_reasonblock,
-    pack_by_reasonblock_token_budget,
+    deduplicate_by_playbook,
+    pack_by_playbook_token_budget,
     retrieve,
     score_block,
 )
@@ -32,23 +35,28 @@ from atelier.infra.storage.vector import (
 
 from .dead_ends import DeadEndTracker
 
-try:
-    import networkx as nx
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
-    nx: Any = None  # type: ignore[no-redef]
+nx: Any = None  # kept as sentinel; callers guard on `nx is None`
 
-try:
-    from river import stats
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
-    stats: Any = None  # type: ignore[no-redef]
 
-try:
-    from datasketch import HNSW
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
-    HNSW: Any = None  # type: ignore[no-redef]
+class _EWMean:
+    """Exponentially weighted mean — replaces river.stats.EWMean."""
+
+    def __init__(self, fading_factor: float = 0.2) -> None:
+        self._mean: float | None = None
+        self._alpha = fading_factor
+
+    def update(self, x: float) -> None:
+        if self._mean is None:
+            self._mean = x
+        else:
+            self._mean = self._mean * (1.0 - self._alpha) + x * self._alpha
+
+    def get(self) -> float:
+        return self._mean if self._mean is not None else 0.5
+
+
+# HNSW removed (datasketch dropped); brute-force cosine is the permanent fallback.
+HNSW: Any = None
 
 # ---------------------------------------------------------------------------
 # Token budget for compact injected procedure blocks.
@@ -118,7 +126,7 @@ def _retrieval_query_text(
     return " ".join(part.strip() for part in parts if part and part.strip())
 
 
-def _bm25_document_text(block: ReasonBlock) -> str:
+def _bm25_document_text(block: Playbook) -> str:
     return " ".join(
         [
             block.title,
@@ -181,7 +189,7 @@ def _bm25(
     return score
 
 
-def _recency_score(block: ReasonBlock) -> float:
+def _recency_score(block: Playbook) -> float:
     try:
         updated = block.updated_at
         if isinstance(updated, str):
@@ -194,7 +202,7 @@ def _recency_score(block: ReasonBlock) -> float:
     return max(0.1, math.exp(-age_days / 86.6))
 
 
-def _bayesian_success(block: ReasonBlock) -> float:
+def _bayesian_success(block: Playbook) -> float:
     """Laplace-smoothed success rate: (S + alpha) / (S + F + alpha + beta).
 
     Avoids 0.0 extremes for untested blocks and 1.0 for single-success blocks.
@@ -217,7 +225,11 @@ def _jaccard(a: list[str], b: list[str]) -> float:
 def _hash_vector(tokens: list[str], *, dim: int = _VECTOR_DIM) -> list[float]:
     vec = [0.0] * dim
     for tok in tokens:
-        bucket = hash(tok) % dim
+        # Stable cross-process hash — Python's built-in hash() is salted per
+        # process, but these vectors are persisted to disk and compared across
+        # later processes, so bucketing must be deterministic.
+        digest = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()
+        bucket = int.from_bytes(digest, "big") % dim
         vec[bucket] += 1.0
     norm = math.sqrt(sum(v * v for v in vec)) or 1.0
     return [v / norm for v in vec]
@@ -228,38 +240,26 @@ def _cosine_distance(a: list[float], b: list[float]) -> float:
 
 
 class _AdaptivePriorTracker:
-    """Online prior tracker using river when available, with a pure-Python fallback."""
+    """Online prior tracker using exponentially weighted mean per domain."""
 
     def __init__(self) -> None:
-        self._by_domain: dict[str, Any] = {}
-        self._fallback_sum: dict[str, float] = {}
-        self._fallback_count: dict[str, int] = {}
+        self._by_domain: dict[str, _EWMean] = {}
 
     def observe(self, domain: str, reward: float) -> None:
         domain_key = domain or "unknown"
         clamped = min(1.0, max(0.0, reward))
-        if stats is not None:
-            metric = self._by_domain.get(domain_key)
-            if metric is None:
-                metric = stats.EWMean(fading_factor=0.2)  # type: ignore[no-untyped-call]
-                self._by_domain[domain_key] = metric
-            metric.update(clamped)
-            return
-        self._fallback_sum[domain_key] = self._fallback_sum.get(domain_key, 0.0) + clamped
-        self._fallback_count[domain_key] = self._fallback_count.get(domain_key, 0) + 1
+        metric = self._by_domain.get(domain_key)
+        if metric is None:
+            metric = _EWMean(fading_factor=0.2)
+            self._by_domain[domain_key] = metric
+        metric.update(clamped)
 
     def prior(self, domain: str) -> float:
         domain_key = domain or "unknown"
-        if stats is not None:
-            metric = self._by_domain.get(domain_key)
-            if metric is None:
-                return 0.5
-            val = getattr(metric, "get", lambda: 0.5)()
-            return float(val if val is not None else 0.5)
-        count = self._fallback_count.get(domain_key, 0)
-        if count == 0:
+        metric = self._by_domain.get(domain_key)
+        if metric is None:
             return 0.5
-        return self._fallback_sum.get(domain_key, 0.0) / count
+        return metric.get()
 
 
 class ContextReuseCapability:
@@ -294,13 +294,13 @@ class ContextReuseCapability:
     # Internal block collection
     # ------------------------------------------------------------------
 
-    def _domain_blocks(self) -> list[ReasonBlock]:
+    def _domain_blocks(self) -> list[Playbook]:
         from atelier.core.domains import DomainManager
 
         manager = DomainManager(self._root)
-        blocks: list[ReasonBlock] = []
+        blocks: list[Playbook] = []
         seen: set[str] = set()
-        for block in manager.all_reasonblocks():
+        for block in manager.all_playbooks():
             if block.status in ("quarantined", "deprecated"):
                 continue
             if block.id in seen:
@@ -309,7 +309,7 @@ class ContextReuseCapability:
             blocks.append(block)
         return blocks
 
-    def _all_active_blocks(self) -> list[ReasonBlock]:
+    def _all_active_blocks(self) -> list[Playbook]:
         learned = self._store.list_blocks()
         active = [b for b in learned if b.status not in ("quarantined", "deprecated")]
         domain_seen = {b.id for b in active}
@@ -347,10 +347,10 @@ class ContextReuseCapability:
             return vectors[0]
         return _hash_vector(_tokenise(query_text))
 
-    def _block_vectors(self, blocks: list[ReasonBlock]) -> dict[str, list[float]]:
+    def _block_vectors(self, blocks: list[Playbook]) -> dict[str, list[float]]:
         embedder_name = getattr(self._embedder, "name", self._embedder.__class__.__name__)
         vectors_by_id: dict[str, list[float]] = {}
-        uncached: list[tuple[ReasonBlock, str, str]] = []
+        uncached: list[tuple[Playbook, str, str]] = []
 
         for block in blocks:
             rendered = render_block_for_agent(block)
@@ -393,6 +393,8 @@ class ContextReuseCapability:
         limit: int = 5,
         token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
         dedup: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> list[Any]:
         """
         Rank blocks using Reciprocal Rank Fusion of BM25 + FTS + base retriever.
@@ -431,10 +433,10 @@ class ContextReuseCapability:
         vector_scores = {
             block_id: cosine_similarity(query_vector, vector)
             for block_id, vector in block_vectors.items()
-            if query_vector and vector
+            if query_vector and vector and len(vector) == len(query_vector)
         }
 
-        trace_blocks: dict[str, ReasonBlock] = {}
+        trace_blocks: dict[str, Playbook] = {}
         trace_reasons: dict[str, set[str]] = {}
         base_probe_scores: dict[str, float] = {}
         bm25_score_lookup: dict[str, float] = {}
@@ -452,14 +454,14 @@ class ContextReuseCapability:
                     trace_reasons[block_id].add("quarantined")
 
             base_query = query_text
-            base_candidates: list[ReasonBlock] = []
+            base_candidates: list[Playbook] = []
             if base_query:
                 base_candidates.extend(self._store.search_blocks(base_query, limit=50))
             if ctx.domain:
                 base_candidates.extend(self._store.list_blocks(domain=ctx.domain))
 
             seen_probe: set[str] = set()
-            unique_probe: list[ReasonBlock] = []
+            unique_probe: list[Playbook] = []
             for block in base_candidates:
                 if block.id in seen_probe:
                     continue
@@ -509,6 +511,8 @@ class ContextReuseCapability:
             use_vector_weights=True,
             dedup=dedup,
             token_budget=token_budget,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         base_scores: dict[str, float] = {item.block.id: item.score for item in learned}
         direct_match_scores = {block.id: score_block(block, ctx).score for block in all_blocks}
@@ -516,7 +520,7 @@ class ContextReuseCapability:
         base_rank: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked)}
         base_rank_trace: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked, start=1)}
         # RRF fusion — merge three rank lists
-        block_map: dict[str, ReasonBlock] = {b.id: b for b in all_blocks}
+        block_map: dict[str, Playbook] = {b.id: b for b in all_blocks}
         rrf_scores: dict[str, float] = {}
         for rank, (bid, _) in enumerate(bm25_scored):
             rrf_scores[bid] = rrf_scores.get(bid, 0.0) + 1.0 / (_RRF_K + rank)
@@ -552,7 +556,7 @@ class ContextReuseCapability:
                 _HybridResult(
                     block=matched_block,
                     fts_score=1.0 / (_RRF_K + fts_rank.get(bid, len(all_blocks))),
-                    bm25_score=_bm25(query_tokens, doc_tokens_map.get(bid, []), idf, avg_len=avg_len),
+                    bm25_score=bm25_score_lookup.get(bid, 0.0),
                     recency_score=_recency_score(matched_block),
                     success_score=_bayesian_success(matched_block),
                     final_score=final,
@@ -572,7 +576,7 @@ class ContextReuseCapability:
         effective_limit = min(limit, _MAX_CONTEXT_BLOCKS)
 
         if dedup:
-            results = deduplicate_by_reasonblock(results, lambda item: item.block)
+            results = deduplicate_by_playbook(results, lambda item: item.block)
 
         # MMR diversity selection — covers different procedures after exact near-dup filtering.
         selected: list[_HybridResult] = []
@@ -601,7 +605,7 @@ class ContextReuseCapability:
             selected.append(best)
 
         mmr_selected = list(selected)
-        selected = pack_by_reasonblock_token_budget(
+        selected = pack_by_playbook_token_budget(
             selected,
             lambda item: item.block,
             limit=effective_limit,
@@ -707,9 +711,9 @@ class ContextReuseCapability:
             item.final_score *= multiplier
 
     def _apply_graph_propagation(self, results: list[Any]) -> None:
-        if not results or nx is None:
+        if not results:
             return
-        graph = nx.Graph()
+        graph = _Graph()
         for item in results:
             graph.add_node(item.block.id)
         for i, left in enumerate(results):
@@ -731,7 +735,7 @@ class ContextReuseCapability:
         else:
             personalization = {node: 1.0 / max(graph.number_of_nodes(), 1) for node in graph.nodes}
 
-        scores = nx.pagerank(graph, alpha=0.85, personalization=personalization, weight="weight")
+        scores = _pagerank(graph, alpha=0.85, personalization=personalization, weight="weight")
         max_score = max(scores.values(), default=1.0) or 1.0
         for item in results:
             norm = scores.get(item.block.id, 0.0) / max_score
@@ -808,6 +812,8 @@ class ContextReuseCapability:
         limit: int = 5,
         token_budget: int | None = _DEFAULT_TOKEN_BUDGET,
         dedup: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> list[ScoredBlock]:
         """Return ScoredBlock list for engine.get_context."""
         ranked = self.rank_reusable_procedures(
@@ -819,6 +825,8 @@ class ContextReuseCapability:
             limit=limit,
             token_budget=token_budget,
             dedup=dedup,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         return [
             ScoredBlock(
@@ -880,7 +888,7 @@ class ContextReuseCapability:
             procedures.append(proc)
             dead_ends.extend(r.dead_ends)
             if r.rescue and r.block.procedure:
-                rescue_strategies.append(r.block.procedure)
+                rescue_strategies.extend(r.block.procedure)
             if r.block.required_rubrics:
                 required_validations.extend(r.block.required_rubrics)
 
@@ -931,6 +939,33 @@ class ContextReuseCapability:
             )
         return chains
 
+    def rescue_candidates(self, *, task: str, error: str, limit: int = 3) -> list[ScoredBlock]:
+        """Rank active blocks by raw BM25 evidence for an explicit rescue call.
+
+        Deliberately bypasses the RRF/ANN/MMR injection pipeline: rank-based
+        fusion is flat on a small block set and hash-vector cosine is noisy,
+        while raw bm25 cleanly separates true matches (13-22 on the seed
+        blocks) from unrelated errors (<=4.3). The caller applies the
+        evidence floor and falls back honestly below it.
+        """
+        blocks = self._all_active_blocks()
+        if not blocks:
+            return []
+        query_tokens = _tokenise(f"{task} {error}")
+        doc_tokens_map = {b.id: _tokenise(_bm25_document_text(b)) for b in blocks}
+        avg_len = sum(len(v) for v in doc_tokens_map.values()) / max(1, len(doc_tokens_map))
+        idf = _build_idf(list(doc_tokens_map.values()))
+        scored = [
+            ScoredBlock(
+                block=b,
+                score=_bm25(query_tokens, doc_tokens_map[b.id], idf, avg_len=avg_len),
+                breakdown={},
+            )
+            for b in blocks
+        ]
+        scored.sort(key=lambda s: s.score, reverse=True)
+        return scored[:limit]
+
     def savings_estimate(self) -> dict[str, int]:
         return {
             "avoided_failures": self._avoided_failures,
@@ -975,7 +1010,7 @@ class _HybridResult:
     def __init__(
         self,
         *,
-        block: ReasonBlock,
+        block: Playbook,
         fts_score: float,
         bm25_score: float,
         recency_score: float,

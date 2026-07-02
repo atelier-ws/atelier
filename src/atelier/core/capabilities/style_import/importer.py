@@ -17,7 +17,7 @@ from atelier.core.capabilities.style_import.prompts import (
     build_messages,
 )
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.embeddings.factory import get_embedder
@@ -55,7 +55,7 @@ def import_files(
     """Extract procedural lessons from Markdown files.
 
     Candidates are only written to the existing lesson inbox when ``write`` is
-    true. Promotion into ReasonBlocks still requires the existing human-review
+    true. Promotion into Playbooks still requires the existing human-review
     ``lesson_decide`` flow.
     """
 
@@ -239,7 +239,7 @@ def _candidate_from_response(
     chunk: MarkdownChunk,
     domain: str,
     embedder: Embedder | None,
-    existing_vectors: list[tuple[ReasonBlock, list[float]]],
+    existing_vectors: list[tuple[Playbook, list[float]]],
 ) -> LessonCandidate | None:
     data = _response_dict(response)
     if not _truthy(data.get("procedural")):
@@ -254,8 +254,8 @@ def _candidate_from_response(
     verification = _string_list(data.get("verification"))
     triggers = _string_list(data.get("triggers"))
     confidence = _clamp_confidence(data.get("confidence"))
-    block = ReasonBlock(
-        id=ReasonBlock.make_id(title, domain),
+    block = Playbook(
+        id=Playbook.make_id(title, domain),
         title=title,
         domain=domain,
         task_types=["style-guide-import"],
@@ -300,17 +300,15 @@ def _response_dict(response: str | dict[str, Any]) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"procedural": False}
 
 
-def _embed_existing_blocks(
-    blocks: list[ReasonBlock], embedder: Embedder | None
-) -> list[tuple[ReasonBlock, list[float]]]:
+def _embed_existing_blocks(blocks: list[Playbook], embedder: Embedder | None) -> list[tuple[Playbook, list[float]]]:
     embedder_local = embedder or get_embedder()
-    out: list[tuple[ReasonBlock, list[float]]] = []
+    out: list[tuple[Playbook, list[float]]] = []
     for block in blocks:
         out.append((block, _embed_block(block, embedder_local)))
     return out
 
 
-def _embed_block(block: ReasonBlock, embedder: Embedder) -> list[float]:
+def _embed_block(block: Playbook, embedder: Embedder) -> list[float]:
     text = "\n".join([block.title, block.situation, *block.procedure, *block.verification])
     try:
         vectors = embedder.embed([text])
@@ -321,9 +319,9 @@ def _embed_block(block: ReasonBlock, embedder: Embedder) -> list[float]:
 
 
 def _near_duplicates(
-    block: ReasonBlock,
+    block: Playbook,
     embedding: list[float],
-    existing_vectors: list[tuple[ReasonBlock, list[float]]],
+    existing_vectors: list[tuple[Playbook, list[float]]],
     *,
     threshold: float = 0.9,
 ) -> list[dict[str, Any]]:

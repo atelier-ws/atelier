@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +19,109 @@ from atelier.infra.runtime.cost_tracker import CostTracker
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+# Hard cap on the bytes of any single string value inside an event payload.
+# Per-event payloads carry arbitrary tool/command output, and ``snapshot``
+# re-serializes the entire events list on every ``persist`` -- so one oversized
+# payload string can bloat run.json without bound. We truncate individual
+# payload string fields at record time (with a clear marker) rather than
+# dropping events or changing the events-list contract. Generous, env-overridable.
+try:
+    _MAX_PAYLOAD_STR_BYTES = max(0, int(os.environ.get("ATELIER_MAX_PAYLOAD_STR_BYTES", "65536")))
+except ValueError:
+    _MAX_PAYLOAD_STR_BYTES = 65536
+
+
+# Depth cap on recursive payload bounding. Real payloads nest a few levels
+# (args -> content, lessons_used -> entries); this guards against pathological
+# or cyclic-looking structures without rejecting legitimate ones.
+_MAX_PAYLOAD_DEPTH = 8
+
+
+# Hard cap on the NUMBER of raw events retained in memory. ``_handle`` appends
+# ~2 events per tool call to one module-global ledger that lives for the whole
+# long-lived stdio session, so an unbounded ``self.events`` list grows linearly
+# for the life of the process (a confirmed RSS leak on the MCP hot path).
+# We retain only the most recent events; older raw events are evicted. This is
+# safe because the durable cumulative truth (routing/compaction savings, per-
+# call cost) is flushed independently to ``live_savings_events.jsonl`` and the
+# per-session savings sidecars on every call, and the live consumers of
+# ``self.events`` (compaction, loop detection, routing recommendation) only read
+# the recent tail. The cap is generous and env-overridable.
+try:
+    _MAX_RETAINED_EVENTS = max(0, int(os.environ.get("ATELIER_MAX_LEDGER_EVENTS", "8000")))
+except ValueError:
+    _MAX_RETAINED_EVENTS = 8000
+
+# Evict in chunks so trimming is amortized O(1) on the hot path rather than an
+# O(n) shift on every append once the cap is reached.
+_EVENT_EVICTION_CHUNK = 512
+
+
+def _bound_value(value: Any, depth: int) -> Any:
+    """Return a bounded copy of ``value``, truncating oversized string leaves.
+
+    Recurses into nested dicts and lists (up to ``_MAX_PAYLOAD_DEPTH``) so the
+    big bloat carriers -- a tool's ``args`` dict or a ``lessons_used`` list with
+    giant strings nested inside -- are bounded too. Never mutates the input: a
+    new structure is built and returned.
+    """
+    if isinstance(value, str):
+        if len(value) > _MAX_PAYLOAD_STR_BYTES:
+            dropped = len(value) - _MAX_PAYLOAD_STR_BYTES
+            return value[:_MAX_PAYLOAD_STR_BYTES] + f"\n...[truncated {dropped} chars]"
+        return value
+    if depth >= _MAX_PAYLOAD_DEPTH:
+        return value
+    if isinstance(value, dict):
+        return {k: _bound_value(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_bound_value(v, depth + 1) for v in value]
+    return value
+
+
+def _bound_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a bounded copy of an event payload, truncating oversized strings.
+
+    Bounds per-event payload bytes so a single event's arbitrary output can't
+    bloat run.json. String leaves at any depth (inside nested dicts and lists)
+    are truncated with a clear marker; other structure is preserved. The input
+    is never mutated -- a fresh structure is returned -- so a public ``record``
+    caller that retains its dict won't see its strings silently truncated.
+    """
+    if _MAX_PAYLOAD_STR_BYTES <= 0:
+        return payload
+    return {key: _bound_value(value, 1) for key, value in payload.items()}
+
+
+# --------------------------------------------------------------------------- #
+# Per-session paths — the run ledger and its sidecars live in sessions/<id>/  #
+# alongside the trace files, so a session is one self-contained folder.       #
+# --------------------------------------------------------------------------- #
+
+
+# session_run_dir/run_file_path were removed: every per-session path (this
+# ledger's own run.json included) now goes through the single canonical
+# atelier.core.foundation.paths.session_dir(root, host, session_id), which is
+# host-segregated (see paths.detect_host) and resolves a session's date
+# instead of recomputing "today" on every call.
+
+
+def outcomes_path(root: str | Path, host: str, session_id: str) -> Path:
+    """Captured route/compact outcomes: ``session_dir(...)/outcomes.json``."""
+    from atelier.core.foundation.paths import session_dir
+
+    return session_dir(root, host, session_id) / "outcomes.json"
+
+
+def iter_run_files(root: str | Path) -> list[Path]:
+    """All run-ledger snapshots under the canonical sessions/YYYY/MM/DD/<host>/<id>/ tree."""
+    base = Path(root)
+    sessions_root = base / "sessions"
+    if sessions_root.is_dir():
+        return sorted(sessions_root.glob("*/*/*/*/*/run.json"))
+    return []
 
 
 class RunLedger:
@@ -35,6 +140,14 @@ class RunLedger:
         self.task = task
         self.domain = domain
         self.events: list[LedgerEvent] = []
+        # Monotonic checkpoint step counter. Authoritative even after old
+        # checkpoint events are evicted from the bounded ``self.events`` list.
+        self._checkpoint_seq = 0
+        # Guards mutation of events/counters and snapshot reads: the MCP
+        # dispatcher shares one ledger across a thread pool, so concurrent
+        # record()/record_call() and snapshot() must not race (torn snapshot,
+        # lost token_count increment). RLock: record_call() re-enters via record().
+        self._lock = threading.RLock()
         self.created_at = _utcnow()
         self.updated_at = self.created_at
         self.status: str = "running"
@@ -52,7 +165,7 @@ class RunLedger:
         self.hypotheses_rejected: list[str] = []
         self.verified_facts: list[str] = []
         self.open_questions: list[str] = []
-        self.active_reasonblocks: list[str] = []
+        self.active_playbooks: list[str] = []
         self.active_rubrics: list[str] = []
         self.current_blockers: list[str] = []
         self.next_required_validation: str | None = None
@@ -72,35 +185,41 @@ class RunLedger:
     # ----- setters -------------------------------------------------------- #
 
     def set_plan(self, plan: list[str]) -> None:
-        self.current_plan = list(plan)
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.current_plan = list(plan)
+            self.updated_at = _utcnow()
 
     def add_hypothesis(self, hypothesis: str, *, rejected: bool = False) -> None:
-        if rejected:
-            if hypothesis not in self.hypotheses_rejected:
-                self.hypotheses_rejected.append(hypothesis)
-        else:
-            if hypothesis not in self.hypotheses_tried:
-                self.hypotheses_tried.append(hypothesis)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if rejected:
+                if hypothesis not in self.hypotheses_rejected:
+                    self.hypotheses_rejected.append(hypothesis)
+            else:
+                if hypothesis not in self.hypotheses_tried:
+                    self.hypotheses_tried.append(hypothesis)
+            self.updated_at = _utcnow()
 
     def add_verified_fact(self, fact: str) -> None:
-        if fact not in self.verified_facts:
-            self.verified_facts.append(fact)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if fact not in self.verified_facts:
+                self.verified_facts.append(fact)
+            self.updated_at = _utcnow()
 
     def add_open_question(self, question: str) -> None:
-        if question not in self.open_questions:
-            self.open_questions.append(question)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if question not in self.open_questions:
+                self.open_questions.append(question)
+            self.updated_at = _utcnow()
 
     def set_blocker(self, blocker: str) -> None:
-        self.current_blockers = [blocker]
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.current_blockers = [blocker]
+            self.updated_at = _utcnow()
 
     def set_next_validation(self, validation: str | None) -> None:
-        self.next_required_validation = validation
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.next_required_validation = validation
+            self.updated_at = _utcnow()
 
     def _normalize_workflow_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if event_type == "workflow_state":
@@ -145,17 +264,18 @@ class RunLedger:
 
     def record_workflow_event(self, event_type: str, payload: dict[str, Any]) -> LedgerEvent:
         normalized = self._normalize_workflow_event(event_type, payload)
-        if event_type == "workflow_state":
-            self.workflow_state = normalized
-            summary = f"workflow:{normalized.get('workflow_step') or 'recorded'}"
-        elif event_type == "plan_review":
-            self.plan_review = normalized
-            summary = f"plan_review:{normalized.get('review_decision') or 'recorded'}"
-        elif event_type == "task_progress":
-            self.task_progress = normalized
-            summary = f"task_progress:{normalized.get('task_id') or 'recorded'}"
-        else:
-            summary = f"event:{event_type}"
+        with self._lock:
+            if event_type == "workflow_state":
+                self.workflow_state = normalized
+                summary = f"workflow:{normalized.get('workflow_step') or 'recorded'}"
+            elif event_type == "plan_review":
+                self.plan_review = normalized
+                summary = f"plan_review:{normalized.get('review_decision') or 'recorded'}"
+            elif event_type == "task_progress":
+                self.task_progress = normalized
+                summary = f"task_progress:{normalized.get('task_id') or 'recorded'}"
+            else:
+                summary = f"event:{event_type}"
         return self.record("note", summary, normalized)
 
     def record_workflow_step_event(
@@ -175,7 +295,8 @@ class RunLedger:
         }
         if payload:
             normalized.update(payload)
-        self.workflow_step_events.append(dict(normalized))
+        with self._lock:
+            self.workflow_step_events.append(dict(normalized))
         return self.record("note", f"workflow_step:{step_id}:{event}", normalized)
 
     # ----- recording ------------------------------------------------------ #
@@ -189,10 +310,17 @@ class RunLedger:
         event = LedgerEvent(
             kind=kind,  # type: ignore[arg-type]
             summary=summary,
-            payload=payload or {},
+            payload=_bound_payload(payload or {}),
         )
-        self.events.append(event)
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.events.append(event)
+            # Bound the retained raw events so a long-lived session can't grow
+            # ``self.events`` without limit. Evict the oldest chunk in one slice
+            # assignment (kept O(1) amortized; ``self.events`` stays a list so
+            # external slicing/indexing callers are unaffected).
+            if _MAX_RETAINED_EVENTS and len(self.events) > _MAX_RETAINED_EVENTS + _EVENT_EVICTION_CHUNK:
+                del self.events[:_EVENT_EVICTION_CHUNK]
+            self.updated_at = _utcnow()
         return event
 
     def record_tool_call(
@@ -204,9 +332,10 @@ class RunLedger:
     ) -> LedgerEvent:
         from atelier.core.foundation.watchdogs import args_signature as _sig
 
-        self.tool_count += 1
-        if tool not in self.tools_called:
-            self.tools_called.append(tool)
+        with self._lock:
+            self.tool_count += 1
+            if tool not in self.tools_called:
+                self.tools_called.append(tool)
 
         signature = args_signature or _sig(args)
 
@@ -230,11 +359,12 @@ class RunLedger:
         stdout: str | None = None,
         stderr: str | None = None,
     ) -> LedgerEvent:
-        self.commands_run.append(command)
-        if not ok:
-            sig = error_signature.strip()
-            if sig and sig not in self.errors_seen:
-                self.errors_seen.append(sig)
+        with self._lock:
+            self.commands_run.append(command)
+            if not ok:
+                sig = error_signature.strip()
+                if sig and sig not in self.errors_seen:
+                    self.errors_seen.append(sig)
         return self.record(
             "command_result",
             command,
@@ -242,8 +372,9 @@ class RunLedger:
         )
 
     def record_file_event(self, path: str, event: str, diff: str | None = None) -> LedgerEvent:
-        if path and path not in self.files_touched:
-            self.files_touched.append(path)
+        with self._lock:
+            if path and path not in self.files_touched:
+                self.files_touched.append(path)
         kind = "file_revert" if event == "revert" else "file_edit"
         payload = {"path": path, "event": event}
         if diff:
@@ -252,7 +383,8 @@ class RunLedger:
 
     def record_alert(self, monitor: str, severity: str, message: str) -> LedgerEvent:
         if severity == "high":
-            self.current_blockers = [f"[{monitor}] {message}"]
+            with self._lock:
+                self.current_blockers = [f"[{monitor}] {message}"]
         return self.record(
             "watchdog_alert",
             f"[{severity}] {monitor}: {message}",
@@ -260,8 +392,9 @@ class RunLedger:
         )
 
     def record_test(self, test_id: str, passed: bool, detail: str = "") -> LedgerEvent:
-        if test_id not in self.tests_run:
-            self.tests_run.append(test_id)
+        with self._lock:
+            if test_id not in self.tests_run:
+                self.tests_run.append(test_id)
         return self.record(
             "test_result",
             f"{test_id}={'pass' if passed else 'fail'}",
@@ -307,7 +440,8 @@ class RunLedger:
             cost_usd=cost_usd,
             lessons_used=lessons_used,
         )
-        self.token_count += rec.input_tokens + rec.output_tokens
+        with self._lock:
+            self.token_count += rec.input_tokens + rec.output_tokens
         return self.record(
             "tool_call",
             f"llm:{operation}({model})",
@@ -333,8 +467,9 @@ class RunLedger:
         )
 
     def close(self, status: str = "complete") -> None:
-        self.status = status
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.status = status
+            self.updated_at = _utcnow()
 
     def record_checkpoint(
         self,
@@ -352,7 +487,12 @@ class RunLedger:
         """
         from atelier.infra.runtime.checkpoint import Checkpoint, CheckpointStore
 
-        step_id = len([e for e in self.events if e.kind == "checkpoint"])
+        # Monotonic per-ledger step id: derived from a counter rather than the
+        # (now bounded) raw events list, so eviction of old checkpoint events
+        # can never make step ids repeat and collide in the CheckpointStore.
+        with self._lock:
+            step_id = self._checkpoint_seq
+            self._checkpoint_seq += 1
         ckpt = Checkpoint.create(
             session_id=self.session_id,
             step_id=step_id,
@@ -371,87 +511,6 @@ class RunLedger:
             ckpt.to_dict(),
         )
         return ckpt
-
-    # ----- trace summary --------------------------------------------------- #
-
-    def to_trace_summary(self) -> dict[str, Any]:
-        """Build enriched trace summary data from ledger events.
-
-        Returns a dict with ``tools_called``, ``files_touched``, and
-        ``commands_run`` populated with full args, diffs, and output
-        rather than just names/paths.
-        """
-        # --- Enriched tool calls ---
-        tool_call_events = [e for e in self.events if e.kind == "tool_call"]
-        merged_tools: dict[tuple[str, str], dict[str, Any]] = {}
-        for ev in tool_call_events:
-            p = ev.payload
-            name = p.get("tool", "")
-            sig = p.get("args_signature", "")
-            key = (name, sig)
-            if key not in merged_tools:
-                merged_tools[key] = {
-                    "name": name,
-                    "args_hash": sig,
-                    "count": 1,
-                    "args": p.get("args"),
-                    "result_summary": (p.get("output") or "")[:200],
-                }
-            else:
-                merged_tools[key]["count"] += 1
-
-        tools_called = list(merged_tools.values())
-
-        # --- Enriched file records ---
-        file_events = [e for e in self.events if e.kind in ("file_edit", "file_revert")]
-        files_touched: list[dict[str, Any] | str] = []
-        seen_paths: set[str] = set()
-        for ev in file_events:
-            p = ev.payload
-            path = p.get("path", "")
-            if not path or path in seen_paths:
-                continue
-            seen_paths.add(path)
-            files_touched.append(
-                {
-                    "path": path,
-                    "diff": (p.get("diff") or "")[:4096],
-                    "event": p.get("event", "edit"),
-                }
-            )
-        # Add any paths that only appear in self.files_touched (no diff event)
-        for path in self.files_touched:
-            if path not in seen_paths:
-                files_touched.append(path)
-
-        # --- Enriched command records ---
-        cmd_events = [e for e in self.events if e.kind == "command_result"]
-        commands_run: list[dict[str, Any] | str] = []
-        seen_cmds: set[str] = set()
-        for ev in cmd_events:
-            cmd = ev.summary
-            if cmd in seen_cmds:
-                continue
-            seen_cmds.add(cmd)
-            p = ev.payload
-            commands_run.append(
-                {
-                    "command": cmd,
-                    "exit_code": 0 if p.get("ok") else 1,
-                    "stdout": (p.get("stdout") or "")[:1024],
-                    "stderr": (p.get("stderr") or "")[:1024],
-                }
-            )
-        # Add any commands that only appear in self.commands_run (no result event)
-        for cmd in self.commands_run:
-            if cmd not in seen_cmds:
-                commands_run.append(cmd)
-
-        return {
-            "tools_called": tools_called,
-            "files_touched": files_touched,
-            "commands_run": commands_run,
-        }
 
     # ----- timing helpers ------------------------------------------------- #
 
@@ -474,61 +533,87 @@ class RunLedger:
     # ----- snapshot / persistence ----------------------------------------- #
 
     def snapshot(self) -> dict[str, Any]:
-        tool_calls = [e for e in self.events if e.kind == "tool_call"]
-        total_output = sum(int(e.payload.get("output_chars", 0)) for e in tool_calls)
-        alerts = [e for e in self.events if e.kind == "watchdog_alert"]
-        return {
-            "session_id": self.session_id,
-            "agent": self.agent,
-            "task": self.task,
-            "domain": self.domain,
-            "status": self.status,
-            "tool_call_count": len(tool_calls),
-            "total_tool_output_chars": total_output,
-            "alert_count": len(alerts),
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-            "current_plan": list(self.current_plan),
-            "files_touched": list(self.files_touched),
-            "tools_called": list(self.tools_called),
-            "commands_run": list(self.commands_run),
-            "tests_run": list(self.tests_run),
-            "errors_seen": list(self.errors_seen),
-            "repeated_failures": list(self.repeated_failures),
-            "hypotheses_tried": list(self.hypotheses_tried),
-            "hypotheses_rejected": list(self.hypotheses_rejected),
-            "verified_facts": list(self.verified_facts),
-            "open_questions": list(self.open_questions),
-            "active_reasonblocks": list(self.active_reasonblocks),
-            "active_rubrics": list(self.active_rubrics),
-            "current_blockers": list(self.current_blockers),
-            "next_required_validation": self.next_required_validation,
-            "workflow_state": dict(self.workflow_state),
-            "plan_review": dict(self.plan_review),
-            "task_progress": dict(self.task_progress),
-            "workflow_step_events": [dict(event) for event in self.workflow_step_events],
-            "agent_settings": dict(self.agent_settings),
-            "skills": list(self.skills),
-            "token_count": self.token_count,
-            "tool_count": self.tool_count,
-            "budget": dict(self.budget),
-            "cost": (self.cost_tracker.snapshot() if self.cost_tracker else {}),
-            "events": [to_jsonable(e) for e in self.events],
-        }
+        # Hold the lock across the whole snapshot so a concurrent record_*/setter
+        # cannot mutate any list/dict mid-read (torn snapshot) and every field is
+        # captured at one consistent instant.
+        with self._lock:
+            events = list(self.events)
+            workflow_step_events = list(self.workflow_step_events)
+            # Single pass over the (locked-copy) events instead of three.
+            tool_calls: list[LedgerEvent] = []
+            alerts: list[LedgerEvent] = []
+            total_output = 0
+            for e in events:
+                if e.kind == "tool_call":
+                    tool_calls.append(e)
+                    total_output += int(e.payload.get("output_chars", 0))
+                elif e.kind == "watchdog_alert":
+                    alerts.append(e)
+            return {
+                "session_id": self.session_id,
+                "agent": self.agent,
+                "task": self.task,
+                "domain": self.domain,
+                "status": self.status,
+                "tool_call_count": len(tool_calls),
+                "total_tool_output_chars": total_output,
+                "alert_count": len(alerts),
+                "created_at": self.created_at.isoformat(),
+                "updated_at": self.updated_at.isoformat(),
+                "current_plan": list(self.current_plan),
+                "files_touched": list(self.files_touched),
+                "tools_called": list(self.tools_called),
+                "commands_run": list(self.commands_run),
+                "tests_run": list(self.tests_run),
+                "errors_seen": list(self.errors_seen),
+                "repeated_failures": list(self.repeated_failures),
+                "hypotheses_tried": list(self.hypotheses_tried),
+                "hypotheses_rejected": list(self.hypotheses_rejected),
+                "verified_facts": list(self.verified_facts),
+                "open_questions": list(self.open_questions),
+                "active_playbooks": list(self.active_playbooks),
+                "active_rubrics": list(self.active_rubrics),
+                "current_blockers": list(self.current_blockers),
+                "next_required_validation": self.next_required_validation,
+                "workflow_state": dict(self.workflow_state),
+                "plan_review": dict(self.plan_review),
+                "task_progress": dict(self.task_progress),
+                "workflow_step_events": [dict(event) for event in workflow_step_events],
+                "agent_settings": dict(self.agent_settings),
+                "skills": list(self.skills),
+                "token_count": self.token_count,
+                "tool_count": self.tool_count,
+                "budget": dict(self.budget),
+                "cost": (self.cost_tracker.snapshot() if self.cost_tracker else {}),
+                "events": [to_jsonable(e) for e in events],
+            }
 
     def persist(self, root: Path | None = None) -> Path:
         target_root = root or self._root
         if target_root is None:
             raise ValueError("RunLedger.persist requires a root directory.")
-        runs_dir = Path(target_root) / "runs"
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        path = runs_dir / f"{self.session_id}.json"
-        path.write_text(json.dumps(self.snapshot(), indent=2), encoding="utf-8")
+        from atelier.core.foundation.paths import session_dir
+
+        path = session_dir(target_root, self.agent or "claude", self.session_id) / "run.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Write to a sibling temp file then atomically rename, so a crash
+        # mid-write can never leave a truncated run.json behind.
+        tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(self.snapshot(), indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         return path
 
     @classmethod
     def load(cls, path: Path) -> RunLedger:
-        snap: dict[str, Any] = json.loads(Path(path).read_text(encoding="utf-8"))
+        path = Path(path)
+        try:
+            snap: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"corrupt run ledger at {path}: {exc}") from exc
         led = cls(
             session_id=snap.get("session_id"),
             agent=snap.get("agent"),
@@ -544,6 +629,8 @@ class RunLedger:
                     payload=ev.get("payload", {}),
                 )
             )
+            if ev.get("kind") == "checkpoint":
+                led._checkpoint_seq += 1
         led.current_plan = list(snap.get("current_plan") or [])
         led.files_touched = list(snap.get("files_touched") or [])
         led.tools_called = list(snap.get("tools_called") or [])
@@ -555,7 +642,7 @@ class RunLedger:
         led.hypotheses_rejected = list(snap.get("hypotheses_rejected") or [])
         led.verified_facts = list(snap.get("verified_facts") or [])
         led.open_questions = list(snap.get("open_questions") or [])
-        led.active_reasonblocks = list(snap.get("active_reasonblocks") or [])
+        led.active_playbooks = list(snap.get("active_playbooks") or [])
         led.active_rubrics = list(snap.get("active_rubrics") or [])
         led.current_blockers = list(snap.get("current_blockers") or [])
         led.next_required_validation = snap.get("next_required_validation")

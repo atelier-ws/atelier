@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,13 +64,19 @@ def sync_usage(
             chunk_sessions = []
             for sid in chunk_ids:
                 # Try live stats first
-                stats_path = root_path / "session_stats" / f"{sid}.json"
+                from atelier.core.foundation.paths import find_session_dir
+
+                _existing = find_session_dir(root_path, sid)
+                stats_path = (
+                    (_existing / "stats.json")
+                    if _existing is not None
+                    else (root_path / "sessions" / sid / "stats.json")
+                )
                 if stats_path.exists():
                     try:
                         chunk_sessions.append(json.loads(stats_path.read_text(encoding="utf-8")))
                         continue
-                    except Exception:
-                        logging.exception("Recovered from broad exception handler")
+                    except (json.JSONDecodeError, OSError):
                         logger.warning(
                             "Suppressed exception at sync.py:69",
                             exc_info=True,
@@ -77,7 +84,7 @@ def sync_usage(
                 # Fallback to Trace reconstruction
                 trace = store.get_trace(sid)
                 if trace:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(json.JSONDecodeError, OSError):
                         chunk_sessions.append(get_session_stats_from_trace(trace))
 
             if chunk_sessions and _send_chunk(url, chunk_sessions):
@@ -93,7 +100,7 @@ def _send_chunk(url: str, sessions: list[dict[str, Any]]) -> bool:
     """Send a single chunk of sessions to the sync endpoint."""
     payload = {
         "machine_id": get_anon_id(),
-        "timestamp": datetime.now(UTC).isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat(),
         "atelier_version": atelier_version,
         "sessions": sessions,
         "metadata": platform_payload(),
@@ -105,12 +112,10 @@ def _send_chunk(url: str, sessions: list[dict[str, Any]]) -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:
             try:
                 status = int(getattr(resp, "status", 0))
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
+            except (ValueError, TypeError):
                 return False
             return status < 400
-    except Exception as e:
-        logging.exception("Recovered from broad exception handler")
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
         _logger.debug(f"sync chunk to {url} failed: {e}")
         return False
 

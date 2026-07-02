@@ -19,26 +19,6 @@ EXPECTED_ROLE_MODELS = {
     "research": "claude-sonnet-4.6",
     "solve": "claude-opus-4.8",
 }
-EXPECTED_ROLE_TURNS = {
-    "code": 100,
-    "general": 100,
-    "explore": 25,
-    "plan": 100,
-    "execute": 100,
-    "review": 40,
-    "research": 25,
-    "solve": 80,
-}
-EXPECTED_ROLE_TOKENS = {
-    "code": 64000,
-    "general": 64000,
-    "explore": 32000,
-    "plan": 64000,
-    "execute": 64000,
-    "review": 48000,
-    "research": 32000,
-    "solve": 64000,
-}
 
 
 def test_default_registry_contains_required_roles() -> None:
@@ -51,8 +31,6 @@ def test_default_registry_contains_required_roles() -> None:
     assert general.prompt_body
     assert general.host_projections == ()
     assert general.model_default
-    assert general.max_turns > 0
-    assert general.max_tokens > 0
 
 
 def test_role_defaults_stay_workload_aware() -> None:
@@ -61,8 +39,6 @@ def test_role_defaults_stay_workload_aware() -> None:
     for role_id, expected_model in EXPECTED_ROLE_MODELS.items():
         role = registry.roles[role_id]
         assert role.model_default == expected_model
-        assert role.max_turns == EXPECTED_ROLE_TURNS[role_id]
-        assert role.max_tokens == EXPECTED_ROLE_TOKENS[role_id]
 
 
 def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
@@ -74,25 +50,9 @@ def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
         assert role.prompt_source.as_posix().endswith(f"integrations/agents/{role_id}.md")
         body = registry.render_prompt(role_id, ROOT)
         assert "Eval" not in body
-        assert f"# {role_id.replace('-', ' ').title()} mode" in body
-
-
-def test_role_prompts_include_todo_and_question_discipline() -> None:
-    registry = build_default_registry(ROOT)
-
-    code = registry.render_prompt("code", ROOT)
-    assert "todo list" in code
-    assert "Ask the user only for real ambiguity" in code
-
-    execute = registry.render_prompt("execute", ROOT)
-    assert "todo list" in execute
-    assert "Ask the user only for real ambiguity" in execute
-    assert "{{CODING_GUIDELINES}}" in execute
-
-    plan = registry.render_prompt("plan", ROOT)
-    assert "todo list" in plan
-    assert "ask the user instead of guessing" in plan.lower()
-    assert "{{CORE_DISCIPLINE}}" in plan
+        # Mode docs now compose from shared discipline partials (substituted at
+        # host-generation time), so the raw doc carries the partial placeholders.
+        assert "{{CORE_DISCIPLINE}}" in body
 
 
 def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
@@ -139,18 +99,29 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
         "refine",
         "execute",
         "review",
-        "retry",
     ]
-    assert solver_loop.steps[6].fork_from == "review"
-    assert solver_loop.steps[6].phase_prompt_id == "solver-retry"
+    assert solver_loop.steps[5].fork_from == "refine"
 
     profile = registry.benchmark_profiles["terminalbench-owned-solver"]
     assert profile.role_id == "solve"
     assert profile.workflow_id == "owned-benchmark-solver"
     assert profile.retry_limit == 2
+    assert any("isolated and disposable" in rule.lower() for rule in profile.command_rules)
+    assert any("hidden evaluator" in rule.lower() for rule in profile.command_rules)
+    assert any("security and ctf" in rule.lower() for rule in profile.command_rules)
     assert any("stderr" in rule.lower() for rule in profile.command_rules)
     assert any("generator" in rule.lower() for rule in profile.command_rules)
     assert any("failed command" in rule.lower() for rule in profile.command_rules)
+
+
+def test_solve_role_is_general_and_benchmark_policy_is_profile_scoped() -> None:
+    registry = build_default_registry(ROOT)
+    solve = registry.render_prompt("solve", ROOT)
+
+    assert "repository's validation entrypoints" in solve
+    assert "terminal-bench" not in solve.lower()
+    assert "hidden evaluator" not in solve.lower()
+    assert "isolated and disposable" not in solve.lower()
 
 
 def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
@@ -159,6 +130,10 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     stem = registry.render_named_prompt("owned-stem-system", ROOT)
     assert "prompt caches stay warm" in stem
     assert "Do not broaden the task" in stem
+    # Confirmation policy and read mechanics are hoisted into the stem once.
+    assert "local, reversible reads, edits, and tests" in stem
+    assert "shared-state" in stem
+    assert "retry_with" in stem
 
     explore = registry.render_named_prompt("owned-explore-phase", ROOT)
     assert "Read only" in explore
@@ -185,8 +160,6 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     execute = registry.render_named_prompt("owned-execute-phase", ROOT)
     assert "approved plan sequentially" in execute
     assert "Change only files named by the plan" in execute
-    assert "local, reversible reads, edits, and tests" in execute
-    assert "shared-state" in execute
     assert "Stop after self-verification" in execute
 
     review = registry.render_named_prompt("owned-review-phase", ROOT)
@@ -197,17 +170,12 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     fix = registry.render_named_prompt("owned-fix-phase", ROOT)
     assert "FIX PHASE" in fix
     assert "Fix only cited gaps" in fix
-    assert "local, reversible reads, edits, and tests" in fix
-
-    retry = registry.render_named_prompt("solver-retry", ROOT)
-    assert "Do not repeat a failed command verbatim" in retry
-    assert "keep the workspace clean" in retry
 
 
 def test_registry_host_projections_match_current_surface_set() -> None:
     registry = build_default_registry(ROOT)
 
-    surfaced = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    surfaced = {"auto", "bare", "code", "explore", "execute", "plan", "research", "review", "solve"}
     assert set(registry.surfaced_role_ids("shared_skill")) == surfaced
     assert set(registry.surfaced_role_ids("claude_agent")) == surfaced
     assert set(registry.surfaced_role_ids("opencode_agent")) == surfaced
@@ -244,3 +212,46 @@ def test_bootstrap_default_definitions_reports_changed_and_invalid_targets(tmp_p
     invalid_root.write_text("x", encoding="utf-8")
     invalid = bootstrap_default_definitions(invalid_root, repo_root=ROOT)
     assert any(entry.status == "invalid" for entry in invalid.entries)
+
+
+def _seed_mode_docs(repo_root: Path, *, malformed: str) -> None:
+    modes_dir = repo_root / "integrations" / "agents"
+    modes_dir.mkdir(parents=True, exist_ok=True)
+    for role_id in sorted(HOST_FACING_ROLES):
+        title = role_id.replace("-", " ").title()
+        (modes_dir / f"{role_id}.md").write_text(
+            "---\n"
+            f"mode: {role_id}\n"
+            f'skill_description: "{title} skill"\n'
+            f'agent_description: "{title} agent"\n'
+            "---\n"
+            f"# {title} mode\n\nBody.\n",
+            encoding="utf-8",
+        )
+    (modes_dir / f"{malformed}.md").write_text("no frontmatter here\n", encoding="utf-8")
+
+
+def test_build_default_registry_raises_on_malformed_mode_doc(tmp_path: Path) -> None:
+    _seed_mode_docs(tmp_path, malformed="code")
+
+    # Descriptions are single-sourced from the mode docs, so a malformed doc is a
+    # hard build failure -- there is no silent fallback to stale built-in metadata.
+    try:
+        build_default_registry(tmp_path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("build_default_registry must raise on a malformed mode doc")
+
+
+def test_load_mode_docs_strict_raises_on_malformed_doc(tmp_path: Path) -> None:
+    from atelier.core.capabilities.default_definitions import load_mode_docs
+
+    _seed_mode_docs(tmp_path, malformed="code")
+
+    try:
+        load_mode_docs(tmp_path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("strict load_mode_docs must raise on a malformed doc")

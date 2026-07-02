@@ -5,8 +5,8 @@ on:
     branches:
       - main
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -168,11 +168,11 @@ jobs:
         run: bash --version | head -1
 
       - name: Run dev installer syntax check with macOS bash
-        run: bash -n scripts/dev.sh
+        run: bash -n scripts/local.sh
 
       - name: Run install.sh syntax check
         run: bash -n scripts/install.sh
 
       - name: Run dev installer dry-run
         run: |
-          bash scripts/dev.sh --dry-run --no-hosts --no-stack --non-interactive --verbose
+          bash scripts/local.sh --dry-run --no-hosts --no-stack --non-interactive --verbose

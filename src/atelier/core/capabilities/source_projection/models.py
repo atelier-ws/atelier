@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Literal, cast
 
-ProjectionView = Literal["summary", "exact", "range", "outline", "compact"]
+ProjectionView = Literal["summary", "exact", "range", "outline", "compact", "minified"]
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class SourceRange:
 @dataclass(frozen=True)
 class ProjectionSegment:
     segment_id: str
-    kind: Literal["exact", "whitespace"]
+    kind: Literal["exact", "whitespace", "dropped"]
     source: SourceRange
     projected_start: int
     projected_end: int
@@ -56,11 +56,11 @@ class ProjectionSegment:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> ProjectionSegment:
         kind = str(payload["kind"])
-        if kind not in {"exact", "whitespace"}:
+        if kind not in {"exact", "whitespace", "dropped"}:
             raise ValueError(f"unsupported projection segment kind: {kind}")
         return cls(
             segment_id=str(payload["segment_id"]),
-            kind=cast(Literal["exact", "whitespace"], kind),
+            kind=cast(Literal["exact", "whitespace", "dropped"], kind),
             source=SourceRange.from_dict(dict(payload["source"])),
             projected_start=int(payload["projected_start"]),
             projected_end=int(payload["projected_end"]),
@@ -71,7 +71,7 @@ class ProjectionSegment:
 @dataclass(frozen=True)
 class ProjectionMapping:
     version: Literal["v1"]
-    projection_kind: Literal["compact"]
+    projection_kind: Literal["compact", "minified"]
     path: str
     lang: str
     source_length: int
@@ -104,11 +104,11 @@ class ProjectionMapping:
         if version != "v1":
             raise ValueError(f"unsupported projection mapping version: {version}")
         projection_kind = str(payload["projection_kind"])
-        if projection_kind != "compact":
+        if projection_kind not in {"compact", "minified"}:
             raise ValueError(f"unsupported projection kind: {projection_kind}")
         return cls(
             version=cast(Literal["v1"], version),
-            projection_kind=cast(Literal["compact"], projection_kind),
+            projection_kind=cast(Literal["compact", "minified"], projection_kind),
             path=str(payload["path"]),
             lang=str(payload["lang"]),
             source_length=int(payload["source_length"]),
@@ -204,7 +204,7 @@ class SourceProjection:
             transformed=True,
             body_complete=False,
             untransformed_text=False,
-            notice="Projection: outline (structure only; bodies omitted). Use expand=true or range=Lx-Ly for body text.",
+            notice="Projection: outline",
         )
 
     @classmethod
@@ -214,5 +214,15 @@ class SourceProjection:
             transformed=True,
             body_complete=True,
             untransformed_text=False,
-            notice="Projection: compact (whitespace-transformed body). Re-read with expand=true for untransformed text.",
+            notice="Projection: compact",
+        )
+
+    @classmethod
+    def minified(cls) -> SourceProjection:
+        return cls(
+            view="minified",
+            transformed=True,
+            body_complete=True,
+            untransformed_text=False,
+            notice="Projection: minified (line numbers differ from disk)",
         )

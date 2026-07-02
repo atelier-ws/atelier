@@ -34,6 +34,7 @@ from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
     _SIZE_LIMIT_BYTES,
+    _SYSTEM_PREFIXES_CLAUDE,
     make_llm_usage_entry,
     persist_imported_run_snapshot,
     snapshot_edited_files,
@@ -55,12 +56,7 @@ _FILE_TOOLS = {
     "Write",
     "MultiEdit",
 }
-_SYSTEM_PREFIXES_CLAUDE = (
-    "I have been initialized",
-    "Environment context:",
-    "<environment_context>",
-    "<permissions instructions>",
-)
+_SUBAGENT_TOOL_NAMES = {"agent", "task"}
 
 
 def _utcnow() -> datetime:
@@ -216,12 +212,28 @@ class ClaudeImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
-        """Import all Claude sessions. Returns IDs of successfully imported traces."""
-        all_sessions = list(find_claude_sessions(root))
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
+        """Import newest sessions under *root* up to limit per type."""
+
+        # Helper to sort by mtime descending and take top N if limit is provided
+        def get_newest(paths: list[tuple[str, Path]], n: int | None) -> list[tuple[str, Path]]:
+            stamped: list[tuple[float, tuple[str, Path]]] = []
+            for p in paths:
+                try:
+                    stamped.append((p[1].stat().st_mtime, p))
+                except OSError:
+                    continue
+            sorted_paths = [p for _, p in sorted(stamped, key=lambda x: x[0], reverse=True)]
+            return sorted_paths[:n] if n is not None else sorted_paths
+
+        all_sessions = get_newest(list(find_claude_sessions(root)), limit)
         total = len(all_sessions)
-        if total > 0:
-            logger.info("[atelier] claude: discovering sessions (found %d)", total)
+
+        logger.info(
+            "claude: discovered sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
 
         imported_ids = []
         for i, (workspace_slug, jsonl_path) in enumerate(all_sessions):
@@ -229,18 +241,18 @@ class ClaudeImporter:
                 size = jsonl_path.stat().st_size
                 if size > _SIZE_LIMIT_BYTES:
                     logger.warning(
-                        "[atelier] claude: skipping massive session %s (%.1fMB)",
+                        "claude: skipping massive session %s (%.1fMB)",
                         jsonl_path.name,
                         size / 1e6,
                     )
                     continue
                 if i % 10 == 0 and i > 0:
-                    logger.info("[atelier] claude: importing %d/%d...", i, total)
+                    logger.info("claude: importing %d/%d...", i, total)
                 sid = self.import_session(workspace_slug, jsonl_path, force=force)
                 if sid:
                     imported_ids.append(sid)
             except Exception:
-                logger.exception("[atelier] skipping claude session %s", jsonl_path.name)
+                logger.exception("skipping claude session %s", jsonl_path.name)
         return imported_ids
 
     def import_session(self, workspace_slug: str, jsonl_path: Path, *, force: bool = False) -> str | None:
@@ -257,7 +269,7 @@ class ClaudeImporter:
                 return None
 
         try:
-            root_raw_content = jsonl_path.read_text(encoding="utf-8")
+            root_raw_content = jsonl_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             root_raw_content = ""
         inferred_session_id = _extract_session_id_from_jsonl(root_raw_content)
@@ -271,6 +283,8 @@ class ClaudeImporter:
             all_files.extend(sorted(subagent_dir.glob("*.jsonl")))
 
         artifact_ids: list[str] = []
+        pending_raw_artifacts: list[tuple[RawArtifact, str]] = []
+        dropped_lines = 0
         model_seen = ""
         user_prompt_tokens = 0
 
@@ -280,6 +294,16 @@ class ClaudeImporter:
         pending_tool_uses: dict[str, dict[str, Any]] = {}
         file_index_by_tool_use_id: dict[str, int] = {}
         command_index_by_tool_use_id: dict[str, int] = {}
+        # Tool tallies must accumulate across ALL session files (main
+        # transcript + subagents); per-file declarations would leave only the
+        # last subagent's tools on the final trace.
+        tool_args: dict[str, dict[str, Any] | None] = {}
+        tool_results: dict[str, str] = {}
+        tools_called: dict[str, int] = {}
+        tool_in_tokens: dict[str, int] = {}
+        tool_out_tokens: dict[str, int] = {}
+        seen_tool_use_ids: set[str] = set()
+        subagent_names: dict[str, int] = {}
         files_touched: list[str | FileEditRecord] = []
         errors_seen: set[str] = set()
         commands_run: list[str | CommandRecord] = []
@@ -293,10 +317,11 @@ class ClaudeImporter:
         skills: list[str] = []
         latencies: list[float] = []
         ttfts: list[float] = []
+        workspace_path: str | None = None
 
         for f_path in all_files:
             try:
-                raw_content = f_path.read_text(encoding="utf-8")
+                raw_content = f_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             redacted = redact(raw_content)
@@ -317,28 +342,35 @@ class ClaudeImporter:
                 source_file_mtime=datetime.fromtimestamp(f_path.stat().st_mtime, tz=UTC),
                 source_path=str(f_path),
             )
-            self.store.record_raw_artifact(art, redacted)
             artifact_ids.append(art.id)
+            pending_raw_artifacts.append((art, redacted))
 
-            tool_args: dict[str, dict[str, Any] | None] = {}
-            tool_results: dict[str, str] = {}
-            tools_called: dict[str, int] = {}
-            tool_in_tokens: dict[str, int] = {}
-            tool_out_tokens: dict[str, int] = {}
-
-            for line in redacted.splitlines():
-                line = line.strip()
-                if not line:
+            # Parse each line from the raw content. The whole-file redacted
+            # text is already stored in the RawArtifact above; applying
+            # redact() here before json.loads() would corrupt valid JSON because
+            # the credential pattern (`\S[^\r\n]*`) consumes to end-of-line,
+            # eating closing brackets and making the record unparseable. Instead
+            # we parse raw and redact only the specific string values we extract
+            # into Trace fields (task, title, reasoning, commands).
+            for raw_line in raw_content.splitlines():
+                stripped = raw_line.strip()
+                if not stripped:
                     continue
                 try:
-                    ev = json.loads(line)
+                    ev = json.loads(stripped)
                 except json.JSONDecodeError:
+                    dropped_lines += 1
                     continue
 
                 ev_type = ev.get("type", "")
                 ts_str = ev.get("timestamp", "")
                 msg = ev.get("message") or {}
                 msg_id = str(msg.get("id") or ev.get("uuid") or ev.get("id") or "")
+
+                if workspace_path is None:
+                    cwd = ev.get("cwd")
+                    if cwd:
+                        workspace_path = str(cwd)
 
                 if ts_str and not first_ts_set:
                     created_at = _parse_ts(ts_str)
@@ -352,11 +384,11 @@ class ClaudeImporter:
                 if ev_type == "ai-title":
                     t = ev.get("aiTitle") or ev.get("title", "")
                     if t:
-                        title = str(t)
+                        title = redact(str(t))
                 elif ev_type == "last-prompt":
                     lp = str(ev.get("lastPrompt", "")).strip()
                     if lp and task == "untitled claude session" and not lp.startswith("<") and len(lp) > 5:
-                        task = lp[:200]
+                        task = redact(lp[:200])
                 elif ev_type == "user":
                     if ev.get("isMeta"):
                         # Extract skills/settings from metadata injection
@@ -376,7 +408,7 @@ class ClaudeImporter:
                         and text_ext
                         and (not text_ext.startswith("<") and not text_ext.startswith("/") and len(text_ext) > 5)
                     ):
-                        task = text_ext[:200]
+                        task = redact(text_ext[:200])
                     if isinstance(content, list):
                         for block in content:
                             if not isinstance(block, dict) or block.get("type") != "tool_result":
@@ -389,6 +421,8 @@ class ClaudeImporter:
                             res_txt = _tool_result_text(block.get("content"))
                             if res_txt:
                                 tool_results[name] = res_txt[:200]
+                            if block.get("is_error") and res_txt:
+                                errors_seen.add(redact(res_txt[:200]))
                             if name == "Bash":
                                 idx = command_index_by_tool_use_id.get(tid)
                                 if idx is not None:
@@ -396,10 +430,10 @@ class ClaudeImporter:
                                         block.get("content"), bool(block.get("is_error"))
                                     )
                                     commands_run[idx] = CommandRecord(
-                                        command=str((pending.get("input") or {}).get("command") or "")[:200],
+                                        command=redact(str((pending.get("input") or {}).get("command") or "")[:200]),
                                         exit_code=block.get("exit_code"),
-                                        stdout=stdout,
-                                        stderr=stderr,
+                                        stdout=redact(stdout[:1024]),
+                                        stderr=redact(stderr[:1024]),
                                     )
                             elif name in {"Write", "Edit", "MultiEdit"}:
                                 idx = file_index_by_tool_use_id.get(tid)
@@ -464,10 +498,15 @@ class ClaudeImporter:
                         if bt == "thinking":
                             think = block.get("thinking", "")
                             if think:
-                                reasoning_snippets.append(str(think)[:500])
+                                reasoning_snippets.append(redact(str(think)[:500]))
                         if bt != "tool_use":
                             continue
                         name = str(block.get("name", "unknown"))
+                        tid = str(block.get("id") or "")
+                        if tid:
+                            if tid in seen_tool_use_ids:
+                                continue
+                            seen_tool_use_ids.add(tid)
                         tools_called[name] = tools_called.get(name, 0) + 1
                         tool_in_tokens[name] = tool_in_tokens.get(name, 0) + dist_out
                         tool_out_tokens[name] = tool_out_tokens.get(name, 0) + dist_in
@@ -475,9 +514,15 @@ class ClaudeImporter:
                         if not isinstance(inp, dict):
                             inp = {}
                         tool_args[name] = inp or tool_args.get(name)
-                        tid = str(block.get("id") or "")
                         if tid:
                             pending_tool_uses[tid] = {"name": name, "input": inp}
+                        if name.lower() in _SUBAGENT_TOOL_NAMES:
+                            key = (
+                                str(inp.get("agent_type") or inp.get("name") or "")
+                                or str(inp.get("description") or "")[:24].strip()
+                                or "agent"
+                            )
+                            subagent_names[key] = subagent_names.get(key, 0) + 1
                         if name in _FILE_TOOLS:
                             fp = inp.get("file_path") or inp.get("path")
                             if fp:
@@ -494,10 +539,10 @@ class ClaudeImporter:
                                     files_touched.append(fp_str)
                                 if tid:
                                     file_index_by_tool_use_id[tid] = len(files_touched) - 1
-                        elif name == "Bash":
+                        if name == "Bash":
                             cmd = str(inp.get("command") or "").strip()
                             if cmd:
-                                commands_run.append(cmd[:200])
+                                commands_run.append(redact(cmd[:200]))
                                 if tid:
                                     command_index_by_tool_use_id[tid] = len(commands_run) - 1
 
@@ -506,11 +551,13 @@ class ClaudeImporter:
             fallback_model=model_seen,
         )
 
-        telemetry = {}
+        telemetry: dict[str, Any] = {}
         if latencies:
             telemetry["avg_latency_ms"] = round(sum(latencies) / len(latencies), 1)
         if ttfts:
             telemetry["avg_ttft_ms"] = round(sum(ttfts) / len(ttfts), 1)
+        if subagent_names:
+            telemetry["subagent_names"] = subagent_names
 
         if task == "untitled claude session" and title:
             task = title
@@ -552,8 +599,22 @@ class ClaudeImporter:
             agent_settings=agent_settings,
             skills=sorted(set(skills)),
             telemetry=telemetry,
+            workspace_path=workspace_path,
             created_at=created_at,
         )
+        if dropped_lines:
+            logger.warning(
+                "claude reader: dropped %d unparseable line(s) while importing session %s",
+                dropped_lines,
+                actual_session_id,
+            )
+        # Record raw artifacts only after the trace above parsed successfully.
+        # Recording them first (as this used to) bumps source_file_mtime before
+        # a mid-parse exception can be raised; on the next non-force import
+        # the mtime-based dedup check then sees "unchanged" and skips the
+        # session forever. Parse fully, then persist (matches codex.py).
+        for art, redacted in pending_raw_artifacts:
+            self.store.record_raw_artifact(art, redacted)
         self.store.record_trace(trace, write_json=False)
         persist_imported_run_snapshot(self.store, trace, started_at=created_at, ended_at=updated_at)
 

@@ -46,13 +46,28 @@ def _benchmark_gate_enabled() -> bool:
         return False
 
 
-def _session_state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    workspace_hash = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
-    return root / "workspaces" / workspace_hash / "session_state.json"
+    return root / "workspaces" / _workspace_key(workspace) / "session_state.json"
 
 
 def _read_session_state() -> dict[str, Any]:
@@ -84,6 +99,18 @@ def _is_risky(path: str) -> bool:
     return any(p.search(path) for p in RISKY_PATTERNS)
 
 
+def _decide(decision: str, reason: str = "") -> None:
+    """Emit a current-schema PreToolUse permission decision (Claude Code v2.1.x).
+
+    The legacy top-level {"decision": ...} form is deprecated for PreToolUse and
+    is silently ignored, so allow/deny must go through hookSpecificOutput.
+    """
+    spec = {"hookEventName": "PreToolUse", "permissionDecision": decision}
+    if reason:
+        spec["permissionDecisionReason"] = reason
+    print(json.dumps({"hookSpecificOutput": spec}))
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -92,7 +119,7 @@ def main() -> int:
 
     tool_name = str(payload.get("tool_name") or payload.get("tool") or "").lower()
     if tool_name and tool_name not in {"edit", "multiedit", "write"}:
-        print(json.dumps({"decision": "allow"}))
+        _decide("allow")
         return 0
 
     tool_input = payload.get("tool_input", {}) or {}
@@ -104,14 +131,22 @@ def main() -> int:
                 missing_grounding_targets,
             )
         except (ImportError, AttributeError, ValueError):
-            print(json.dumps({"decision": "allow"}))
+            _decide("allow")
             return 0
 
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
         state = _read_session_state()
-        session_id = str(state.get("session_id") or state.get("active_session_id") or "").strip()
+        session_id = str(payload.get("session_id") or "").strip()
         targets = extract_edit_targets(tool_name, tool_input, workspace_root=workspace)
         risky_targets = [target for target in targets if _is_risky(target)]
+        # New-file exemption: a target that does not yet exist on disk cannot be
+        # grounded by read/grep/search, so requiring evidence would deadlock its
+        # creation. Only require grounding for targets that already exist.
+        risky_targets = [
+            target
+            for target in risky_targets
+            if (Path(workspace) / target).exists() or Path(target).exists()
+        ]
         missing = missing_grounding_targets(
             state,
             session_id=session_id,
@@ -119,24 +154,20 @@ def main() -> int:
             workspace_root=workspace,
         )
         if missing:
-            msg = (
-                "Atelier benchmark gate: ground this edit with read, grep, search, "
-                "symbols, node, explore, callers, callees, usages, or impact before editing "
-                f"{', '.join(missing[:4])}."
-            )
-            print(json.dumps({"decision": "block", "reason": msg}))
+            msg = f"Ground this edit first -- read/grep/search/explore {', '.join(missing[:4])} before editing."
+            _decide("deny", msg)
             return 0
         if risky_targets:
-            print(json.dumps({"decision": "allow"}))
+            _decide("allow")
             return 0
 
     target = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
     if not target or not _is_risky(target):
-        print(json.dumps({"decision": "allow"}))
+        _decide("allow")
         return 0
 
     # Always allow risky operations
-    print(json.dumps({"decision": "allow"}))
+    _decide("allow")
     return 0
 
 

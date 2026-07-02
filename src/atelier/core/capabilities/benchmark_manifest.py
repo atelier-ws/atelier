@@ -13,30 +13,28 @@ def write_benchmark_manifest(run_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
-def build_atelierbench_manifest(
+def build_codebench_manifest(
     *,
     tasks: list[dict[str, Any]],
     arms: list[str],
     reps: int,
     model: str,
     cli_driver: str,
-    transport: str,
-    api_provider: str,
     timeout: int,
     jobs: int,
     parallel_scope: str,
-    atelierbench_tasks_dir: Path,
+    codebench_tasks_dir: Path,
     bridge_command: str | None,
 ) -> dict[str, Any]:
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     treatment_arms = [arm for arm in arms if arm != baseline_arm]
     return {
-        "suite": "atelierbench",
+        "suite": "codebench",
         "frozen_at": datetime.now(UTC).isoformat(),
         "corpus": {
-            "dataset_name": "atelierbench",
+            "dataset_name": "codebench",
             "dataset_version": "ported-local",
-            "source_root": str(atelierbench_tasks_dir.resolve()),
+            "source_root": str(codebench_tasks_dir.resolve()),
             "tasks": tasks,
         },
         "protocol": {
@@ -49,8 +47,6 @@ def build_atelierbench_manifest(
             "matched_fields": {
                 "model": model,
                 "cli_driver": cli_driver,
-                "transport": transport,
-                "api_provider": api_provider,
                 "timeout_seconds": timeout,
                 "jobs": jobs,
                 "parallel_scope": parallel_scope,
@@ -62,6 +58,11 @@ def build_atelierbench_manifest(
             "report_txt": "report.txt",
             "results_csv": "results.csv",
             "summary_csv": "summary.csv",
+            "task_metrics_csv": "task_metrics.csv",
+            "task_correctness_csv": "task_correctness.csv",
+            "model_audit_csv": "model_audit.csv",
+            "pairwise_quality_csv": "pairwise_quality.csv",
+            "quality_adjusted_summary_csv": "quality_adjusted_summary.csv",
         },
     }
 
@@ -104,7 +105,7 @@ def build_terminalbench_manifest(
 
 
 __all__ = [
-    "build_atelierbench_manifest",
+    "build_codebench_manifest",
     "build_terminalbench_manifest",
     "write_benchmark_manifest",
 ]

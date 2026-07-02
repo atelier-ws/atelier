@@ -102,3 +102,25 @@ def test_init_uses_progress_bootstrap_for_code_index(tmp_path: Path, monkeypatch
         "success_description": "Code index ready",
     }
     assert "indexed 3 files, 9 symbols (2 imports)" in result.output
+
+
+def test_init_installs_project_agents_md_and_codex_agents(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init"], cwd=workspace, check=True, capture_output=True)
+    monkeypatch.chdir(workspace)
+    monkeypatch.setattr(
+        admin_command.shutil,
+        "which",
+        lambda command: f"/usr/bin/{command}" if command == "codex" else None,
+    )
+
+    root = tmp_path / ".atelier-store"
+    result = CliRunner().invoke(cli, ["--root", str(root), "init", "--no-seed", "--no-index"])
+
+    assert result.exit_code == 0, result.output
+    assert "[agents_md] updated AGENTS.md" in result.output
+    assert "[codex] updated" in result.output
+    agents_md = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "tool_search" in agents_md
+    assert (workspace / ".codex" / "agents" / "atelier.code.toml").exists()

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MODES_DIR = Path("integrations/agents")
 
-HOST_ROLE_IDS = ("code", "explore", "review", "plan", "execute", "research", "solve")
-SURFACED_ROLE_IDS = ("code", "explore", "execute", "plan", "research", "review", "solve")
+HOST_ROLE_IDS = ("code", "explore", "review", "plan", "execute", "research", "solve", "auto", "bare")
+SURFACED_ROLE_IDS = ("code", "explore", "execute", "plan", "research", "review", "solve", "auto", "bare")
 DEFAULT_OWNED_MODEL = "claude-opus-4.8"
 READONLY_OWNED_MODEL = "claude-sonnet-4.6"
 
@@ -112,8 +113,6 @@ class DefaultRole:
     workflow_usage: tuple[str, ...]
     model_default: str
     effort_default: str
-    max_turns: int
-    max_tokens: int
     read_mode_hint: str
     host_projections: tuple[HostProjection, ...] = ()
     review_contract: ReviewContract | None = None
@@ -130,8 +129,6 @@ class DefaultRole:
             "workflow_usage": list(self.workflow_usage),
             "model_default": self.model_default,
             "effort_default": self.effort_default,
-            "max_turns": self.max_turns,
-            "max_tokens": self.max_tokens,
             "read_mode_hint": self.read_mode_hint,
             "host_projections": [projection.to_dict() for projection in self.host_projections],
             "review_contract": self.review_contract.to_dict() if self.review_contract is not None else None,
@@ -295,19 +292,57 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return meta, body
 
 
-def load_mode_docs(repo_root: Path | None = None) -> dict[str, ModeDoc]:
+def load_mode_docs(repo_root: Path | None = None, *, strict: bool = True) -> dict[str, ModeDoc]:
     root = _resolve_repo_root(repo_root)
     docs: dict[str, ModeDoc] = {}
-    for path in sorted((root / MODES_DIR).glob("*.md")):
-        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-        name = meta["mode"]
-        docs[name] = ModeDoc(
-            name=name,
-            skill_description=meta["skill_description"],
-            agent_description=meta["agent_description"],
-            body=body.rstrip() + "\n",
-            source_path=path.relative_to(root),
-        )
+
+    def _load_from_dir(d: Path, origin: Path) -> None:
+        if not d.exists():
+            return
+        for path in sorted(d.glob("*.md")):
+            try:
+                meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+                name = meta["mode"]
+                if name not in docs:
+                    docs[name] = ModeDoc(
+                        name=name,
+                        skill_description=meta["skill_description"],
+                        agent_description=meta["agent_description"],
+                        body=body.rstrip() + "\n",
+                        source_path=path.relative_to(origin) if path.is_relative_to(origin) else path,
+                    )
+            except (ValueError, KeyError):
+                if strict:
+                    raise
+                continue
+
+    # 1. Try repository root first (the one passed in)
+    _load_from_dir(root / MODES_DIR, root)
+
+    # 2. Fallback to REPO_ROOT for missing roles (useful in source checkout)
+    if not all(role_id in docs for role_id in HOST_ROLE_IDS) and root != REPO_ROOT:
+        _load_from_dir(REPO_ROOT / MODES_DIR, REPO_ROOT)
+
+    # 3. Fallback to packaged assets for missing roles (useful in installed package)
+    if not all(role_id in docs for role_id in HOST_ROLE_IDS):
+        try:
+            packaged = cast(Any, resources.files("atelier")).joinpath("integrations", "agents")
+            if packaged.is_dir():
+                for entry in sorted(packaged.glob("*.md"), key=lambda x: x.name):
+                    meta, body = parse_frontmatter(entry.read_text(encoding="utf-8"))
+                    name = meta["mode"]
+                    if name not in docs:
+                        docs[name] = ModeDoc(
+                            name=name,
+                            skill_description=meta["skill_description"],
+                            agent_description=meta["agent_description"],
+                            body=body.rstrip() + "\n",
+                            source_path=Path("integrations/agents") / entry.name,
+                        )
+        except Exception:
+            if strict:
+                raise
+
     return docs
 
 
@@ -340,10 +375,14 @@ def _tool_policies() -> dict[str, ToolPolicy]:
     return {
         "code": ToolPolicy(policy_id="code", allowed_tools=("*",)),
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
+        # Non-orchestrating roles also deny workflow/schedule: the Workflow and
+        # ScheduleWakeup tool schemas cost ~4-5k tokens on EVERY request the
+        # subagent makes, and a reviewer/explorer/executor invoking multi-agent
+        # orchestration is always a mis-pick. Only code/general/auto keep them.
         "explore": ToolPolicy(
             policy_id="explore",
-            allowed_tools=("read", "grep", "search", "symbols", "node", "usages", "explore"),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            allowed_tools=("read", "grep", "search", "node", "explore"),
+            denied_actions=("edit", "write", "delete", "agent-spawn", "workflow", "schedule"),
         ),
         "plan": ToolPolicy(
             policy_id="plan",
@@ -353,16 +392,16 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "search",
                 "symbols",
                 "node",
-                "usages",
-                "callers",
-                "callees",
-                "impact",
                 "explore",
                 "web_fetch",
             ),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
-        "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",)),
+        "execute": ToolPolicy(
+            policy_id="execute",
+            allowed_tools=("*",),
+            denied_actions=("agent-spawn", "workflow", "schedule"),
+        ),
         "review": ToolPolicy(
             policy_id="review",
             allowed_tools=(
@@ -370,60 +409,32 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "grep",
                 "search",
                 "node",
-                "usages",
-                "callers",
-                "impact",
+                "explore",
                 "verify",
             ),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
         "research": ToolPolicy(
             policy_id="research",
             allowed_tools=("web_fetch", "web_search", "read", "search"),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
-        "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
-    }
-
-
-def _fallback_mode_metadata() -> dict[str, tuple[str, str]]:
-    return {
-        "code": (
-            "Switch to main Atelier coding mode. Uses Atelier MCP tools for file I/O, search, edits, and shell work. Applies the shared coding guidelines and validates changes before concluding.",
-            "Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop.",
+        "solve": ToolPolicy(
+            policy_id="solve",
+            allowed_tools=("*",),
+            denied_actions=("agent-spawn", "workflow", "schedule"),
         ),
-        "explore": (
-            "Switch to read-only explorer mode. Locate files, symbols, and patterns. Never edit, create, or delete files.",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
+        "auto": ToolPolicy(
+            policy_id="auto",
+            allowed_tools=("*",),
+            denied_actions=("plan-gate", "ask-user"),
         ),
-        "review": (
-            "Switch to adversarial review mode. Apply the verification ladder, read the code directly, and never edit source files.",
-            "Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.",
-        ),
-        "plan": (
-            "Switch to planning mode. Explore enough to produce a concrete implementation plan, but do not edit files.",
-            "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-        ),
-        "execute": (
-            "Switch to execution mode. Apply an accepted plan or task with the smallest verified code change.",
-            "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-        ),
-        "research": (
-            "Switch to research mode. Fetch external docs and return a cited memo without editing files.",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        ),
-        "solve": (
-            "Switch to benchmark solve mode. Produce task artifacts early, iterate against checks, and keep the workspace clean.",
-            "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
+        "bare": ToolPolicy(
+            policy_id="bare",
+            allowed_tools=("*",),
+            denied_actions=("workflow", "schedule"),
         ),
     }
-
-
-def _role_descriptions(mode_name: str, mode_docs: Mapping[str, ModeDoc]) -> tuple[str, str]:
-    if mode_name in mode_docs:
-        mode = mode_docs[mode_name]
-        return mode.skill_description, mode.agent_description
-    return _fallback_mode_metadata()[mode_name]
 
 
 def _prompt_definitions() -> dict[str, PromptDefinition]:
@@ -433,7 +444,17 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "You are operating inside Atelier's owned execution runtime. Keep this system prompt stable "
                 "across every phase so provider prompt caches stay warm. Treat the current phase prompt as "
-                "the only active contract. Preserve first-hand evidence. Do not broaden the task."
+                "the only active contract. Preserve first-hand evidence. Do not broaden the task.\n"
+                "Read mechanics, shared across phases: compact and outline reads are projections, not literal "
+                "source; if you need literal body text, line-sensitive context, or exact snippets, reread with "
+                "expand=true or an exact range. Capture include_meta=true when a later edit will target compact "
+                "text so the projection metadata and mapping survive the handoff; compact projection edits are "
+                "only valid for exact spans carried by that mapping, and if a projection edit returns retry_with, "
+                "follow that exact reread instead of approximating transformed spans.\n"
+                "Confirmation policy, shared across phases: proceed without confirmation only for local, reversible "
+                "reads, edits, and tests; before destructive, hard-to-reverse, shared-state, or external "
+                "side-effect actions, get user confirmation unless durable repo instructions already authorize "
+                "that exact class of action."
             ),
         ),
         "owned-explore-phase": PromptDefinition(
@@ -441,12 +462,9 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE EXPLORE PHASE ===\n"
                 "Read only. Do not plan. Do not edit. Use prior context first, then ask targeted questions "
-                "of the code only where facts are missing. Prefer compact or outline reads for discovery; if "
-                "a projection is transformed and you need literal body text, reread with expand=true or an "
-                "exact range. If a later edit will target compact text, capture include_meta=true so the "
-                "projection metadata and mapping survive the handoff. Do not re-read the same file through "
-                "the same tool. Output only the facts, constraints, unknowns, and proving checks needed "
-                "for this task."
+                "of the code only where facts are missing. Prefer compact or outline reads for discovery. Do "
+                "not re-read the same file through the same tool. Output only the facts, constraints, "
+                "unknowns, and proving checks needed for this task."
             ),
         ),
         "owned-plan-phase": PromptDefinition(
@@ -461,10 +479,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
                 "later step. Use concrete verbs (add/replace/extract/delete/rename), not vague ones "
                 "(update/handle/improve), and drop anything the task did not ask for. Reread once and fix "
                 "ungrounded references, bad ordering, bundled steps, and a Files list that does not match "
-                "the steps. Treat compact and outline reads as projections; if a plan step depends on "
-                "literal body text, line-sensitive context, or exact snippets, reread with expand=true or "
-                "an exact range before naming the change. If you plan a compact projection edit, include the "
-                "expected retry_with exact-reread fallback instead of assuming transformed spans are editable."
+                "the steps."
             ),
         ),
         "owned-critique-phase": PromptDefinition(
@@ -495,12 +510,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
                 "=== PIVOT: YOU ARE NOW IN THE EXECUTE PHASE ===\n"
                 "Execute the approved plan sequentially. Read exact content before editing. Change only files "
                 "named by the plan unless direct evidence proves the plan missed a required target. After each "
-                "significant change, run the nearest useful check. Proceed without confirmation only for "
-                "local, reversible reads, edits, and tests; before destructive, hard-to-reverse, shared-state, "
-                "or external side-effect actions, get user confirmation unless durable repo instructions already "
-                "authorize that exact class of action. Compact projection edits are only valid for exact spans: "
-                "carry projection_mapping from include_meta=true reads, and if a projection edit returns "
-                "retry_with, follow that exact reread instead of guessing. Stop after self-verification."
+                "significant change, run the nearest useful check. Stop after self-verification."
             ),
         ),
         "owned-review-phase": PromptDefinition(
@@ -508,11 +518,9 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE REVIEW PHASE ===\n"
                 "Do not edit. Do not trust the implementer's summary. Inspect the filesystem and run direct "
-                "checks. Treat compact and outline reads as projections; if the verdict depends on literal "
-                "body text or exact snippets, reread with expand=true or an exact range. Decide whether every "
-                "requested deliverable is satisfied. Projection edit failures should surface retry_with "
-                "guidance rather than silent approximation. If evidence is missing or ambiguous, use NEEDS_FIX. "
-                "End with exactly one JSON verdict block with keys verdict, checklist, and missing."
+                "checks. Decide whether every requested deliverable is satisfied. If evidence is missing or "
+                "ambiguous, use NEEDS_FIX. End with exactly one JSON verdict block with keys verdict, "
+                "checklist, and missing."
             ),
         ),
         "owned-fix-phase": PromptDefinition(
@@ -520,19 +528,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE FIX PHASE ===\n"
                 "The review evidence is the punch list. Fix only cited gaps. Do not restart from scratch unless "
-                "the approach is proven wrong. Proceed without confirmation only for local, reversible reads, "
-                "edits, and tests; before destructive, hard-to-reverse, shared-state, or external side-effect "
-                "actions, get user confirmation unless durable repo instructions already authorize that exact "
-                "class of action. Rerun the checks tied to each gap, then stop for review."
-            ),
-        ),
-        "solver-retry": PromptDefinition(
-            prompt_id="solver-retry",
-            body=(
-                "=== PIVOT: YOU ARE NOW IN THE SOLVER RETRY PHASE ===\n"
-                "Start from the prior attempt transcript. Read harness feedback first. Do not repeat a failed "
-                "command verbatim; change the input, scope, timeout, or approach before retrying. Fix the "
-                "smallest proven cause and keep the workspace clean."
+                "the approach is proven wrong. Rerun the checks tied to each gap, then stop for review."
             ),
         ),
     }
@@ -653,14 +649,6 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     read_mode_hint="exact",
                     fork_from="refine",
                 ),
-                DefaultWorkflowStep(
-                    step_id="retry",
-                    role_id="solve",
-                    phase_prompt_id="solver-retry",
-                    effort="high",
-                    read_mode_hint="exact",
-                    fork_from="review",
-                ),
             ),
         ),
     }
@@ -674,6 +662,11 @@ def _benchmark_profiles() -> dict[str, BenchmarkProfile]:
             workflow_id="owned-benchmark-solver",
             retry_limit=2,
             command_rules=(
+                "Treat the benchmark task and provided workspace as ground truth; run non-interactively without waiting for user input.",
+                "The benchmark environment is isolated and disposable, but do not assume that outside this profile.",
+                "Authorized security and CTF tasks may require the requested payload, bypass, or exploit artifact.",
+                "Do not inspect hidden evaluator, harness, expected-output, or test files; use only the task, workspace, exposed checks, and returned feedback.",
+                "The canonical grader decides acceptance; optimize for the requested artifact and exposed verification signal.",
                 "Install dependencies only when the task or failing check requires them.",
                 "Do not hide stderr on install, build, or probe commands.",
                 "Never mutate the benchmark harness directory unless the task explicitly names it.",
@@ -691,20 +684,20 @@ def _mcp_templates() -> dict[str, McpTemplate]:
         "claude-default": McpTemplate(
             template_id="claude-default",
             host="claude",
-            command="atelier-mcp",
-            args=("--host", "claude"),
+            command="atelier",
+            args=("mcp", "--host", "claude"),
         ),
         "codex-default": McpTemplate(
             template_id="codex-default",
             host="codex",
-            command="atelier-mcp",
-            args=("--host", "codex"),
+            command="atelier",
+            args=("mcp", "--host", "codex"),
         ),
         "antigravity-default": McpTemplate(
             template_id="antigravity-default",
             host="antigravity",
-            command="atelier-mcp",
-            args=("--host", "antigravity"),
+            command="atelier",
+            args=("mcp", "--host", "antigravity"),
         ),
     }
 
@@ -716,20 +709,18 @@ def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
     roles: dict[str, DefaultRole] = {}
 
     for role_id in HOST_ROLE_IDS:
-        skill_description, agent_description = _role_descriptions(role_id, mode_docs)
+        mode = mode_docs[role_id]
         roles[role_id] = DefaultRole(
             role_id=role_id,
             name=role_id.replace("-", " ").title(),
-            skill_description=skill_description,
-            agent_description=agent_description,
+            skill_description=mode.skill_description,
+            agent_description=mode.agent_description,
             prompt_source=Path("integrations/agents") / f"{role_id}.md",
             prompt_body="",
             tool_policy=policies[role_id],
             workflow_usage=_workflow_usage(role_id),
             model_default=_role_default_model(role_id),
             effort_default=_role_effort(role_id),
-            max_turns=_role_turn_limit(role_id),
-            max_tokens=_role_token_limit(role_id),
             read_mode_hint=_role_read_hint(role_id),
             host_projections=projections.get(role_id, ()),
             review_contract=ReviewContract() if role_id == "review" else None,
@@ -749,8 +740,6 @@ def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
         workflow_usage=("owned-execute-review-loop", "owned-benchmark-solver"),
         model_default=_role_default_model("general"),
         effort_default="medium",
-        max_turns=_role_turn_limit("general"),
-        max_tokens=_role_token_limit("general"),
         read_mode_hint="exact",
         host_projections=(),
     )
@@ -773,6 +762,8 @@ def _workflow_usage(role_id: str) -> tuple[str, ...]:
         "execute": ("owned-execute-review-loop",),
         "research": (),
         "solve": ("owned-benchmark-solver",),
+        "auto": (),
+        "bare": (),
     }
     return usage[role_id]
 
@@ -787,6 +778,8 @@ def _role_effort(role_id: str) -> str:
         "review": "medium",
         "research": "medium",
         "solve": "high",
+        "auto": "high",
+        "bare": "high",
     }[role_id]
 
 
@@ -800,32 +793,8 @@ def _role_default_model(role_id: str) -> str:
         "review": READONLY_OWNED_MODEL,
         "research": READONLY_OWNED_MODEL,
         "solve": DEFAULT_OWNED_MODEL,
-    }[role_id]
-
-
-def _role_turn_limit(role_id: str) -> int:
-    return {
-        "code": 100,
-        "general": 100,
-        "explore": 25,
-        "plan": 100,
-        "execute": 100,
-        "review": 40,
-        "research": 25,
-        "solve": 80,
-    }[role_id]
-
-
-def _role_token_limit(role_id: str) -> int:
-    return {
-        "code": 64000,
-        "general": 64000,
-        "explore": 32000,
-        "plan": 64000,
-        "execute": 64000,
-        "review": 48000,
-        "research": 32000,
-        "solve": 64000,
+        "auto": DEFAULT_OWNED_MODEL,
+        "bare": DEFAULT_OWNED_MODEL,
     }[role_id]
 
 
@@ -839,6 +808,8 @@ def _role_read_hint(role_id: str) -> str:
         "review": "exact",
         "research": "compact",
         "solve": "exact",
+        "auto": "exact",
+        "bare": "exact",
     }[role_id]
 
 
@@ -853,12 +824,20 @@ def _role_read_hint(role_id: str) -> str:
 # so an explicit allow-list is unnecessary. ``MultiEdit``/``NotebookEdit`` are
 # intentionally omitted (``Edit``/``Write`` plus ``mcp__atelier__edit`` cover the
 # real write paths) so the list stays short. Native ``Bash`` is denied so all
-# shell work flows through ``mcp__atelier__shell`` (the supervised path) instead
+# shell work flows through ``mcp__atelier__bash`` (the supervised path) instead
 # of native heredocs; without this, agents bypass every Atelier file/search tool
-# by doing all I/O through ``Bash``. ``mcp__atelier__shell`` is never denied:
+# by doing all I/O through ``Bash``. ``mcp__atelier__bash`` is never denied:
 # read-only roles still need shell to run checks and probes (``git diff``,
 # ``pytest``, ``ls``), and read-only is enforced by denying the write tools, not
 # by removing shell.
+#
+# Native ``WebFetch`` is denied so URL retrieval flows through the supervised
+# ``mcp__atelier__web_fetch`` (telemetry, redaction, savings) instead of the
+# always-present native fetch. Native ``WebSearch`` stays enabled because
+# Atelier has no web-search equivalent -- denying it would leave research with
+# no way to discover sources. (Hermetic benchmarks deny it per-run via the
+# claude CLI ``--disallowedTools`` flag, not here -- that's a contamination
+# concern, not a product-persona behavior.)
 _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Read",
     "Edit",
@@ -866,6 +845,7 @@ _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Grep",
     "Glob",
     "Bash",
+    "WebFetch",
 ]
 
 
@@ -877,11 +857,28 @@ def _denies_spawn(policy: ToolPolicy) -> bool:
     return "agent-spawn" in policy.denied_actions
 
 
+def _denies_plan_gate(policy: ToolPolicy) -> bool:
+    return "plan-gate" in policy.denied_actions
+
+
+def _denies_ask(policy: ToolPolicy) -> bool:
+    return "ask-user" in policy.denied_actions
+
+
+def _denies_workflow(policy: ToolPolicy) -> bool:
+    return "workflow" in policy.denied_actions
+
+
+def _denies_schedule(policy: ToolPolicy) -> bool:
+    return "schedule" in policy.denied_actions
+
+
 def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
     """Render a Claude ``disallowedTools`` deny-list from the host-neutral policy.
 
-    Every host-projected role forces MCP file I/O (native read/edit/write/grep/glob
-    are denied so the Atelier equivalents are used). Read-only roles additionally
+    Every host-projected role forces MCP file I/O (native
+    read/edit/write/grep/glob/webfetch are denied so the Atelier equivalents are
+    used). Read-only roles additionally
     lose sub-agent spawning and the MCP write path. Shell is never denied.
     """
     denied = list(_NATIVE_MCP_OVERRIDDEN)
@@ -889,6 +886,16 @@ def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
         denied.append("Agent")
     if _denies_mutation(policy):
         denied.append("mcp__atelier__edit")
+    if _denies_plan_gate(policy):
+        # Deny both: ExitPlanMode alone still lets the agent EnterPlanMode and
+        # plan instead of execute (EnterPlanMode is a real tool as of claude 2.1).
+        denied.extend(("EnterPlanMode", "ExitPlanMode"))
+    if _denies_ask(policy):
+        denied.append("AskUserQuestion")
+    if _denies_workflow(policy):
+        denied.append("Workflow")
+    if _denies_schedule(policy):
+        denied.append("ScheduleWakeup")
     return denied
 
 
@@ -900,6 +907,8 @@ _CLAUDE_AGENT_COLORS: dict[str, str] = {
     "execute": "purple",
     "research": "green",
     "solve": "orange",
+    "auto": "red",
+    "bare": "red",
 }
 
 
@@ -909,8 +918,6 @@ def _build_claude_stable_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]
         role_id: (
             ("name", role_id),
             ("description", ""),
-            ("maxTurns", _role_turn_limit(role_id)),
-            ("tools", ["*"]),
             ("disallowedTools", _claude_disallowed_tools(policies[role_id])),
             ("color", _CLAUDE_AGENT_COLORS[role_id]),
         )
@@ -937,22 +944,11 @@ def _opencode_tool_gates(policy: ToolPolicy) -> dict[str, bool]:
     return gates
 
 
-_OPENCODE_DESCRIPTIONS: dict[str, str] = {
-    "code": "Atelier - main coding agent for the Agent Reasoning Runtime",
-    "explore": "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-    "review": "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-    "plan": "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-    "execute": "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-    "research": "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-    "solve": "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
-}
-
-
 def _build_opencode_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
     policies = _tool_policies()
     out: dict[str, tuple[tuple[str, Any], ...]] = {}
     for role_id in SURFACED_ROLE_IDS:
-        items: list[tuple[str, Any]] = [("description", _OPENCODE_DESCRIPTIONS[role_id])]
+        items: list[tuple[str, Any]] = [("description", "")]
         if role_id == "code":
             items.append(("mode", "primary"))
         gates = _opencode_tool_gates(policies[role_id])
@@ -964,49 +960,10 @@ def _build_opencode_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
 
 OPENCODE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = _build_opencode_frontmatter()
 
+# Antigravity carries description-only frontmatter; the per-role text is injected
+# at render time from the source ``agent_description`` (see render_simple_agent).
 ANTIGRAVITY_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
-    "code": (
-        (
-            "description",
-            "Main Atelier coding agent. Uses Atelier MCP tools for all file I/O, search, edits, and shell work.",
-        ),
-    ),
-    "explore": (
-        (
-            "description",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        ),
-    ),
-    "review": (
-        (
-            "description",
-            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-        ),
-    ),
-    "plan": (
-        (
-            "description",
-            "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-        ),
-    ),
-    "execute": (
-        (
-            "description",
-            "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-        ),
-    ),
-    "research": (
-        (
-            "description",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        ),
-    ),
-    "solve": (
-        (
-            "description",
-            "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
-        ),
-    ),
+    role_id: (("description", ""),) for role_id in SURFACED_ROLE_IDS
 }
 
 

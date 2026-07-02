@@ -9,10 +9,11 @@ Covers 300 real repo-backed scenarios:
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Callable
 from typing import Any
 
-from benchmarks.mcp_tools.harness import BenchCase
+from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
 from benchmarks.mcp_tools.repo_facts import (
     benchmark_repo_root,
     collect_symbol_facts,
@@ -22,6 +23,23 @@ from benchmarks.mcp_tools.repo_facts import (
 )
 
 _TARGET_PER_MODE = 100
+
+
+def _rg_baseline(pattern: str, path: str = "src") -> Callable[[BenchCase], BaselineMeasurement]:
+    """Baseline = raw `rg` output (what an agent gets from a plain shell grep)."""
+
+    def _builder(_case: BenchCase) -> BaselineMeasurement:
+        result = subprocess.run(
+            ["rg", "-n", pattern, path],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(benchmark_repo_root()),
+        )
+        out = (result.stdout or "")[:200_000]
+        return BaselineMeasurement(payload=out, commands=[f"rg -n {pattern!r} {path}"])
+
+    return _builder
 
 
 def _assert_meta(result: dict[str, object]) -> dict[str, object]:
@@ -97,47 +115,52 @@ def _build_grep_cases() -> list[BenchCase]:
 
     cases: list[BenchCase] = []
     for index, symbol in enumerate(path_symbols, start=1):
+        pattern = re.escape(symbol.name)
         cases.append(
             BenchCase(
                 op="grep",
                 label=f"grep/file_paths_only/{index:03d}",
                 args={
                     "path": "src",
-                    "content_regex": re.escape(symbol.name),
-                    "output_mode": "file_paths_only",
+                    "content_regex": pattern,
+                    "mode": "paths",
                     "include_meta": True,
                 },
                 assert_keys=["_meta", "content"],
                 custom_assert=_paths_assert(symbol.path),
-                baseline_tokens=5000,
+                baseline_builder=_rg_baseline(pattern),
+                min_baseline_tokens=0,
             )
         )
     for index, symbol in enumerate(count_symbols, start=1):
+        pattern = re.escape(symbol.name)
         cases.append(
             BenchCase(
                 op="grep",
                 label=f"grep/match_count/{index:03d}",
                 args={
                     "path": "src",
-                    "content_regex": re.escape(symbol.name),
-                    "output_mode": "file_paths_with_match_count",
+                    "content_regex": pattern,
+                    "mode": "counts",
                     "file_glob_patterns": ["**/*.py"],
                     "include_meta": True,
                 },
                 assert_keys=["_meta", "content"],
                 custom_assert=_count_assert(symbol.path),
-                baseline_tokens=6000,
+                baseline_builder=_rg_baseline(pattern),
+                min_baseline_tokens=0,
             )
         )
     for index, (token, symbol) in enumerate(ranked_pairs, start=1):
+        pattern = re.escape(token)
         cases.append(
             BenchCase(
                 op="grep",
                 label=f"grep/ranked_file_map/{index:03d}",
                 args={
                     "path": "src",
-                    "content_regex": re.escape(token),
-                    "output_mode": "ranked_file_map",
+                    "content_regex": pattern,
+                    "mode": "map",
                     "type": "python",
                     "context_budget_tokens": 2000,
                     "include_meta": True,
@@ -150,7 +173,8 @@ def _build_grep_cases() -> list[BenchCase]:
                     "context_budget_tokens",
                 ],
                 custom_assert=_ranked_assert(symbol.path),
-                baseline_tokens=8000,
+                baseline_builder=_rg_baseline(pattern),
+                min_baseline_tokens=0,
             )
         )
     return cases

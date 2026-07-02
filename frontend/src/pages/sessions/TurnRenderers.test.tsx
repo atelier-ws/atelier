@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { ConversationTurn } from "./TurnRenderers";
+import { ConversationTurn, CommandDetail } from "./TurnRenderers";
 
 describe("ConversationTurn rich cards", () => {
   it("renders TodoWrite turns as a task list card", () => {
@@ -113,5 +113,38 @@ describe("ConversationTurn rich cards", () => {
 
     expect(screen.getAllByText("gpt-5.4").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("STARTED")).toBeInTheDocument();
+  });
+});
+
+describe("CommandDetail exit-code styling", () => {
+  it("treats a missing exit_code as unknown, not failed", () => {
+    render(
+      <CommandDetail command={{ command: "echo hi" }} forceExpand={false} />
+    );
+    const badge = screen.getByText("EXIT_?");
+    expect(badge).toHaveClass("text-neutral-400");
+    expect(badge).not.toHaveClass("text-red-600");
+  });
+
+  it("still renders a failed exit code in red", () => {
+    render(
+      <CommandDetail
+        command={{ command: "false", exit_code: 1 }}
+        forceExpand={false}
+      />
+    );
+    const badge = screen.getByText("EXIT_1");
+    expect(badge).toHaveClass("text-red-600");
+  });
+
+  it("still renders a successful exit code in emerald", () => {
+    render(
+      <CommandDetail
+        command={{ command: "true", exit_code: 0 }}
+        forceExpand={false}
+      />
+    );
+    const badge = screen.getByText("EXIT_0");
+    expect(badge).toHaveClass("text-emerald-600");
   });
 });

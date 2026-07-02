@@ -1,0 +1,58 @@
+{
+  "checks": {
+    "baseline_arm": "baseline",
+    "candidate_arm": "atelier",
+    "confidence": 0.95,
+    "cost_metric": "cost_usd_sum",
+    "margin": 0.05,
+    "quality_metric": "judge correct rate"
+  },
+  "details": {
+    "baseline": {
+      "correct": 0,
+      "cost_usd_sum": 19.1063895,
+      "judged": 0,
+      "pass_rate": 0.0,
+      "total": 35,
+      "valid": 35,
+      "wilson_lower": 6.938893903907228e-18,
+      "wilson_upper": 0.098900992324404
+    },
+    "candidate": {
+      "correct": 0,
+      "cost_usd_sum": 8.75198235,
+      "judged": 0,
+      "pass_rate": 0.0,
+      "total": 35,
+      "valid": 35,
+      "wilson_lower": 6.938893903907228e-18,
+      "wilson_upper": 0.098900992324404
+    },
+    "cost": {
+      "baseline_cost_usd": 19.1063895,
+      "candidate_cost_usd": 8.75198235,
+      "estimated_cost_delta_usd": -10.354407149999998,
+      "estimated_cost_savings_usd": 10.354407149999998
+    },
+    "judged_delta": {
+      "delta_lower_bound": -0.098900992324404,
+      "delta_upper_bound": 0.098900992324404,
+      "pass_rate": 0.0
+    },
+    "pairwise_quality": {
+      "candidate_at_least_baseline": 0,
+      "expected_pairs": 35,
+      "judged_pairs": 0,
+      "pairs": 35,
+      "quality_adjusted_savings_usd": 0.0
+    }
+  },
+  "evaluated_at": "2026-06-30T02:18:36.846607+00:00",
+  "passed": false,
+  "reasons": [
+    "quality gate requires judged results for every baseline and candidate run",
+    "lower confidence bound on judged solved-rate delta -0.0989 is below allowed margin -0.0500",
+    "pairwise quality gate requires judged baseline-vs-candidate comparisons for every pair"
+  ],
+  "suite": "codebench"
+}

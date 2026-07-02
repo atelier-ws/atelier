@@ -5,9 +5,50 @@ import click
 from atelier.gateway.cli.commands._shared import _emit
 
 
-@click.group("telemetry")
-def telemetry_group() -> None:
+@click.group("telemetry", invoke_without_command=True)
+@click.pass_context
+def telemetry_group(ctx: click.Context) -> None:
     """Product telemetry controls."""
+    if ctx.invoked_subcommand is None:
+        click.echo(_render_telemetry_overview())
+
+
+def _render_telemetry_overview() -> str:
+    """Render the default ``atelier telemetry`` view: state, storage, and controls."""
+    from pathlib import Path
+
+    from atelier.core.foundation.identity import get_anon_id
+    from atelier.core.service.telemetry.banner import is_acknowledged
+    from atelier.core.service.telemetry.config import config_path, load_telemetry_config
+    from atelier.core.service.telemetry.local_store import default_db_path
+
+    cfg = load_telemetry_config()
+    anon = get_anon_id() or ""
+    anon_short = (anon[:12] + "…") if len(anon) > 12 else (anon or "—")
+
+    def _short(path: object) -> str:
+        text = str(path)
+        home = str(Path.home())
+        return "~" + text[len(home) :] if text.startswith(home) else text
+
+    def _flag(on: bool) -> str:
+        return "on" if on else "off"
+
+    lines = ["Atelier telemetry", "─" * 56]
+    lines.append(f"  {'Remote telemetry':<29}{_flag(cfg.remote_enabled)}")
+    lines.append(f"  {'Lexical frustration':<29}{_flag(cfg.lexical_frustration_enabled)}")
+    lines.append(f"  {'Startup notice acknowledged':<29}{'yes' if is_acknowledged() else 'no'}")
+    lines.append("")
+    lines.append(f"  {'Anonymous ID':<14}{anon_short}")
+    lines.append(f"  {'Local events':<14}{_short(default_db_path())}")
+    lines.append(f"  {'Config file':<14}{_short(config_path())}")
+    lines.append("")
+    lines.append("  Controls")
+    lines.append("    atelier telemetry lexical off     disable frustration detection")
+    lines.append("    atelier telemetry reset-id        rotate the anonymous ID")
+    lines.append("    atelier telemetry show            inspect locally-stored events")
+    lines.append("    atelier telemetry status --json   machine-readable status")
+    return "\n".join(lines)
 
 
 @telemetry_group.command("status")
@@ -46,24 +87,6 @@ def telemetry_status(as_json: bool) -> None:
     click.echo(f"remote telemetry: {'on' if cfg.remote_enabled else 'off'}")
     click.echo(f"lexical frustration detection: {'on' if cfg.lexical_frustration_enabled else 'off'}")
     click.echo(f"local database: {payload['local_db_path']}")
-
-
-@telemetry_group.command("on")
-def telemetry_on() -> None:
-    from atelier.core.service.telemetry import set_remote_enabled
-
-    set_remote_enabled(True)
-    click.echo("remote telemetry: on")
-
-
-@telemetry_group.command("off")
-def telemetry_off() -> None:
-    from atelier.core.service.telemetry import set_remote_enabled
-    from atelier.core.service.telemetry.banner import mark_acknowledged
-
-    set_remote_enabled(False)
-    mark_acknowledged()
-    click.echo("remote telemetry: off")
 
 
 @telemetry_group.command("show")

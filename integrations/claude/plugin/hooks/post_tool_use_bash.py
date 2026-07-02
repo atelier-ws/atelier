@@ -27,11 +27,27 @@ _MAX_OUTPUT_BYTES = 4096  # 4 KB per stream
 # ---------------------------------------------------------------------------
 
 
-def _session_state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = _workspace_key(workspace)
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
@@ -54,11 +70,6 @@ def _atelier_root() -> Path:
     if state.get("atelier_root"):
         return Path(state["atelier_root"])
     return Path.home() / ".atelier"
-
-
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
 
 
 def _cache_bash_invocation(
@@ -101,9 +112,12 @@ def _append_command_result_event(
     stderr: str,
     return_code: int | None,
 ) -> None:
-    """Append a command_result event to runs/<session_id>.json atomically."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    """Append a command_result event to the session's run.json atomically."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -188,7 +202,7 @@ def main() -> int:
     return_code: int | None = int(_rc) if _rc is not None else None
 
     try:
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             _cache_bash_invocation(command, stdout, stderr, return_code)
             return 0

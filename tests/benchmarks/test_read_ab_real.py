@@ -43,7 +43,6 @@ FIXTURES_SYNTHETIC: tuple[Path, ...] = (
     FIXTURE_DIR / "sample.go",
     FIXTURE_DIR / "sample.rs",
     FIXTURE_DIR / "Sample.java",
-    REPO_ROOT / "docs/specs/optimization-autopilot.md",  # real big markdown
     # Language fixtures added in gap-fill pass (10 new languages)
     FIXTURE_DIR / "sample.ts",
     FIXTURE_DIR / "sample.rb",
@@ -139,7 +138,15 @@ def _measure_read_fixture(fixture: Path) -> ABRow:
     delivered_parts = [str(payload.get("content") or "")]
     outline = payload.get("outline")
     if outline:
-        delivered_parts.append(json.dumps(outline) if not isinstance(outline, str) else outline)
+        if isinstance(outline, str):
+            delivered_parts.append(outline)
+        else:
+            # Mirror what the MCP layer actually ships to the agent
+            # (mcp_server._render_read_outline_md), not json.dumps — JSON
+            # escaping inflates newlines and would understate savings.
+            from atelier.gateway.adapters.mcp_server import _render_read_outline_md
+
+            delivered_parts.append(_render_read_outline_md(str(fixture), outline, language))
     atelier_chars = sum(len(part) for part in delivered_parts)
     atelier_tokens = _count_tiktoken("".join(delivered_parts))
     tokens_saved = int(payload.get("tokens_saved", 0) or 0)
@@ -202,14 +209,15 @@ def test_read_ab_real(fixture: Path) -> None:
     ids=lambda p: p.name,
 )
 def test_generic_outline_compresses_large_files(fixture: Path, tmp_path: Path) -> None:
-    """Force the generic outline to fire by inflating fixtures past 200 LOC.
+    """Force the generic outline to fire by inflating fixtures past 300 effective LOC.
 
     The small synthetic fixtures (130-150 LOC) fall under the production
-    outline_threshold of 200, so they get full reads in test_read_ab_real.
-    This test triples each fixture so the generic outline code path actually
-    runs, and persists the per-language compression ratio to the calibration
-    store under a separate path so production-vs-synthetic numbers stay
-    distinguishable.
+    outline_threshold (default 500) so they get full reads in test_read_ab_real.
+    This test triples each fixture (3x gives 351-420 effective LOC) and passes
+    an explicit outline_threshold=300 so the outline code path actually runs
+    regardless of the production default.  The per-language compression ratio
+    is persisted to the calibration store under a separate path so
+    production-vs-synthetic numbers stay distinguishable.
     """
     if not fixture.is_file():
         pytest.xfail(f"fixture missing: {fixture}")
@@ -220,7 +228,10 @@ def test_generic_outline_compresses_large_files(fixture: Path, tmp_path: Path) -
     big.write_text(src + "\n\n" + src + "\n\n" + src, encoding="utf-8")
 
     cap = SemanticFileMemoryCapability(_atelier_root())
-    payload = cap.smart_read(big, range_spec=None, expand=False)
+    # Use an explicit threshold (300) so the test is immune to changes in the
+    # production default (currently 500). 3x fixtures have 351-420 effective
+    # LOC, safely above 300 for all three languages.
+    payload = cap.smart_read(big, range_spec=None, expand=False, outline_threshold=300)
     mode = str(payload.get("mode"))
     language = str(payload.get("language"))
     outline = payload.get("outline")

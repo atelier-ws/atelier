@@ -83,13 +83,13 @@ ATELIER_REQUIRE_AUTH=false atelier service start --host 0.0.0.0 --port 8787
 
 If you want auth enabled, set `ATELIER_API_KEY` and configure the client that is calling the service.
 
-## `atelier-mcp` Is Not Found
+## `atelier mcp` Is Not Found
 
 If you used the install script, re-run it and verify both commands:
 
 ```bash
 atelier --version
-atelier-mcp --version
+atelier mcp --version
 ```
 
 If you are on a source checkout instead of an installed setup:
@@ -127,7 +127,7 @@ atelier worker list
 
 **Symptom:** Atelier tools do not appear in Antigravity or are unavailable from `agy`.
 
-**Cause:** Gemini requires absolute paths in its MCP configuration.
+**Cause:** Antigravity requires absolute paths in its MCP configuration.
 
 Use the install guide here:
 
@@ -145,7 +145,7 @@ pgvector is optional. Atelier works normally without it. Only enable it when you
 
 ## Atelier Spend Differs From External Analytics
 
-If Atelier and an external tool such as CodeBurn disagree on spend, check the
+If Atelier and an external analytics tool disagree on spend, check the
 trace pricing source before comparing totals.
 
 Atelier now prices imported sessions from persisted raw `usage_entries` on each

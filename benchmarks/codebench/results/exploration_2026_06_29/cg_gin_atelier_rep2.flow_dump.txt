@@ -1,0 +1,95 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Gin's "middleware chain" is really just a flat slice of handler functions plus a cursor. Here's the whole mechanism.
+
+## The data structure
+
+A chain is `type HandlersChain []HandlerFunc`. There's no distinction between "middleware" and "the final handler" — they're all `HandlerFunc` in one slice, executed in order. The last one happens to be your route handler.
+
+When you register a route, Gin *flattens* the group's middleware with the route handler at registration time:
+
+```go
+func (group *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain {
+    finalSize := len(group.Handlers) + len(handlers)
+    mergedHandlers := make(HandlersChain, finalSize)
+    copy(mergedHandlers, group.Handlers)              // group middleware first
+    copy(mergedHandlers[len(group.Handlers):], handlers) // then route handler(s)
+    return mergedHandlers
+}
+```
+
+So `engine.Use(A, B)` + `GET("/x", H)` produces the slice `[A, B, H]`, and that slice is stored in the radix tree node for `/x`. The chain is fixed when the route is built, not assembled per-request.
+
+## Matching the request
+
+Gin keeps one radix (prefix) tree **per HTTP method**. On each request, `ServeHTTP` pulls a `Context` from a `sync.Pool`, resets it, and `handleHTTPRequest` walks the method's tree to find the node matching the path. On a hit it copies that node's stored chain onto the context:
+
+```go
+c.handlers = value.handlers
+c.Params   = value.params
+c.fullPath = value.fullPath
+c.Next()
+```
+
+## Walking the chain
+
+The Context carries the cursor:
+
+```go
+type Context struct {
+    handlers HandlersChain
+    index    int8   // starts at -1 after reset()
+    ...
+}
+
+func (c *Context) Next() {
+    c.index++
+    for c.index < int8(len(c.handlers)) {
+        c.handlers[c.index](c)
+        c.index++
+    }
+}
+```
+
+This is the key trick. `handleHTTPRequest` calls `Next()` once to start things. The `for` loop drives the chain forward, **but each middleware can also call `c.Next()` itself.** That re-enters the same loop, advancing the index deeper into the slice. Because it's a nested call, control returns to the middleware *after* the downstream handlers finish.
+
+That gives you the onion model:
+
+```go
+func Logger(c *gin.Context) {
+    t := time.Now()
+    c.Next()                       // run everything downstream
+    log.Printf("took %v", time.Since(t)) // runs on the way back out
+}
+```
+
+Code before `c.Next()` runs on the way in; code after runs on the way out. A middleware that *doesn't* call `c.Next()` doesn't stop the chain — when it returns, the outer `for` loop in the original `Next()` just continues to the next handler. Calling `Next()` is only needed when you want to interleave before/after logic.
+
+## Stopping the chain
+
+To actually halt, use `Abort` (or `AbortWithStatus*`):
+
+```go
+const abortIndex int8 = math.MaxInt8 >> 1  // 63
+
+func (c *Context) Abort() {
+    c.index = abortIndex
+}
+```
+
+Setting `index` to 63 makes the `for c.index < len(c.handlers)` condition fail, so no further handlers run. (This is also why a chain can't exceed 63 handlers — the `int8` cursor and the abort sentinel cap it.) Note `Abort` doesn't return from the current function; you typically `c.AbortWithStatusJSON(...); return`.
+
+## Summary of the flow
+
+1. At registration, group middleware + route handler are flattened into one `HandlersChain` and stored in the per-method radix tree.
+2. Per request: get a pooled `Context`, match the path in the tree, copy the chain + params onto the context.
+3. `c.Next()` increments an `int8` index and runs handlers in order; middleware calling `Next()` nests, producing before/after (onion) semantics.
+4. `c.Abort()` jumps the index past the end to short-circuit the rest.
+
+The elegance is that there's no separate dispatcher — middleware ordering, the final handler, and abort are all expressed through one slice and one integer cursor.

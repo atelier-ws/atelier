@@ -79,7 +79,7 @@ _REPEAT_PENALTY = 0.5
 # Keystone span detection
 # ---------------------------------------------------------------------------
 # These phrases signal decision branches, constraints, and corrections —
-# tokens whose removal can flip the correct answer (ReasonBlocks "keystone"
+# tokens whose removal can flip the correct answer (Playbooks "keystone"
 # concept).  Any event whose text matches gets a multiplicative boost so the
 # greedy budget pass never silently drops it.
 

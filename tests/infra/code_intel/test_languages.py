@@ -69,7 +69,7 @@ def test_public_surface_types() -> None:
     assert dataclasses.is_dataclass(Language)
     # Frozen dataclass: fields are immutable.
     fields = {f.name for f in dataclasses.fields(Language)}
-    assert fields == {"name", "extensions", "parser_name", "scip_indexer"}
+    assert fields == {"name", "extensions", "parser_name"}
     sample = language_by_name("python")
     assert sample is not None
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -139,6 +139,6 @@ def test_csharp_canonical_spelling() -> None:
 
 @pytest.mark.parametrize("lang_key", sorted(_LANG_CONFIG.keys()))
 def test_lang_config_keys_present_in_registry(lang_key: str) -> None:
-    assert (
-        language_by_name(lang_key) is not None
-    ), f"_LANG_CONFIG key {lang_key!r} is absent from the canonical registry"
+    assert language_by_name(lang_key) is not None, (
+        f"_LANG_CONFIG key {lang_key!r} is absent from the canonical registry"
+    )

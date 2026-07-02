@@ -13,9 +13,9 @@ TEST_PRINT_TIME ?= 0
 COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
-.PHONY: help install uninstall status start restart build-host-skills sync-agent-context \
-	check-agent-context docs-check worktree-env runtime-evidence \
-	test test-fast test-cov test-full security-test lint format-check format typecheck launch-gate verify pre-commit \
+.PHONY: help install uninstall dev build release/build prod status start restart build-host-skills sync-agent-context mirror release \
+	docs-check worktree-env runtime-evidence \
+	test test-fast test-cov test-full lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
 	_ensure_hooks
 
@@ -28,19 +28,40 @@ EXTERNAL_PERIODS ?= today week month
 #    * To build and install a local production binary:
 #         make prod
 
-dev: ## Install Atelier in editable/dev mode
-	bash scripts/dev.sh --local
+dev: ## Install Atelier in editable/dev mode; run /mcp reconnect in Claude Code after
+	bash scripts/local.sh --non-interactive
 
-release: ## Build and package for production distribution
-	bash scripts/bundle-prod.sh
+build: ## Build and package for production distribution
+	bash scripts/build.sh
 
-prod: ## Build and install from local production build
-	bash scripts/bundle-prod.sh
-	bash scripts/dev.sh --local
+release/build: build ## Alias for build release jobs
 
+mirror: ## Incremental mirror bench → public repo (history-preserving): make mirror
+	ATELIER_MIRROR_RUNNING=1 uv run python -m scripts.mirror
 
+release: ## Bump version, commit, push, mirror, tag public repo: make release tag=v0.4.X
+	@set -e; \
+	 TAG=$${tag:-}; \
+	 [ -n "$$TAG" ] || { echo "Usage: make release tag=vX.Y.Z"; exit 1; }; \
+	 VER=$${TAG#v}; \
+	 sed -i "s/^version = .*/version = \"$$VER\"/" pyproject.toml; \
+	 echo "Bumped pyproject.toml to $$VER"; \
+	 git add pyproject.toml; \
+	 git commit --no-verify -m "chore: bump to $$TAG"; \
+	 git push --no-verify; \
+	 git tag $$TAG; \
+	 git push --no-verify origin $$TAG; \
+	 echo "Mirroring to public repo..."; \
+	 ATELIER_MIRROR_RUNNING=1 uv run python -m scripts.mirror; \
+	 PUB_SHA=$$(git rev-parse refs/mirror/bench-pub); \
+	 git push --no-verify https://github.com/atelier-ws/atelier.git "$$PUB_SHA:refs/tags/$$TAG"; \
+	 echo "✓ Released $$TAG (dev + public)"
 
-
+prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
+	bash scripts/build.sh
+	# Run the local installer: copies bundle/ → ~/.local/ and sets up host integrations,
+	# exactly mirroring the remote path (download → extract → bundle.sh).
+	bash scripts/install.sh --local
 
 uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
 	@bash scripts/uninstall.sh $${ARGS:-}
@@ -68,13 +89,10 @@ restart: ## Restart the service and frontend natively
 build-host-skills: ## Generate Codex/Gemini skill bundles from integrations/skills (set ATELIER_DEV_MODE=1 to include dev-only skills)
 	@bash scripts/build_host_skills.sh --host all $$( [ "$${ATELIER_DEV_MODE:-0}" = "1" ] && echo --include-dev )
 
-sync-agent-context: ## Regenerate host instruction surfaces from integrations/shared/
+sync-agent-context: ## Regenerate host instruction surfaces from integrations/agents/shared/
 	uv run python scripts/sync_agent_context.py
 
-check-agent-context: ## Verify generated host instruction surfaces are up to date
-	uv run python scripts/sync_agent_context.py --check
-
-docs-check: check-agent-context ## Run docs and repo-governance checks
+docs-check: ## Run docs and repo-governance checks
 	uv run pytest tests/gateway/test_docs.py tests/gateway/test_generated_agent_contexts.py -q
 
 worktree-env: ## Write a per-worktree .env file for local stack bootstraps
@@ -100,16 +118,13 @@ else
 endif
 
 test-fast: | _ensure_hooks ## Run fast tests: stop on first failure, skip slow/Postgres-gated tests
-	uv run pytest -q -x --ignore=tests/test_postgres_store.py --ignore=tests/test_worker_jobs.py -m "not slow"
+	@bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -x -n auto --dist=worksteal --ignore=tests/test_postgres_store.py --ignore=tests/test_worker_jobs.py -m "not slow"; else uv run pytest -q -x --ignore=tests/test_postgres_store.py --ignore=tests/test_worker_jobs.py -m "not slow"; fi'
 
 test-cov: ## Run tests with terminal and HTML coverage reports
 	uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 
 test-full: ## Run the FULL suite (incl. slow) with measured coverage floor
 	uv run pytest -m "" --timeout=300 --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
-
-security-test: ## Run security-focused test cases
-	uv run pytest tests/gateway/test_security.py -v
 
 lint: | _ensure_hooks ## Run ruff lint checks
 	uv run ruff check $(PY_PATHS)
@@ -139,7 +154,7 @@ verify: | _ensure_hooks lint format-check typecheck docs-check test ## Verify co
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v
-	LOCAL=1 atelier proof run --session-id wp32-proof --json
+	LOCAL=1 uv run atelier proof run --session-id wp32-proof --context-reduction-pct 60 --json
 	@test -s $(ATELIER_STORE)/proof/proof-report.json
 
 # --------------------------------------------------------------------------- #
@@ -157,7 +172,7 @@ flow-dump: ## Extract chat from a .flow file or directory: make flow-dump path=/
 		echo "Error: 'path' argument is required. Usage: make flow-dump path=/path/to/file_or_dir"; \
 		exit 1; \
 	fi
-	uv run --project benchmarks python scripts/extract_flow.py $(path)
+	uv run --project benchmarks python -m benchmarks.flowlib.dump $(path)
 
 clean: ## Remove build artifacts, caches, and coverage data
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage build dist *.egg-info

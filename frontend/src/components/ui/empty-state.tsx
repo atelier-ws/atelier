@@ -16,10 +16,10 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <Card className={cn("p-8 text-center text-sm text-neutral-500", className)}>
+    <Card className={cn("p-8 text-center text-sm text-neutral-400", className)}>
       {icon && <div className="mb-3 text-2xl">{icon}</div>}
       <div className="font-semibold text-neutral-200">{title}</div>
-      {description && <div className="mt-1 text-neutral-600">{description}</div>}
+      {description && <div className="mt-1 text-neutral-400">{description}</div>}
     </Card>
   );
 }

@@ -31,26 +31,19 @@ class ContextCompressionCapability:
     3. Budget-aware truncation (keep highest-scoring events up to token budget)
     """
 
-    def compress_with_provenance(
+    def _compress(
         self,
         ledger: RunLedger,
         *,
-        token_budget: int = 8000,
-        task: str = "",
-    ) -> CompressionResult:
-        """
-        Compress the ledger's context and return a full provenance record.
+        token_budget: int,
+        task: str,
+    ) -> tuple[CompressionResult, list[dict[str, Any]]]:
+        """Run the dedup + score + budget pipeline once.
 
-        Args:
-            ledger:       The run ledger to compress.
-            token_budget: Maximum allowed tokens after compression.
-            task:         Optional task description for task-conditioned scoring.
-                          Events whose summaries overlap with task terms score higher.
+        Returns the provenance ``CompressionResult`` and the raw dropped event
+        dicts (dedup drops followed by budget drops) so callers that need the
+        evicted events do not have to re-run the whole pipeline.
         """
-        from atelier.bench.mode import is_off as _bench_is_off
-
-        if _bench_is_off():
-            return CompressionResult.passthrough()
         raw_events: list[Any] = []
         with contextlib.suppress(Exception):
             raw_events = list(getattr(ledger, "events", []) or [])
@@ -75,16 +68,19 @@ class ContextCompressionCapability:
         scored = score_events(events_deduped, task=task)
         scored.sort(key=lambda x: x.score, reverse=True)
 
-        # Step 3: Greedy token-budget selection (keep highest-scoring until budget used)
+        # Step 3: Greedy token-budget selection (keep highest-scoring until budget used).
+        # Keystone-protected events (decision-flipping facts) are always kept even when
+        # they fall below the budget cutoff — that is the guarantee score_events promises.
         budget_chars = token_budget * _CHARS_PER_TOKEN
         selected: list[dict[str, Any]] = []
         used_chars = 0
         budget_dropped: list[DroppedContext] = []
+        budget_dropped_raw: list[dict[str, Any]] = []
 
         for es in scored:
             ev = es.event
             ev_chars = len(str(ev.get("summary", ""))) + len(str(ev.get("payload", "")))
-            if used_chars + ev_chars <= budget_chars:
+            if es.keystone_protected or used_chars + ev_chars <= budget_chars:
                 selected.append(ev)
                 used_chars += ev_chars
             else:
@@ -95,6 +91,7 @@ class ContextCompressionCapability:
                         original_chars=ev_chars,
                     )
                 )
+                budget_dropped_raw.append(ev)
 
         dropped += budget_dropped
 
@@ -105,7 +102,7 @@ class ContextCompressionCapability:
         # Build preserved_facts from selected events (highest importance first)
         preserved_facts = [f"[{ev.get('kind', '?')}] {str(ev.get('summary', ''))[:200]}" for ev in selected[:20]]
 
-        return CompressionResult(
+        result = CompressionResult(
             chars_before=chars_before,
             chars_after=chars_after,
             reduction_pct=reduction_pct,
@@ -113,6 +110,30 @@ class ContextCompressionCapability:
             dropped=dropped,
             token_savings=token_savings,
         )
+        return result, dropped_events + budget_dropped_raw
+
+    def compress_with_provenance(
+        self,
+        ledger: RunLedger,
+        *,
+        token_budget: int = 8000,
+        task: str = "",
+    ) -> CompressionResult:
+        """
+        Compress the ledger's context and return a full provenance record.
+
+        Args:
+            ledger:       The run ledger to compress.
+            token_budget: Maximum allowed tokens after compression.
+            task:         Optional task description for task-conditioned scoring.
+                          Events whose summaries overlap with task terms score higher.
+        """
+        from atelier.bench.mode import is_off as _bench_is_off
+
+        if _bench_is_off():
+            return CompressionResult.passthrough()
+        result, _dropped = self._compress(ledger, token_budget=token_budget, task=task)
+        return result
 
     def compress_with_sleeptime(
         self,
@@ -134,29 +155,7 @@ class ContextCompressionCapability:
 
         if _bench_is_off():
             return CompressionResult.passthrough()
-        result = self.compress_with_provenance(ledger, token_budget=token_budget, task=task)
-
-        raw_events: list[Any] = []
-        with contextlib.suppress(Exception):
-            raw_events = list(getattr(ledger, "events", []) or [])
-        events: list[dict[str, Any]] = [_normalise_event(ev) for ev in raw_events]
-
-        # Re-derive the dropped event dicts (same order as compress_with_provenance)
-        _events_deduped, dropped_raw = deduplicate_tool_outputs(events)
-        scored = score_events(_events_deduped, task=task)
-        scored.sort(key=lambda x: x.score, reverse=True)
-        budget_chars = token_budget * _CHARS_PER_TOKEN
-        used = 0
-        budget_dropped_raw: list[dict[str, Any]] = []
-        for es in scored:
-            ev = es.event
-            ev_chars = len(str(ev.get("summary", ""))) + len(str(ev.get("payload", "")))
-            if used + ev_chars <= budget_chars:
-                used += ev_chars
-            else:
-                budget_dropped_raw.append(ev)
-
-        all_dropped_events = dropped_raw + budget_dropped_raw
+        result, all_dropped_events = self._compress(ledger, token_budget=token_budget, task=task)
 
         # Use a real sleeptime summarizer if available; otherwise skip the lever.
         chunks: list[SleeptimeChunk] = []

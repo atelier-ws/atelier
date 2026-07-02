@@ -51,7 +51,7 @@ export default function Reports() {
           description={
             <>
               Run{" "}
-              <code className="text-purple-400">atelier benchmark publish</code>{" "}
+              <code className="text-brand-400">atelier benchmark publish</code>{" "}
               to generate your first report.
             </>
           }
@@ -70,7 +70,7 @@ export default function Reports() {
                 className="w-full justify-start text-left normal-case tracking-normal"
               >
                 <div className="font-semibold">{r.week}</div>
-                <div className="mt-0.5 text-neutral-500">
+                <div className="mt-0.5 text-neutral-400">
                   {r.generated_at.slice(0, 10)}
                 </div>
               </Button>
@@ -81,10 +81,10 @@ export default function Reports() {
           <Card className="min-w-0 flex-1 p-5">
             {contentErr && <Alert tone="danger" description={contentErr} />}
             {content === null && !contentErr && (
-              <div className="text-sm text-neutral-500">Loading report…</div>
+              <div className="text-sm text-neutral-400">Loading report…</div>
             )}
             {content && (
-              <article className="prose prose-invert prose-sm max-w-none prose-headings:text-neutral-200 prose-p:text-neutral-400 prose-strong:text-neutral-200 prose-code:text-purple-300 prose-a:text-purple-400 prose-table:text-neutral-300 prose-th:text-neutral-300 prose-td:text-neutral-400">
+              <article className="prose prose-invert prose-sm max-w-none prose-headings:text-neutral-200 prose-p:text-neutral-400 prose-strong:text-neutral-200 prose-code:text-brand-300 prose-a:text-brand-400 prose-table:text-neutral-300 prose-th:text-neutral-300 prose-td:text-neutral-400">
                 <ReactMarkdown>{content.markdown}</ReactMarkdown>
               </article>
             )}

@@ -1,7 +1,12 @@
 """Cross-vendor memory adapter package.
 
-Provides read-only ingestion of native AI memory files from Claude (Anthropic),
-Codex (OpenAI), and Gemini (Google) into a unified ``MemoryFact`` representation.
+Provides **read-only** ingestion of native AI memory files from Claude
+(Anthropic), Codex (OpenAI), and Gemini (Google) into a unified
+``MemoryFact`` representation.
+
+This package reads *other agents'* memory files from disk — it does NOT
+interact with Atelier's own memory store (``MemoryStore`` / ``MemoryBlock``).
+For Atelier's own fact store see ``memory.service.MemoryService``.
 
 Quick start::
 

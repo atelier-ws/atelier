@@ -248,7 +248,7 @@ def _prompt_blocks(*, stem: str, transcript_text: str, dynamic_tail: str) -> tup
         blocks.append(
             PromptBlock(
                 id=f"spawn/transcript/{digest}",
-                kind=BlockKind.REASONBLOCK,
+                kind=BlockKind.PLAYBOOK,
                 stability=Stability.BRANCH,
                 content=_transcript_block_text(transcript_text),
             )

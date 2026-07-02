@@ -23,7 +23,7 @@ interface ToggleGroupProps {
 
 const ACTIVE_PILL: Record<ToggleTone, string> = {
   neutral: "border-neutral-500 bg-neutral-800 text-neutral-100",
-  purple: "border-purple-500/60 bg-purple-950/30 text-purple-200",
+  purple: "border-brand-500/60 bg-brand-950/30 text-brand-200",
   amber: "border-amber-500/60 bg-amber-950/30 text-amber-200",
   emerald: "border-emerald-500/60 bg-emerald-950/30 text-emerald-200",
   cyan: "border-cyan-500/60 bg-cyan-950/30 text-cyan-200",
@@ -31,7 +31,7 @@ const ACTIVE_PILL: Record<ToggleTone, string> = {
 
 const ACTIVE_UNDERLINE: Record<ToggleTone, string> = {
   neutral: "border-neutral-500 bg-neutral-900/30 text-neutral-100",
-  purple: "border-purple-500 text-purple-300",
+  purple: "border-brand-500 text-brand-300",
   amber: "border-amber-500 text-amber-300",
   emerald: "border-emerald-500 text-emerald-300",
   cyan: "border-cyan-500 text-cyan-300",
@@ -79,8 +79,8 @@ export function ToggleGroup({
                   ? ACTIVE_UNDERLINE[tone]
                   : ACTIVE_PILL[tone]
                 : variant === "underline"
-                  ? "border-transparent text-neutral-500 hover:text-neutral-300"
-                  : "border-neutral-700 text-neutral-500 hover:text-neutral-300"
+                  ? "border-transparent text-neutral-400 hover:text-neutral-300"
+                  : "border-neutral-700 text-neutral-400 hover:text-neutral-300"
             )}
           >
             {option.label}

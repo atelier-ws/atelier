@@ -1,0 +1,68 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Tokio's scheduler is a work-stealing, multi-threaded executor built around a few core pieces. Here's how a task goes from "spawned" to "running."
+
+## The pieces
+
+- **Task**: a heap-allocated `Future` plus its state, wrapped in a reference-counted cell (the `Header`/`Cell` in tokio's `task` module). The task is what gets scheduled — not the future directly.
+- **Worker threads**: by default one per CPU core (multi-thread runtime). Each owns a local run queue.
+- **Local run queue**: a fixed-size (256-slot) lock-free ring buffer per worker, holding ready-to-run tasks.
+- **Global (injection) queue**: a shared, mutex-guarded queue for overflow and for tasks spawned from outside a worker.
+- **Driver / reactor**: the I/O event loop (epoll/kqueue/IOCP via `mio`) plus the timer wheel. It's what wakes tasks blocked on I/O or timers.
+
+## Spawning
+
+`tokio::spawn(future)` allocates the task and pushes it onto a run queue:
+- If called **from within a worker thread**, it goes onto that worker's **local queue** (cheap, no contention). If the local queue is full, half of it is offloaded to the global queue to keep things balanced.
+- If called **from outside** (e.g. the main thread or a blocking pool thread), it goes onto the **global injection queue**, and a worker is notified/unparked.
+
+`spawn` returns a `JoinHandle`, which is itself a future that resolves when the task completes.
+
+## The worker run loop
+
+Each worker spins in roughly this loop:
+
+1. **Poll for work**, in priority order:
+   - Occasionally check the **global queue first** (every ~61 ticks via the `global_queue_interval`) so global tasks don't starve — fairness.
+   - Otherwise pop from its **local queue**.
+   - If the local queue is empty, try the **global queue**.
+   - If that's empty, **steal** from a randomly chosen sibling worker's local queue (takes ~half its tasks).
+   - If nothing anywhere, register with the I/O driver and **park** (sleep) the thread.
+
+2. **Run the task**: call `Future::poll(cx)` with a `Waker` that knows how to re-schedule this exact task. Polling runs the future until it next returns `Poll::Pending` or `Poll::Ready`.
+   - `Ready` → task is done, result delivered to the `JoinHandle`, task deallocated.
+   - `Pending` → the future has arranged (via some resource) to be woken later. The worker drops it and moves on.
+
+3. **Budget / preemption**: each task gets a *budget* (default 128 operations) on resource polls. When the budget runs out, tokio's resources return `Pending` even if data is ready, forcing the task to yield. This prevents a hot task from monopolizing a worker and starving others — cooperative scheduling with forced yield points.
+
+## How a pending task gets re-scheduled
+
+When a future returns `Pending`, something must hold its `Waker`. Example: a socket read registers the waker with the I/O driver. Later:
+
+- `mio`/epoll reports the fd is readable → the driver calls `waker.wake()`.
+- `wake()` re-inserts the task into a run queue (the LIFO slot or local queue of the waking worker) and unparks a worker if needed.
+- A timer firing works the same way via the timer wheel.
+
+There's also a **LIFO slot**: when a task wakes another task, the woken task goes into a single-slot "next" position and runs immediately next, optimizing message-passing ping-pong latency (with a cap so it can still be stolen).
+
+## Driver integration
+
+One worker at a time also acts as the driver-poller: before parking, it calls `epoll_wait` (with a timeout derived from the nearest timer) to collect I/O events, converting them into wakeups. This is why an idle runtime consumes no CPU — threads park in the kernel until an event or a new task arrives.
+
+## current-thread vs multi-thread
+
+The single-threaded runtime (`new_current_thread`) has the same task/queue/waker model but one queue and no stealing — everything runs on the thread calling `block_on`. The multi-thread runtime (`new_multi_thread`, the default) adds the worker pool, work-stealing, and the injection queue.
+
+## Blocking work
+
+`spawn_blocking` doesn't go on the async scheduler at all — it runs on a separate, dynamically-sized **blocking thread pool**, so CPU-bound or synchronous-blocking code can't stall the async workers (which must never block).
+
+**In one sentence:** tokio wraps futures in reference-counted tasks, dispatches them across per-core work-stealing queues, polls each future until it yields `Pending`, parks idle threads on epoll/timers, and re-queues tasks when their `Waker` fires — with a per-task budget enforcing fairness.
+
+If you'd like, I can point to the specific source files in the `tokio` crate (`runtime/scheduler/multi_thread/`) where each of these lives.

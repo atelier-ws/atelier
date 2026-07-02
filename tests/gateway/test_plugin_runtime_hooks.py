@@ -13,13 +13,13 @@ from atelier.core.capabilities.plugin_runtime import (
     aggregate_session_stats,
     apply_session_start_files,
     build_savings_report,
-    build_session_progress_optimization_output,
     load_live_savings_summary,
     session_start_bootstrap,
     status_line_choose_message,
     update_session_stats,
     write_plugin_setting,
 )
+from atelier.core.foundation.paths import session_dir
 
 pytestmark = pytest.mark.slow  # Each test spawns a real Python subprocess (~2s each)
 
@@ -75,19 +75,6 @@ def test_tool_redirect_is_quiet_without_pythonpath() -> None:
     assert result.stderr == ""
 
 
-def test_edit_batching_nudge_emits_after_second_single_edit(tmp_path: Path) -> None:
-    env = {"ATELIER_ROOT": str(tmp_path / ".atelier")}
-    payload = {"session_id": "s1", "tool_input": {"edits": [{"file_path": "src/a.ts"}]}}
-
-    first = _run_hook("edit_batching_nudge.py", payload, env=env)
-    second = _run_hook("edit_batching_nudge.py", payload, env=env)
-
-    assert first.stdout == ""
-    output = json.loads(second.stdout)
-    assert "2 individual Edit calls" in output["additionalContext"]
-    assert (tmp_path / ".atelier" / "hook_state" / "edit-nudge-s1.json").exists()
-
-
 def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
     atelier_root = tmp_path / ".atelier"
     _run_hook(
@@ -101,10 +88,10 @@ def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
         env={"ATELIER_ROOT": str(atelier_root)},
     )
 
-    stats = json.loads((atelier_root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(atelier_root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
     assert stats["edit_tool_calls"] == 1
-    assert (atelier_root / "session_events" / "s1.jsonl").exists()
+    assert (session_dir(atelier_root, "claude", "s1") / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path) -> None:
@@ -125,7 +112,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     update_session_stats(root, {"hook_event_name": "PostCompact", "session_id": "s1", "now_ms": 2750})
     update_session_stats(root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000})
 
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     # Only per-turn deltas from payload.usage accumulate; transcript is NOT read here.
     assert stats["usage"]["input_tokens"] == 5
     assert stats["usage"]["output_tokens"] == 3
@@ -135,78 +122,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert stats["subagents_started"] == 1
     assert stats["subagents_completed"] == 1
     assert stats["pending_subagents"] == 0
-    assert (root / "session_events" / "s1.jsonl").exists()
-
-
-def test_session_telemetry_tracks_workflow_and_task_progress(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-
-    update_session_stats(
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "s1",
-            "tool_name": "Agent",
-            "workflow_state": {"workflow_step": "review", "session_phase": "review"},
-            "plan_review": {"review_decision": "approve", "plan_id": "02-01"},
-            "task_progress": {
-                "task_id": "02-02/task-1",
-                "completed_tasks": 2,
-                "remaining_tasks": 1,
-            },
-            "spawn_summary": {
-                "step_count": 2,
-                "eligible_for_reuse": 2,
-                "reuse_observed": 1,
-                "spawn_latency_ms": 120,
-                "host_dropped_fields": {"cache_scope_id": 1},
-            },
-        },
-    )
-
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
-    assert stats["workflow_state"] == {"workflow_step": "review", "session_phase": "review"}
-    assert stats["plan_review"] == {"review_decision": "approve", "plan_id": "02-01"}
-    assert stats["task_progress"] == {
-        "task_id": "02-02/task-1",
-        "completed_tasks": 2,
-        "remaining_tasks": 1,
-    }
-    assert stats["spawn_summary"] == {
-        "step_count": 2,
-        "eligible_for_reuse": 2,
-        "reuse_observed": 1,
-        "spawn_latency_ms": 120,
-        "cache_capability_counts": {},
-        "host_dropped_fields": {"cache_scope_id": 1},
-    }
-
-    output = build_session_progress_optimization_output(
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "s1",
-            "workflow_state": {"workflow_step": "review", "session_phase": "review"},
-            "plan_review": {"review_decision": "approve", "plan_id": "02-01"},
-            "task_progress": {
-                "task_id": "02-02/task-1",
-                "completed_tasks": 2,
-                "remaining_tasks": 1,
-            },
-            "spawn_summary": {
-                "step_count": 2,
-                "eligible_for_reuse": 2,
-                "reuse_observed": 1,
-                "spawn_latency_ms": 120,
-                "host_dropped_fields": {"cache_scope_id": 1},
-            },
-        },
-    )
-    assert "workflow=review" in output["additionalContext"]
-    assert "review=approve" in output["additionalContext"]
-    assert "02-02/task-1 (2 done/1 remaining)" in output["additionalContext"]
-    assert "spawn=reuse 1/2" in output["additionalContext"]
-    assert "drop=cache_scope_id:1" in output["additionalContext"]
+    assert (session_dir(root, "claude", "s1") / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_spawn_cache_signals(tmp_path: Path) -> None:
@@ -278,7 +194,7 @@ def test_context_window_snapshot_overwrites_not_accumulates(tmp_path: Path) -> N
             },
         )
 
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((session_dir(root, "claude", "s1") / "stats.json").read_text(encoding="utf-8"))
     # Must equal the LAST snapshot values, not the sum over 5 calls.
     assert stats["usage"]["cache_read_tokens"] == 200_000  # last cR snapshot
     assert stats["usage"]["input_tokens"] == 50  # turn=5: 5*10
@@ -351,12 +267,42 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
 
     assert result["host_settings"]["statusLine"]["command"].endswith("/plugin/scripts/statusline.sh")
     assert result["host_settings"]["subagentStatusLine"]["command"].endswith("/plugin/scripts/statusline.sh")
-    assert result["host_settings"]["atelier"]["spinnerVerbs"]
+    assert result["host_settings"]["spinnerVerbs"]["mode"] == "replace"
+    assert result["host_settings"]["spinnerVerbs"]["verbs"]
     assert result["host_settings"]["atelier"]["attribution"]["source"] == "Atelier"
+    assert result["host_settings"]["includeCoAuthoredBy"] is False
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
     assert result["auth"]["isAnonymous"] is True
     assert "Atelier budget optimizer" in result["stdout"]["additionalContext"]
-    assert (root / "session_stats" / "s1.json").exists()
+    assert (session_dir(root, "claude", "s1") / "stats.json").exists()
+
+
+def test_spinner_setting_writes_top_level_object() -> None:
+    from atelier.core.capabilities.plugin_runtime import apply_spinner_setting
+
+    out = apply_spinner_setting({}, True)
+    assert out["spinnerVerbs"]["mode"] == "replace"
+    assert out["spinnerVerbs"]["verbs"]
+    # No inert namespaced key is written.
+    assert "atelier" not in out
+    # Disabling removes the top-level key.
+    assert "spinnerVerbs" not in apply_spinner_setting({"spinnerVerbs": {"mode": "replace", "verbs": ["x"]}}, False)
+
+
+def test_attribution_suppresses_coauthor_with_guard() -> None:
+    from atelier.core.capabilities.plugin_runtime import apply_attribution_setting
+
+    # Absent key -> we suppress Claude's trailer.
+    out = apply_attribution_setting({}, True)
+    assert out["includeCoAuthoredBy"] is False
+    assert out["atelier"]["attribution"]["enabled"] is True
+    # User already set the key -> never override it.
+    out_user = apply_attribution_setting({"includeCoAuthoredBy": True}, True)
+    assert out_user["includeCoAuthoredBy"] is True
+    # Disabling drops bookkeeping and leaves includeCoAuthoredBy untouched.
+    out_off = apply_attribution_setting({"includeCoAuthoredBy": False}, False)
+    assert out_off["includeCoAuthoredBy"] is False
+    assert "atelier" not in out_off
 
 
 def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> None:
@@ -381,34 +327,13 @@ def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> N
     assert "smallest viable plan" in output["additionalContext"]
 
 
-def test_claude_session_telemetry_emits_quality_guard_once(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    env = {"ATELIER_ROOT": str(root)}
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "session_id": "s1",
-        "tool_name": "Search",
-        "tool_input": {},
-        "usage": {"input_tokens": 90_000, "output_tokens": 500},
-    }
-
-    for now_ms in (1_000, 1_001, 1_002):
-        _run_hook("session_telemetry.py", {**payload, "now_ms": now_ms}, env=env)
-
-    fourth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_003}, env=env)
-    fifth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_004}, env=env)
-
-    fourth_output = json.loads(fourth.stdout)
-    assert "quality guard" in fourth_output["message"].lower()
-    assert "session quality" in fourth_output["additionalContext"].lower()
-    assert fifth.stdout == ""
-
-
 def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Path) -> None:
+    from atelier.core.foundation.paths import session_dir
+
     root = tmp_path / ".atelier"
-    stats_dir = root / "session_stats"
+    stats_dir = session_dir(root, "claude", "s1")
     stats_dir.mkdir(parents=True)
-    (stats_dir / "s1.json").write_text(
+    (stats_dir / "stats.json").write_text(
         json.dumps(
             {
                 "session_id": "s1",
@@ -462,10 +387,12 @@ def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Pa
     output = json.loads(result.stdout)
     message = output["systemMessage"]
     assert "Session stats:" in message
-    assert "tool calls: 4" in message
-    assert "tokens: 150.0k in / 700 cW / 9.0k cR / 2.0k out  (161.7k total)" in message
+    # Stats are computed from the transcript (1 turn, 1 tool_use here), one dense
+    # line per metric in the trimmed format.
+    assert "1 turn · 1 tool call" in message
+    assert "tokens: 107.4k in (107.4k new + 10 cW) · 500 cR · 356 out · 108.3k total" in message
     # Savings come from transcript saved blocks — none in this test transcript, so $0.
-    assert "savings: $0.0000 · 0 tokens saved · 0 calls avoided" in message
+    assert "savings: $0.0000 · 0 tok · 0 calls avoided" in message
     assert "top tools: mcp__mcp-vector-search__codegraph_context" in message
 
 
@@ -513,8 +440,8 @@ def test_claude_stop_hook_dedupes_usage_and_prices_each_model(tmp_path: Path) ->
 
     output = json.loads(result.stdout)
     message = output["systemMessage"]
-    assert "tool calls: 2" in message
-    assert "tokens: 3.0k in / 3.0k cW / 3.0k cR / 3.0k out  (12.0k total)" in message
+    assert "2 turns · 2 tool calls" in message
+    assert "tokens: 6.0k in (3.0k new + 3.0k cW) · 3.0k cR · 3.0k out · 12.0k total" in message
     assert "est. cost: ~$0.0809" in message
     assert "top tools: Edit" in message
     assert "Read" in message
@@ -679,9 +606,9 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
 
 def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    (root / "session_stats").mkdir(parents=True)
+    session_dir(root, "claude", "s1").mkdir(parents=True)
     (root / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
-    (root / "session_stats" / "s1.json").write_text(
+    (session_dir(root, "claude", "s1") / "stats.json").write_text(
         json.dumps({"session_id": "s1", "savings": {"calls_saved": 1, "tokens_saved": 10_000}}),
         encoding="utf-8",
     )

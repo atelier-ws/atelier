@@ -4,18 +4,29 @@ from __future__ import annotations
 
 import ast
 import base64
-import contextlib
+import bisect
 import json
 import logging
 import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
+
+from atelier.core.capabilities.native_read_baseline import claude_read_baseline_text
+from atelier.core.foundation.redaction import redact_tool_output
+
+try:  # Third-party engine supporting a per-call wall-clock `timeout=` on search.
+    import regex as _regex_module
+except ImportError:  # pragma: no cover - fallback path when `regex` is absent.
+    _regex_module = None
 
 SearchOutputMode = Literal[
     "ranked_file_map",
@@ -24,10 +35,38 @@ SearchOutputMode = Literal[
     "file_paths_with_match_count",
 ]
 
-CLAUDE_READ_LINE_LIMIT = 2000
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
-DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
+DEFAULT_CONTEXT_BUDGET_TOKENS = 2_000
 INLINE_CHARS_PER_TOKEN = 2
+# Max paths emitted by output_mode=file_paths_only before truncation.
+_FILE_PATHS_ONLY_CAP = 200
+# Wall-clock budget for running a user-supplied content_regex across all
+# candidate files. Caps catastrophic-backtracking ReDoS to a bounded hang.
+_REGEX_DEADLINE_SECONDS = 5.0
+# Per-line input cap fed to the user regex — a single pathological line cannot
+# drive backtracking time superlinearly past this bound.
+_REGEX_MAX_LINE_CHARS = 20_000
+# Tighter per-line cap used only on the stdlib `re` fallback path. `re` has no
+# per-call wall-clock hook, so a single catastrophic-backtracking match (e.g.
+# `(a+)+$`) runs to completion in C with only a between-lines deadline check.
+# Capping the input chars fed to `re` bounds that superlinear blowup; the
+# `regex` engine keeps the wider bound because its `timeout=` aborts mid-match.
+_REGEX_MAX_LINE_CHARS_RE_FALLBACK = 2_000
+# Per-file byte ceiling for reading a candidate's contents during search. Files
+# larger than this are skipped (and logged) rather than read in full — a few
+# hundred-MB tracked `.log`/`.json`/`.csv`/extensionless dumps must not be
+# slurped into memory per search. Env-overridable for repos that need it.
+_MAX_SEARCH_FILE_BYTES = int(os.environ.get("ATELIER_SEARCH_MAX_FILE_BYTES", str(5 * 1024 * 1024)))
+# Upper bound on candidate paths materialized by `_iter_files`. Stops walking a
+# pathological subtree once enough candidates are gathered to satisfy any
+# caller `file_limit` (default 100) with margin. Skipped for graph modes that
+# need the full candidate set (e.g. `#imported-by`).
+_MAX_SEARCH_CANDIDATES = int(os.environ.get("ATELIER_SEARCH_MAX_CANDIDATES", str(20_000)))
+# Fast grep backends — ripgrep is strongly preferred; system grep is the
+# fallback. The Python directory-walk path is not used for content_regex
+# searches on any Mac/Linux system where one of these is always available.
+_RG_BIN: str | None = shutil.which("rg")
+_GREP_BIN: str | None = shutil.which("grep")
 SKIP_DIRS: frozenset[str] = frozenset(
     {
         # VCS
@@ -62,6 +101,54 @@ SKIP_DIRS: frozenset[str] = frozenset(
 _SKIP_DIRS = SKIP_DIRS  # backwards-compat alias
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
+_BINARY_SUFFIXES = {
+    ".zip",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".rar",
+    ".jar",
+    ".so",
+    ".o",
+    ".a",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".bin",
+    ".class",
+    ".wasm",
+    ".pyc",
+    ".pyd",
+    ".obj",
+    ".lib",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".m4a",
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    ".eot",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".parquet",
+    ".npy",
+    ".npz",
+    ".pkl",
+    ".ico",
+    ".tiff",
+    ".heic",
+}
 _TEXT_SUFFIXES = {
     ".py",
     ".ts",
@@ -126,10 +213,19 @@ def _safe_resolve(root: Path, raw_path: str | Path) -> Path:
     path = Path(raw_path)
     resolved = path if path.is_absolute() else root / path
     resolved = resolved.resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"path escape denied: {raw_path}") from exc
+    # Reads are not confined to the workspace root — an absolute path to a
+    # config file, sibling repo, or system path is legitimate for read tools.
+    # Only block relative paths that escape via ".." traversal (almost always
+    # unintentional).  Writes remain strictly confined (rich_edit._resolve
+    # keeps its own unconditional out-of-workspace check).
+    if not path.is_absolute():
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"path escape denied: {raw_path} is outside the workspace root {root} — "
+                "use an absolute path to read files outside the workspace"
+            ) from exc
     return resolved
 
 
@@ -146,7 +242,7 @@ def _parse_pattern(pattern: str) -> PatternSpec:
         pattern = pattern[: -len("#imported-by")]
         graph_mode = "imported_by"
 
-    match = re.search(r"#(\d+)(?:-(\d+))?$", pattern)
+    match = re.search(r":L(\d+)(?:-L(\d+))?$", pattern, re.IGNORECASE)
     if not match:
         return PatternSpec(pattern=pattern, graph_mode=graph_mode)
     start_line = int(match.group(1))
@@ -180,6 +276,24 @@ def _iter_files(
     expanded = list(patterns)
     if type_alias:
         expanded.extend(PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), []))
+    # `#imported-by` resolves which files import a target, so it must scan the
+    # whole candidate set — the walk cap would silently drop importers. Every
+    # other mode is bounded so a pathological subtree cannot be materialized in
+    # full. The cap is generous (default 20k) so normal repos are unaffected.
+    capped = not any(spec.graph_mode == "imported_by" for spec in expanded)
+    cap = _MAX_SEARCH_CANDIDATES if capped else None
+
+    def _capped(count: int) -> bool:
+        if cap is not None and count >= cap:
+            logging.info(
+                "search candidate walk capped at %d files; some files under %s are "
+                "not searched (raise ATELIER_SEARCH_MAX_CANDIDATES or narrow the path/glob)",
+                cap,
+                base,
+            )
+            return True
+        return False
+
     if not expanded and base.is_file():
         expanded.append(PatternSpec(pattern=str(base.relative_to(root))))
     elif not expanded and base.is_dir():
@@ -187,18 +301,36 @@ def _iter_files(
         fallback_spec = PatternSpec(pattern=".")
         found: dict[Path, PatternSpec] = {}
         for item in base.rglob("*"):
-            if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
-                found.setdefault(item.resolve(), fallback_spec)
+            if not item.is_file() or any(part in _SKIP_DIRS for part in item.parts):
+                continue
+            resolved = item.resolve()
+            if not resolved.is_relative_to(root):
+                continue
+            found.setdefault(resolved, fallback_spec)
+            if _capped(len(found)):
+                break
         return sorted(found.items(), key=lambda pair: str(pair[0]))
 
     candidates: dict[Path, PatternSpec] = {}
     for spec in expanded:
         raw = spec.pattern or "."
         if _has_glob(raw):
-            matches = base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
-            for match in matches:
-                if match.is_file() and not any(part in _SKIP_DIRS for part in match.parts):
-                    candidates.setdefault(match.resolve(), spec)
+            # Absolute globs (e.g. "/etc/*") and "../"-escaping globs must not
+            # bypass the workspace boundary — resolve every match and require
+            # it to live under root before admitting it.
+            if Path(raw).is_absolute():
+                continue
+            for match in base.glob(raw):
+                if not match.is_file():
+                    continue
+                resolved = match.resolve()
+                if not resolved.is_relative_to(root):
+                    continue
+                if any(part in _SKIP_DIRS for part in resolved.parts):
+                    continue
+                candidates.setdefault(resolved, spec)
+                if _capped(len(candidates)):
+                    break
             continue
 
         candidate = _safe_resolve(root, raw)
@@ -207,20 +339,121 @@ def _iter_files(
             continue
         if candidate.is_dir():
             for item in candidate.rglob("*"):
-                if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
-                    candidates.setdefault(item.resolve(), spec)
+                if not item.is_file() or any(part in _SKIP_DIRS for part in item.parts):
+                    continue
+                resolved = item.resolve()
+                if not resolved.is_relative_to(root):
+                    continue
+                candidates.setdefault(resolved, spec)
+                if _capped(len(candidates)):
+                    break
 
     return sorted(candidates.items(), key=lambda pair: str(pair[0]))
 
 
 def _is_text_file(path: Path) -> bool:
-    return path.suffix.lower() in _TEXT_SUFFIXES or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
+    suffix = path.suffix.lower()
+    if suffix in _TEXT_SUFFIXES:
+        return True
+    # Search anything that is not a known binary type: covers code files like
+    # .rs/.go/.java/.c and extensionless files (Dockerfile, Makefile, LICENSE).
+    return suffix not in _IMAGE_SUFFIXES and suffix not in _PDF_SUFFIXES and suffix not in _BINARY_SUFFIXES
+
+
+def _read_search_text(path: Path) -> str | None:
+    """Read a candidate's text for matching, skipping oversized files.
+
+    `_is_text_file` admits large `.log`/`.json`/`.csv`/extensionless dumps, and
+    reading a few hundred-MB tracked file in full per search is a DoS surface.
+    Files over ``_MAX_SEARCH_FILE_BYTES`` are skipped (logged so coverage isn't
+    silently truncated); returns ``None`` for a skip and on read errors.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    if size > _MAX_SEARCH_FILE_BYTES:
+        logging.info(
+            "search skipped %s: %d bytes exceeds the %d-byte per-file cap "
+            "(raise ATELIER_SEARCH_MAX_FILE_BYTES to include it)",
+            path,
+            size,
+            _MAX_SEARCH_FILE_BYTES,
+        )
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _over_cap_size(path: Path) -> int | None:
+    """Return the file's size in bytes when it exceeds the per-file read cap.
+
+    Lets callers distinguish an oversized-skip (so the omission can be surfaced)
+    from a no-match or read error, both of which also yield no rendered output.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    return size if size > _MAX_SEARCH_FILE_BYTES else None
+
+
+def _skipped_oversized_footer(skipped: list[str]) -> str:
+    """One-line footer naming files dropped for exceeding the per-file cap."""
+    cap_mb = _MAX_SEARCH_FILE_BYTES / (1024 * 1024)
+    shown = skipped[:10]
+    listed = ", ".join(shown)
+    overflow = len(skipped) - len(shown)
+    if overflow > 0:
+        listed += f", and {overflow} more"
+    return f"[{len(skipped)} skipped >{cap_mb:g}MB: {listed}]"
 
 
 def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
     start = max(1, line_no - before)
     end = min(len(lines), line_no + after)
     return start, end, lines[start - 1 : end]
+
+
+_CODEY_SUFFIXES = {".py", ".pyi", ".ts", ".tsx", ".js", ".jsx"}
+_DOCSTRING_QUOTES = ('"""', "'''")
+
+
+def _collapse_docstrings(window: list[str], *, threshold: int = 8, keep_head: int = 2) -> list[str]:
+    """Collapse long triple-quoted blocks (NumPy-style docstrings / big string
+    constants) to their summary + an elision marker, leaving signatures and code
+    untouched. The agent asked to read a function, not its 80-line param table:
+    keep the opener + first ``keep_head`` content lines, drop the prose bulk.
+
+    Only blocks longer than ``threshold`` lines are collapsed; everything else is
+    returned verbatim. Language-agnostic enough for Python/JS triple/backtick-free
+    docstrings (handles ``\"\"\"`` and ``'''``).
+    """
+    out: list[str] = []
+    i, n = 0, len(window)
+    while i < n:
+        line = window[i]
+        opener = next((q for q in _DOCSTRING_QUOTES if q in line), None)
+        # An opener that does not also close on the same line starts a block.
+        if opener is not None and line.count(opener) == 1:
+            j = i + 1
+            while j < n and opener not in window[j]:
+                j += 1
+            if j < n and (j - i + 1) > threshold:
+                out.append(line)
+                out.extend(window[i + 1 : min(i + 1 + keep_head, j)])
+                elided = j - (i + keep_head)
+                if elided > 0:
+                    indent = window[j][: len(window[j]) - len(window[j].lstrip())]
+                    out.append(f"{indent}# … {elided} docstring line(s) elided; read the range to expand …")
+                out.append(window[j])
+                i = j + 1
+                continue
+        out.append(line)
+        i += 1
+    return out
 
 
 def _truncate_line(line: str, max_line_length: int | None) -> str:
@@ -234,10 +467,7 @@ def _claude_grep_path_baseline_bytes(rel_path: str) -> int:
 
 
 def _claude_read_baseline_bytes(source: str) -> int:
-    lines = source.splitlines()
-    if len(lines) <= CLAUDE_READ_LINE_LIMIT:
-        return len(source)
-    return len("\n".join(lines[:CLAUDE_READ_LINE_LIMIT]))
+    return len(claude_read_baseline_text(source))
 
 
 def _spill_dir() -> Path:
@@ -245,7 +475,7 @@ def _spill_dir() -> Path:
     if configured:
         path = Path(configured).expanduser().resolve()
     else:
-        path = Path(tempfile.gettempdir()) / "atelier-mcp-spill"
+        path = Path(tempfile.gettempdir()) / "atelier-spill"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -344,9 +574,8 @@ def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, Patt
     for candidate, _spec in candidates:
         if candidate == target or not candidate.is_file():
             continue
-        try:
-            source = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        source = _read_search_text(candidate)
+        if source is None:
             continue
         imports = _imports_for(candidate, source)
         hit = False
@@ -394,31 +623,32 @@ def _query_variants(content_regex: str | None) -> list[str]:
 
 def _find_symbol_spans(path: Path, source: str) -> list[tuple[int, int, str]]:
     suffix = path.suffix.lower()
-    spans: list[tuple[int, int, str]] = []
     if suffix == ".py":
-        for match in re.finditer(r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M):
-            name = match.group(1)
-            start = source.count("\n", 0, match.start()) + 1
-            spans.append((start, start, name))
+        pattern = r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)"
     elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
-        for match in re.finditer(
-            r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)",
-            source,
-            flags=re.M,
-        ):
-            name = match.group(1)
-            start = source.count("\n", 0, match.start()) + 1
-            spans.append((start, start, name))
-
-    if not spans:
-        return spans
-    lines = source.splitlines()
+        pattern = r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)"
+    else:
+        return []
+    # `finditer` yields matches in ascending position, so a forward cursor makes
+    # total newline counting O(len(source)) instead of O(matches x len(source)).
+    # The previous `source.count("\n", 0, match.start())` per match was quadratic
+    # in file size and ran for minutes on large generated .ts files.
+    starts: list[int] = []
+    names: list[str] = []
+    line = 1
+    cursor = 0
+    for match in re.finditer(pattern, source, flags=re.M):
+        line += source.count("\n", cursor, match.start())
+        cursor = match.start()
+        starts.append(line)
+        names.append(match.group(1))
+    if not starts:
+        return []
+    total_lines = len(source.splitlines())
     finalized: list[tuple[int, int, str]] = []
-    starts = [line for line, _end, _name in spans]
-    for idx, (start, _end, name) in enumerate(spans):
-        next_start = starts[idx + 1] if idx + 1 < len(starts) else len(lines) + 1
-        end = max(start, next_start - 1)
-        finalized.append((start, end, name))
+    for idx, start in enumerate(starts):
+        next_start = starts[idx + 1] if idx + 1 < len(starts) else total_lines + 1
+        finalized.append((start, max(start, next_start - 1), names[idx]))
     return finalized
 
 
@@ -428,16 +658,48 @@ def _match_line_numbers(
     content_regex: str | None,
     *,
     include_all_when_no_regex: bool,
+    deadline: float | None = None,
 ) -> list[int]:
     if regex is not None:
-        return [idx for idx, line in enumerate(lines, start=1) if regex.search(line)]
+        out: list[int] = []
+        # The `regex` engine accepts a per-call `timeout=` that raises
+        # TimeoutError, giving a true wall-clock bound on a single catastrophic
+        # backtracking search. Stdlib `re` has no such hook, so it relies only
+        # on the between-iteration deadline check below.
+        timed_pattern: Any = regex if _regex_module is not None and isinstance(regex, _regex_module.Pattern) else None
+        # On the stdlib `re` fallback (no per-call wall-clock hook) feed each
+        # line through a tighter char cap so one catastrophic-backtracking match
+        # cannot run to completion in C past a bounded input length.
+        max_line_chars = _REGEX_MAX_LINE_CHARS if timed_pattern is not None else _REGEX_MAX_LINE_CHARS_RE_FALLBACK
+        for idx, line in enumerate(lines, start=1):
+            if deadline is not None and time.monotonic() > deadline:
+                break
+            window = line[:max_line_chars]
+            if timed_pattern is not None and deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    matched = timed_pattern.search(window, timeout=remaining)
+                except TimeoutError:
+                    logging.warning(
+                        "content_regex search hit the %.1fs wall-clock budget; "
+                        "returning partial matches (possible catastrophic backtracking)",
+                        _REGEX_DEADLINE_SECONDS,
+                    )
+                    break
+            else:
+                matched = regex.search(window)
+            if matched:
+                out.append(idx)
+        return out
     if include_all_when_no_regex:
         return list(range(1, len(lines) + 1))
     variants = _query_variants(content_regex)
     if not variants:
         return []
     compiled = [re.compile(re.escape(item), re.I) for item in variants]
-    out: list[int] = []
+    out = []
     for idx, line in enumerate(lines, start=1):
         if any(pat.search(line) for pat in compiled):
             out.append(idx)
@@ -468,14 +730,20 @@ def _symbol_windows(
     lines_after: int,
 ) -> tuple[list[tuple[int, int]], list[str]]:
     symbols = _find_symbol_spans(path, source)
+    # Spans are sorted by start and non-overlapping (each ends one line before the
+    # next begins), so a binary search finds the containing span in O(log n) --
+    # the previous inner linear scan was O(line_nos x symbols), quadratic on big
+    # files where both grow together.
+    symbol_starts = [start for start, _end, _name in symbols]
     windows: list[tuple[int, int]] = []
     symbol_hits: list[str] = []
     for line_no in line_nos:
         matched_symbol = None
-        for start, end, name in symbols:
+        idx = bisect.bisect_right(symbol_starts, line_no) - 1
+        if idx >= 0:
+            start, end, name = symbols[idx]
             if start <= line_no <= end:
                 matched_symbol = (start, end, name)
-                break
         if matched_symbol is not None:
             start, end, name = matched_symbol
             windows.append((start, end))
@@ -494,6 +762,133 @@ def _symbol_windows(
     return _merge_ranges(windows), dedup_symbols
 
 
+def _rg_candidate_files(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> list[Path] | None:
+    """Return files matching *pattern* via ``rg -l``. None = error / timeout."""
+    assert _RG_BIN is not None
+    cmd: list[str] = [_RG_BIN, "--files-with-matches", "--no-messages"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--glob", g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):  # 0=found, 1=no match, other=error
+        return None
+    return [Path(line) for line in proc.stdout.splitlines() if line]
+
+
+def _grep_candidate_files(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> list[Path] | None:
+    """Return files matching *pattern* via ``grep -rl``. None = error / timeout."""
+    assert _GREP_BIN is not None
+    cmd: list[str] = [_GREP_BIN, "-rl", "-H"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--include", Path(g).name if "/" not in g else g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    return [Path(line) for line in proc.stdout.splitlines() if line]
+
+
+def _rg_line_numbers(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> dict[str, list[int]] | None:
+    """Return {abs_path: [1-based line nos]} via ``rg -n``. None = error / timeout."""
+    assert _RG_BIN is not None
+    cmd: list[str] = [
+        _RG_BIN,
+        "--line-number",
+        "--no-heading",
+        "--with-filename",
+        "--no-messages",
+    ]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--glob", g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    result: dict[str, list[int]] = {}
+    for line in proc.stdout.splitlines():
+        # format: /abs/path:lineno:content
+        parts = line.split(":", 2)
+        if len(parts) < 2:
+            continue
+        try:
+            lineno = int(parts[1])
+        except ValueError:
+            continue
+        result.setdefault(parts[0], []).append(lineno)
+    return result
+
+
+def _grep_line_numbers(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> dict[str, list[int]] | None:
+    """Return {abs_path: [1-based line nos]} via ``grep -rn``. None = error / timeout."""
+    assert _GREP_BIN is not None
+    cmd: list[str] = [_GREP_BIN, "-rn", "-H"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--include", Path(g).name if "/" not in g else g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    result: dict[str, list[int]] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) < 2:
+            continue
+        try:
+            lineno = int(parts[1])
+        except ValueError:
+            continue
+        result.setdefault(parts[0], []).append(lineno)
+    return result
+
+
 def _render_text_result(
     path: Path,
     root: Path,
@@ -508,18 +903,29 @@ def _render_text_result(
     lines_per_file: int | None,
     summary: bool | None,
     if_modified_since: datetime | None,
+    deadline: float | None = None,
+    badge_provider: Callable[[str, list[str]], str | None] | None = None,
+    precomputed_match_lines: list[int] | None = None,
 ) -> tuple[str | None, int]:
     rel = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
     unchanged = if_modified_since is not None and mtime <= if_modified_since
-    if unchanged and output_mode == "file_paths_with_content":
-        return f"{rel} (unchanged)", 0
+    if unchanged:
+        if output_mode == "file_paths_only":
+            return None, 0
+        if output_mode == "file_paths_with_match_count":
+            return f"{rel}\t0 (unchanged)", 0
+        if output_mode == "file_paths_with_content":
+            return f"{rel} (unchanged)", 0
 
-    source = (
-        _extract_pdf(path)
-        if path.suffix.lower() in _PDF_SUFFIXES
-        else path.read_text(encoding="utf-8", errors="replace")
-    )
+    if path.suffix.lower() in _PDF_SUFFIXES:
+        source = _extract_pdf(path)
+    else:
+        read = _read_search_text(path)
+        if read is None:
+            # Oversized or unreadable: skip rather than slurp the file in full.
+            return None, 0
+        source = read
     if path.suffix.lower() == ".ipynb":
         source = _compact_notebook(source)
 
@@ -531,15 +937,25 @@ def _render_text_result(
         return None, 0
 
     lines = source.splitlines()
-    if spec.start_line is not None:
+    # A ":Lx-Ly" suffix with no pattern is a range read via grep: return the
+    # raw slice. With a pattern, the range instead scopes which matches report.
+    if spec.start_line is not None and regex is None and content_regex is None:
         start = spec.start_line
         end = spec.end_line or start
         selected = lines[start - 1 : end]
-        body = "\n".join(_truncate_line(line, max_line_length) for line in selected)
-        return f"{rel}#{start}-{end}\n{body}", len(selected)
+        body = redact_tool_output("\n".join(_truncate_line(line, max_line_length) for line in selected))
+        return f"{rel}:L{start}-L{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
-    match_lines = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=include_all)
+    if precomputed_match_lines is not None:
+        match_lines = precomputed_match_lines
+    else:
+        match_lines = _match_line_numbers(
+            lines, regex, content_regex, include_all_when_no_regex=include_all, deadline=deadline
+        )
+    if spec.start_line is not None:
+        lo, hi = spec.start_line, spec.end_line or spec.start_line
+        match_lines = [n for n in match_lines if lo <= n <= hi]
     if include_all and lines_per_file:
         match_lines = match_lines[: max(0, lines_per_file)]
 
@@ -563,9 +979,21 @@ def _render_text_result(
     if use_summary:
         outline = _summarize(path, source)
         if outline:
-            return f"{rel}\n{outline}", len(match_lines)
+            return f"{rel}\n{redact_tool_output(outline)}", len(match_lines)
 
-    rendered: list[str] = [rel]
+    # When a badge provider is supplied, surface the call-graph counts for any
+    # symbol definitions the matches land in -- appended to the file header so the
+    # relational facts ride along the search the agent already ran.
+    header = rel
+    if badge_provider is not None and content_regex is not None:
+        _windows, matched_symbols = _symbol_windows(
+            path, lines, source, match_lines, lines_before=lines_before, lines_after=lines_after
+        )
+        if matched_symbols:
+            badge = badge_provider(rel, matched_symbols)
+            if badge:
+                header = f"{rel}  ·  {badge}"
+    rendered: list[str] = [header]
     emitted = 0
     windows_seen: set[tuple[int, int]] = set()
     for line_no in match_lines:
@@ -575,10 +1003,15 @@ def _render_text_result(
         if (start, end) in windows_seen:
             continue
         windows_seen.add((start, end))
+        # Lean output: an agent reading a function body via grep+context does not
+        # need the 80-line NumPy docstring -- collapse it to summary + marker.
+        # summary=False (explicit raw) opts out.
+        if summary is not False and path.suffix.lower() in _CODEY_SUFFIXES and len(window) > 8:
+            window = _collapse_docstrings(window)
         rendered.append(f"@@ {start}-{end}")
         rendered.extend(_truncate_line(line, max_line_length) for line in window)
         emitted += len(window)
-    return "\n".join(rendered), len(match_lines)
+    return redact_tool_output("\n".join(rendered)), len(match_lines)
 
 
 def search_workspace(
@@ -601,21 +1034,33 @@ def search_workspace(
     cap_chars: int = MAX_STRUCTURED_OUTPUT_CHARS,
     context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS,
     include_metadata: bool = True,
+    badge_provider: Callable[[str, list[str]], str | None] | None = None,
 ) -> dict[str, Any]:
-    """Search and read files in one structured response."""
-    if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {
-            "isError": True,
-            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
-        }
+    """Search and read files in one structured response.
 
+    ``badge_provider`` (optional, content mode only) receives ``(rel_path, [symbol
+    names matched as definitions])`` and returns a short string appended to that
+    file's header -- used to ride call-graph counts along regex matches. It stays
+    Index-agnostic here: the caller supplies the lookup.
+    """
     # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
     # output bytes (matching lines + context, not full file); rendered = what
     # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
     naive_bytes = 0
+    # Files dropped for exceeding the per-file read cap, surfaced in the result
+    # so a present-but-skipped match is not reported as a false "no match".
+    skipped_oversized: list[str] = []
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
     base = _safe_resolve(root, base_spec.pattern or ".")
+    # Resolve the base first (which strips any ":Lx-Ly" line-range suffix)
+    # so a bare "file.py:L60-L100" path is accepted as a single-file search rather
+    # than rejected for having no pattern.
+    if not (content_regex or file_glob_patterns or type or base.is_file()):
+        return {
+            "isError": True,
+            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
+        }
     specs = [_parse_pattern(item) for item in (file_glob_patterns or [])]
     if not specs and base.is_file():
         specs = [base_spec]
@@ -623,9 +1068,90 @@ def search_workspace(
     flags = re.I if ignore_case else 0
     if multiline:
         flags |= re.S | re.M
-    regex = re.compile(content_regex, flags) if content_regex else None
+    if content_regex:
+        # Prefer the `regex` engine so `_match_line_numbers` can impose a true
+        # per-call wall-clock bound via `.search(text, timeout=...)`; fall back
+        # to stdlib `re` (between-iteration deadline only) when it is absent.
+        compile_engine = _regex_module or re
+        try:
+            regex = compile_engine.compile(content_regex, flags)
+        except compile_engine.error:
+            # Pattern failed as a regex (e.g. unbalanced `(` from a shell grep
+            # command where `(` is a literal).  Fall back to a literal-string
+            # match so `grep -n "print(" file.py` works as it would in a shell.
+            try:
+                regex = re.compile(re.escape(content_regex), flags)
+            except re.error as exc:
+                return {
+                    "isError": True,
+                    "content": [{"type": "text", "text": f"Invalid content_regex: {exc}"}],
+                }
+    else:
+        regex = None
+    # Bound total time spent running a user-supplied regex across files so a
+    # catastrophic-backtracking pattern cannot hang the worker indefinitely.
+    deadline = time.monotonic() + _REGEX_DEADLINE_SECONDS if regex is not None else None
     since = _parse_when(if_modified_since)
-    candidates = _iter_files(root, base if base.is_dir() else root, specs, type)
+    # Fast grep path: delegate content_regex matching to rg/grep subprocess to
+    # avoid the ~1200ms _iter_files walk + ~5s Python re-scan on large repos.
+    _rg_line_map: dict[str, list[int]] | None = None
+    _fast_candidates: list[tuple[Path, PatternSpec]] | None = None
+    _fast_eligible = (
+        regex is not None
+        and not multiline
+        and since is None
+        and not any(s.graph_mode for s in specs)
+        and (_RG_BIN is not None or _GREP_BIN is not None)
+    )
+    if _fast_eligible:
+        assert content_regex is not None
+        _use_rg = _RG_BIN is not None
+        _fast_globs: list[str] = [s.pattern for s in specs if s.pattern and _has_glob(s.pattern)]
+        if not _fast_globs and type is not None:
+            _fast_globs = _TYPE_ALIASES.get(type.lower(), [])
+        _grep_kw: dict[str, Any] = dict(
+            pattern=content_regex,
+            base=base,
+            glob_patterns=_fast_globs,
+            ignore_case=ignore_case,
+            timeout=_REGEX_DEADLINE_SECONDS + 2.0,
+        )
+        if output_mode == "file_paths_only":
+            _found_l = _rg_candidate_files(**_grep_kw) if _use_rg else _grep_candidate_files(**_grep_kw)
+            if _found_l is not None:
+                _fp_list: list[str] = []
+                for _p in _found_l:
+                    try:
+                        _fp_list.append(str(_p.relative_to(root)))
+                    except ValueError:
+                        _fp_list.append(str(_p))
+                _agg_parts = [f"# grep ({len(_fp_list)} files)"]
+                if _fp_list:
+                    _agg_parts.append("")
+                    _agg_parts.extend(_fp_list[:_FILE_PATHS_ONLY_CAP])
+                    _ov = len(_fp_list) - _FILE_PATHS_ONLY_CAP
+                    if _ov > 0:
+                        _agg_parts.append(f"... and {_ov} more")
+                _fast_resp: dict[str, Any] = {
+                    "content": [{"type": "text", "text": "\n".join(_agg_parts)}],
+                    "tokens_saved": 0,
+                }
+                if include_metadata:
+                    _fast_resp["_meta"] = {"fileMatchCount": len(_fp_list), "capChars": cap_chars}
+                return _fast_resp
+        else:
+            _line_fn = _rg_line_numbers if _use_rg else _grep_line_numbers
+            _line_map = _line_fn(**_grep_kw)
+            if _line_map is not None:
+                _rg_line_map = _line_map
+                _dummy_spec = specs[0] if specs else base_spec
+                _fast_candidates = [(Path(k), _dummy_spec) for k in _rg_line_map]
+                deadline = time.monotonic() + _REGEX_DEADLINE_SECONDS  # reset deadline
+    candidates = (
+        _fast_candidates
+        if _fast_candidates is not None
+        else _iter_files(root, base if base.is_dir() else root, specs, type)
+    )
     limit = file_limit or 100
     blocks: list[dict[str, str]] = []
     total_chars = 0
@@ -640,11 +1166,18 @@ def search_workspace(
                 break
             if not _is_text_file(candidate) and candidate.suffix.lower() not in _PDF_SUFFIXES:
                 continue
-            source = (
-                _extract_pdf(candidate)
-                if candidate.suffix.lower() in _PDF_SUFFIXES
-                else candidate.read_text(encoding="utf-8", errors="replace")
-            )
+            if since is not None and datetime.fromtimestamp(candidate.stat().st_mtime) <= since:
+                continue
+            if candidate.suffix.lower() in _PDF_SUFFIXES:
+                source = _extract_pdf(candidate)
+            else:
+                read = _read_search_text(candidate)
+                if read is None:
+                    if _over_cap_size(candidate) is not None:
+                        rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                        skipped_oversized.append(rel)
+                    continue
+                source = read
             lines = source.splitlines()
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
@@ -677,7 +1210,19 @@ def search_workspace(
                 )
                 continue
 
-            line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
+            _ckey = str(candidate)
+            _pre = _rg_line_map.get(_ckey) if _rg_line_map else None
+            if _pre is not None:
+                line_nos = _pre
+            else:
+                line_nos = _match_line_numbers(
+                    lines, regex, content_regex, include_all_when_no_regex=regex is None, deadline=deadline
+                )
+            if spec.start_line is not None:
+                lo, hi = spec.start_line, spec.end_line or spec.start_line
+                line_nos = [n for n in line_nos if lo <= n <= hi]
+                if not line_nos:
+                    continue
             if regex and not line_nos:
                 continue
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
@@ -712,13 +1257,15 @@ def search_workspace(
                 "next": [],
                 "tokens_saved": naive_bytes // 4,
             }
+            if skipped_oversized:
+                payload["skipped"] = _skipped_oversized_footer(skipped_oversized)
             if include_metadata:
                 payload["_meta"] = {"fileMatchCount": 0, "capChars": cap_chars}
             return payload
 
         ranked.sort(key=lambda item: (-item.score, item.file))
         top_score = max(item.score for item in ranked) or 1.0
-        normalized = [RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)}) for item in ranked]
+        normalized = [replace(item, score=round(item.score / top_score, 3)) for item in ranked]
         selected: list[RankedMatch] = []
         used_tokens = 0
         for idx, item in enumerate(normalized):
@@ -728,7 +1275,7 @@ def search_workspace(
             if selected and used_tokens + est > total_budget:
                 break
             used_tokens += est
-            selected.append(RankedMatch(**{**item.__dict__, "ranges": reduced_ranges}))
+            selected.append(replace(item, ranges=reduced_ranges))
 
         handles: dict[str, tuple[str, tuple[int, int] | None]] = {}
         matches_payload: list[dict[str, Any]] = []
@@ -770,6 +1317,8 @@ def search_workspace(
             },
             "tokens_saved": max(0, (naive_bytes - rendered_bytes) // 4),
         }
+        if skipped_oversized:
+            payload["skipped"] = _skipped_oversized_footer(skipped_oversized)
         if include_metadata:
             payload["_meta"] = {"fileMatchCount": len(matches_payload), "capChars": cap_chars}
         return payload
@@ -777,10 +1326,10 @@ def search_workspace(
     file_match_count = 0
     # For file_paths_with_* modes: accumulate into one block instead of
     # emitting individual {"type": "text", "text": "path\tN"} per file.
-    mc_hit_lines: list[str] = []   # rendered "path\tN" lines where N > 0
-    mc_hit_count: int = 0          # number of files with matches
-    mc_zero_count: int = 0         # number of files with 0 matches
-    fp_paths: list[str] = []       # accumulated paths for file_paths_only mode
+    mc_hit_lines: list[str] = []  # rendered "path\tN" lines where N > 0
+    mc_hit_count: int = 0  # number of files with matches
+    mc_zero_count: int = 0  # number of files with 0 matches
+    fp_paths: list[str] = []  # accumulated paths for file_paths_only mode
     for candidate, spec in candidates:
         if len(blocks) >= limit:
             break
@@ -797,18 +1346,22 @@ def search_workspace(
             imported = _imported_by_for(root, candidate, candidates)
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
-            with contextlib.suppress(OSError):
-                source = candidate.read_text(encoding="utf-8", errors="replace")
-                naive_bytes += _claude_read_baseline_bytes(source)
+            target_source = _read_search_text(candidate)
+            if target_source is not None:
+                naive_bytes += _claude_read_baseline_bytes(target_source)
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:
                 blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
                 break
             text = rendered[:remaining]
+            if len(rendered) > remaining:
+                text += f"\n[truncated: {len(rendered) - remaining} omitted]"
             total_chars += len(text)
             blocks.append({"type": "text", "text": text})
             continue
+        _ckey = str(candidate)
+        _pre = _rg_line_map.get(_ckey) if _rg_line_map else None
         _file_rendered, _count = _render_text_result(
             candidate,
             root,
@@ -822,8 +1375,14 @@ def search_workspace(
             lines_per_file=lines_per_file,
             summary=summary,
             if_modified_since=since,
+            deadline=deadline,
+            badge_provider=badge_provider,
+            precomputed_match_lines=_pre,
         )
         if _file_rendered is None:
+            if _over_cap_size(candidate) is not None:
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                skipped_oversized.append(rel)
             continue
         # Naive = grep output = _file_rendered (matched lines + context).
         # Savings = Atelier's post-processing reduction (summarisation, cap truncation).
@@ -845,35 +1404,43 @@ def search_workspace(
             blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
             break
         text = rendered[:remaining]
+        if len(rendered) > remaining:
+            text += f"\n[truncated: {len(rendered) - remaining} omitted]"
         total_chars += len(text)
         blocks.append({"type": "text", "text": text})
 
     if output_mode == "file_paths_with_match_count":
         # Aggregate into a single text block — one line per hit, suppress zeros.
         agg_parts: list[str] = []
-        agg_parts.append(
-            f"# grep — output_mode=file_paths_with_match_count"
-            f" ({mc_hit_count} files with matches, {mc_zero_count} files with no matches)"
-        )
+        agg_parts.append(f"# grep ({mc_hit_count} files)")
         if mc_hit_lines:
             agg_parts.append("")
             agg_parts.extend(sorted(mc_hit_lines, key=lambda line: -int(line.rsplit("\t", 1)[-1])))
-        if mc_zero_count > 0:
-            agg_parts.append("")
-            agg_parts.append(f"... and {mc_zero_count} file(s) with no matches")
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})
 
     if output_mode == "file_paths_only":
         # Aggregate paths into a single text block — one path per line.
-        agg_parts = [f"# grep — output_mode=file_paths_only ({len(fp_paths)} files)"]
+        # Capped: an unbounded path dump (hundreds of files) permanently bloats
+        # the agent context; the caller can narrow path or globs to page through.
+        agg_parts = [f"# grep ({len(fp_paths)} files)"]
         if fp_paths:
             agg_parts.append("")
-            agg_parts.extend(fp_paths)
+            agg_parts.extend(fp_paths[:_FILE_PATHS_ONLY_CAP])
+            overflow = len(fp_paths) - _FILE_PATHS_ONLY_CAP
+            if overflow > 0:
+                agg_parts.append(f"... and {overflow} more")
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})
+
+    if skipped_oversized:
+        # Surface the omission so a present-but-skipped match is not read as a
+        # false "no match". Counts toward total_chars like any rendered block.
+        footer = _skipped_oversized_footer(skipped_oversized)
+        total_chars += len(footer)
+        blocks.append({"type": "text", "text": footer})
 
     response: dict[str, Any] = {
         "content": blocks,

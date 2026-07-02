@@ -39,6 +39,18 @@ function hostTag(agentId: string): string {
   return raw;
 }
 
+function safeHref(ref: string): string | null {
+  try {
+    const url = new URL(ref, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.href;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Map<string, T>();
   for (const item of items) {
@@ -84,14 +96,14 @@ export default function Memory() {
   }, [facts]);
 
   const VENDOR_COLORS: Record<string, string> = {
-    anthropic: "text-orange-400",
-    claude: "text-orange-400",
-    openai: "text-green-400",
-    codex: "text-green-400",
-    google: "text-blue-400",
-    gemini: "text-blue-400",
-    copilot: "text-purple-400",
-    opencode: "text-cyan-400",
+    anthropic: "text-orange-300",
+    claude: "text-orange-300",
+    openai: "text-green-300",
+    codex: "text-green-300",
+    google: "text-blue-300",
+    gemini: "text-blue-300",
+    copilot: "text-brand-400",
+    opencode: "text-cyan-300",
   };
 
   useEffect(() => {
@@ -320,10 +332,10 @@ export default function Memory() {
                         <p className="font-semibold text-neutral-200">{f.source_kind}</p>
                         <p className="mt-0.5 text-neutral-400">{f.content}</p>
                         {f.source_path && (
-                          <p className="mt-0.5 font-mono text-neutral-600">{f.source_path}{f.line_number != null ? `:${f.line_number}` : ""}</p>
+                          <p className="mt-0.5 font-mono text-neutral-400">{f.source_path}{f.line_number != null ? `:${f.line_number}` : ""}</p>
                         )}
                       </div>
-                      <span className="shrink-0 text-neutral-600">{f.fact_id.slice(0, 8)}</span>
+                      <span className="shrink-0 text-neutral-400">{f.fact_id.slice(0, 8)}</span>
                     </div>
                   </li>
                 ))}
@@ -351,7 +363,7 @@ export default function Memory() {
         />
       </section>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-300">{error}</p>}
 
       <section className="grid gap-4 md:grid-cols-3">
         <MetricCard
@@ -386,7 +398,7 @@ export default function Memory() {
               {visibleAgentIds.map((agentId) => (
                 <span
                   key={agentId}
-                  className="px-2 py-1 border border-neutral-800 text-neutral-500"
+                  className="px-2 py-1 border border-neutral-800 text-neutral-400"
                 >
                   {hostTag(agentId)} · {agentId}
                 </span>
@@ -395,7 +407,7 @@ export default function Memory() {
           </div>
 
           {loadingBlocks && (
-            <p className="text-xs text-neutral-500 pt-3">
+            <p className="text-xs text-neutral-400 pt-3">
               Loading memory blocks...
             </p>
           )}
@@ -403,11 +415,11 @@ export default function Memory() {
           {!loadingBlocks && (
             <div className="pt-3 space-y-4">
               <div>
-                <h3 className="text-[11px] uppercase tracking-widest text-neutral-600">
+                <h3 className="text-[11px] uppercase tracking-widest text-neutral-400">
                   Pinned
                 </h3>
                 {pinnedBlocks.length === 0 ? (
-                  <p className="text-xs text-neutral-600 mt-2">
+                  <p className="text-xs text-neutral-400 mt-2">
                     No pinned blocks have been saved for the visible agents yet.
                   </p>
                 ) : (
@@ -423,11 +435,11 @@ export default function Memory() {
               </div>
 
               <div>
-                <h3 className="text-[11px] uppercase tracking-widest text-neutral-600">
+                <h3 className="text-[11px] uppercase tracking-widest text-neutral-400">
                   Recent
                 </h3>
                 {recentBlocks.length === 0 ? (
-                  <p className="text-xs text-neutral-600 mt-2">
+                  <p className="text-xs text-neutral-400 mt-2">
                     No editable core blocks are present yet. Archived passages
                     can still exist below.
                   </p>
@@ -461,15 +473,15 @@ export default function Memory() {
 
           <div className="pt-3 space-y-5">
             <div>
-              <h3 className="text-[11px] uppercase tracking-widest text-neutral-600">
+              <h3 className="text-[11px] uppercase tracking-widest text-neutral-400">
                 Recent archived passages
               </h3>
               {loadingPassages ? (
-                <p className="text-xs text-neutral-500 mt-2">
+                <p className="text-xs text-neutral-400 mt-2">
                   Loading archived passages...
                 </p>
               ) : recentPassages.length === 0 ? (
-                <p className="text-xs text-neutral-600 mt-2">
+                <p className="text-xs text-neutral-400 mt-2">
                   No archived passages are visible yet.
                 </p>
               ) : (
@@ -479,14 +491,14 @@ export default function Memory() {
                       key={passage.id}
                       className="py-2 border-b border-neutral-800"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                         <span className="px-2 py-0.5 border border-neutral-800 text-cyan-300">
                           {hostTag(passage.agent_id)}
                         </span>
                         <span className="px-2 py-0.5 border border-neutral-800 text-neutral-400">
                           {passage.agent_id}
                         </span>
-                        <span className="px-2 py-0.5 border border-neutral-800 text-neutral-500">
+                        <span className="px-2 py-0.5 border border-neutral-800 text-neutral-400">
                           {passage.source}
                         </span>
                       </div>
@@ -500,11 +512,11 @@ export default function Memory() {
             </div>
 
             <div>
-              <h3 className="text-[11px] uppercase tracking-widest text-neutral-600">
+              <h3 className="text-[11px] uppercase tracking-widest text-neutral-400">
                 Search results
               </h3>
               {recallResults.length === 0 ? (
-                <p className="text-xs text-neutral-600 mt-2">
+                <p className="text-xs text-neutral-400 mt-2">
                   No archival search results yet.
                 </p>
               ) : (
@@ -514,7 +526,7 @@ export default function Memory() {
                       key={passage.id}
                       className="py-2 border-b border-neutral-800"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                         {passage.agent_id && (
                           <>
                             <span className="px-2 py-0.5 border border-neutral-800 text-cyan-300">
@@ -526,7 +538,7 @@ export default function Memory() {
                           </>
                         )}
                         {passage.source && (
-                          <span className="px-2 py-0.5 border border-neutral-800 text-neutral-500">
+                          <span className="px-2 py-0.5 border border-neutral-800 text-neutral-400">
                             {passage.source}
                           </span>
                         )}
@@ -535,9 +547,10 @@ export default function Memory() {
                         {passage.text}
                       </p>
                       <div className="mt-1">
-                        {passage.source_ref ? (
+                        {passage.source_ref &&
+                        safeHref(passage.source_ref) ? (
                           <a
-                            href={passage.source_ref}
+                            href={safeHref(passage.source_ref) ?? undefined}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-amber-300 underline"
@@ -545,7 +558,7 @@ export default function Memory() {
                             Source
                           </a>
                         ) : (
-                          <span className="text-xs text-neutral-600">
+                          <span className="text-xs text-neutral-400">
                             No source
                           </span>
                         )}
@@ -570,13 +583,13 @@ export default function Memory() {
             <h2 className="text-sm font-bold text-neutral-200 font-mono">
               Review memory block update
             </h2>
-            <p className="text-xs text-neutral-500 mt-1">
+            <p className="text-xs text-neutral-400 mt-1">
               Label: {editDraft.block.label}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
-                <h3 className="text-[11px] uppercase tracking-widest text-neutral-500 mb-1">
+                <h3 className="text-[11px] uppercase tracking-widest text-neutral-400 mb-1">
                   Current
                 </h3>
                 <pre className="text-xs text-neutral-300 border border-neutral-800 p-3 whitespace-pre-wrap min-h-40">
@@ -586,7 +599,7 @@ export default function Memory() {
               <div>
                 <label
                   htmlFor="memory-next-value"
-                  className="text-[11px] uppercase tracking-widest text-neutral-500 mb-1 block"
+                  className="text-[11px] uppercase tracking-widest text-neutral-400 mb-1 block"
                 >
                   New
                 </label>
@@ -605,7 +618,7 @@ export default function Memory() {
             </div>
 
             {conflictMessage && (
-              <p className="text-xs text-red-400 mt-3">{conflictMessage}</p>
+              <p className="text-xs text-red-300 mt-3">{conflictMessage}</p>
             )}
 
             <div className="mt-4 flex justify-end gap-2">

@@ -45,7 +45,7 @@ backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -60,7 +60,7 @@ if $PRINT_ONLY; then
     echo "Add to mcp_servers:"
     echo "  mcp_servers:"
     echo "    atelier:"
-    echo "      command: atelier-mcp"
+    echo "      command: atelier"
     echo "      args:"
     echo "        - --host"
     echo "        - hermes"
@@ -83,14 +83,14 @@ if [ ! -f "$CONFIG_FILE" ]; then
         exit 1
     fi
     warn "Hermes config not found at $CONFIG_FILE - creating default config"
-    run "mkdir -p '$HERMES_HOME'"
+    run "mkdir -p $(printf %q "$HERMES_HOME")"
     if ! $DRY_RUN; then
         cat > "$CONFIG_FILE" <<YAML
 # Hermes Agent configuration
 
 mcp_servers:
   atelier:
-    command: atelier-mcp
+    command: atelier
     args:
       - --host
       - hermes
@@ -129,7 +129,7 @@ config = yaml.safe_load(content) or {}
 # Add MCP server entry
 config.setdefault('mcp_servers', {})
 config['mcp_servers']['atelier'] = {
-    'command': 'atelier-mcp',
+    'command': 'atelier',
     'args': ['--host', 'hermes'],
     'timeout': 120,
     'connect_timeout': 60,
@@ -189,10 +189,10 @@ else
     vfail "Hermes config not found: $CONFIG_FILE"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if [ "$VFAIL" -ne 0 ]; then

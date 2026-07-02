@@ -34,7 +34,15 @@ def _openai_module() -> Any:
 def _resolve_client() -> Any:
     openai = _openai_module()
     base_url = os.environ.get("ATELIER_OPENAI_BASE_URL") or None
-    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or "no-key"
+    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        if base_url is None:
+            raise OpenAIClientUnavailable(
+                "no OpenAI API key found; set ATELIER_OPENAI_API_KEY or OPENAI_API_KEY "
+                "(or ATELIER_OPENAI_BASE_URL for a keyless local server)"
+            )
+        # Keyless local OpenAI-compatible servers accept any placeholder key.
+        api_key = "no-key"
     return openai.OpenAI(api_key=api_key, base_url=base_url)
 
 
@@ -86,6 +94,8 @@ def chat_with_result(
     model: str | None = None,
     json_schema: dict[str, Any] | None = None,
     cache_metadata: dict[str, Any] | None = None,
+    max_tokens: int | None = None,
+    timeout: float | None = None,
 ) -> InternalLLMChatResult:
     """Call an OpenAI-compatible chat endpoint and return content plus usage metadata."""
     client = _resolve_client()
@@ -94,6 +104,10 @@ def chat_with_result(
         kwargs: dict[str, Any] = {"model": chosen_model, "messages": messages}
         if json_schema is not None:
             kwargs["response_format"] = {"type": "json_object"}
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        if timeout is not None:
+            kwargs["timeout"] = timeout
         prompt_cache_key = str((cache_metadata or {}).get("prompt_cache_key") or "").strip()
         if prompt_cache_key:
             kwargs["extra_body"] = {"prompt_cache_key": prompt_cache_key}

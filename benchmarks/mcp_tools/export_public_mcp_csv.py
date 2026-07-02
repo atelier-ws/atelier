@@ -29,8 +29,12 @@ if str(ROOT) not in sys.path:
 from atelier.gateway.cli.progress import ProgressReporter
 
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
-from benchmarks.mcp_tools.bench_code import _impact_query, _symbol_arg, _tool_name_for_case_args
-from benchmarks.mcp_tools.bench_context import _preseed_bootstrap
+from benchmarks.mcp_tools.bench_code import _tool_name_for_case_args, code_tool_dispatch
+from benchmarks.mcp_tools.bench_context import (
+    _disable_autosync_watcher,
+    _disable_background_worker_spawn,
+    _preseed_bootstrap,
+)
 from benchmarks.mcp_tools.bench_edit import _run_edit_case
 from benchmarks.mcp_tools.bench_external_indexers import (
     default_benchmark_root,
@@ -38,7 +42,6 @@ from benchmarks.mcp_tools.bench_external_indexers import (
     repo_cache_key,
 )
 from benchmarks.mcp_tools.bench_rescue import run_rescue_suite
-from benchmarks.mcp_tools.bench_route import _setup_env as _setup_route_env
 from benchmarks.mcp_tools.bench_shell import _patch_paths as _patch_shell_paths
 from benchmarks.mcp_tools.bench_sql import _patch_db as _patch_sql_db
 from benchmarks.mcp_tools.bench_verify import run_verify_suite
@@ -50,7 +53,6 @@ from benchmarks.mcp_tools.cases.grep import GREP_CASES
 from benchmarks.mcp_tools.cases.memory import MEMORY_CASES
 from benchmarks.mcp_tools.cases.read import READ_CASES
 from benchmarks.mcp_tools.cases.rescue import RESCUE_CASES
-from benchmarks.mcp_tools.cases.route import ROUTE_CASES
 from benchmarks.mcp_tools.cases.search import SEARCH_CASES
 from benchmarks.mcp_tools.cases.shell import SHELL_CASES
 from benchmarks.mcp_tools.cases.sql import SQL_CASES
@@ -65,6 +67,14 @@ def _repo_root() -> Path:
 
 
 _REPO_SNAPSHOT_ROOT: Path | None = None
+
+# Code-intel indexing is expensive to build cold (10-30s+ for this repo).
+# Capture the real ATELIER_ROOT once at import time -- before any suite's
+# _reset_runtime() call below can overwrite it with a throwaway per-suite
+# temp path -- so code-intel suites can restore it afterward and reuse the
+# persistent index instead of rebuilding from scratch on every run (and,
+# without this, once per code-intel suite within a single run).
+_REAL_ATELIER_ROOT = Path(os.environ.get("ATELIER_ROOT") or Path.home() / ".atelier")
 
 
 def _repo_workspace_root() -> Path:
@@ -194,6 +204,8 @@ def _run_context_suite(artifact_root: Path, progress: ProgressReporter | None = 
 
     root = _runtime_root(artifact_root, "context")
     _reset_runtime(root, workspace_root=_repo_workspace_root())
+    _disable_background_worker_spawn()
+    _disable_autosync_watcher()
     results: list[CaseResult] = []
     cold_start = [case for case in CONTEXT_CASES if case.label == "context/cold-start"]
     remaining = [case for case in CONTEXT_CASES if case.label != "context/cold-start"]
@@ -223,23 +235,6 @@ def _run_trace_suite(artifact_root: Path, progress: ProgressReporter | None = No
         tool_record_trace,
         progress=progress,
     )
-
-
-def _run_route_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
-    root = _runtime_root(artifact_root, "route")
-    _setup_route_env(root)
-    from atelier.gateway.adapters import mcp_server
-    from atelier.gateway.adapters.mcp_server import tool_route
-
-    mcp_server._reset_runtime_cache_for_testing()
-    results: list[CaseResult] = []
-    for case in ROUTE_CASES:
-        if progress is not None:
-            progress.phase("running MCP tool benchmark", current=f"route {case.label}")
-        results.append(run_case(case, tool_route))
-        if progress is not None:
-            progress.step("running MCP tool benchmark", current=f"route {case.label}")
-    return _tool_report("route", results)
 
 
 def _run_memory_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
@@ -335,61 +330,13 @@ def _run_code_suite_cases(
 ) -> ToolReport:
     root = _runtime_root(artifact_root, tool_name)
     _reset_runtime(root, workspace_root=_repo_workspace_root())
-    from atelier.gateway.adapters import mcp_server
-
-    def tool_fn(args: dict[str, Any]) -> Any:
-        payload = dict(args)
-        tool_name = _tool_name_for_case_args(payload)
-        payload.pop("_tool", None)
-        if tool_name == "symbols":
-            return mcp_server.tool_symbols(payload)
-        if tool_name == "node":
-            return mcp_server.tool_node(
-                {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
-            )
-        if tool_name == "callers":
-            return mcp_server.tool_callers(
-                {
-                    "symbol": _symbol_arg(payload),
-                    "depth": int(payload.get("depth", 1)),
-                    "limit": int(payload.get("limit", 20)),
-                }
-            )
-        if tool_name == "callees":
-            return mcp_server.tool_callees(
-                {
-                    "symbol": _symbol_arg(payload),
-                    "depth": int(payload.get("depth", 1)),
-                    "limit": int(payload.get("limit", 20)),
-                }
-            )
-        if tool_name == "usages":
-            return mcp_server.tool_usages({"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))})
-        if tool_name == "impact":
-            return mcp_server.tool_impact({"query": _impact_query(payload)})
-        if tool_name == "explore":
-            return mcp_server.tool_explore(
-                {
-                    "query": str(payload["query"]),
-                    "seed_files": payload.get("seed_files"),
-                    "max_files": int(payload.get("max_files", 8)),
-                }
-            )
-        if tool_name == "pattern":
-            return mcp_server.tool_pattern(
-                {
-                    key: value
-                    for key, value in payload.items()
-                    if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
-                }
-            )
-        raise ValueError(f"unsupported public code-intel tool: {tool_name}")
+    os.environ["ATELIER_ROOT"] = str(_REAL_ATELIER_ROOT)
 
     results: list[CaseResult] = []
     for case in code_cases:
         if progress is not None:
             progress.phase("running MCP tool benchmark", current=f"{tool_name} {case.label}")
-        results.append(run_case(case, tool_fn))
+        results.append(run_case(case, code_tool_dispatch))
         if progress is not None:
             progress.step("running MCP tool benchmark", current=f"{tool_name} {case.label}")
     return _tool_report(tool_name, results)
@@ -442,7 +389,7 @@ def _run_compact_suite(artifact_root: Path, progress: ProgressReporter | None = 
         ledger.repeated_failures = list(seed.get("repeated_failures") or [])
         ledger.verified_facts = list(seed.get("verified_facts") or [])
         ledger.open_questions = list(seed.get("open_questions") or [])
-        ledger.active_reasonblocks = list(seed.get("active_reasonblocks") or [])
+        ledger.active_playbooks = list(seed.get("active_playbooks") or [])
         for event in seed.get("tool_events") or []:
             if isinstance(event, dict):
                 ledger.record_tool_call(
@@ -482,7 +429,7 @@ def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = No
     src = workspace / "src"
     src.mkdir(exist_ok=True)
     (src / "module.py").write_text("# module with needle_token\ndef needle_token():\n    return 42\n", encoding="utf-8")
-    from atelier.gateway.adapters.mcp_server import tool_shell
+    from atelier.gateway.adapters.mcp_server import tool_bash
 
     results: list[CaseResult] = []
     for case in SHELL_CASES:
@@ -496,7 +443,7 @@ def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = No
             custom_assert=case.custom_assert,
             baseline_tokens=case.baseline_tokens,
         )
-        results.append(run_case(patched_case, tool_shell))
+        results.append(run_case(patched_case, tool_bash))
         if progress is not None:
             progress.step("running MCP tool benchmark", current=f"shell {case.label}")
     return _tool_report("shell", results)
@@ -740,7 +687,6 @@ def _suite_aliases() -> dict[str, list[str]]:
 def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
     specs: list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]] = [
         ("context", len(CONTEXT_CASES), _run_context_suite),
-        ("route", len(ROUTE_CASES), _run_route_suite),
         (
             "rescue",
             len(RESCUE_CASES),
@@ -761,7 +707,10 @@ def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], To
         ("compact", len(COMPACT_CASES), _run_compact_suite),
         ("shell", len(SHELL_CASES), _run_shell_suite),
     ]
+    # "search" is already a top-level suite (SEARCH_CASES); skip it here to avoid duplicates.
     for tool_name in sorted(CODE_TOOL_CASES):
+        if tool_name == "search":
+            continue
         specs.append((tool_name, len(CODE_TOOL_CASES[tool_name]), _code_suite_runner(tool_name)))
     return specs
 
@@ -858,7 +807,7 @@ def _render_shard_progress(
     if not statuses:
         return ""
     completed_cases = sum(_to_int(status.get("done")) for status in statuses)
-    parts = [f"shards {completed_shards}/{total_shards} | " f"cases {completed_cases}/{total_cases}"]
+    parts = [f"shards {completed_shards}/{total_shards} | cases {completed_cases}/{total_cases}"]
     for status in statuses:
         suite_names = ",".join(status.get("suite_names") or [])
         current = str(status.get("current") or "").strip()

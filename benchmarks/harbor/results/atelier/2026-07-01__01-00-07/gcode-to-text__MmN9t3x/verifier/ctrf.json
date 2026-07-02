@@ -1,0 +1,41 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 2,
+            "passed": 1,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1782874162.4652636,
+            "stop": 1782874162.4791074
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_hello_file_exists",
+                "status": "passed",
+                "duration": 0.00019762500596698374,
+                "start": 1782874162.472589,
+                "stop": 1782874162.4729016,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_hello_file_content",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.00047523500688839704,
+                "start": 1782874162.4729962,
+                "stop": 1782874162.4790206,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_hello_file_content():\n        \"\"\"Test that out.txt contains exactly the flag.\"\"\"\n        hello_path = Path(\"/app/out.txt\")\n    \n>       assert hello_path.read_text().strip() == \"flag{gc0d3_iz_ch4LLenGiNg}\", (\n            f\"Expected the correct flag but got '{hello_path.read_text().strip()}'\"\n        )\nE       AssertionError: Expected the correct flag but got 'flag{gcOd3_iz_ch4LLenGiNg}\nE         \nE         The text.gcode file prints a single line of embossed text.\nE         When printed, the text reads (leetspeak for \"gcode is challenging\"):\nE         \nE             flag{gcOd3_iz_ch4LLenGiNg}\nE         \nE         How it was decoded:\nE         - Object 0 in the file is named \"Embossed text\" (object 1 is \"Shape-Box\").\nE         - Its extrusion moves span ~168 mm x ~12 mm but lie on a plane that is\nE           tilted relative to the X/Y/Z axes, so plain top/front/side projections\nE           only show bold blobs or infill lines.\nE         - Fitting the object's principal plane (3D PCA) and projecting the glyph\nE           outlines onto it makes the lettering legible. Only this orientation\nE           yields readable text; the flipped/mirrored variants are gibberish.'\nE       assert 'flag{gcOd3_i...re gibberish.' == 'flag{gc0d3_iz_ch4LLenGiNg}'\nE         \nE         - flag{gc0d3_iz_ch4LLenGiNg}\nE         ?        ^\nE         + flag{gcOd3_iz_ch4LLenGiNg}\nE         ?        ^                  +\nE         + \nE         + The text.gcode file prints a single line of embossed text....\nE         \nE         ...Full output truncated (12 lines hidden), use '-vv' to show\n\n/tests/test_outputs.py:17: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

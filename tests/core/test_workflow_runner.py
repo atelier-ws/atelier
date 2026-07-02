@@ -224,9 +224,9 @@ def test_workflow_runner_pauses_before_review_gated_execution_and_resumes(tmp_pa
     calls: list[tuple[str, Any]] = []
 
     runner = WorkflowRunner(
-        agent_executor=lambda step, prompt, context: (calls.append((step.step_id, prompt)) or {"output": "plan ready"}),
+        agent_executor=lambda step, prompt, context: calls.append((step.step_id, prompt)) or {"output": "plan ready"},
         tool_executor=lambda step, args, context: {"output": "unused"},
-        shell_executor=lambda step, command, forked: (calls.append((step.step_id, command)) or {"output": "applied"}),
+        shell_executor=lambda step, command, forked: calls.append((step.step_id, command)) or {"output": "applied"},
     )
 
     first = runner.run(validated, context_state=state, ledger=ledger)

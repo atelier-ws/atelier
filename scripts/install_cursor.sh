@@ -69,7 +69,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -79,8 +79,8 @@ MCP_ENTRY=$(cat <<JSON
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "cursor"],
+      "command": "atelier",
+      "args": ["mcp", "--host", "cursor"],
       "alwaysAllow": ["code","compact","context","edit","grep","memory","read","rescue","route","search","shell","sql","trace","verify"]
     }
   }
@@ -120,7 +120,7 @@ fi
 info "Found Cursor config dir"
 
 # ---- merge MCP config -------------------------------------------------------
-run "mkdir -p '$(dirname "$MCP_FILE")'"
+run "mkdir -p $(printf %q "$(dirname "$MCP_FILE")")"
 
 if [ -f "$MCP_FILE" ]; then
     backup_file "$MCP_FILE"
@@ -140,7 +140,7 @@ else:
 existing.setdefault('mcpServers', {}).update({
     'atelier': {
         'type': 'stdio',
-        'command': 'atelier-mcp',
+        'command': 'atelier',
         'args': ['--host', 'cursor'],
         'alwaysAllow': ['code','compact','context','edit','grep','memory','read','rescue','route','search','shell','sql','trace','verify'],
     }
@@ -163,11 +163,11 @@ if $WORKSPACE_SET; then
     if $DRY_RUN; then
         echo "  [dry-run] copy Cursor rules into $RULES_DIR"
     else
-        run "mkdir -p '$RULES_DIR'"
+        run "mkdir -p $(printf %q "$RULES_DIR")"
         if compgen -G "${CURSOR_RULES_SRC_DIR}/*.mdc" > /dev/null; then
             for src in "${CURSOR_RULES_SRC_DIR}"/*.mdc; do
                 dest="${RULES_DIR}/$(basename "$src")"
-                run "cp '$src' '$dest'"
+                run "cp $(printf %q "$src") $(printf %q "$dest")"
                 info "installed rule -> $dest"
             done
         else
@@ -217,10 +217,10 @@ if $WORKSPACE_SET; then
     fi
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if [ "$VFAIL" -ne 0 ]; then

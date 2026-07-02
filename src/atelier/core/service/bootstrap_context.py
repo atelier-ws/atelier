@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict
 from atelier.core.capabilities.code_context import CodeContextEngine
 from atelier.core.capabilities.repo_map.graph import iter_source_files
 from atelier.core.foundation.memory_models import MemoryBlock
-from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.memory_store import MemoryStore
 from atelier.infra.tree_sitter.tags import detect_language
 
@@ -130,7 +129,15 @@ def render_bootstrap_context(memory_store: MemoryStore, repo_id: str) -> tuple[s
 
 def build_bootstrap_plan(repo_root: str | Path) -> BootstrapPlan:
     root = Path(repo_root).resolve()
-    engine = CodeContextEngine(root)
+    # One-shot planning call (invoked from the background bootstrap job and
+    # benchmark preseeding, never a long-lived interactive session): no need
+    # for a live autosync file-watcher thread, and leaving one running past
+    # this function's return leaks a watchdog.Observer that has been
+    # observed thrashing (inotify watch-limit exhaustion -> polling fallback
+    # -> native tree-sitter Node objects dropped cross-thread) for the rest
+    # of the process's life. Same reasoning as the CLI's one-shot engine
+    # (gateway/cli/commands/code.py's _code_context_engine).
+    engine = CodeContextEngine(root, autosync_enabled=False)
     engine.index_repo()
     repo_map = engine.repo_map(budget_tokens=1200)
     outline_payload = engine.file_outline(limit=400, auto_index=False)
@@ -314,28 +321,11 @@ def _render_hot_symbols(ranked_files: list[str], files: dict[str, list[dict[str,
 def _render_language_mix(repo_root: Path, repo_id: str) -> str:
     files = iter_source_files(repo_root)
     languages = Counter((detect_language(path) or "unknown") for path in files)
-    scip = ScipIndexer(repo_root, repo_id)
-    artifacts = [artifact.path.name for artifact in scip.discover_artifacts()]
-    statuses = scip.availability_statuses()
     lines = ["languages:"]
     for language, count in sorted(languages.items(), key=lambda item: (-item[1], item[0])):
         lines.append(f"- {language}: {count} files")
     if not languages:
         lines.append("- none")
-    lines.append("")
-    lines.append("scip artifacts:")
-    if artifacts:
-        lines.extend(f"- {artifact}" for artifact in artifacts)
-    else:
-        lines.append("- none discovered")
-    lines.append("")
-    lines.append("available scip binaries:")
-    if statuses:
-        for name, status in statuses.items():
-            detail = status.binary.name if status.binary is not None else status.message
-            lines.append(f"- {name}: {status.status} ({detail})")
-    else:
-        lines.append("- none discovered")
     return "\n".join(lines).strip()
 
 

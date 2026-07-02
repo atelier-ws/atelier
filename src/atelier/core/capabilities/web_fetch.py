@@ -1,22 +1,30 @@
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
+import functools
 import hashlib
+import io
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
 
+import aiohttp
 import urllib3
+from aiohttp.abc import AbstractResolver, ResolveResult
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3.poolmanager import SSL_KEYWORDS
 from urllib3.response import BaseHTTPResponse
 from urllib3.util.connection import _set_socket_options
 
@@ -28,6 +36,17 @@ DEFAULT_TIMEOUT_S = 20.0
 DEFAULT_MAX_CHARS = 12_000
 MAX_MAX_CHARS = 100_000
 MAX_BODY_BYTES = 2_000_000
+# PDFs are inherently larger than HTML/text pages (embedded fonts, images) and the
+# critical xref/trailer structure lives at the END of the file -- truncating at the
+# generic text-page cap corrupts the file before pypdf ever gets to read it. A real
+# ~100-page model system card with embedded charts runs 20MB+ (observed: 20.6MB).
+# This is NOT unbounded: web_fetch runs inside a long-lived shared gateway process,
+# so one huge/malicious URL reading without limit can hang or OOM it for every other
+# session, not just the caller's. 200MB comfortably covers any legitimate paper,
+# manual, or system card while still bounding the worst case. If a real PDF ever
+# exceeds this, _render_content raises a clear "too large" error instead of feeding
+# pypdf a truncated (and therefore unparseable) file.
+MAX_PDF_BODY_BYTES = 200_000_000
 MAX_REDIRECTS = 5
 FETCH_CACHE_TTL_S = 300.0
 FETCH_CACHE_MAX_ITEMS = 128
@@ -35,7 +54,7 @@ TRANSFORM_CACHE_MAX_ITEMS = 128
 DNS_TIMEOUT_S = 10.0
 _DNS_MAX_WORKERS = 4
 
-DEFAULT_USER_AGENT = "Atelier web_fetch/0.2 (+https://github.com/atelier-runtime/atelier)"
+DEFAULT_USER_AGENT = "Atelier web_fetch/0.2 (+https://github.com/atelier-ws/atelier)"
 
 _MARKDOWN_TYPES = {"text/markdown", "text/x-markdown", "text/vnd.daringfireball.markdown"}
 _HTML_TYPES = {"text/html", "application/xhtml+xml"}
@@ -47,6 +66,7 @@ _TEXT_TYPES = {
     *_MARKDOWN_TYPES,
     *_HTML_TYPES,
 }
+_PDF_TYPES = {"application/pdf"}
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _NON_CONTENT_HTML_RE = re.compile(
@@ -68,10 +88,10 @@ _DNS_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.Thread
 
 
 def _resolve_host_safe(hostname: str, timeout: float) -> str:
-    """Resolve *hostname* to an IP via DNS with a timeout and public-IP validation.
+    """Resolve *hostname* with a timeout and reject unsafe network destinations.
 
-    Returns the first resolved public IP address string.
-    Raises ``ValueError`` on resolution failure, timeout, or non-public IP.
+    Public and loopback addresses are allowed. Private-network, link-local, and
+    otherwise non-routable addresses are rejected.
     """
     try:
         ascii_host = hostname.encode("idna").decode("ascii")
@@ -89,13 +109,20 @@ def _resolve_host_safe(hostname: str, timeout: float) -> str:
         raise ValueError(f"web_fetch could not resolve host: {hostname}")
     for info in infos:
         raw_ip = str(info[4][0])
-        _assert_public_ip(raw_ip)
+        _assert_fetchable_ip(raw_ip)
     return str(infos[0][4][0])
 
 
-def _assert_public_ip(raw_ip: str) -> None:
+_CGNAT_RANGE = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _assert_fetchable_ip(raw_ip: str) -> None:
     ip = ipaddress.ip_address(raw_ip)
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+    if ip.is_loopback:
+        return
+    if ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        raise ValueError(f"web_fetch blocked private/local network IP: {raw_ip}")
+    if ip.version == 4 and ip in _CGNAT_RANGE:
         raise ValueError(f"web_fetch blocked private/local network IP: {raw_ip}")
 
 
@@ -105,14 +132,19 @@ def _assert_public_ip(raw_ip: str) -> None:
 
 
 class _ValidatingHTTPConnection(HTTPConnection):
-    """HTTPConnection that resolves DNS with timeout and rejects private IPs."""
+    """HTTPConnection that resolves DNS with timeout and rejects unsafe IPs."""
 
     def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
-        if not _is_ip_address(host):
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+        else:
             host = _resolve_host_safe(host, timeout=timeout)
-        self._dns_host = host
+        # Connect the socket to the validated IP via a local variable only. Do NOT
+        # assign self._dns_host: urllib3 backs the self.host property (used for the
+        # outgoing Host header) with _dns_host, so overwriting it with the IP would
+        # send `Host: <ip>` and break name-based virtual hosting.
         conn = socket.create_connection(
             (host, self.port),
             self.timeout,
@@ -123,14 +155,21 @@ class _ValidatingHTTPConnection(HTTPConnection):
 
 
 class _ValidatingHTTPSConnection(HTTPSConnection):
-    """HTTPSConnection that resolves DNS with timeout and rejects private IPs."""
+    """HTTPSConnection that resolves DNS with timeout and rejects unsafe IPs."""
 
     def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
-        if not _is_ip_address(host):
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+        else:
             host = _resolve_host_safe(host, timeout=timeout)
-        self._dns_host = host
+        # Connect the socket to the validated IP via a local variable only. Do NOT
+        # assign self._dns_host: urllib3 derives the TLS server_hostname from
+        # self.host (HTTPSConnection.connect: `server_hostname = self.host`), and the
+        # self.host property is backed by _dns_host. Overwriting it with the IP makes
+        # TLS verify the certificate against the IP -> CERTIFICATE_VERIFY_FAILED
+        # (IP address mismatch). Keep the hostname so SNI + cert matching are correct.
         conn = socket.create_connection(
             (host, self.port),
             self.timeout,
@@ -165,7 +204,14 @@ class _ValidatingPoolManager(urllib3.PoolManager):
             pool_cls = _ValidatingHTTPSConnectionPool
         else:
             pool_cls = self.pool_classes_by_scheme[scheme]
-        return pool_cls(host, port, **self.connection_pool_kw)
+
+        pool_kwargs = (self.connection_pool_kw if request_context is None else request_context).copy()
+        for key in ("scheme", "host", "port"):
+            pool_kwargs.pop(key, None)
+        if scheme == "http":
+            for key in SSL_KEYWORDS:
+                pool_kwargs.pop(key, None)
+        return pool_cls(host, port, **pool_kwargs)
 
 
 _HTTP = _ValidatingPoolManager(num_pools=16, maxsize=16, retries=False, cert_reqs="CERT_REQUIRED")
@@ -249,19 +295,139 @@ def fetch_url(
     max_chars: int = DEFAULT_MAX_CHARS,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     include_meta: bool = False,
+    query: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch a public URL and return coding-agent-friendly content."""
+    """Fetch an HTTP(S) URL and return coding-agent-friendly content."""
     requested_format = _normalize_output_format(output_format)
     char_limit = _clamp_int(max_chars, 1_000, MAX_MAX_CHARS)
     timeout = float(min(max(float(timeout_s), 1.0), 60.0))
     accept = _accept_header(requested_format)
     raw = _fetch_with_cache(url.strip(), accept=accept, timeout_s=timeout)
     rendered = _render_content(raw, requested_format=requested_format)
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta, query=query)
+
+
+def _spill_enabled() -> bool:
+    """Mirrors the MCP dispatch layer's T7 kill switch (``ATELIER_TOOL_OUTPUT_SPILL``)."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _truncate_with_spill(content: str, char_limit: int) -> str:
+    """Cut *content* to ``char_limit`` without discarding the overflow.
+
+    A page rendered well past ``char_limit`` (a long table, a big doc) used to
+    have everything past the cut silently dropped -- there was no way to reach
+    row 50 of a 142-row table short of raising ``max_chars`` (itself capped at
+    ``MAX_MAX_CHARS``). Instead, persist the FULL rendered content to the shared
+    T7 spill store (same store bash/read/code_search use) and name the path in
+    the truncation notice, so ``read <path>`` (with a ``range=`` to page through
+    it) recovers the rest. Falls back to a bare notice if spill is disabled or
+    the write fails.
+    """
+    head = content[:char_limit].rstrip()
+    if _spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(content, tool_name="web_fetch", kind="original")
+        if record is not None:
+            return (
+                f"{head}\n\n[truncated to {char_limit} of {len(content)} chars; "
+                f'full page: read {record.path} (range="L1-" to page through it)]'
+            )
+    return f"{head}\n\n[truncated to {char_limit} of {len(content)} chars]"
+
+
+_TABLE_ROW_RE = re.compile(r"^\s*\|")
+
+
+def _chunk_markdown(content: str) -> list[tuple[str, str | None]]:
+    """Split rendered markdown into ``(text, pin)`` chunks for relevance ranking.
+
+    Blank-line-delimited blocks are the base unit. A block that's entirely
+    table rows (>=3 lines, all starting with ``|``) is split one row per
+    chunk, pinned to its header+separator (the first two lines) so pulling in
+    a single matched row deep in a 142-row table still shows column labels.
+    An oversized non-table block is split into fixed-size line groups so one
+    giant section (e.g. a long code block) can't swallow the whole budget as
+    a single, unsplittable chunk.
+    """
+    chunks: list[tuple[str, str | None]] = []
+    for block in re.split(r"\n{2,}", content):
+        if not block.strip():
+            continue
+        lines = block.splitlines()
+        non_blank = [ln for ln in lines if ln.strip()]
+        if len(non_blank) >= 3 and all(_TABLE_ROW_RE.match(ln) for ln in non_blank):
+            header = "\n".join(lines[:2])
+            for row in lines[2:]:
+                if row.strip():
+                    chunks.append((row, header))
+            continue
+        if len(block) > 2000:
+            for i in range(0, len(lines), 20):
+                group = "\n".join(lines[i : i + 20])
+                if group.strip():
+                    chunks.append((group, None))
+            continue
+        chunks.append((block, None))
+    return chunks
+
+
+def _truncate_with_relevance(content: str, char_limit: int, query: str) -> str:
+    """Query-gated alternative to the blind prefix cut.
+
+    Ranks chunks of the page by relevance to *query* (semantic if a real
+    embedder is configured, else deterministic lexical term-coverage — see
+    ``tool_supervision.relevance_ranking``) and keeps the highest-scoring ones
+    in original order, within ``char_limit``. The full page is still spilled
+    regardless, so a bad ranking is recoverable, not a dead end: grep the
+    named path for another term, or ``range=`` through it directly.
+    """
+    from atelier.core.capabilities.tool_supervision.relevance_ranking import rank_and_select
+
+    chunks = _chunk_markdown(content)
+    if not chunks:
+        return _truncate_with_spill(content, char_limit)
+    assembled, meta = rank_and_select(chunks, query=query, char_budget=max(256, char_limit - 300))
+
+    pointer = ""
+    if _spill_enabled():
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        record = tool_output_spill.spill(content, tool_name="web_fetch", kind="original")
+        if record is not None:
+            pointer = (
+                f" full page ({len(content)} chars): read {record.path} "
+                f'(grep it for other terms, or range="L1-" to page through it)'
+            )
+    return (
+        f"{assembled}\n\n[showing {meta['chunks_kept']}/{meta['chunks_total']} sections matching "
+        f'"{query}" ({meta["tier"]}) of {len(content)} total chars;{pointer}]'
+    )
+
+
+def _finish_fetch(
+    raw: _RawFetchResult,
+    *,
+    rendered: dict[str, str],
+    char_limit: int,
+    include_meta: bool,
+    query: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the public fetch payload from a raw result + rendered content.
+
+    Shared by the synchronous ``fetch_url`` and the async ``async_fetch_url`` so
+    both return a byte-identical payload shape for the same inputs.
+    """
     content = rendered["content"]
-    truncated = False
-    if len(content) > char_limit:
-        content = content[:char_limit].rstrip() + "\n\n[truncated]"
-        truncated = True
+    truncated = len(content) > char_limit
+    if truncated:
+        content = (
+            _truncate_with_relevance(content, char_limit, query) if query else _truncate_with_spill(content, char_limit)
+        )
+    source_path = rendered.get("source_path")
+    if source_path:
+        content = f"{content}\n\n[downloaded PDF: {source_path}"
 
     payload: dict[str, Any] = {"content": content, "format": rendered["format"]}
     tokens_saved = _estimate_tokens_saved(raw, content)
@@ -278,6 +444,196 @@ def fetch_url(
             }
         )
     return payload
+
+
+# --------------------------------------------------------------------------- #
+# Async fetch path (Phase 3) — aiohttp with the SAME SSRF guard.              #
+# A custom resolver validates every resolved IP and returns ONLY validated    #
+# records, so aiohttp connects to exactly those addresses (no second          #
+# resolution) — closing the DNS-rebinding TOCTOU. The original hostname is     #
+# preserved for TLS SNI + certificate verification + the Host header.         #
+# --------------------------------------------------------------------------- #
+
+
+class _ValidatingResolver(AbstractResolver):
+    """aiohttp resolver that applies web_fetch's SSRF guard at resolve time."""
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[ResolveResult]:
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+            return [
+                ResolveResult(
+                    hostname=host,
+                    host=host,
+                    port=port,
+                    family=int(family),
+                    proto=0,
+                    flags=int(socket.AI_NUMERICHOST),
+                )
+            ]
+        loop = asyncio.get_running_loop()
+        try:
+            infos = await asyncio.wait_for(
+                loop.getaddrinfo(host, port, family=family, type=socket.SOCK_STREAM),
+                timeout=DNS_TIMEOUT_S,
+            )
+        except TimeoutError:
+            raise ValueError(f"web_fetch DNS resolution timed out for: {host}") from None
+        except OSError as exc:
+            raise ValueError(f"web_fetch could not resolve host: {host}") from exc
+        results: list[ResolveResult] = []
+        for fam, _type, _proto, _canon, sockaddr in infos:
+            ip = str(sockaddr[0])
+            _assert_fetchable_ip(ip)  # raises ValueError on a blocked address
+            results.append(
+                ResolveResult(
+                    hostname=host,
+                    host=ip,
+                    port=int(sockaddr[1]) if len(sockaddr) > 1 else port,
+                    family=int(fam),
+                    proto=0,
+                    flags=int(socket.AI_NUMERICHOST),
+                )
+            )
+        if not results:
+            raise ValueError(f"web_fetch could not resolve host: {host}")
+        return results
+
+    async def close(self) -> None:
+        return None
+
+
+async def _async_read_limited_body(
+    response: aiohttp.ClientResponse, *, max_bytes: int = MAX_BODY_BYTES
+) -> tuple[bytes, bool]:
+    chunks: list[bytes] = []
+    total = 0
+    truncated = False
+    async for chunk in response.content.iter_chunked(65_536):
+        if not chunk:
+            continue
+        remaining = max_bytes - total
+        if remaining <= 0:
+            truncated = True
+            break
+        if len(chunk) > remaining:
+            chunks.append(chunk[:remaining])
+            truncated = True
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks), truncated
+
+
+async def _async_fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResult:
+    current_url = _validate_public_url(url)
+    headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": accept}
+    timeout = aiohttp.ClientTimeout(connect=timeout_s, sock_connect=timeout_s, sock_read=timeout_s)
+    connector = aiohttp.TCPConnector(
+        resolver=_ValidatingResolver(),
+        use_dns_cache=False,  # force the validating resolver on every connect
+        family=socket.AF_UNSPEC,  # allow IPv4 + IPv6
+        limit=8,
+    )
+    async with aiohttp.ClientSession(connector=connector) as session:
+        for _redirect_index in range(MAX_REDIRECTS + 1):
+            # aiohttp bypasses the resolver for a bare-IP host, so validate a
+            # literal-IP target here (mirrors urllib3's _new_conn). Hostnames
+            # are validated by _ValidatingResolver at connect time. Re-checked
+            # every hop so a redirect to a private IP is caught too.
+            literal_host = urlparse(current_url).hostname or ""
+            if _is_ip_address(literal_host):
+                _assert_fetchable_ip(literal_host)
+            try:
+                async with session.get(
+                    current_url,
+                    headers=headers,
+                    timeout=timeout,
+                    allow_redirects=False,
+                ) as response:
+                    status = int(response.status)
+                    location = response.headers.get("location")
+                    if status in _REDIRECT_STATUSES and location:
+                        current_url = _validate_public_url(urljoin(current_url, location))
+                        continue
+                    if status in _REDIRECT_STATUSES:
+                        raise ValueError(f"web_fetch failed: HTTP {status} redirect without Location")
+                    content_type = response.headers.get("content-type", "") or ""
+                    media_type = _media_type(content_type)
+                    if media_type not in _TEXT_TYPES and media_type not in _PDF_TYPES:
+                        raise ValueError(f"web_fetch unsupported content type: {media_type or 'unknown'}")
+                    max_bytes = MAX_PDF_BODY_BYTES if media_type in _PDF_TYPES else MAX_BODY_BYTES
+                    body, truncated_body = await _async_read_limited_body(response, max_bytes=max_bytes)
+                    if status < 200 or status >= 300:
+                        raise ValueError(f"web_fetch failed: HTTP {status}")
+                    return _RawFetchResult(
+                        url=url,
+                        final_url=current_url,
+                        status=status,
+                        content_type=content_type,
+                        headers={str(k).lower(): str(v) for k, v in response.headers.items()},
+                        body=body,
+                        truncated_body=truncated_body,
+                    )
+            except aiohttp.ClientError as exc:
+                # Surface an SSRF block / resolve failure (ValueError raised by the
+                # resolver) as itself; wrap genuine transport errors.
+                cause = exc.__cause__ or exc.__context__
+                if isinstance(cause, ValueError):
+                    raise cause from None
+                raise RuntimeError(f"web_fetch failed: {exc}") from exc
+    raise ValueError("web_fetch failed: too many redirects")
+
+
+async def _async_fetch_with_cache(url: str, *, accept: str, timeout_s: float) -> _RawFetchResult:
+    cache_key = (url, accept)
+    now = time.monotonic()
+    with _FETCH_CACHE_LOCK:
+        cached = _FETCH_CACHE.get(cache_key)
+        if cached is not None and cached.expires_at > now:
+            _FETCH_CACHE.move_to_end(cache_key)
+            return cached.value
+        if cached is not None:
+            _FETCH_CACHE.pop(cache_key, None)
+
+    result = await _async_fetch_uncached(url, accept=accept, timeout_s=timeout_s)
+    with _FETCH_CACHE_LOCK:
+        _FETCH_CACHE[cache_key] = _FetchCacheEntry(expires_at=now + FETCH_CACHE_TTL_S, value=result)
+        _FETCH_CACHE.move_to_end(cache_key)
+        while len(_FETCH_CACHE) > FETCH_CACHE_MAX_ITEMS:
+            _FETCH_CACHE.popitem(last=False)
+    return result
+
+
+async def async_fetch_url(
+    url: str,
+    *,
+    output_format: OutputFormat = "auto",
+    max_chars: int = DEFAULT_MAX_CHARS,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    include_meta: bool = False,
+    query: str | None = None,
+) -> dict[str, Any]:
+    """Async twin of :func:`fetch_url` — identical SSRF guard and output shape.
+
+    Network I/O runs on the caller's event loop; the CPU-heavy HTML->Markdown
+    render is offloaded to the default executor so it never blocks the loop.
+    """
+    requested_format = _normalize_output_format(output_format)
+    char_limit = _clamp_int(max_chars, 1_000, MAX_MAX_CHARS)
+    timeout = float(min(max(float(timeout_s), 1.0), 60.0))
+    accept = _accept_header(requested_format)
+    raw = await _async_fetch_with_cache(url.strip(), accept=accept, timeout_s=timeout)
+    loop = asyncio.get_running_loop()
+    rendered = await loop.run_in_executor(
+        None, functools.partial(_render_content, raw, requested_format=requested_format)
+    )
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta, query=query)
 
 
 def _normalize_output_format(output_format: str) -> OutputFormat:
@@ -350,11 +706,12 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
                 continue
             if status in _REDIRECT_STATUSES:
                 raise ValueError(f"web_fetch failed: HTTP {status} redirect without Location")
-            body, truncated_body = _read_limited_body(response)
             content_type = response.headers.get("content-type", "") or ""
             media_type = _media_type(content_type)
-            if media_type not in _TEXT_TYPES:
+            if media_type not in _TEXT_TYPES and media_type not in _PDF_TYPES:
                 raise ValueError(f"web_fetch unsupported content type: {media_type or 'unknown'}")
+            max_bytes = MAX_PDF_BODY_BYTES if media_type in _PDF_TYPES else MAX_BODY_BYTES
+            body, truncated_body = _read_limited_body(response, max_bytes=max_bytes)
             if status < 200 or status >= 300:
                 raise ValueError(f"web_fetch failed: HTTP {status}")
             return _RawFetchResult(
@@ -371,14 +728,14 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
     raise ValueError("web_fetch failed: too many redirects")
 
 
-def _read_limited_body(response: BaseHTTPResponse) -> tuple[bytes, bool]:
+def _read_limited_body(response: BaseHTTPResponse, *, max_bytes: int = MAX_BODY_BYTES) -> tuple[bytes, bool]:
     chunks: list[bytes] = []
     total = 0
     truncated = False
     for chunk in response.stream(amt=65_536, decode_content=True):
         if not chunk:
             continue
-        remaining = MAX_BODY_BYTES - total
+        remaining = max_bytes - total
         if remaining <= 0:
             truncated = True
             break
@@ -402,6 +759,10 @@ def _validate_public_url(url: str) -> str:
         raise ValueError("web_fetch URL must include a hostname")
     if parsed.username or parsed.password:
         raise ValueError("web_fetch does not allow embedded credentials")
+    try:
+        _ = parsed.port
+    except ValueError:
+        raise ValueError("web_fetch URL has a malformed port") from None
     return url
 
 
@@ -420,6 +781,21 @@ def _decode_body(body: bytes, content_type: str) -> str:
 
 def _render_content(raw: _RawFetchResult, *, requested_format: OutputFormat) -> dict[str, str]:
     media_type = _media_type(raw.content_type)
+    if media_type in _PDF_TYPES:
+        if raw.truncated_body:
+            cap_mb = MAX_PDF_BODY_BYTES // 1_000_000
+            raise ValueError(
+                f"web_fetch: PDF exceeds the {cap_mb}MB fetch cap and was truncated mid-download; "
+                "a truncated PDF has no valid trailer and can't be parsed. Fetch a smaller "
+                "page range, an HTML/text version of the same document, or ask for a raise to "
+                "MAX_PDF_BODY_BYTES if this document is legitimately larger."
+            )
+        # Binary format -- must not go through _decode_body's text charset decode.
+        rendered: dict[str, str] = {"content": _pdf_to_text(raw.body), "format": "text"}
+        pdf_record = _spill_original_pdf(raw.body)
+        if pdf_record is not None:
+            rendered["source_path"] = str(pdf_record.path)
+        return rendered
     decoded = _decode_body(raw.body, raw.content_type)
     if media_type in _MARKDOWN_TYPES:
         markdown = clean_markdown_for_agent(decoded)
@@ -427,11 +803,9 @@ def _render_content(raw: _RawFetchResult, *, requested_format: OutputFormat) -> 
     if media_type in _HTML_TYPES:
         if requested_format == "html":
             return {"content": _sanitize_html(decoded, base_url=raw.final_url), "format": "html"}
-        markdown = html_to_markdown_for_agent(decoded, base_url=raw.final_url)
+        markdown = _trafilatura_markdown(decoded, base_url=raw.final_url)
         if _markdown_looks_weak(markdown, decoded):
-            fallback = _trafilatura_markdown(decoded, base_url=raw.final_url)
-            if fallback:
-                markdown = fallback
+            markdown = html_to_markdown_for_agent(decoded, base_url=raw.final_url)
         return _format_markdown(markdown, requested_format=requested_format)
     if media_type == "application/json":
         return {"content": _format_json(decoded), "format": "text" if requested_format == "text" else "markdown"}
@@ -498,6 +872,12 @@ def _remove_noise(soup: Any) -> None:
     ):
         tag.decompose()
     for tag in soup.find_all(True):
+        # decompose() below also tears down a tag's descendants (setting their
+        # .attrs to None), but find_all(True) already materialized those
+        # descendants into this list. Skip any a prior iteration decomposed --
+        # Tag.get() on a None .attrs raises AttributeError.
+        if tag.attrs is None:
+            continue
         style = str(tag.get("style") or "").lower()
         if (
             tag.has_attr("hidden")
@@ -622,10 +1002,8 @@ def _sanitize_html(html: str, *, base_url: str) -> str:
 
 
 def _trafilatura_markdown(html: str, *, base_url: str) -> str:
-    try:
-        import trafilatura
-    except ImportError:
-        return ""
+    import trafilatura
+
     try:
         extracted = trafilatura.extract(
             html,
@@ -650,6 +1028,136 @@ def _markdown_looks_weak(markdown: str, html: str) -> bool:
         return True
     code_or_table = markdown.count("```") + markdown.count("|")
     return code_or_table == 0 and len(markdown) < len(html) * 0.03
+
+
+def _spill_original_pdf(body: bytes) -> Any:
+    """Persist the raw downloaded PDF bytes so an agent can open the real file.
+
+    Extraction is text-only and loses charts/scanned pages/complex layout;
+    stashing the original next to the extracted text gives a fallback the
+    agent (or a human) can open directly. Gated by the same T7 spill kill
+    switch as text overflow spilling. Best-effort: returns ``None`` on any
+    failure so a PDF still renders even if the spill write doesn't happen.
+    """
+    if not _spill_enabled():
+        return None
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    return tool_output_spill.spill_bytes(body, tool_name="web_fetch", kind="original", suffix=".pdf")
+
+
+def _table_to_markdown(table: list[list[Any]]) -> str:
+    """Render a pdfplumber-extracted table (rows of cells) as a Markdown table."""
+    if not table or not any(table):
+        return ""
+    rows = [[("" if cell is None else str(cell).strip().replace("\n", " ")) for cell in row] for row in table]
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    header, *body = rows
+    lines = ["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * width) + " |"]
+    lines += ["| " + " | ".join(row) + " |" for row in body]
+    return "\n".join(lines)
+
+
+# Hard cap on embedded images extracted to individual files per PDF. Some decks
+# embed hundreds of tiny decorative images; without a cap a single pathological
+# document could spill hundreds of files and dominate fetch latency.
+_MAX_PDF_IMAGES_EXTRACTED = 200
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".gif"}
+
+
+def _spill_pdf_image(data: bytes, *, suffix: str) -> Any:
+    """Persist one embedded PDF image and return its spill record (or None)."""
+    if not _spill_enabled():
+        return None
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    normalized_suffix = suffix if suffix.lower() in _IMAGE_SUFFIXES else ".bin"
+    return tool_output_spill.spill_bytes(data, tool_name="web_fetch", kind="pdf-image", suffix=normalized_suffix)
+
+
+def _pdf_to_text(body: bytes) -> str:
+    """Extract a PDF's content as text, preserving as much information as possible.
+
+    Uses pdfplumber (layout-aware, built on pdfminer.six) for prose + tables --
+    naive stream-order extraction jumbles multi-column pages and completely
+    discards table structure. Detected tables render as Markdown tables (may
+    duplicate a table's cell text that also appears jumbled in the prose --
+    overinclusion is the right default when the goal is not losing information).
+
+    Embedded images/figures are extracted via pypdf (its image reconstruction
+    handles more embedded encodings than pdfplumber exposes) and each spilled
+    to its OWN small file, with an inline pointer at the point in the text
+    where the image appeared -- so an agent that needs one chart can open that
+    one file instead of the whole PDF. Capped at ``_MAX_PDF_IMAGES_EXTRACTED``;
+    remaining images past the cap are just counted.
+
+    Lazily imported like the other transform libraries in this module
+    (markdownify, trafilatura, bs4) so the dependency cost is only paid when a
+    PDF is actually fetched.
+    """
+    import pdfplumber
+    from pypdf import PdfReader
+
+    images_extracted = 0
+    images_capped = 0
+
+    def _image_notes(images: list[Any], page_number: int) -> str:
+        nonlocal images_extracted, images_capped
+        notes: list[str] = []
+        for image in images:
+            if images_extracted >= _MAX_PDF_IMAGES_EXTRACTED:
+                images_capped += 1
+                continue
+            try:
+                suffix = Path(str(image.name)).suffix
+                record = _spill_pdf_image(image.data, suffix=suffix)
+            except (OSError, ValueError, AttributeError):
+                record = None
+            if record is not None:
+                notes.append(f"[image on page {page_number}: {record.path}]")
+                images_extracted += 1
+            else:
+                notes.append(f"[page {page_number} has an embedded image not represented as text]")
+        return "\n".join(notes)
+
+    try:
+        pages_out: list[str] = []
+        try:
+            pypdf_pages = list(PdfReader(io.BytesIO(body)).pages)
+        except (OSError, ValueError):  # image extraction is a bonus -- text/tables must not fail because of it
+            pypdf_pages = []
+        with pdfplumber.open(io.BytesIO(body)) as pdf:
+            for i, page in enumerate(pdf.pages):
+                parts: list[str] = []
+                text = (page.extract_text() or "").strip()
+                if text:
+                    parts.append(text)
+                for table in page.extract_tables():
+                    markdown_table = _table_to_markdown(table)
+                    if markdown_table:
+                        parts.append(markdown_table)
+                try:
+                    page_images = pypdf_pages[i].images if i < len(pypdf_pages) else []
+                except (IndexError, AttributeError):
+                    page_images = []
+                if page_images:
+                    note = _image_notes(list(page_images), page.page_number)
+                    if note:
+                        parts.append(note)
+                if parts:
+                    pages_out.append("\n\n".join(parts))
+    except Exception as exc:  # pdfplumber/pdfminer raise a variety of error types on malformed input
+        raise ValueError(f"web_fetch: failed to extract PDF text: {exc}") from exc
+    text = "\n\n".join(page for page in pages_out if page.strip())
+    if images_capped:
+        text += (
+            f"\n\n[{images_capped} additional embedded image(s) not extracted "
+            f"-- image cap ({_MAX_PDF_IMAGES_EXTRACTED}) reached; see the raw PDF]"
+        )
+    if not text:
+        raise ValueError("web_fetch: PDF contains no extractable text (likely scanned/image-only)")
+    return _normalize_plain_text(text)
 
 
 def _format_json(text: str) -> str:

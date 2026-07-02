@@ -1,0 +1,139 @@
+Downloading pygments (1.2MiB)
+Downloading hf-xet (4.3MiB)
+Downloading pandas (10.4MiB)
+Downloading aiohttp (1.7MiB)
+Downloading numpy (15.9MiB)
+Downloading pyarrow (46.6MiB)
+ Downloading pygments
+ Downloading aiohttp
+ Downloading hf-xet
+ Downloading pandas
+ Downloading numpy
+ Downloading pyarrow
+Installed 46 packages in 1.57s
+============================= test session starts ==============================
+platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5, anyio-4.14.1
+collected 1 item
+
+../tests/test_outputs.py .                                               [100%]
+
+==================================== PASSES ====================================
+______________________ test_compress_decompress_workflow _______________________
+---------------------------- Captured stdout setup -----------------------------
+Generating test data.
+Generated mini-shard 1/10000
+Generated mini-shard 101/10000
+Generated mini-shard 201/10000
+Generated mini-shard 301/10000
+Generated mini-shard 401/10000
+Generated mini-shard 501/10000
+Generated mini-shard 601/10000
+Generated mini-shard 701/10000
+Generated mini-shard 801/10000
+Generated mini-shard 901/10000
+Generated mini-shard 1001/10000
+Generated mini-shard 1101/10000
+Generated mini-shard 1201/10000
+Generated mini-shard 1301/10000
+Generated mini-shard 1401/10000
+Generated mini-shard 1501/10000
+Generated mini-shard 1601/10000
+Generated mini-shard 1701/10000
+Generated mini-shard 1801/10000
+Generated mini-shard 1901/10000
+Generated mini-shard 2001/10000
+Generated mini-shard 2101/10000
+Generated mini-shard 2201/10000
+Generated mini-shard 2301/10000
+Generated mini-shard 2401/10000
+Generated mini-shard 2501/10000
+Generated mini-shard 2601/10000
+Generated mini-shard 2701/10000
+Generated mini-shard 2801/10000
+Generated mini-shard 2901/10000
+Generated mini-shard 3001/10000
+Generated mini-shard 3101/10000
+Generated mini-shard 3201/10000
+Generated mini-shard 3301/10000
+Generated mini-shard 3401/10000
+Generated mini-shard 3501/10000
+Generated mini-shard 3601/10000
+Generated mini-shard 3701/10000
+Generated mini-shard 3801/10000
+Generated mini-shard 3901/10000
+Generated mini-shard 4001/10000
+Generated mini-shard 4101/10000
+Generated mini-shard 4201/10000
+Generated mini-shard 4301/10000
+Generated mini-shard 4401/10000
+Generated mini-shard 4501/10000
+Generated mini-shard 4601/10000
+Generated mini-shard 4701/10000
+Generated mini-shard 4801/10000
+Generated mini-shard 4901/10000
+Generated mini-shard 5001/10000
+Generated mini-shard 5101/10000
+Generated mini-shard 5201/10000
+Generated mini-shard 5301/10000
+Generated mini-shard 5401/10000
+Generated mini-shard 5501/10000
+Generated mini-shard 5601/10000
+Generated mini-shard 5701/10000
+Generated mini-shard 5801/10000
+Generated mini-shard 5901/10000
+Generated mini-shard 6001/10000
+Generated mini-shard 6101/10000
+Generated mini-shard 6201/10000
+Generated mini-shard 6301/10000
+Generated mini-shard 6401/10000
+Generated mini-shard 6501/10000
+Generated mini-shard 6601/10000
+Generated mini-shard 6701/10000
+Generated mini-shard 6801/10000
+Generated mini-shard 6901/10000
+Generated mini-shard 7001/10000
+Generated mini-shard 7101/10000
+Generated mini-shard 7201/10000
+Generated mini-shard 7301/10000
+Generated mini-shard 7401/10000
+Generated mini-shard 7501/10000
+Generated mini-shard 7601/10000
+Generated mini-shard 7701/10000
+Generated mini-shard 7801/10000
+Generated mini-shard 7901/10000
+Generated mini-shard 8001/10000
+Generated mini-shard 8101/10000
+Generated mini-shard 8201/10000
+Generated mini-shard 8301/10000
+Generated mini-shard 8401/10000
+Generated mini-shard 8501/10000
+Generated mini-shard 8601/10000
+Generated mini-shard 8701/10000
+Generated mini-shard 8801/10000
+Generated mini-shard 8901/10000
+Generated mini-shard 9001/10000
+Generated mini-shard 9101/10000
+Generated mini-shard 9201/10000
+Generated mini-shard 9301/10000
+Generated mini-shard 9401/10000
+Generated mini-shard 9501/10000
+Generated mini-shard 9601/10000
+Generated mini-shard 9701/10000
+Generated mini-shard 9801/10000
+Generated 9898 test files
+---------------------------- Captured stderr setup -----------------------------
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 9408 examples [00:00, 81976.43 examples/s]Generating train split: 27549 examples [00:00, 87367.51 examples/s]Generating train split: 36548 examples [00:00, 87866.01 examples/s]Generating train split: 45801 examples [00:00, 87207.32 examples/s]Generating train split: 64252 examples [00:00, 88941.34 examples/s]Generating train split: 73564 examples [00:00, 88305.99 examples/s]Generating train split: 91794 examples [00:01, 90726.35 examples/s]Generating train split: 100921 examples [00:01, 89164.36 examples/s]Generating train split: 110011 examples [00:01, 89305.73 examples/s]Generating train split: 128199 examples [00:01, 90726.62 examples/s]Generating train split: 137465 examples [00:01, 90936.81 examples/s]Generating train split: 151171 examples [00:01, 86380.97 examples/s]Generating train split: 169418 examples [00:01, 87794.96 examples/s]Generating train split: 178721 examples [00:02, 88546.16 examples/s]Generating train split: 187976 examples [00:02, 86144.09 examples/s]Generating train split: 196759 examples [00:02, 85974.40 examples/s]Generating train split: 215024 examples [00:02, 89808.21 examples/s]Generating train split: 224136 examples [00:02, 89445.54 examples/s]Generating train split: 233020 examples [00:03, 24034.31 examples/s]Generating train split: 242080 examples [00:04, 18156.31 examples/s]Generating train split: 255874 examples [00:04, 25789.17 examples/s]Generating train split: 274149 examples [00:04, 36526.21 examples/s]Generating train split: 283387 examples [00:05, 42141.09 examples/s]Generating train split: 292646 examples [00:05, 48337.64 examples/s]Generating train split: 310765 examples [00:05, 58873.38 examples/s]Generating train split: 324228 examples [00:05, 63678.12 examples/s]Generating train split: 342797 examples [00:05, 76157.37 examples/s]Generating train split: 356318 examples [00:05, 78059.34 examples/s]Generating train split: 356318 examples [00:05, 61009.69 examples/s]
+------------------------------ Captured log setup ------------------------------
+WARNING  huggingface_hub.utils._http:_http.py:932 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+----------------------------- Captured stdout call -----------------------------
+Installing dependencies with uv sync...
+Running compress script: /app/compress.py /app/c4_test_bae2b847-baa5-4cd5-8f61-86b4b5b21ef3/ /app/c4_test_4a1194eb-f34a-4e08-8f2b-a08e4b19bf3d/
+Compression test passed. Now testing decompression.
+Running decompress script: /app/decompress.py /app/c4_test_4a1194eb-f34a-4e08-8f2b-a08e4b19bf3d/
+Successfully verified 9898 files match original hashes
+=========================== short test summary info ============================
+PASSED ../tests/test_outputs.py::test_compress_decompress_workflow
+============================== 1 passed in 31.58s ==============================

@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,10 @@ _WRITE_PREFIXES = {
     "attach",
     "detach",
 }
+# Verbs that are never allowed from the model-facing SQL surface, regardless of
+# allow_writes or the server env flag: they touch other files (ATTACH/DETACH),
+# change permissions (GRANT/REVOKE), or rewrite the whole DB file (VACUUM).
+_ALWAYS_FORBIDDEN_VERBS = {"attach", "detach", "grant", "revoke", "vacuum"}
 
 
 def mask_connection_string(dsn: str) -> str:
@@ -84,36 +89,178 @@ def discover_connection(repo_root: str | Path | None = None, env: dict[str, str]
     return {"connection_string": None, "source": None, "dialect": None}
 
 
-def _sqlite_path(dsn: str, repo_root: Path) -> tuple[str, bool]:
+class SqlPathError(Exception):
+    """Raised when a sqlite DSN resolves outside the repo sandbox."""
+
+
+def _filesystem_path(dsn: str) -> tuple[str, bool, str]:
+    """Map a sqlite DSN to (raw_path_for_connect, uri_flag, filesystem_path).
+
+    ``filesystem_path`` is the on-disk path to sandbox-check; it is empty for
+    pure in-memory databases, which never touch disk.
+    """
     if dsn.startswith("sqlite:///"):
-        return dsn[len("sqlite:///") :], False
+        raw = dsn[len("sqlite:///") :]
+        return raw, False, raw
     if dsn.startswith("sqlite://"):
-        return dsn[len("sqlite://") :], False
+        raw = dsn[len("sqlite://") :]
+        return raw, False, raw
     if dsn.startswith("file:"):
-        return dsn, True
-    path = Path(dsn)
-    if not path.is_absolute():
-        path = repo_root / path
-    return str(path), False
+        # file:path?mode=ro ... ; the on-disk path is everything between the
+        # `file:` scheme and the first query separator. `file::memory:` and
+        # any `mode=memory` URI stay in RAM and have no disk path to check.
+        # sqlite3.connect(..., uri=True) percent-decodes the path per the
+        # SQLite URI spec, so the sandbox check must run on the DECODED path
+        # (otherwise `file:..%2F..%2Ftmp%2Fpwn.db` escapes the sandbox while
+        # passing an encoded-path check). A NUL byte truncates the C string
+        # SQLite opens, so reject it outright.
+        body = dsn[len("file:") :]
+        fs_part = urllib.parse.unquote(body.split("?", 1)[0])
+        if "\x00" in fs_part:
+            raise SqlPathError("sqlite file path contains a NUL byte")
+        if fs_part.startswith(":memory:") or "mode=memory" in dsn:
+            return dsn, True, ""
+        return dsn, True, fs_part
+    if dsn == ":memory:":
+        return dsn, False, ""
+    return dsn, False, dsn
+
+
+def _sqlite_path(dsn: str, repo_root: Path) -> tuple[str, bool]:
+    raw, uri, fs_path = _filesystem_path(dsn)
+    if not fs_path:
+        return raw, uri
+    candidate = Path(fs_path)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    resolved = os.path.realpath(candidate)
+    root_resolved = os.path.realpath(repo_root)
+    if resolved != root_resolved and not resolved.startswith(root_resolved + os.sep):
+        if not os.environ.get("ATELIER_SQL_ALLOW_EXTERNAL_DB"):
+            raise SqlPathError(
+                f"sqlite path resolves outside the repo sandbox ({resolved}); "
+                "set ATELIER_SQL_ALLOW_EXTERNAL_DB=1 to allow external database files"
+            )
+    return raw, uri
 
 
 def _strip_comments(sql: str) -> str:
     return re.sub(r"/\*.*?\*/", "", re.sub(r"--[^\n]*", "", sql), flags=re.S).strip()
 
 
+def _is_multi_statement(sql: str) -> bool:
+    """Quote-aware check for >1 statement; ignores `;` inside string literals."""
+    body = sql.rstrip().rstrip(";").rstrip()
+    in_single = in_double = False
+    for ch in body:
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == ";" and not in_single and not in_double:
+            return True
+    return False
+
+
+def _top_level_verb(sql: str) -> str:
+    """Leading verb, skipping a leading WITH ... CTE list to the trailing verb."""
+    first = re.split(r"\s+", sql, maxsplit=1)[0].lower()
+    if first != "with":
+        return first
+    depth = 0
+    in_single = in_double = False
+    for match in re.finditer(r"[()'\"]|[A-Za-z_][A-Za-z_]*", sql):
+        token = match.group(0)
+        if in_single:
+            if token == "'":
+                in_single = False
+            continue
+        if in_double:
+            if token == '"':
+                in_double = False
+            continue
+        if token == "'":
+            in_single = True
+        elif token == '"':
+            in_double = True
+        elif token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+        elif depth == 0 and token.lower() in _WRITE_PREFIXES | {"select"}:
+            return token.lower()
+    return "with"
+
+
+def _has_data_modifying_cte(sql: str) -> bool:
+    """True if a write verb opens a parenthesized sub-statement.
+
+    A data-modifying CTE looks like ``WITH x AS (DELETE ... RETURNING ...)``.
+    Normal subqueries always open with SELECT/VALUES, so a write verb as the
+    first identifier after ``(`` is a reliable signal of a write that
+    :func:`_top_level_verb` (which skips parenthesized bodies) would otherwise
+    misclassify as a read.
+    """
+    in_single = in_double = False
+    expect_verb = False
+    for match in re.finditer(r"[()'\"]|[A-Za-z_][A-Za-z_]*", sql):
+        token = match.group(0)
+        if in_single:
+            if token == "'":
+                in_single = False
+            continue
+        if in_double:
+            if token == '"':
+                in_double = False
+            continue
+        if token == "'":
+            in_single = True
+        elif token == '"':
+            in_double = True
+        elif token == "(":
+            expect_verb = True
+        elif token == ")":
+            expect_verb = False
+        elif expect_verb:
+            expect_verb = False
+            if token.lower() in _WRITE_PREFIXES:
+                return True
+    return False
+
+
+def _writes_enabled(allow_writes: bool) -> bool:
+    """Effective write permission: the caller arg AND the server env flag.
+
+    Writes proceed only when the caller opts in *and* the operator has set
+    ``ATELIER_SQL_ALLOW_WRITES`` on the server. A model-settable arg alone is
+    never sufficient to mutate the database.
+    """
+    return allow_writes and bool(os.environ.get("ATELIER_SQL_ALLOW_WRITES"))
+
+
 def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
     normalized = _strip_comments(sql)
     if not normalized:
         return {"ok": False, "message": "sql is empty"}
-    statements = [part.strip() for part in normalized.split(";") if part.strip()]
-    if len(statements) > 1:
+    if _is_multi_statement(normalized):
         return {
             "ok": False,
             "message": "multiple statements are not allowed in one sql string; use queries[] for batching",
         }
-    first = re.split(r"\s+", statements[0], maxsplit=1)[0].lower()
-    if not allow_writes and first in _WRITE_PREFIXES:
+    verb = _top_level_verb(normalized)
+    if verb in _ALWAYS_FORBIDDEN_VERBS:
+        return {"ok": False, "message": f"{verb.upper()} is not permitted from the SQL tool"}
+    if not _writes_enabled(allow_writes) and (verb in _WRITE_PREFIXES or _has_data_modifying_cte(normalized)):
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
+    if not _writes_enabled(allow_writes):
+        # The engine's query_only guard blocks most writes, but a PRAGMA
+        # assignment (PRAGMA query_only=OFF / writable_schema=ON / user_version=N)
+        # or REINDEX slips past both query_only and _WRITE_PREFIXES. Reject them so
+        # read-only mode cannot be toggled off or the schema rewritten.
+        if verb == "pragma" and "=" in normalized:
+            return {"ok": False, "message": "PRAGMA assignments are rejected for read-only execution"}
+        if verb == "reindex":
+            return {"ok": False, "message": "REINDEX is rejected for read-only execution"}
     return {"ok": True, "message": "ok"}
 
 
@@ -190,13 +337,55 @@ def _sqlite_search(conn: sqlite3.Connection, terms: list[str], *, limit: int = 2
     return matches
 
 
+_MAX_SQL_CELL_BYTES = 4096
+
+
+def _sql_spill_enabled() -> bool:
+    """Mirrors the MCP dispatch layer's T7 kill switch (``ATELIER_TOOL_OUTPUT_SPILL``)."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cell_spill_hint(full_text: str) -> str:
+    """Persist the full pre-truncation cell *full_text* and return a recovery-hint suffix.
+
+    A large BLOB/TEXT cell clipped by ``_bound_cell`` used to have the rest
+    silently discarded. Mirrors ``bash_exec._spill_hint`` /
+    ``web_fetch._truncate_with_spill``: persist the untouched original to the
+    shared T7 spill store and name the path in the truncation notice. Returns
+    "" when spill is disabled or the write fails, so the caller falls back to
+    the bare marker.
+    """
+    if not _sql_spill_enabled():
+        return ""
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    record = tool_output_spill.spill(full_text, tool_name="sql", kind="original")
+    if record is None:
+        return ""
+    return f"; full value ({record.original_bytes}B) spilled to {record.path}; read {record.path} to recover"
+
+
+def _bound_cell(value: Any) -> Any:
+    """Cap one cell so a large BLOB/TEXT column can't return MBs in a single response."""
+    if isinstance(value, str) and len(value) > _MAX_SQL_CELL_BYTES:
+        hint = _cell_spill_hint(value)
+        return value[:_MAX_SQL_CELL_BYTES] + f"... <truncated {len(value) - _MAX_SQL_CELL_BYTES} chars{hint}>"
+    if isinstance(value, (bytes, bytearray)) and len(value) > _MAX_SQL_CELL_BYTES:
+        hint = _cell_spill_hint(bytes(value).hex())
+        return f"<{len(value)} byte blob, truncated{hint} (hex-encoded)>"
+    return value
+
+
 def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, Any]:
+    max_rows = max(1, max_rows)
     cursor = conn.execute(sql)
     rows = cursor.fetchmany(max_rows + 1)
     columns = [col[0] for col in cursor.description or []]
+    # Rows are positional arrays keyed by `columns` — repeating column names
+    # per row wastes tokens on every multi-row result.
     return {
         "columns": columns,
-        "rows": [dict(zip(columns, row, strict=False)) for row in rows[:max_rows]],
+        "rows": [[_bound_cell(v) for v in row] for row in rows[:max_rows]],
         "row_count": min(len(rows), max_rows),
         "truncated": len(rows) > max_rows,
     }
@@ -265,42 +454,54 @@ def sql_tool(
             "message": "Optional live driver not installed for this dialect.",
         }
 
-    db_path, uri = _sqlite_path(str(dsn), root)
+    try:
+        db_path, uri = _sqlite_path(str(dsn), root)
+    except SqlPathError as exc:
+        return {"isError": True, "message": str(exc)}
     started = time.perf_counter()
     conn = sqlite3.connect(db_path, uri=uri, timeout=max(1.0, timeout_ms / 1000.0))
     try:
         conn.row_factory = sqlite3.Row
-        if action == "connect":
-            overview = _sqlite_overview(conn)
-            return {
-                "isError": False,
-                "dialect": "sqlite",
-                "connection": mask_connection_string(str(dsn)),
-                "overview": overview,
-                "source": discovered.get("source"),
-            }
-        if action == "tables":
-            tables = _sqlite_all_tables(conn)
-            return {"isError": False, "dialect": "sqlite", "tables": tables, "table_count": len(tables)}
-        if action == "schema":
-            return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
-        if action == "table":
-            table_name = str(name or "")
-            if not table_name:
-                return {"isError": True, "message": "action='table' requires name=<table>"}
-            return {
-                "isError": False,
-                "table": table_name,
-                "columns": _sqlite_columns(conn, table_name),
-                "foreign_keys": _sqlite_table_fks(conn, table_name),
-            }
-        if action == "relationships":
-            return {"isError": False, "dialect": "sqlite", "relationships": _sqlite_relationships(conn)}
-        if action == "search":
-            terms = name if isinstance(name, list) else [name] if name else []
-            if not terms:
-                return {"isError": True, "message": "action='search' requires name=<keyword>"}
-            return {"isError": False, "dialect": "sqlite", "matches": _sqlite_search(conn, terms)}
+        if not _writes_enabled(allow_writes):
+            # Engine-level read-only enforcement (defense in depth beyond
+            # lint_sql's verb list, which misses PRAGMA writable_schema /
+            # ANALYZE / REINDEX): the connection itself refuses any statement
+            # that writes to the database.
+            conn.execute("PRAGMA query_only = ON")
+        try:
+            if action == "connect":
+                overview = _sqlite_overview(conn)
+                return {
+                    "isError": False,
+                    "dialect": "sqlite",
+                    "connection": mask_connection_string(str(dsn)),
+                    "overview": overview,
+                    "source": discovered.get("source"),
+                }
+            if action == "tables":
+                tables = _sqlite_all_tables(conn)
+                return {"isError": False, "dialect": "sqlite", "tables": tables, "table_count": len(tables)}
+            if action == "schema":
+                return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
+            if action == "table":
+                table_name = str(name or "")
+                if not table_name:
+                    return {"isError": True, "message": "action='table' requires name=<table>"}
+                return {
+                    "isError": False,
+                    "table": table_name,
+                    "columns": _sqlite_columns(conn, table_name),
+                    "foreign_keys": _sqlite_table_fks(conn, table_name),
+                }
+            if action == "relationships":
+                return {"isError": False, "dialect": "sqlite", "relationships": _sqlite_relationships(conn)}
+            if action == "search":
+                terms = name if isinstance(name, list) else [name] if name else []
+                if not terms:
+                    return {"isError": True, "message": "action='search' requires name=<keyword>"}
+                return {"isError": False, "dialect": "sqlite", "matches": _sqlite_search(conn, terms)}
+        except sqlite3.Error as exc:
+            return {"isError": True, "message": str(exc)}
         if action == "lint":
             lint = lint_sql(sql or "", allow_writes=allow_writes)
             return {"isError": not lint["ok"], **lint}
@@ -317,7 +518,13 @@ def sql_tool(
                 continue
             limited = sql_auto_limit(query_sql, max_rows=max_rows, auto_limit=auto_limit)
             try:
+                if not _writes_enabled(allow_writes):
+                    # Re-arm read-only on the shared connection before every batch
+                    # item so an earlier item cannot leave query_only disabled.
+                    conn.execute("PRAGMA query_only = ON")
                 result = _run_sqlite(conn, limited["sql"], max_rows)
+                if _top_level_verb(_strip_comments(query_sql)) in _WRITE_PREFIXES:
+                    conn.commit()
                 outputs.append({"name": label, **result, "auto_limit_changed": limited.get("changed", False)})
             except sqlite3.Error as exc:
                 outputs.append({"name": label, "isError": True, "message": str(exc)})

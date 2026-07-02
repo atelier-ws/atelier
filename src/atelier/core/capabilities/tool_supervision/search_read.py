@@ -27,24 +27,14 @@ logger = logging.getLogger(__name__)
 # Token counting
 # ---------------------------------------------------------------------------
 
-_ENCODING_CACHE: Any = None
-
-
-def _encoding() -> Any:
-    global _ENCODING_CACHE
-    if _ENCODING_CACHE is None:
-        import tiktoken
-
-        _ENCODING_CACHE = tiktoken.get_encoding("cl100k_base")
-    return _ENCODING_CACHE
-
-
 def _count_tokens(text: str) -> int:
-    try:
-        return len(_encoding().encode(text))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return len(text) // 4  # fallback: ~4 chars/token
+    # Budget gating only -- never billed.  Exact tiktoken BPE encoding of every
+    # candidate snippet was the single largest cost in the explore/search hot
+    # path (cl100k encode dominated the profiler: up to ~2.7s per explore call).
+    # The byte/4 estimate (cl100k averages ~3.6-4 chars/token on source) is
+    # accurate enough to pack snippets to a budget and is ~1000x cheaper.
+    # Reserve real tiktoken for cost/pricing computation, not retrieval.
+    return len(text) // 4
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +59,7 @@ class FileMatch:
     snippets: list[Snippet]
     outline: dict[str, Any] | None
     tokens: int
+    score: float = 0.0  # ranking score from _rank_zoekt_file_results; 0 = unranked
 
 
 @dataclass
@@ -171,6 +162,56 @@ def _assert_safe_args(pattern: str, path: str) -> None:
         raise ValueError("search_read rejected: shell metacharacters not allowed in path")
 
 
+def _workspace_root() -> Path:
+    """Resolve the active workspace root (env-aware, matches the rest of Atelier)."""
+    workspace = (
+        os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("VSCODE_CWD")
+        or os.getcwd()
+    )
+    return Path(workspace).resolve()
+
+
+def _resolve_search_base(path: str, workspace_root: Path) -> Path:
+    """Resolve the agent-supplied search *path* into a confined search base.
+
+    A *relative* path is anchored to *workspace_root* and confined to it, so
+    dot-dot traversal (``../../etc``) and symlinks that escape the workspace are
+    rejected. An *absolute* path is taken as an explicitly-named search base
+    (this is how ``smart_search`` feeds an already workspace-confined path in);
+    every file rg reports under it is re-confined to this base by the caller, so
+    symlinked results cannot escape the searched tree.
+
+    Raises ValueError on escape.
+    """
+    from atelier.core.foundation.paths import confine_to_root
+
+    raw = Path(path)
+    if raw.is_absolute():
+        return raw.expanduser().resolve()
+    candidate = workspace_root / raw
+    try:
+        return confine_to_root(candidate, workspace_root)
+    except ValueError as exc:
+        raise ValueError("search_read rejected: path escapes the workspace") from exc
+
+
+def _confine_path(candidate: str | Path, base: Path) -> Path:
+    """Resolve *candidate* and ensure it stays within *base*.
+
+    Rejects dot-dot traversal and symlinks that escape *base*. Raises ValueError
+    on escape (caught at the call site and surfaced as a ``search_read
+    rejected`` error).
+    """
+    from atelier.core.foundation.paths import confine_to_root
+
+    try:
+        return confine_to_root(candidate, base)
+    except ValueError as exc:
+        raise ValueError("search_read rejected: path escapes the workspace") from exc
+
+
 def _run_grep(pattern: str, search_path: str) -> str:
     """Run rg and return raw stdout (capped at 256 KB)."""
     try:
@@ -203,11 +244,10 @@ def _run_grep(pattern: str, search_path: str) -> str:
 
 
 def _cache_state_path(repo_root: Path) -> Path:
-    from hashlib import sha256
 
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    h = sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    h = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / h / "smart_state.json"
 
 
@@ -241,18 +281,47 @@ def _save_cache(repo_root: Path, cache: dict[str, Any]) -> None:
     state_path.write_text(json.dumps(state, ensure_ascii=True), encoding="utf-8")
 
 
+# Directories rg never searches (VCS internals, virtualenvs, build/dep trees)
+# and Atelier's own state dir. Pruning them keeps the cache fingerprint aligned
+# with the set of files rg actually greps, and avoids stat-walking the thousands
+# of loose objects under .git on every search call.
+_FINGERPRINT_PRUNE_DIRS = frozenset(
+    {".git", ".atelier", ".hg", ".svn", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
+)
+
+
 def _fingerprint_path(search_path: Path) -> str:
-    """Create a deterministic fingerprint from file metadata under search_path."""
+    """Deterministic fingerprint of file metadata under search_path.
+
+    Used only to invalidate the grep cache when the searched files change, so it
+    must be stable across processes (cross-session cache hits) yet change when a
+    file's size/mtime changes. Walks with ``os.walk``/``os.stat`` rather than
+    ``pathlib.rglob`` + ``sorted(Path)`` -- the pathlib path objects dominated
+    the cost (millions of ``_parse_path``/``Path.__lt__`` calls), making this key
+    computation slower than the rg subprocess it guards. Pruning VCS/build dirs
+    (esp. ``.git``) removes the bulk of the stat-walk for an equivalent result.
+    """
     entries: list[str] = []
-    if search_path.is_file():
-        st = search_path.stat()
-        entries.append(f"{search_path}:{st.st_size}:{st.st_mtime_ns}")
-    elif search_path.is_dir():
-        files = sorted(p for p in search_path.rglob("*") if p.is_file() and ".atelier" not in p.parts)
-        for file_path in files:
-            st = file_path.stat()
-            entries.append(f"{file_path}:{st.st_size}:{st.st_mtime_ns}")
-    else:
+    try:
+        if search_path.is_file():
+            st = search_path.stat()
+            entries.append(f"{search_path}:{st.st_size}:{st.st_mtime_ns}")
+        elif search_path.is_dir():
+            for dirpath, dirnames, filenames in os.walk(search_path):
+                dirnames[:] = [d for d in dirnames if d not in _FINGERPRINT_PRUNE_DIRS]
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        st = os.stat(file_path)
+                    except OSError:
+                        continue
+                    entries.append(f"{file_path}:{st.st_size}:{st.st_mtime_ns}")
+            # Plain-string sort keeps the digest deterministic regardless of
+            # os.walk traversal order, without paying pathlib comparison costs.
+            entries.sort()
+        else:
+            entries.append(str(search_path))
+    except OSError:
         entries.append(str(search_path))
     return hashlib.sha256("\n".join(entries).encode("utf-8", errors="replace")).hexdigest()
 
@@ -356,18 +425,25 @@ def search_read(
 
     # ---- run cached grep ----
     repo_root = Path.cwd().resolve()
-    resolved_path = Path(path).resolve()
-    cache_key = f"grep:{query}:{resolved_path}:{_fingerprint_path(resolved_path)}"
+    # Enforce workspace containment: a relative path that uses dot-dot to escape
+    # the workspace (or a symlink that does) is rejected before anything reaches
+    # rg. The resolved base is also used to re-confine every file rg reports.
+    workspace_root = _workspace_root()
+    search_base = _resolve_search_base(path, workspace_root)
+    search_target = str(search_base)
     cache_hit = False
     if _cache_disabled():
-        grep_output = _run_grep(query, path)
+        grep_output = _run_grep(query, search_target)
     else:
+        # Compute the fingerprint-based key lazily: it walks the tree, so it must
+        # not run when the cache is disabled and the key is never consulted.
+        cache_key = f"grep:{query}:{search_base}:{_fingerprint_path(search_base)}"
         cache = _load_cache(repo_root)
         cache_hit = cache_key in cache and isinstance(cache[cache_key], str)
         if cache_hit:
             grep_output = str(cache[cache_key])
         else:
-            grep_output = _run_grep(query, path)
+            grep_output = _run_grep(query, search_target)
             cache[cache_key] = grep_output
             # Keep recent entries only to bound file size.
             if len(cache) > 100:
@@ -382,11 +458,17 @@ def search_read(
     sorted_files = sorted(hits_per_file.keys())[:max_files]
 
     # ---- read files and build result snippets ----
+    # rg returns paths relative to its CWD when given a relative search target;
+    # we pass an absolute base, so its results are absolute. Confine each one to
+    # the resolved search base before reading so a symlinked result cannot pull
+    # in a file outside the searched tree.
+    read_root = search_base if search_base.is_dir() else search_base.parent
     file_contents: dict[str, str] = {}
     for fpath in sorted_files:
         try:
-            file_contents[fpath] = Path(fpath).read_text(encoding="utf-8", errors="replace")
-        except OSError:
+            safe_fpath = _confine_path(fpath, read_root)
+            file_contents[fpath] = safe_fpath.read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
             file_contents[fpath] = ""
 
     naive_tokens = _naive_token_count(grep_output, file_contents)

@@ -5,8 +5,47 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
+
+_CODE_FINGERPRINT: str | None = None
+
+
+def _code_fingerprint() -> str:
+    """Fingerprint of the retrieval code itself, folded into every cache key.
+
+    ``index_version`` only tracks the *index*; a change to the ranking code (an
+    upgrade, or a candidate build in a fitness sweep) must not serve payloads
+    computed by older code. Hashing the code_context + code_intel + embeddings
+    sources keys the cache by code version too, so stale-code hits are
+    impossible. Computed once per process (~2 MB read); falls back to the
+    package version when sources aren't readable (e.g. zipped install).
+    """
+    global _CODE_FINGERPRINT
+    if _CODE_FINGERPRINT is not None:
+        return _CODE_FINGERPRINT
+    try:
+        pkg_root = Path(__file__).resolve().parent  # .../capabilities/code_context
+        infra_root = pkg_root.parents[2] / "infra"
+        digest = hashlib.sha256()
+        count = 0
+        for root in (pkg_root, infra_root / "code_intel", infra_root / "embeddings"):
+            if not root.is_dir():
+                continue
+            for source in sorted(root.rglob("*.py")):
+                digest.update(source.read_bytes())
+                count += 1
+        if count == 0:
+            raise OSError("no retrieval sources found")
+        _CODE_FINGERPRINT = digest.hexdigest()[:16]
+    except Exception:  # noqa: BLE001 - any failure falls back to package version
+        try:
+            from atelier import __version__ as _pkg_version
+        except Exception:  # noqa: BLE001
+            _pkg_version = "unknown"
+        _CODE_FINGERPRINT = f"v:{_pkg_version}"
+    return _CODE_FINGERPRINT
 
 
 def _canonical_json(value: Any) -> str:
@@ -19,6 +58,7 @@ class RetrievalCache:
     def __init__(self, db_path: str | Path, *, max_bytes: int = 64 * 1024 * 1024) -> None:
         self.db_path = Path(db_path)
         self.max_bytes = max_bytes
+        self._schema_ready = False
 
     def get(
         self,
@@ -41,15 +81,16 @@ class RetrievalCache:
             ).fetchone()
             if row is None:
                 return False, None
-            conn.execute(
-                """
-                UPDATE retrieval_cache
-                SET hit_count = hit_count + 1,
-                    last_hit_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                WHERE query_hash = ?
-                """,
-                (query_hash,),
-            )
+            with suppress(sqlite3.OperationalError):
+                conn.execute(
+                    """
+                    UPDATE retrieval_cache
+                    SET hit_count = hit_count + 1,
+                        last_hit_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                    WHERE query_hash = ?
+                    """,
+                    (query_hash,),
+                )
         return True, json.loads(str(row["payload_json"]))
 
     def set(
@@ -63,7 +104,12 @@ class RetrievalCache:
     ) -> None:
         query_hash = self.make_key(tool_name=tool_name, args=args, index_version=index_version, repo_id=repo_id)
         payload_json = _canonical_json(payload)
-        with self._connect() as conn:
+        # Best-effort write on the query hot path: when another process holds
+        # the write lock (indexer, autosync), skipping the cache write beats
+        # stalling the query response for the full busy timeout (measured 8s
+        # behind a warm-index subprocess). The payload is simply recomputed
+        # and re-offered next time.
+        with suppress(sqlite3.OperationalError), self._connect(busy_timeout_ms=500) as conn:
             self._init_schema(conn)
             conn.execute(
                 """
@@ -164,17 +210,24 @@ class RetrievalCache:
         index_version: int,
         repo_id: str,
     ) -> str:
-        """Freeze the M12 key shape to args + index version + repo + tool name."""
-        payload = f"{_canonical_json(args)}|{index_version}|{repo_id}|{tool_name}"
+        """Key shape: args + index version + repo + tool name + code fingerprint.
+
+        The fingerprint invalidates cached payloads whenever the retrieval code
+        changes -- index_version alone cannot see code upgrades.
+        """
+        payload = f"{_canonical_json(args)}|{index_version}|{repo_id}|{tool_name}|{_code_fingerprint()}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, busy_timeout_ms: int = 30_000) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=busy_timeout_ms / 1000.0)
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
+        if self._schema_ready:
+            return
         conn.execute("""
             CREATE TABLE IF NOT EXISTS retrieval_cache (
                 query_hash TEXT PRIMARY KEY,
@@ -189,6 +242,7 @@ class RetrievalCache:
         columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(retrieval_cache)")}
         if "repo_id" not in columns:
             conn.execute("ALTER TABLE retrieval_cache ADD COLUMN repo_id TEXT")
+        self._schema_ready = True
 
     def _evict_lru(self, conn: sqlite3.Connection) -> None:
         while True:

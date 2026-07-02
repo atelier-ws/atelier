@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Stop hook — session summary + trace reminder.
+"""Stop hook — session summary.
 
 Reads the hook payload (stdin: JSON with session_id, transcript_path).
 
-Decision tree:
-1. If this was a discussion-only session (no code-editing tools used in the
-   transcript) → silent exit.  No trace required.
-2. If code work happened AND trace was already called for
-   this session → show stats and exit silently.
-3. If code work happened but no trace was recorded → surface a system
-   message asking Claude to call trace.
+Behavior:
+1. Discussion-only session (no code-editing tools used in the transcript) →
+   show plain stats under a "Session stats:" header.
+2. Code work happened → show stats under an "Atelier session complete." header.
 
 Token and tool-call counts are read directly from the Claude Code
 transcript JSONL at `transcript_path`.
@@ -63,11 +60,27 @@ CODE_EDITING_TOOLS: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = _workspace_key(workspace)
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
@@ -99,13 +112,30 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _write_token_event(stats: dict[str, Any]) -> None:
+def _sessions_root() -> Path:
+    """Session store root -- the plain atelier root, matching the MCP writer and the
+    sibling hooks (session_start / post_tool_use). Sessions are keyed by a globally
+    unique id, so they are NOT workspace-scoped: the previous ``workspaces/<key>``
+    path silently missed the canonical run.json (its ``if not exists: return`` guards
+    no-op'd) whenever ATELIER_WORKSPACE_ROOT/CLAUDE_WORKSPACE_ROOT was set, dropping
+    the session-end token event, cost row, and enrichment writes."""
+    return _atelier_root()
+
+
+def _write_token_event(stats: dict[str, Any], session_id: str | None = None) -> None:
     """Append a session_stats note event to the active run file."""
-    state = _load_state()
-    session_id: str | None = state.get("session_id") or state.get("active_session_id")
+    if not session_id:
+        # Fallback: read from workspace state (only when caller didn't supply it).
+        state = _load_state()
+        session_id = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_file = session_dir(_sessions_root(), "claude", session_id) / "run.json"
+    except ImportError:
+        return
     if not run_file.exists():
         return
     try:
@@ -156,40 +186,27 @@ def _write_token_event(stats: dict[str, Any]) -> None:
                 Path(tmp_path).unlink(missing_ok=True)
 
 
-def _trace_recorded(session_id: str) -> bool:
-    """Return True if trace was called in this session.
-
-    Checks session-scoped state first (keyed by *session_id*), then falls
-    back to the legacy global ``trace_recorded`` flag for older MCP versions
-    that do not write per-session state.
-    """
-    state = _load_state()
-
-    if session_id:
-        sessions: dict[str, dict[str, Any]] = state.get("sessions", {})
-        session_data = sessions.get(session_id, {})
-        if "trace_recorded" in session_data:
-            return bool(session_data["trace_recorded"])
-
-    # Legacy fallback — mcp_server.py < 2.x wrote a flat `trace_recorded` key
-    return bool(state.get("trace_recorded"))
-
-
 # ---------------------------------------------------------------------------
 # Transcript helpers — thin wrappers around the shared savings_summary module.
 # ---------------------------------------------------------------------------
 
 
 def _is_real_model_id(raw: object) -> bool:
-    from atelier.core.capabilities.savings_summary import is_real_model
+    try:
+        from atelier.core.capabilities.savings_summary import is_real_model
 
-    return is_real_model(raw)
+        return is_real_model(raw)
+    except (ImportError, ModuleNotFoundError):
+        return bool(raw) and raw != "unknown"
 
 
 def _resolve_model_id(raw: str | None) -> str:
-    from atelier.core.capabilities.savings_summary import resolve_model_id
+    try:
+        from atelier.core.capabilities.savings_summary import resolve_model_id
 
-    return resolve_model_id(raw or "")
+        return resolve_model_id(raw or "")
+    except (ImportError, ModuleNotFoundError):
+        return raw or "unknown"
 
 
 def _estimate_cost_usd(
@@ -200,15 +217,18 @@ def _estimate_cost_usd(
     cache_read_tokens: int,
     cache_write_tokens: int,
 ) -> float:
-    from atelier.core.capabilities.savings_summary import estimate_cost_usd
+    try:
+        from atelier.core.capabilities.savings_summary import estimate_cost_usd
 
-    return estimate_cost_usd(
-        model_id=model_id,
-        input_tokens=int(input_tokens or 0),
-        output_tokens=int(output_tokens or 0),
-        cache_read_tokens=int(cache_read_tokens or 0),
-        cache_write_tokens=int(cache_write_tokens or 0),
-    )
+        return estimate_cost_usd(
+            model_id=model_id,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+            cache_read_tokens=int(cache_read_tokens or 0),
+            cache_write_tokens=int(cache_write_tokens or 0),
+        )
+    except (ImportError, ModuleNotFoundError):
+        return 0.0
 
 
 def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
@@ -218,8 +238,10 @@ def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
     then converts the TranscriptStats dataclass to the dict format stop.py
     has always returned.
     """
-    from atelier.core.capabilities.savings_summary import TranscriptStats, read_transcript_stats
-
+    try:
+        from atelier.core.capabilities.savings_summary import TranscriptStats, read_transcript_stats
+    except (ImportError, ModuleNotFoundError):
+        return None
     stats: TranscriptStats | None = read_transcript_stats(transcript_path)
     if stats is None:
         return None
@@ -361,6 +383,90 @@ def _extract_user_prompts(transcript_path: str) -> list[str]:
     return prompts
 
 
+def _extract_edited_paths(transcript_path: str) -> list[str]:
+    """Full paths of files edited this session (from edit/Write tool_use calls)."""
+    if not transcript_path:
+        return []
+    p = Path(transcript_path)
+    if not p.exists():
+        return []
+    seen: list[str] = []
+    out: set[str] = set()
+    try:
+        with p.open(encoding="utf-8") as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                if entry.get("type") != "assistant":
+                    continue
+                content = (entry.get("message", {}) or {}).get("content", "")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict) or block.get("type") != "tool_use":
+                        continue
+                    low = str(block.get("name") or "").split("__")[-1].lower()
+                    if low not in ("edit", "write", "multiedit") and not low.endswith("edit"):
+                        continue
+                    inp = block.get("input") or {}
+                    if not isinstance(inp, dict):
+                        continue
+                    cands: list[str] = []
+                    for key in ("file_path", "path", "filename"):
+                        v = inp.get(key)
+                        if isinstance(v, str) and v:
+                            cands.append(v)
+                    edits = inp.get("edits")
+                    if isinstance(edits, list):
+                        for e in edits:
+                            if isinstance(e, dict):
+                                fp = e.get("file_path") or e.get("path")
+                                if isinstance(fp, str) and fp:
+                                    cands.append(fp)
+                    for c in cands:
+                        c = c.split("#")[0].split(":L")[0]
+                        if c and c not in out:
+                            out.add(c)
+                            seen.append(c)
+    except Exception:
+        logger.exception("Failed to extract edited paths")
+    return seen
+
+
+def _format_deferred_edits(transcript_path: str) -> None:
+    """When ATELIER_DEFER_EDIT_HOOKS was on, the edit tool skipped the mutating
+    format / organize-imports steps so the formatter could not reflow files
+    mid-session and break the agent's read anchors. Run them once now, at Stop,
+    over the files edited this session. Fail-open: never break the Stop hook."""
+    if os.environ.get("ATELIER_DEFER_EDIT_HOOKS", "0").strip().lower() not in {"1", "true", "on", "yes"}:
+        return
+    paths = _extract_edited_paths(transcript_path)
+    if not paths:
+        return
+    try:
+        from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
+            HookConfig,
+            run_post_edit_hooks,
+        )
+
+        root = Path(os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()))
+        resolved = [str(root / pp if not Path(pp).is_absolute() else Path(pp)) for pp in paths]
+        resolved = [pp for pp in resolved if Path(pp).exists()]
+        if resolved:
+            run_post_edit_hooks(
+                resolved,
+                repo_root=root,
+                config=HookConfig(run_lint_autofix=False, run_diagnostics=False),
+            )
+    except Exception:
+        logger.exception("Failed to run deferred format at Stop")
+
+
 def _write_session_enrichment(
     session_id: str,
     session_title: str | None,
@@ -375,7 +481,12 @@ def _write_session_enrichment(
     """
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        run_file = session_dir(_sessions_root(), "claude", session_id) / "run.json"
+    except ImportError:
+        return
     if not run_file.exists():
         return
     try:
@@ -424,6 +535,98 @@ def _write_session_enrichment(
                 Path(tmp_path).unlink(missing_ok=True)
 
 
+def _push_public_rollup(
+    session_id: str,
+    saved_usd: float,
+    tokens_saved: int,
+    calls_avoided: int,
+    turn_count: int,
+    carry_usd: float = 0.0,
+    carry_tokens: int = 0,
+    source: str = "claude",
+    est_cost_usd: float = 0.0,
+) -> bool:
+    """Stdlib-only public rollup push — no atelier imports, always works."""
+    import hashlib
+    import json as _json
+    import urllib.request
+    from datetime import UTC, datetime
+
+    saved = max(0.0, float(saved_usd or 0))
+    tokens = max(0, int(tokens_saved or 0))
+    calls = max(0, int(calls_avoided or 0))
+    turns = max(0, int(turn_count or 0))
+    carry_s = max(0.0, float(carry_usd or 0))
+    carry_t = max(0, int(carry_tokens or 0))
+    cost = max(0.0, float(est_cost_usd or 0))
+    if saved <= 0 and tokens <= 0 and calls <= 0 and turns <= 0 and carry_s <= 0 and carry_t <= 0 and cost <= 0:
+        return False
+
+    # Stable anonymous install identifier from auth.json
+    try:
+        import json as _j
+
+        _auth = _j.loads((_atelier_root() / "auth.json").read_text())
+        _raw_id = _auth.get("install_id") or _auth.get("userId") or "unknown"
+    except Exception:  # noqa: BLE001
+        _raw_id = "unknown"
+    anon_id = hashlib.sha256(_raw_id.encode()).hexdigest()
+
+    # Atelier version (best-effort)
+    try:
+        from importlib.metadata import version as _ver
+
+        atelier_version = _ver("atelier")
+    except Exception:  # noqa: BLE001
+        atelier_version = "unknown"
+
+    endpoint = (
+        __import__("os").environ.get("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", "")
+        or "https://atelier.ws/api/telemetry/rollup"
+    )
+
+    payload = {
+        "anon_id": anon_id,
+        "session_id": str(session_id).strip(),
+        "atelier_version": atelier_version,
+        "source": source,
+        "saved_usd": round(saved, 6),
+        "tokens_saved": tokens,
+        "calls_avoided": calls,
+        "carry_usd": round(carry_s, 6),
+        "carry_tokens": carry_t,
+        "turn_count": turns,
+        "est_cost_usd": round(cost, 6),
+        "occurred_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+    try:
+        body = _json.dumps(payload).encode()
+        req = urllib.request.Request(
+            endpoint,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"atelier/{atelier_version} (telemetry)",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            ok = resp.status in (200, 201)
+            logger.info(
+                "public_rollup.pushed session=%s saved=%.4f carry=%.4f tokens=%d turns=%d ok=%s",
+                payload["session_id"][:8],
+                saved,
+                carry_s,
+                tokens + carry_t,
+                turns,
+                ok,
+            )
+            return ok
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("public_rollup.failed session=%s err=%s", payload["session_id"][:8], exc)
+        return False
+
+
 def _load_session_aggregate(session_id: str) -> dict[str, Any]:
     if not session_id:
         return {}
@@ -466,6 +669,32 @@ def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, 
     stats["cache_write_tokens"] = int(stats.get("cache_write_tokens", 0) or 0) or int(
         usage.get("cache_write_tokens", 0) or 0
     )
+    # Pre-compact usage: token totals from turns that may have been erased when /compact
+    # rewrote the transcript.  The compact.py PreCompact hook stores the HIGH-WATER MARK
+    # (max across all compacts, not a running sum) so pre_compact represents the full
+    # session state at the most recent compact.
+    #
+    # Merge strategy — delta-only (add only what the transcript is missing):
+    #   • Claude Code preserves the full conversation after /compact (old turns remain
+    #     in the JSONL below compact_boundary markers), so read_transcript_stats() already
+    #     accounts for every token via msg_id dedup.  In that case pre_compact ≤ transcript
+    #     and the delta is 0 — nothing is added.
+    #   • If compact DID erase entries (older behaviour), pre_compact > transcript and we
+    #     recover only the truly missing portion.
+    #
+    # The old "unconditional add" inflated cost by up to Nx (N = compact count) because
+    # it summed N growing snapshots on top of a transcript that already contained them all.
+    pre_compact = aggregate.get("pre_compact_usage")
+    if isinstance(pre_compact, dict):
+        for _field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+            _pre = int(pre_compact.get(_field, 0) or 0)
+            _cur = int(stats[_field])
+            if _pre > _cur:
+                stats[_field] = _pre  # transcript was missing tokens; use the larger snapshot
+        _pre_cost = float(pre_compact.get("est_cost_usd", 0.0) or 0.0)
+        _cur_cost = float(stats.get("est_cost_usd", 0.0) or 0.0)
+        if _pre_cost > _cur_cost:
+            stats["est_cost_usd"] = _pre_cost
     stats["total_tokens"] = (
         int(stats["input_tokens"])
         + int(stats["output_tokens"])
@@ -490,13 +719,48 @@ def _is_task_session(stats: dict[str, Any] | None, session_aggregate: dict[str, 
     return bool(CODE_EDITING_TOOLS & tools_used)
 
 
+def _write_session_cost(
+    session_id: str,
+    cost_usd: float,
+    total_tokens: int,
+    carry_usd: float = 0.0,
+    carry_tokens: int = 0,
+) -> None:
+    """Append a session-end cost row to savings.jsonl for historical spend tracking.
+
+    The row has ``kind=="session_end"`` so ``_read_historical_savings`` in
+    savings_summary.py can accumulate actual spend and carry for historical
+    statusline frames without touching the savings totals.
+    """
+    if not session_id or cost_usd <= 0:
+        return
+    try:
+        from atelier.core.foundation.paths import session_dir
+
+        path = session_dir(_sessions_root(), "claude", session_id) / "savings.jsonl"
+    except ImportError:
+        return
+    if not path.exists():
+        return  # no savings sidecar → session produced no MCP events; skip
+    row = {
+        "kind": "session_end",
+        "ts": datetime.datetime.now(datetime.UTC).isoformat(),
+        "est_cost_usd": round(cost_usd, 6),
+        "total_tokens": int(total_tokens or 0),
+        "carry_usd": round(carry_usd, 6),
+        "carry_tokens": int(carry_tokens or 0),
+    }
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
+
+
 def _load_session_savings(session_id: str) -> dict[str, Any]:
     """Return session savings summary for the Claude session.
 
     Delegates to ``compute_savings_summary`` — the same function the
     statusline calls via ``atelier savings --line`` — so the statusline
     figure and this stop-hook summary are always derived from the same
-    source (``session_stats/claude/<session_id>.jsonl``, priced per-row
+    source (``sessions/<session_id>/savings.jsonl``, priced per-row
     at the model captured when each row was written).
     """
     zero = {
@@ -505,6 +769,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
         "tokens_saved": 0,
         "calls_avoided": 0,
         "carry_usd": 0.0,
+        "carry_tokens": 0,
         "estimated": False,
     }
     if not session_id:
@@ -519,6 +784,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
             "tokens_saved": int(summary.ctx_saved),
             "calls_avoided": int(summary.smart_calls),
             "carry_usd": float(summary.carry_usd),
+            "carry_tokens": int(summary.carry_tokens),
             "estimated": False,
         }
     except Exception:
@@ -571,11 +837,16 @@ def _format_stats(
     calls_str = f"{calls} tool call{'s' if calls != 1 else ''}"
     turns_str = f"{turns} turn{'s' if turns != 1 else ''}" if turns > 0 else ""
     activity = " · ".join(p for p in (turns_str, calls_str) if p)
-    lines = [
-        activity,
-        f"tokens: {_fmt_tok(fresh_in)} input ({_fmt_tok(inp)} new + {_fmt_tok(cache_write)} cW) / {_fmt_tok(cache_read)} cR / {_fmt_tok(out)} out  ({_fmt_tok(total)} total)",
-        f"{cost_prefix}${cost:.4f}",
-    ]
+    # One dense line per metric. Cost is omitted when negligible (<$0.01) -- the
+    # exact sub-cent figure is noise. tokens stays a single line with the 4
+    # Anthropic billing categories (cW/cR weighted by their real $ prominence).
+    tokens_line = (
+        f"tokens: {_fmt_tok(fresh_in)} in ({_fmt_tok(inp)} new + {_fmt_tok(cache_write)} cW) · "
+        f"{_fmt_tok(cache_read)} cR · {_fmt_tok(out)} out · {_fmt_tok(total)} total"
+    )
+    lines = [activity, tokens_line]
+    if cost >= 0.01:
+        lines.append(f"{cost_prefix}${cost:.4f}")
 
     # Always show savings — even at $0 — so the stop output shape is stable
     # across sessions. No display-time clamps; each saving was priced at the
@@ -585,52 +856,50 @@ def _format_stats(
     tokens_saved = int(savings.get("tokens_saved", 0) or 0)
     calls_avoided = int(savings.get("calls_avoided", 0) or 0)
     routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
-    lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
     carry_usd = float(savings.get("carry_usd", 0.0) or 0.0)
+    carry_tokens = int(savings.get("carry_tokens", 0) or 0)
+    savings_line = f"savings: ${saved_usd:.4f} · {tokens_saved:,} tok · {calls_avoided} calls avoided"
     if carry_usd > 0:
-        lines.append(f"context carry: ${carry_usd:.4f} (cache re-reads avoided on later turns)")
+        carry_tokens_str = f"/{carry_tokens:,} tok" if carry_tokens > 0 else ""
+        savings_line += f" · carry ${carry_usd:.4f}{carry_tokens_str}"
     if routing_usd > 0:
-        lines.append(f"routing savings: ${routing_usd:.4f}")
+        savings_line += f" · routing ${routing_usd:.4f}"
+    lines.append(savings_line)
 
     lines.append(f"top tools: {tools_str}")
 
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Auto-record helper
-# ---------------------------------------------------------------------------
+def _format_review_findings(session_id: str) -> str:
+    """Surface unconsumed NEEDS_FIX live-reviewer verdicts; mark them consumed.
 
-
-def _auto_record(session_id: str, stats: dict[str, Any] | None) -> None:
-    """Call `atelier runs record` silently so the ledger stays complete."""
-    import subprocess
-
+    Advisory only — returns a short suffix appended to the session message.
+    Fail-open: any problem yields an empty suffix.
+    """
     if not session_id:
-        return
-    total_in = (stats or {}).get("input_tokens", 0)
-    total_out = (stats or {}).get("output_tokens", 0)
-    cost = (stats or {}).get("est_cost_usd", 0.0)
-    tool_calls = (stats or {}).get("tool_calls", 0)
-    trace = {
-        "agent": "claude-code",
-        "domain": "session",
-        "task": "session-auto-record",
-        "status": "success",
-        "session_id": session_id,
-        "output_summary": f"tokens: {total_in}in/{total_out}out  cost: ~${cost:.4f}  tools: {tool_calls}",
-    }
-
-    atelier_bin = os.environ.get("ATELIER_BIN") or str(Path.home() / ".local" / "bin" / "atelier")
-    with contextlib.suppress(Exception):
-        subprocess.run(
-            [atelier_bin, "runs", "record", "--input", "-"],
-            input=json.dumps(trace),
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
+        return ""
+    try:
+        from atelier.core.capabilities.live_reviewer.sink import (
+            latest_unconsumed,
+            mark_consumed,
         )
+    except ImportError:
+        return ""
+    root = _atelier_root()
+    pending = latest_unconsumed(root, session_id)
+    if not pending:
+        return ""
+    mark_consumed(root, session_id)
+    needs_fix = [row for row in pending if row.get("verdict") == "NEEDS_FIX"]
+    if not needs_fix:
+        return ""
+    lines = ["", "Code review (atelier) — NEEDS_FIX:"]
+    for row in needs_fix[:5]:
+        paths = ", ".join(str(p) for p in (row.get("paths") or []))
+        missing = str(row.get("missing") or "").strip().replace("\n", " ")
+        lines.append(f"  • {paths}: {missing[:300]}" if missing else f"  • {paths}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +916,10 @@ def main() -> int:
 
     session_id: str = payload.get("session_id", "") or ""
     transcript_path: str = payload.get("transcript_path", "") or ""
+    # Deferred-format pass: when ATELIER_DEFER_EDIT_HOOKS moved format off the
+    # per-edit path, format the session's edited files once now (fail-open).
+    with contextlib.suppress(Exception):
+        _format_deferred_edits(transcript_path)
     stats = _read_transcript_stats(transcript_path)
     session_aggregate = _load_session_aggregate(session_id)
     stats = _merge_session_aggregate(stats, session_aggregate)
@@ -661,46 +934,67 @@ def main() -> int:
     # ── Always write token/cost summary to RunLedger (fail-open) ─────────────
     if stats and stats.get("total_tokens", 0) > 0:
         with contextlib.suppress(Exception):
-            _write_token_event(stats)
+            _write_token_event(stats, session_id)
 
-    # ── Enrich run file with session title + full prompt history ──────────────
+    # ── Load per-session savings breakdown (before writing session_end so carry is persisted)
+    savings: dict[str, Any] | None = None
+    with contextlib.suppress(Exception):
+        savings = _load_session_savings(session_id)
+
+    # Public rollup — always-on stdlib push (no atelier import, never fails silently).
+    _s = savings or {}
+    _push_public_rollup(
+        session_id=session_id,
+        saved_usd=float(_s.get("saved_usd", 0.0) or 0.0),
+        tokens_saved=int(_s.get("tokens_saved", 0) or 0),
+        calls_avoided=int(_s.get("calls_avoided", 0) or 0),
+        carry_usd=float(_s.get("carry_usd", 0.0) or 0.0),
+        carry_tokens=int(_s.get("carry_tokens", 0) or 0),
+        turn_count=int((stats or {}).get("turns", 0) or 0),
+        source="claude",
+        est_cost_usd=float((stats or {}).get("est_cost_usd", 0.0) or 0.0),
+    )
+
+    # ── Write session cost + carry to savings.jsonl for historical 7d/30d spend tracking
+    if stats and stats.get("est_cost_usd", 0) > 0:
+        with contextlib.suppress(Exception):
+            _write_session_cost(
+                session_id,
+                float(stats["est_cost_usd"]),
+                int(stats.get("total_tokens", 0)),
+                carry_usd=float((savings or {}).get("carry_usd", 0.0) or 0.0),
+                carry_tokens=int((savings or {}).get("carry_tokens", 0) or 0),
+            )
+
+    # ── Enrich run file with session title + full prompt history ─────────────────────
     with contextlib.suppress(Exception):
         session_title = _extract_session_title(transcript_path)
         user_prompts = _extract_user_prompts(transcript_path)
         if session_title or user_prompts:
             _write_session_enrichment(session_id, session_title, user_prompts, transcript_path)
 
-    # ── Load per-session savings breakdown ────────────────────────────────────
-    savings: dict[str, Any] | None = None
+    # ── Surface unconsumed live-reviewer findings (advisory) ─────────────────
+    review_suffix = ""
     with contextlib.suppress(Exception):
-        savings = _load_session_savings(session_id)
+        review_suffix = _format_review_findings(session_id)
 
     # Transcript JSONL stays as the source of truth even after stop —
     # cost, tokens, and savings are all derivable from it. No snapshot needed.
 
     # ── Always show stats (discussion and task sessions alike) ───────────────
-    # If no code-editing tools were used, show stats but skip the trace reminder.
+    # If no code-editing tools were used, show plain session stats.
     if not _is_task_session(stats, session_aggregate):
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Session stats:\n{summary}"}))
+            print(json.dumps({"systemMessage": f"Session stats:\n{summary}{review_suffix}"}))
         return 0
 
-    # ── Code work happened: check if trace was recorded ──────────────────────
-    if _trace_recorded(session_id):
-        # Trace already recorded — show stats via systemMessage and allow exit.
-        # Note: hookSpecificOutput is NOT valid for Stop hooks (only PreToolUse,
-        # PostToolUse, UserPromptSubmit, PostToolBatch support it).
-        if stats and stats["total_tokens"] > 0:
-            summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}"}))
-        return 0
-
-    # ── Code work done but no trace — auto-record and show stats ─────────────
-    _auto_record(session_id, stats)
+    # ── Code work happened: show the session-complete summary ────────────────
+    # (Stop hooks can only emit a systemMessage — hookSpecificOutput is not
+    # valid here, unlike PreToolUse/PostToolUse/UserPromptSubmit/PostToolBatch.)
     if stats and stats["total_tokens"] > 0:
         summary = _format_stats(stats, savings, real_cost=real_cost)
-        print(json.dumps({"systemMessage": f"Atelier: session auto-recorded.\n{summary}"}))
+        print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
     return 0
 
 

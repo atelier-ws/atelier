@@ -21,13 +21,13 @@ const VARIANT_STYLES: Record<ButtonVariant, string> = {
   ghost:
     "border-transparent text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900/40 hover:text-neutral-200",
   accent:
-    "border-purple-500/60 text-purple-300 hover:bg-purple-500/10 hover:text-purple-200",
+    "border-brand-500/60 text-brand-300 hover:bg-brand-500/10 hover:text-brand-200",
   amber:
     "border-amber-500/60 text-amber-200 hover:bg-amber-500/10 hover:text-amber-100",
   emerald:
     "border-emerald-700 text-emerald-200 hover:border-emerald-500 hover:text-emerald-100",
   danger: "border-red-700 text-red-200 hover:border-red-500 hover:text-red-100",
-  link: "border-transparent px-0 py-0 text-neutral-500 hover:text-neutral-300",
+  link: "border-transparent px-0 py-0 text-neutral-400 hover:text-neutral-300",
 };
 
 const SIZE_STYLES: Record<ButtonSize, string> = {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { AlertCircle, CheckCircle2, Info, Search, Zap } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   api,
   type GranularToolUsage,
@@ -9,23 +9,15 @@ import {
   type DashboardTool,
   type DashboardHostModelOverview,
 } from "../api";
-import { MetricCard } from "../components/WorkbenchUI";
+import { EmptyState, MetricCard } from "../components/WorkbenchUI";
+import { fmtTok } from "../lib/format";
 import { useTimeRange } from "../lib/TimeRangeContext";
 
-const AGENTS = ["Claude", "Codex", "Copilot", "Opencode", "Gemini"];
-const CATEGORIES = [
-  "Native / Unoptimized",
-  "Atelier Optimized",
-  "Other Third-Party / Minor",
-  "Miscellaneous",
-  "Token Usage",
-];
 const TABS = [
   "Overview",
   "Timeline",
   "Domains",
   "Tool Breakdown",
-  "Analysis",
   "Details",
 ] as const;
 const TIMELINE_BREAKDOWN_OPTIONS = [
@@ -46,12 +38,6 @@ function defaultdict_int() {
 
 function fmt(n: number, decimals = 2) {
   return n.toFixed(decimals);
-}
-
-function fmtM(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-  return String(n);
 }
 
 const EMPTY_SUMMARY: AnalyticsSummary = {
@@ -132,10 +118,10 @@ function CompactLeaderboard({
   return (
     <section className="border border-neutral-800 bg-neutral-950/40 p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           {title}
         </div>
-        <div className="text-[9px] font-mono text-neutral-600">
+        <div className="text-[10px] font-mono text-neutral-400">
           Top {rows.length}
         </div>
       </div>
@@ -147,7 +133,7 @@ function CompactLeaderboard({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 shrink-0 font-mono text-[9px] text-neutral-600">
+                    <span className="w-5 shrink-0 font-mono text-[10px] text-neutral-400">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="truncate text-sm text-neutral-200">
@@ -155,7 +141,7 @@ function CompactLeaderboard({
                     </span>
                   </div>
                   {row.sublabel && (
-                    <div className="pl-7 pt-0.5 text-[10px] text-neutral-500 truncate">
+                    <div className="pl-7 pt-0.5 text-[10px] text-neutral-400 truncate">
                       {row.sublabel}
                     </div>
                   )}
@@ -165,7 +151,7 @@ function CompactLeaderboard({
                     {row.value}
                   </div>
                   {row.detail && (
-                    <div className="text-[10px] text-neutral-500">
+                    <div className="text-[10px] text-neutral-400">
                       {row.detail}
                     </div>
                   )}
@@ -182,7 +168,7 @@ function CompactLeaderboard({
           ))}
         </div>
       ) : (
-        <div className="text-neutral-600 italic text-xs">{emptyMessage}</div>
+        <div className="text-neutral-400 italic text-xs">{emptyMessage}</div>
       )}
     </section>
   );
@@ -209,10 +195,10 @@ function ExternalSnapshotCard({
   return (
     <section className="border border-neutral-800 bg-neutral-950/40 p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           External Reference
         </div>
-        <div className="text-[9px] font-mono text-neutral-600">
+        <div className="text-[10px] font-mono text-neutral-400">
           {snapshot?.tool ?? "No snapshot"}
         </div>
       </div>
@@ -221,7 +207,7 @@ function ExternalSnapshotCard({
         <div className="space-y-3 text-xs text-neutral-300">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="border border-neutral-900 bg-black/20 p-3">
-              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                 Atelier
               </div>
               <div className="mt-1 font-mono text-emerald-300">
@@ -229,7 +215,7 @@ function ExternalSnapshotCard({
               </div>
             </div>
             <div className="border border-neutral-900 bg-black/20 p-3">
-              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                 CodeBurn
               </div>
               <div className="mt-1 font-mono text-cyan-300">
@@ -239,7 +225,7 @@ function ExternalSnapshotCard({
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                 Delta
               </div>
               <div className="mt-1 font-mono text-amber-300">
@@ -247,7 +233,7 @@ function ExternalSnapshotCard({
               </div>
             </div>
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                 Calls
               </div>
               <div className="mt-1 font-mono text-neutral-200">
@@ -255,7 +241,7 @@ function ExternalSnapshotCard({
               </div>
             </div>
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                 Sessions
               </div>
               <div className="mt-1 font-mono text-neutral-200">
@@ -265,13 +251,13 @@ function ExternalSnapshotCard({
               </div>
             </div>
           </div>
-          <div className="border-t border-neutral-800 pt-3 text-[10px] text-neutral-500">
+          <div className="border-t border-neutral-800 pt-3 text-[10px] text-neutral-400">
             Snapshot period: {snapshot.period} · collected{" "}
             {new Date(snapshot.collected_at).toLocaleString()}
           </div>
         </div>
       ) : (
-        <div className="text-neutral-600 italic text-xs">
+        <div className="text-neutral-400 italic text-xs">
           No external snapshot available.
         </div>
       )}
@@ -292,10 +278,10 @@ function OverviewHostModelSpotlight({
   return (
     <section className="border border-neutral-800 bg-neutral-950/40 p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           Heavy Host / Model Pairs
         </div>
-        <div className="text-[9px] font-mono text-neutral-600">
+        <div className="text-[10px] font-mono text-neutral-400">
           Top {spotlight.length}
         </div>
       </div>
@@ -309,14 +295,14 @@ function OverviewHostModelSpotlight({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[9px] uppercase tracking-widest text-cyan-300/80 font-bold">
+                  <div className="text-[10px] uppercase tracking-widest text-cyan-300 font-bold">
                     {row.host}
                   </div>
                   <div className="mt-1 text-sm font-semibold text-neutral-100 break-words">
                     {row.model || "—"}
                   </div>
                 </div>
-                <div className="text-[9px] font-mono text-neutral-600">
+                <div className="text-[10px] font-mono text-neutral-400">
                   #{index + 1}
                 </div>
               </div>
@@ -329,7 +315,7 @@ function OverviewHostModelSpotlight({
 
               <div className="grid grid-cols-2 gap-3 text-[10px]">
                 <div>
-                  <div className="uppercase tracking-widest text-neutral-500">
+                  <div className="uppercase tracking-widest text-neutral-400">
                     Cost
                   </div>
                   <div className="mt-1 font-mono text-emerald-300">
@@ -337,7 +323,7 @@ function OverviewHostModelSpotlight({
                   </div>
                 </div>
                 <div>
-                  <div className="uppercase tracking-widest text-neutral-500">
+                  <div className="uppercase tracking-widest text-neutral-400">
                     Sessions
                   </div>
                   <div className="mt-1 font-mono text-neutral-200">
@@ -345,7 +331,7 @@ function OverviewHostModelSpotlight({
                   </div>
                 </div>
                 <div>
-                  <div className="uppercase tracking-widest text-neutral-500">
+                  <div className="uppercase tracking-widest text-neutral-400">
                     Tool Calls
                   </div>
                   <div className="mt-1 font-mono text-neutral-200">
@@ -353,7 +339,7 @@ function OverviewHostModelSpotlight({
                   </div>
                 </div>
                 <div>
-                  <div className="uppercase tracking-widest text-neutral-500">
+                  <div className="uppercase tracking-widest text-neutral-400">
                     Billable Out
                   </div>
                   <div className="mt-1 font-mono text-neutral-200">
@@ -362,7 +348,7 @@ function OverviewHostModelSpotlight({
                 </div>
               </div>
 
-              <div className="text-[10px] text-neutral-500">
+              <div className="text-[10px] text-neutral-400">
                 {(row.base_context_tokens / 1_000_000).toFixed(1)}M base context
                 · {(row.tool_output_tokens / 1_000_000).toFixed(1)}M tool out
               </div>
@@ -370,7 +356,7 @@ function OverviewHostModelSpotlight({
           ))}
         </div>
       ) : (
-        <div className="text-neutral-600 italic text-xs">{emptyMessage}</div>
+        <div className="text-neutral-400 italic text-xs">{emptyMessage}</div>
       )}
     </section>
   );
@@ -494,7 +480,7 @@ function SpendTimelineChart({
 
   if (!buckets.length)
     return (
-      <div className="text-neutral-600 italic text-xs p-4">
+      <div className="text-neutral-400 italic text-xs p-4">
         No timeline data.
       </div>
     );
@@ -508,7 +494,7 @@ function SpendTimelineChart({
     <section className="border border-neutral-800 bg-neutral-950/40 p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
             {breakdown === "hourly" ? "Hourly" : "Daily"} Activity
           </div>
           <div className="mt-1 text-sm text-neutral-400">
@@ -523,10 +509,10 @@ function SpendTimelineChart({
                 key={option.value}
                 type="button"
                 onClick={() => onBreakdownChange(option.value)}
-                className={`border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                className={`border px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
                   selected
                     ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                    : "border-neutral-800 bg-neutral-950 text-neutral-500 hover:border-neutral-700 hover:text-neutral-300"
+                    : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700 hover:text-neutral-300"
                 }`}
                 aria-pressed={selected}
               >
@@ -556,8 +542,8 @@ function SpendTimelineChart({
             >
               <div
                 className={`max-w-full truncate font-mono ${
-                  d.cost > 0 ? "text-emerald-300" : "text-neutral-600"
-                } ${isHourly ? "text-[8px]" : "text-[10px]"}`}
+                  d.cost > 0 ? "text-emerald-300" : "text-neutral-400"
+                } ${isHourly ? "text-[10px]" : "text-[10px]"}`}
               >
                 {timelineValueLabel(d.cost)}
               </div>
@@ -573,8 +559,8 @@ function SpendTimelineChart({
               </div>
               <div
                 className={`max-w-full truncate font-mono ${
-                  d.sessions > 0 ? "text-neutral-500" : "text-neutral-700"
-                } ${isHourly ? "h-3 text-[8px]" : "text-[10px]"}`}
+                  d.sessions > 0 ? "text-neutral-400" : "text-neutral-400"
+                } ${isHourly ? "h-3 text-[10px]" : "text-[10px]"}`}
               >
                 {timelineBucketLabel(d.date, breakdown)}
               </div>
@@ -584,7 +570,7 @@ function SpendTimelineChart({
       </div>
       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-800/60">
         <div>
-          <div className="text-[9px] uppercase text-neutral-500 mb-0.5">
+          <div className="text-[10px] uppercase text-neutral-400 mb-0.5">
             Total
           </div>
           <div className="text-sm font-mono text-emerald-300">
@@ -592,7 +578,7 @@ function SpendTimelineChart({
           </div>
         </div>
         <div>
-          <div className="text-[9px] uppercase text-neutral-500 mb-0.5">
+          <div className="text-[10px] uppercase text-neutral-400 mb-0.5">
             Avg/Bucket
           </div>
           <div className="text-sm font-mono text-emerald-300">
@@ -611,13 +597,13 @@ function ByHostTable({ byHost }: { byHost: AnalyticsDashboard["by_host"] }) {
   return (
     <section className="border border-neutral-800 bg-neutral-950/40">
       <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           Agent Host Breakdown
         </div>
       </div>
       <table className="w-full text-xs border-collapse">
         <thead>
-          <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-500 bg-neutral-900/50">
+          <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-400 bg-neutral-900/50">
             <th className="px-4 py-2 text-left">Host</th>
             <th className="px-4 py-2 text-right">Sessions</th>
             <th className="px-4 py-2 text-right">Cost</th>
@@ -628,7 +614,7 @@ function ByHostTable({ byHost }: { byHost: AnalyticsDashboard["by_host"] }) {
         <tbody className="divide-y divide-neutral-900">
           {byHost.map((r, i) => (
             <tr key={i} className="hover:bg-neutral-800/20">
-              <td className="px-4 py-2 font-mono text-cyan-300/80 capitalize">
+              <td className="px-4 py-2 font-mono text-cyan-300 capitalize">
                 {r.host}
               </td>
               <td className="px-4 py-2 text-right font-mono text-neutral-400">
@@ -637,7 +623,7 @@ function ByHostTable({ byHost }: { byHost: AnalyticsDashboard["by_host"] }) {
               <td className="px-4 py-2 text-right font-mono text-emerald-300">
                 ${fmt(r.cost)}
               </td>
-              <td className="px-4 py-2 text-right font-mono text-amber-300/80">
+              <td className="px-4 py-2 text-right font-mono text-amber-300">
                 {fmt(r.cache_pct, 1)}%
               </td>
               <td className="px-4 py-2">
@@ -662,14 +648,14 @@ function ByModelTable({
   return (
     <section className="border border-neutral-800 bg-neutral-950/40">
       <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           By Model
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-500 bg-neutral-900/50">
+            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-400 bg-neutral-900/50">
               <th className="px-4 py-2 text-left">Model</th>
               <th className="px-4 py-2 text-right">Sessions</th>
               <th className="px-4 py-2 text-right">Input (M)</th>
@@ -698,10 +684,10 @@ function ByModelTable({
                   <span
                     className={`font-mono text-[10px] ${
                       r.cache_pct > 60
-                        ? "text-emerald-400"
+                        ? "text-emerald-300"
                         : r.cache_pct > 30
-                          ? "text-amber-400"
-                          : "text-red-400/80"
+                          ? "text-amber-300"
+                          : "text-red-300"
                     }`}
                   >
                     {fmt(r.cache_pct, 1)}%
@@ -712,92 +698,6 @@ function ByModelTable({
                 </td>
                 <td className="px-4 py-2">
                   <MiniBar value={r.cost} max={maxCost} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-// ---- Top Sessions ----------------------------------------------------------
-
-function TopSessions({
-  sessions,
-}: {
-  sessions: AnalyticsDashboard["top_sessions"];
-}) {
-  const maxCost = Math.max(...sessions.map((s) => s.cost), 0.0001);
-  return (
-    <section className="border border-neutral-800 bg-neutral-950/40">
-      <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
-          Costliest Sessions
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-500 bg-neutral-900/50">
-              <th className="px-4 py-2">#</th>
-              <th className="px-4 py-2 text-left">Date</th>
-              <th className="px-4 py-2 text-left">Host</th>
-              <th className="px-4 py-2 text-left">Project</th>
-              <th className="px-4 py-2 text-left">Model</th>
-              <th className="px-4 py-2 text-right">Input</th>
-              <th className="px-4 py-2 text-right">Output</th>
-              <th className="px-4 py-2 text-right">Cache</th>
-              <th className="px-4 py-2 text-right">Cost</th>
-              <th className="px-4 py-2 text-right">Saved</th>
-              <th className="px-4 py-2">Rel.</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-900">
-            {sessions.map((s, i) => (
-              <tr key={i} className="hover:bg-neutral-800/20">
-                <td className="px-4 py-2 font-mono text-neutral-600">
-                  {i + 1}
-                </td>
-                <td className="px-4 py-2 font-mono text-neutral-500 text-[10px]">
-                  {s.date}
-                </td>
-                <td className="px-4 py-2 font-mono text-cyan-300/80 capitalize">
-                  {s.host}
-                </td>
-                <td
-                  className="px-4 py-2 text-neutral-400 max-w-[140px] truncate"
-                  title={s.domain}
-                >
-                  {s.domain}
-                </td>
-                <td className="px-4 py-2 font-mono text-neutral-500 text-[10px]">
-                  {s.model || "—"}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                  {fmtM(s.input_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                  {fmtM(s.output_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-amber-400/70">
-                  {fmtM(s.cached_tokens)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-amber-300 font-bold">
-                  ${fmt(s.cost)}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-emerald-300">
-                  {s.atelier_savings_usd && s.atelier_savings_usd > 0
-                    ? `$${fmt(s.atelier_savings_usd)}`
-                    : "—"}
-                </td>
-                <td className="px-4 py-2">
-                  <MiniBar
-                    value={s.cost}
-                    max={maxCost}
-                    color="bg-amber-500/50"
-                  />
                 </td>
               </tr>
             ))}
@@ -819,14 +719,14 @@ function ByProjectTable({
   return (
     <section className="border border-neutral-800 bg-neutral-950/40">
       <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           Domain Spend
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-500 bg-neutral-900/50">
+            <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-400 bg-neutral-900/50">
               <th className="px-4 py-2 text-left">Project</th>
               <th className="px-4 py-2 text-right">Sessions</th>
               <th className="px-4 py-2 text-right">Total Cost</th>
@@ -873,7 +773,7 @@ function ByProjectTable({
 function ToolTable({
   title,
   tools,
-  color = "bg-purple-500/50",
+  color = "bg-brand-500/50",
 }: {
   title: string;
   tools: DashboardTool[];
@@ -883,22 +783,22 @@ function ToolTable({
   if (!tools.length)
     return (
       <section className="border border-neutral-800 bg-neutral-950/40 p-4">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold mb-2">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold mb-2">
           {title}
         </div>
-        <div className="text-neutral-600 italic text-xs">No data.</div>
+        <div className="text-neutral-400 italic text-xs">No data.</div>
       </section>
     );
   return (
     <section className="border border-neutral-800 bg-neutral-950/40">
       <div className="bg-neutral-900/80 border-b border-neutral-800 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
           {title}
         </div>
       </div>
       <table className="w-full text-xs border-collapse">
         <thead>
-          <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-500 bg-neutral-900/50">
+          <tr className="border-b border-neutral-800 text-[10px] uppercase text-neutral-400 bg-neutral-900/50">
             <th className="px-4 py-2 text-left">Tool</th>
             <th className="px-4 py-2 text-right">Calls</th>
             <th className="px-4 py-2 text-right">Out Tokens</th>
@@ -913,7 +813,7 @@ function ToolTable({
                 {t.calls.toLocaleString()}
               </td>
               <td className="px-4 py-2 text-right font-mono text-neutral-400">
-                {fmtM(t.output_tokens)}
+                {fmtTok(t.output_tokens)}
               </td>
               <td className="px-4 py-2">
                 <MiniBar value={t.calls} max={maxCalls} color={color} />
@@ -923,152 +823,6 @@ function ToolTable({
         </tbody>
       </table>
     </section>
-  );
-}
-
-// ---- Savings Insights ------------------------------------------------------
-
-function SavingsInsights({ dashboard }: { dashboard: AnalyticsDashboard }) {
-  const { top_sessions, by_model, summary } = dashboard;
-  const savedUsd = summary?.total_atelier_savings_usd ?? 0;
-  const savedPct = summary?.savings_pct ?? 0;
-  const totalCost = summary?.total_cost ?? 0;
-
-  const highCostSessions = top_sessions.filter((s) => s.cost > 1.0);
-  const noCacheSessions = top_sessions.filter(
-    (s) =>
-      s.cost > 0.5 &&
-      s.input_tokens > 0 &&
-      s.cached_tokens / (s.input_tokens + s.cached_tokens) < 0.1
-  );
-  const heavyContextSessions = top_sessions.filter(
-    (s) => s.input_tokens > 500_000
-  );
-  const multiModelCount = by_model.filter((m) => m.cost > 0.1).length;
-
-  return (
-    <div className="space-y-4">
-      <section className="border border-neutral-800 bg-neutral-950/40 p-5">
-        <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold mb-4">
-          Atelier Impact
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-          <div className="border border-emerald-900/40 bg-emerald-950/20 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-emerald-400/80 font-bold mb-1">
-              Total Saved
-            </div>
-            <div className="text-2xl font-bold font-mono text-emerald-300">
-              ${savedUsd.toFixed(2)}
-            </div>
-          </div>
-          <div className="border border-neutral-800 bg-neutral-950/40 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold mb-1">
-              Spend Window
-            </div>
-            <div className="text-2xl font-bold font-mono text-amber-300">
-              ${totalCost.toFixed(2)}
-            </div>
-          </div>
-          <div className="border border-neutral-800 bg-neutral-950/40 p-3 rounded">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold mb-1">
-              Efficiency
-            </div>
-            <div className="text-2xl font-bold font-mono text-purple-300">
-              {savedPct.toFixed(1)}%
-            </div>
-          </div>
-        </div>
-        <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold mb-4">
-          Session Analysis
-        </div>
-        <div className="space-y-3">
-          {highCostSessions.length > 0 && (
-            <div className="border border-red-900/40 bg-red-950/20 p-3 rounded">
-              <div className="text-[10px] text-red-400 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <AlertCircle size={12} /> {highCostSessions.length} High-Cost
-                Session
-                {highCostSessions.length > 1 ? "s" : ""} (&gt;$1.00 each)
-              </div>
-              <div className="text-[10px] text-red-300/70 space-y-0.5">
-                {highCostSessions.slice(0, 3).map((s, i) => (
-                  <div key={i}>
-                    {s.date} · {s.host} · {s.domain} —{" "}
-                    <span className="text-red-300">${fmt(s.cost)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="text-[9px] text-red-400/50 mt-2">
-                Consider adding context pruning, summarization, or session
-                splitting.
-              </div>
-            </div>
-          )}
-
-          {noCacheSessions.length > 0 && (
-            <div className="border border-amber-900/40 bg-amber-950/20 p-3 rounded">
-              <div className="text-[10px] text-amber-400 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Info size={12} /> {noCacheSessions.length} Session
-                {noCacheSessions.length > 1 ? "s" : ""} with Low Cache
-                Utilization
-              </div>
-              <div className="text-[10px] text-amber-300/70">
-                These sessions have &lt;10% cache hit rate on expensive prompts.
-              </div>
-              <div className="text-[9px] text-amber-400/50 mt-2">
-                Use long-lived system prompts and structured prefixes to improve
-                caching.
-              </div>
-            </div>
-          )}
-
-          {heavyContextSessions.length > 0 && (
-            <div className="border border-purple-900/40 bg-purple-950/20 p-3 rounded">
-              <div className="text-[10px] text-purple-400 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Zap size={12} /> {heavyContextSessions.length} Context-Heavy
-                Session
-                {heavyContextSessions.length > 1 ? "s" : ""} (&gt;500k input
-                tokens)
-              </div>
-              <div className="text-[10px] text-purple-300/70 space-y-0.5">
-                {heavyContextSessions.slice(0, 3).map((s, i) => (
-                  <div key={i}>
-                    {s.date} · {s.host} — {fmtM(s.input_tokens)} input tokens
-                  </div>
-                ))}
-              </div>
-              <div className="text-[9px] text-purple-400/50 mt-2">
-                Add file chunking, selective context inclusion, and compact
-                intermediate results.
-              </div>
-            </div>
-          )}
-
-          {multiModelCount > 2 && (
-            <div className="border border-blue-900/40 bg-blue-950/20 p-3 rounded">
-              <div className="text-[10px] text-blue-400 font-bold uppercase mb-1 flex items-center gap-1.5">
-                <Info size={12} /> {multiModelCount} Active Models — Consider
-                Consolidation
-              </div>
-              <div className="text-[10px] text-blue-300/70">
-                You're using {multiModelCount} models with non-trivial cost.
-                Routing cheaper tasks to smaller models could reduce spend.
-              </div>
-            </div>
-          )}
-
-          {highCostSessions.length === 0 &&
-            noCacheSessions.length === 0 &&
-            heavyContextSessions.length === 0 && (
-              <div className="text-neutral-500 italic text-xs flex items-center gap-1.5">
-                <CheckCircle2 size={12} className="text-emerald-500" /> No
-                significant optimization opportunities detected in this period.
-              </div>
-            )}
-        </div>
-      </section>
-
-      {top_sessions.length > 0 && <TopSessions sessions={top_sessions} />}
-    </div>
   );
 }
 
@@ -1120,7 +874,7 @@ function CostDriversChart({
         <div className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold">
           Token Flow
         </div>
-        <div className="text-xs text-neutral-500 italic">
+        <div className="text-xs text-neutral-400 italic">
           No input or output token activity found for the current filters.
         </div>
       </section>
@@ -1140,7 +894,7 @@ function CostDriversChart({
               <div className="flex justify-between text-[10px] gap-4">
                 <span className="text-neutral-300">{item.label}</span>
                 <span className={`font-mono ${item.accent}`}>
-                  {fmtM(item.tokens)} tokens · {share.toFixed(1)}%
+                  {fmtTok(item.tokens)} tokens · {share.toFixed(1)}%
                 </span>
               </div>
               <div className="h-2 bg-neutral-900 overflow-hidden rounded">
@@ -1153,7 +907,7 @@ function CostDriversChart({
           );
         })}
       </div>
-      <div className="text-[9px] text-neutral-500 pt-2 border-t border-neutral-800 space-y-1">
+      <div className="text-[10px] text-neutral-400 pt-2 border-t border-neutral-800 space-y-1">
         <p>
           Output is model-generated text, including assistant responses plus
           tool call arguments. Tool output stays separate.
@@ -1256,6 +1010,23 @@ export default function Analytics() {
     return Array.from(set).sort();
   }, [data]);
 
+  const agents = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((d) => {
+      const host = d.host || d.agent;
+      if (host) set.add(host);
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((d) => {
+      if (d.category) set.add(d.category);
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
   const stats = summary;
 
   const hostModelStats = dashboard?.host_model_overview ?? [];
@@ -1341,7 +1112,7 @@ export default function Analytics() {
         label: "Top Tool Driver",
         value: topTool?.tool || "—",
         detail: topTool
-          ? `$${fmt(topTool.cost)} · ${topTool.calls.toLocaleString()} calls · ${fmtM(topTool.tokens)} out`
+          ? `$${fmt(topTool.cost)} · ${topTool.calls.toLocaleString()} calls · ${fmtTok(topTool.tokens)} out`
           : "No tool usage found.",
         tone: "amber" as const,
       },
@@ -1383,7 +1154,7 @@ export default function Analytics() {
       label: row.tool,
       sublabel: `${row.calls.toLocaleString()} calls`,
       value: `$${fmt(row.cost)}`,
-      detail: `${fmtM(row.tokens)} out · $${row.costPerCall.toFixed(4)}/call`,
+      detail: `${fmtTok(row.tokens)} out · $${row.costPerCall.toFixed(4)}/call`,
       barValue: row.cost,
     }));
   }, [costDriversData]);
@@ -1405,29 +1176,26 @@ export default function Analytics() {
     }));
   }, [dashboard]);
 
-  if (err) return <div className="text-red-400 p-6">Error: {err}</div>;
+  if (err) return <div className="text-red-300 p-6">Error: {err}</div>;
   if (loading && data.length === 0)
-    return (
-      <div className="text-neutral-400 p-6 italic animate-pulse">
-        Loading analytics...
-      </div>
-    );
+    return <EmptyState title="Loading analytics…" className="m-6" />;
 
   return (
-    <div className="p-6 mx-auto space-y-6 bg-black min-h-screen text-neutral-200 font-sans">
+    <div className="p-6 mx-auto space-y-6 text-neutral-200 font-sans">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
             Cost & Efficiency
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase font-bold text-neutral-500">
+            <span className="text-[10px] uppercase font-bold text-neutral-400">
               Agent
             </span>
             <select
+              aria-label="Filter by agent"
               value={agentFilter}
               onChange={(e) => {
                 setAgentFilter(e.target.value);
@@ -1436,18 +1204,19 @@ export default function Analytics() {
               className="bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs text-neutral-300 focus:outline-none"
             >
               <option value="all">All Agents</option>
-              {AGENTS.map((a) => (
-                <option key={a} value={a.toLowerCase()}>
+              {agents.map((a) => (
+                <option key={a} value={a}>
                   {a}
                 </option>
               ))}
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase font-bold text-neutral-500">
+            <span className="text-[10px] uppercase font-bold text-neutral-400">
               Model
             </span>
             <select
+              aria-label="Filter by model"
               value={modelFilter}
               onChange={(e) => setModelFilter(e.target.value)}
               className="bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs text-neutral-300 focus:outline-none max-w-[150px]"
@@ -1461,16 +1230,17 @@ export default function Analytics() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase font-bold text-neutral-500">
+            <span className="text-[10px] uppercase font-bold text-neutral-400">
               Category
             </span>
             <select
+              aria-label="Filter by category"
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="bg-neutral-900 border border-neutral-700 px-2 py-1 text-xs text-neutral-300 focus:outline-none"
             >
               <option value="all">All Categories</option>
-              {CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -1488,8 +1258,8 @@ export default function Analytics() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-[11px] uppercase tracking-wider font-semibold transition-colors ${
               activeTab === tab
-                ? "text-emerald-400 border-b-2 border-emerald-500 -mb-px"
-                : "text-neutral-500 hover:text-neutral-300"
+                ? "text-emerald-300 border-b-2 border-emerald-500 -mb-px"
+                : "text-neutral-400 hover:text-neutral-300"
             }`}
           >
             {tab}
@@ -1511,16 +1281,6 @@ export default function Analytics() {
               label="Projected Month-End"
               value={`$${stats.estimated_monthly_cost.toFixed(2)}`}
               tone="amber"
-            />
-            <MetricCard
-              label="Atelier Savings"
-              value={`$${(dashboard?.summary?.total_atelier_savings_usd ?? 0).toFixed(2)}`}
-              detail={
-                (dashboard?.summary?.savings_pct ?? 0) > 0
-                  ? `${(dashboard?.summary?.savings_pct ?? 0).toFixed(1)}% of spend`
-                  : undefined
-              }
-              tone="emerald"
             />
             <MetricCard
               label="Total Tool Calls"
@@ -1620,9 +1380,7 @@ export default function Analytics() {
       {activeTab === "Timeline" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <>
               <SpendTimelineChart
@@ -1637,7 +1395,7 @@ export default function Analytics() {
               </div>
             </>
           ) : (
-            <div className="text-neutral-600 italic text-sm">
+            <div className="text-neutral-400 italic text-sm">
               Data unavailable.
             </div>
           )}
@@ -1648,13 +1406,11 @@ export default function Analytics() {
       {activeTab === "Domains" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <ByProjectTable domains={dashboard.by_domain} />
           ) : (
-            <div className="text-neutral-600 italic text-sm">
+            <div className="text-neutral-400 italic text-sm">
               Data unavailable.
             </div>
           )}
@@ -1665,9 +1421,7 @@ export default function Analytics() {
       {activeTab === "Tool Breakdown" && (
         <div className="space-y-6">
           {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
+            <EmptyState title="Loading…" className="p-4" />
           ) : dashboard ? (
             <>
               <ToolTable
@@ -1683,30 +1437,11 @@ export default function Analytics() {
               <ToolTable
                 title="MCP Tool Usage"
                 tools={dashboard.tools.mcp}
-                color="bg-purple-500/50"
+                color="bg-brand-500/50"
               />
             </>
           ) : (
-            <div className="text-neutral-600 italic text-sm">
-              Data unavailable.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Analysis tab */}
-      {activeTab === "Analysis" && (
-        <div className="space-y-6">
-          {dashLoading ? (
-            <div className="text-neutral-500 italic text-sm animate-pulse">
-              Loading...
-            </div>
-          ) : dashboard ? (
-            <>
-              <SavingsInsights dashboard={dashboard} />
-            </>
-          ) : (
-            <div className="text-neutral-600 italic text-sm">
+            <div className="text-neutral-400 italic text-sm">
               Data unavailable.
             </div>
           )}
@@ -1716,7 +1451,7 @@ export default function Analytics() {
       {/* Details tab */}
       {activeTab === "Details" && (
         <div className="space-y-6">
-          <section className="border border-neutral-800 bg-neutral-950/40 p-4 text-sm leading-relaxed text-neutral-500">
+          <section className="border border-neutral-800 bg-neutral-950/40 p-4 text-sm leading-relaxed text-neutral-400">
             Granular tables live here so the Overview tab stays readable. Use
             the filters above plus search to inspect host/model groups, tool
             rankings, and individual raw rows.
@@ -1724,17 +1459,17 @@ export default function Analytics() {
 
           <section className="border border-neutral-800 bg-neutral-950/40 overflow-hidden">
             <div className="bg-neutral-900/80 border-b border-neutral-800 p-4 flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
                 Host / Model Overview
               </div>
-              <div className="text-[9px] text-neutral-600 font-mono">
+              <div className="text-[10px] text-neutral-400 font-mono">
                 {hostModelStats.length} host/model groups
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-500 font-mono bg-neutral-900/50">
+                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-400 font-mono bg-neutral-900/50">
                     <th className="px-4 py-3">Host</th>
                     <th className="px-4 py-3">Model</th>
                     <th className="px-4 py-3 text-right">Sessions</th>
@@ -1754,7 +1489,7 @@ export default function Analytics() {
                     <tr>
                       <td
                         colSpan={12}
-                        className="px-4 py-8 text-center text-neutral-600 italic"
+                        className="px-4 py-8 text-center text-neutral-400 italic"
                       >
                         {dashLoading ? "Loading dashboard..." : "No data."}
                       </td>
@@ -1766,7 +1501,7 @@ export default function Analytics() {
                           key={idx}
                           className="hover:bg-neutral-800/20 transition-colors"
                         >
-                          <td className="px-4 py-2 font-mono text-cyan-300/80">
+                          <td className="px-4 py-2 font-mono text-cyan-300">
                             {row.host}
                           </td>
                           <td className="px-4 py-2 font-mono text-neutral-400">
@@ -1775,27 +1510,27 @@ export default function Analytics() {
                           <td className="px-4 py-2 text-right font-mono text-neutral-400">
                             {row.sessions.toLocaleString()}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-emerald-300/80">
+                          <td className="px-4 py-2 text-right font-mono text-emerald-300">
                             {(row.user_typed_tokens / 1000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-emerald-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-emerald-300">
                             {(row.base_context_tokens / 1_000_000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-red-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-red-300">
                             {(row.cached_prompt_tokens / 1_000_000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-purple-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-brand-400/80">
                             {(row.cache_write_tokens / 1_000_000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-violet-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-violet-300">
                             {(row.billable_output_tokens / 1_000_000).toFixed(
                               1
                             )}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-amber-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-amber-300">
                             {(row.tool_output_tokens / 1_000_000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-cyan-400/80">
+                          <td className="px-4 py-2 text-right font-mono text-cyan-300">
                             {(row.thinking_tokens / 1_000_000).toFixed(1)}
                           </td>
                           <td className="px-4 py-2 text-right font-mono text-neutral-400">
@@ -1815,14 +1550,14 @@ export default function Analytics() {
 
           <section className="border border-neutral-800 bg-neutral-950/40">
             <div className="bg-neutral-900/80 border-b border-neutral-800 p-4">
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
                 Cost Drivers Ranking
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-500 font-mono bg-neutral-900/50">
+                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-400 font-mono bg-neutral-900/50">
                     <th className="px-4 py-3">Rank</th>
                     <th className="px-4 py-3">Tool</th>
                     <th className="px-4 py-3 text-right">Calls</th>
@@ -1839,7 +1574,7 @@ export default function Analytics() {
                     <tr>
                       <td
                         colSpan={9}
-                        className="px-4 py-8 text-center text-neutral-600 italic"
+                        className="px-4 py-8 text-center text-neutral-400 italic"
                       >
                         No tool usage found.
                       </td>
@@ -1850,7 +1585,7 @@ export default function Analytics() {
                         key={i}
                         className="hover:bg-neutral-800/20 transition-colors"
                       >
-                        <td className="px-4 py-3 font-mono text-neutral-600">
+                        <td className="px-4 py-3 font-mono text-neutral-400">
                           {i + 1}
                         </td>
                         <td className="px-4 py-3 font-medium text-neutral-300">
@@ -1867,15 +1602,15 @@ export default function Analytics() {
                             ? `${(item.tokens / (item.calls || 1) / 1000).toFixed(0)}k`
                             : (item.tokens / (item.calls || 1)).toFixed(0)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-amber-300/80">
+                        <td className="px-4 py-3 text-right font-mono text-amber-300">
                           ${item.cost.toFixed(2)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-amber-300/80">
+                        <td className="px-4 py-3 text-right font-mono text-amber-300">
                           ${item.costPerCall.toFixed(4)}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <span className="font-mono text-[10px] text-neutral-500">
+                            <span className="font-mono text-[10px] text-neutral-400">
                               {(
                                 (item.tokens /
                                   (stats.tool_output_tokens || 1)) *
@@ -1893,7 +1628,7 @@ export default function Analytics() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-[10px] text-neutral-500 italic">
+                        <td className="px-4 py-3 text-[10px] text-neutral-400 italic">
                           Review output size
                         </td>
                       </tr>
@@ -1906,7 +1641,7 @@ export default function Analytics() {
 
           <section className="border border-neutral-800 bg-neutral-950/40">
             <div className="bg-neutral-900/80 border-b border-neutral-800 p-4 flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">
                 Full Data Table
               </div>
               <div className="relative">
@@ -1919,14 +1654,14 @@ export default function Analytics() {
                 />
                 <Search
                   size={14}
-                  className="absolute left-2.5 top-2 text-neutral-600"
+                  className="absolute left-2.5 top-2 text-neutral-400"
                 />
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-500 font-mono bg-neutral-900/50">
+                  <tr className="border-b border-neutral-800 text-[10px] uppercase tracking-widest text-neutral-400 font-mono bg-neutral-900/50">
                     <th className="px-4 py-3">Agent</th>
                     <th className="px-4 py-3">Model</th>
                     <th className="px-4 py-3">Category</th>
@@ -1947,7 +1682,7 @@ export default function Analytics() {
                     <tr>
                       <td
                         colSpan={13}
-                        className="px-4 py-8 text-center text-neutral-600 italic"
+                        className="px-4 py-8 text-center text-neutral-400 italic"
                       >
                         No records found.
                       </td>
@@ -1966,15 +1701,15 @@ export default function Analytics() {
                           <td className="px-4 py-2 font-mono text-neutral-400">
                             {item.agent}
                           </td>
-                          <td className="px-4 py-2 font-mono text-neutral-500 text-[10px]">
+                          <td className="px-4 py-2 font-mono text-neutral-400 text-[10px]">
                             {item.model || "—"}
                           </td>
                           <td className="px-4 py-2">
                             <span
-                              className={`text-[9px] px-1.5 py-0.5 border ${
+                              className={`text-[10px] px-1.5 py-0.5 border ${
                                 item.category.includes("Optimized")
-                                  ? "border-emerald-900/50 text-emerald-400 bg-emerald-950/20"
-                                  : "border-neutral-800 text-neutral-500 bg-neutral-900/20"
+                                  ? "border-emerald-900/50 text-emerald-300 bg-emerald-950/20"
+                                  : "border-neutral-800 text-neutral-400 bg-neutral-900/20"
                               }`}
                             >
                               {item.category}
@@ -1983,7 +1718,7 @@ export default function Analytics() {
                           <td className="px-4 py-2 font-medium text-neutral-300">
                             {item.tool_name}
                           </td>
-                          <td className="px-4 py-2 text-neutral-500 font-mono italic">
+                          <td className="px-4 py-2 text-neutral-400 font-mono italic">
                             {item.sub_command || "—"}
                           </td>
                           <td className="px-4 py-2 text-right font-mono text-neutral-400">
@@ -1995,22 +1730,22 @@ export default function Analytics() {
                           <td className="px-4 py-2 text-right font-mono text-neutral-400">
                             {(item.output_tokens / 1_000_000).toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-neutral-500">
+                          <td className="px-4 py-2 text-right font-mono text-neutral-400">
                             {(item.outPerCall / 1000).toFixed(0)}k
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-emerald-500/80">
+                          <td className="px-4 py-2 text-right font-mono text-emerald-300">
                             ${(item.cost || 0).toFixed(2)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-neutral-500">
+                          <td className="px-4 py-2 text-right font-mono text-neutral-400">
                             $
                             {(
                               (item.cost || 0) / (item.call_count || 1)
                             ).toFixed(4)}
                           </td>
-                          <td className="px-4 py-2 text-right font-mono text-neutral-500">
+                          <td className="px-4 py-2 text-right font-mono text-neutral-400">
                             {item.pctOfTotal.toFixed(1)}%
                           </td>
-                          <td className="px-4 py-2 text-neutral-600 text-[10px]">
+                          <td className="px-4 py-2 text-neutral-400 text-[10px]">
                             {dr}
                           </td>
                         </tr>

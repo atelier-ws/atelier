@@ -1,3 +1,31 @@
+"""Owned-execution routing orchestrator.
+
+This is the top-level entry point for routing agent sessions that Atelier
+controls directly (as opposed to advisory routing for host CLIs).
+
+Routing pipeline — four layers:
+
+    Layer 1 — model_routing.ModelRouter
+        Scores the current tool call + task text into a cheap/medium/expensive
+        tier *within* the current vendor.  Advisory to the host CLI.
+
+    Layer 2 — cross_vendor_routing.CrossVendorRouter  (wraps Layer 1)
+        Picks the best vendor + model pair across all configured providers.
+        Applies lesson-based preferences and per-session cost caps.
+
+    Layer 3 — quality_router  (parallel to Layers 1-2)
+        Issues execution contracts and quality-gate checks for a given route.
+        Used here via ``route_execution_contract``; also used by the engine's
+        ``QualityRouterCapability``.
+
+    Layer 4 — this module (OwnedExecutionRouter)
+        Orchestrates Layers 2-3 plus:
+        * counterfactual simulation (what would each candidate cost / deliver?)
+        * provider catalog construction (runner profiles, transports)
+        * cache-affinity injection
+        * runner + transport resolution for actual execution
+"""
+
 from __future__ import annotations
 
 import shutil
@@ -223,9 +251,7 @@ class OwnedExecutionRouteSelector:
             entries.append(_catalog_entry(provider, runner_profiles, candidates))
 
         if not entries:
-            raise NoFeasibleRouteError(
-                "no configured provider has an executable owned runner for this turn"
-            )
+            raise NoFeasibleRouteError("no configured provider has an executable owned runner for this turn")
         return tuple(entries)
 
     def select(self, request: OwnedRouteRequest) -> OwnedRouteDecision:
@@ -278,18 +304,12 @@ class OwnedExecutionRouteSelector:
         if recommendation is None:
             raise NoFeasibleRouteError("owned routing unavailable while bench mode is off")
 
-        selected_entry = next(
-            entry for entry in available if entry.provider == recommendation.vendor
-        )
+        selected_entry = next(entry for entry in available if entry.provider == recommendation.vendor)
         selected_candidate = next(
-            candidate
-            for candidate in selected_entry.candidates
-            if candidate.model_id == recommendation.model
+            candidate for candidate in selected_entry.candidates if candidate.model_id == recommendation.model
         )
         sticky = (
-            _sticky_affinity_candidate(available, request.session_state)
-            if request.cache_policy == "inherit"
-            else None
+            _sticky_affinity_candidate(available, request.session_state) if request.cache_policy == "inherit" else None
         )
         if sticky is not None:
             sticky_entry, sticky_candidate = sticky
@@ -308,14 +328,8 @@ class OwnedExecutionRouteSelector:
             OwnedRouteAlternative(
                 provider=alternative.vendor,
                 model=alternative.model,
-                runner=next(
-                    entry.default_runner
-                    for entry in available
-                    if entry.provider == alternative.vendor
-                ),
-                transport=next(
-                    entry.transport for entry in available if entry.provider == alternative.vendor
-                ),
+                runner=next(entry.default_runner for entry in available if entry.provider == alternative.vendor),
+                transport=next(entry.transport for entry in available if entry.provider == alternative.vendor),
                 tier=alternative.tier,
                 estimated_cost_usd=alternative.estimated_cost_usd,
             )
@@ -417,9 +431,7 @@ def _explicit_route_decision(
     if runner not in selected_entry.runner_profiles:
         raise NoFeasibleRouteError(f"runner {runner!r} cannot execute provider {provider!r}")
     contract = route_execution_contract(_contract_host_for_runner(runner))
-    candidate = next(
-        candidate for candidate in selected_entry.candidates if candidate.model_id == model
-    )
+    candidate = next(candidate for candidate in selected_entry.candidates if candidate.model_id == model)
     reasons = (
         f"explicit provider={provider}",
         f"explicit model={model}",
@@ -521,9 +533,7 @@ def _estimate_cost(candidate: CandidateModel, session_state: Mapping[str, Any]) 
         session_state, key="expected_output_tokens", default=max(1, int(expected_input * 0.2))
     )
     adjusted_output = int(expected_output * candidate.output_multiplier)
-    return round(
-        candidate.pricing.cost_usd(input_tokens=expected_input, output_tokens=adjusted_output), 6
-    )
+    return round(candidate.pricing.cost_usd(input_tokens=expected_input, output_tokens=adjusted_output), 6)
 
 
 def _token_budget(session_state: Mapping[str, Any], *, key: str, default: int) -> int:
@@ -640,6 +650,8 @@ def _cache_affinity_stickiness(affinity: Mapping[str, Any]) -> int:
 
 
 __all__ = [
+    "NoFeasibleRouteError",
+    "OwnedCachePolicy",
     "OwnedExecutionRouteSelector",
     "OwnedRouteAlternative",
     "OwnedRouteBudget",

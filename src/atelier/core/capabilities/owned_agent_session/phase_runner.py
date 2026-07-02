@@ -13,9 +13,11 @@ cache breakpoints so each phase can cache-hit the previous phase's context:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
+from atelier.core.capabilities.owned_agent_session.keepalive import KeepaliveThread
 from atelier.core.capabilities.owned_agent_session.receipt import PhaseTokens, SessionReceipt
 from atelier.core.capabilities.owned_agent_session.session import OwnedAgentSession
 from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_SYSTEM_PROMPT
@@ -146,7 +148,11 @@ def _call_llm(
     if cache_style == "anthropic":
         from atelier.infra.internal_llm.litellm_client import chat_with_result
 
-        result = chat_with_result(messages, model=model)
+        result = chat_with_result(
+            messages,
+            model=model,
+            api_key=os.environ.get("AWS_BEARER_TOKEN_BEDROCK") if provider.lower() == "bedrock" else None,
+        )
         return (
             result.content,
             result.input_tokens,
@@ -155,43 +161,31 @@ def _call_llm(
             result.cache_write_input_tokens,
         )
 
-    # Non-Anthropic: call litellm directly with provider-specific parameters
-    try:
-        import litellm as _litellm
-    except ImportError as exc:
-        raise RuntimeError("litellm is required for non-Anthropic providers") from exc
+    # Non-Anthropic: route through the infra litellm wrapper with
+    # provider-specific parameters so no provider SDK is imported on the user's
+    # path outside src/atelier/infra/internal_llm/.
+    from atelier.infra.internal_llm.litellm_client import LiteLLMUnavailable, chat_with_result
 
-    kwargs: dict[str, Any] = {"model": model, "messages": messages}
-
+    extra_kwargs: dict[str, Any] = {}
     if cache_style == "openai":
         # Seed stabilises prefix for OpenAI automatic prefix caching
-        kwargs["seed"] = 42
-
+        extra_kwargs["seed"] = 42
     if cache_style == "gemini" and gemini_cached_content:
-        kwargs["extra_body"] = {"cachedContent": gemini_cached_content}
+        extra_kwargs["extra_body"] = {"cachedContent": gemini_cached_content}
 
     try:
-        response = _litellm.completion(**kwargs)
+        result = chat_with_result(messages, model=model, extra_kwargs=extra_kwargs or None)
+    except LiteLLMUnavailable as exc:
+        raise RuntimeError("litellm is required for non-Anthropic providers") from exc
     except Exception as exc:
         raise RuntimeError(f"LLM call failed ({provider}/{model}): {exc}") from exc
 
-    usage = getattr(response, "usage", None)
-    content_text: str = ""
-    choices = getattr(response, "choices", [])
-    if choices:
-        msg = getattr(choices[0], "message", None)
-        content_text = str(getattr(msg, "content", "") or "")
-
-    def _tok(attr: str) -> int:
-        return int(getattr(usage, attr, 0) or 0)
-
     return (
-        content_text,
-        _tok("prompt_tokens"),
-        _tok("completion_tokens"),
-        # Gemini / OpenAI surface cached tokens differently; litellm normalises both
-        _tok("cache_read_input_tokens") or _tok("cached_tokens"),
-        _tok("cache_write_input_tokens") or _tok("cache_creation_input_tokens"),
+        result.content,
+        result.input_tokens,
+        result.output_tokens,
+        result.cache_read_input_tokens,
+        result.cache_write_input_tokens,
     )
 
 
@@ -225,40 +219,47 @@ def run_phase_linear(
     working: list[dict[str, Any]] = [_system_message(session.provider, session.model)]
     phases = ["survey", "plan"] + ([] if dry_run else ["implement"])
 
-    for phase in phases:
-        prompt = _phase_user_message(phase, task, mode=session.current_mode)
-        working.append({"role": "user", "content": prompt})
-        session.add_user_turn(prompt)
-        session.current_phase = phase
+    keepalive = KeepaliveThread(model=session.model, provider=session.provider)
+    keepalive.start()
+    try:
+        for phase in phases:
+            prompt = _phase_user_message(phase, task, mode=session.current_mode)
+            working.append({"role": "user", "content": prompt})
+            session.add_user_turn(prompt)
+            session.current_phase = phase
 
-        logger.debug("phase=%s provider=%s model=%s msgs=%d", phase, session.provider, session.model, len(working))
+            logger.debug("phase=%s provider=%s model=%s msgs=%d", phase, session.provider, session.model, len(working))
 
-        content, inp, out, cr, cw = _call_llm(
-            working,
-            model=session.model,
-            provider=session.provider,
-            gemini_cached_content=gemini_cached_content,
-        )
-
-        # After Survey: mark assistant response with breakpoint (Anthropic) or plain
-        mark = phase == "survey" and session.phase_linear
-        if mark:
-            turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
-            working.append(turn)
-            session.add_assistant_turn(content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic")
-        else:
-            working.append({"role": "assistant", "content": content})
-            session.add_assistant_turn(content, mark_breakpoint=False)
-
-        receipt.phases.append(
-            PhaseTokens(
-                phase=phase,
-                input_tokens=inp,
-                output_tokens=out,
-                cache_read_tokens=cr,
-                cache_write_tokens=cw,
+            content, inp, out, cr, cw = _call_llm(
+                working,
+                model=session.model,
+                provider=session.provider,
+                gemini_cached_content=gemini_cached_content,
             )
-        )
+
+            # After Survey: mark assistant response with breakpoint (Anthropic) or plain
+            mark = phase == "survey" and session.phase_linear
+            if mark:
+                turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
+                working.append(turn)
+                session.add_assistant_turn(
+                    content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic"
+                )
+            else:
+                working.append({"role": "assistant", "content": content})
+                session.add_assistant_turn(content, mark_breakpoint=False)
+
+            receipt.phases.append(
+                PhaseTokens(
+                    phase=phase,
+                    input_tokens=inp,
+                    output_tokens=out,
+                    cache_read_tokens=cr,
+                    cache_write_tokens=cw,
+                )
+            )
+    finally:
+        keepalive.stop()
 
     return receipt
 
@@ -286,12 +287,17 @@ def run_single_shot(
         receipt.phases.append(PhaseTokens(phase="dry_run"))
         return receipt
 
-    content, inp, out, cr, cw = _call_llm(
-        messages,
-        model=session.model,
-        provider=session.provider,
-        gemini_cached_content=gemini_cached_content,
-    )
+    keepalive = KeepaliveThread(model=session.model, provider=session.provider)
+    keepalive.start()
+    try:
+        content, inp, out, cr, cw = _call_llm(
+            messages,
+            model=session.model,
+            provider=session.provider,
+            gemini_cached_content=gemini_cached_content,
+        )
+    finally:
+        keepalive.stop()
     session.add_assistant_turn(content)
     receipt.phases.append(
         PhaseTokens(

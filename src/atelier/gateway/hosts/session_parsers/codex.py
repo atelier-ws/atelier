@@ -328,34 +328,50 @@ class CodexImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
-        """Import all sessions. Returns IDs of successfully imported sessions."""
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
+        """Import newest sessions under *root* up to limit."""
         imported_ids = []
         skipped = 0
-        all_sessions = list(find_codex_sessions(root))
+
+        # Helper to sort by mtime descending and take top N if limit is provided
+        def get_newest(paths: list[Path], n: int | None) -> list[Path]:
+            stamped: list[tuple[float, Path]] = []
+            for p in paths:
+                try:
+                    stamped.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
+            sorted_paths = [p for _, p in sorted(stamped, key=lambda x: x[0], reverse=True)]
+            return sorted_paths[:n] if n is not None else sorted_paths
+
+        all_sessions = get_newest(list(find_codex_sessions(root)), limit)
         total = len(all_sessions)
-        logger.info("[atelier] codex: discovering sessions (found %d)", total)
+        logger.info(
+            "codex: discovering sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
         for i, jsonl_path in enumerate(all_sessions):
             try:
                 size = jsonl_path.stat().st_size
                 if size > _SIZE_LIMIT_BYTES:
                     logger.warning(
-                        "[atelier] codex: skipping massive session %s (%.1fMB)",
+                        "codex: skipping massive session %s (%.1fMB)",
                         jsonl_path.name,
                         size / 1e6,
                     )
                     continue
                 if i % 10 == 0 and i > 0:
-                    logger.info("[atelier] codex: importing %d/%d...", i, total)
+                    logger.info("codex: importing %d/%d...", i, total)
                 sid = self.import_session(jsonl_path, force=force)
                 if sid:
                     imported_ids.append(sid)
                 else:
                     skipped += 1
             except Exception:
-                logger.exception("[atelier] skipping codex session %s", jsonl_path.name)
+                logger.exception("skipping codex session %s", jsonl_path.name)
         if skipped > 0:
-            logger.info("[atelier] %d sessions already imported (skipped by dedup)", skipped)
+            logger.info("%d sessions already imported (skipped by dedup)", skipped)
         return imported_ids
 
     def import_session(self, jsonl_path: Path, *, force: bool = False) -> str | None:
@@ -382,7 +398,7 @@ class CodexImporter:
             rel = Path(jsonl_path.name)
         content_path = f"raw/codex/{rel}"
 
-        raw_content = jsonl_path.read_text(encoding="utf-8")
+        raw_content = jsonl_path.read_text(encoding="utf-8", errors="replace")
         redacted = redact(raw_content)
 
         # ── Step 1: write redacted raw artifact ──────────────────────────────
@@ -434,6 +450,7 @@ class CodexImporter:
 
     def _parse_event_msg(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
         tools_called: dict[str, int] = {}
+        mcp_atelier_calls: dict[str, int] = {}  # atelier MCP calls keyed as "atelier_<tool>"
         tool_args: dict[str, dict[str, Any] | None] = {}
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
@@ -450,12 +467,22 @@ class CodexImporter:
         models_seen: set[str] = set()
         usage_entries = []
         curr_tool_calls: list[tuple[str, Any]] = []
+        # Format A persists BOTH response_item.function_call AND its paired
+        # event_msg.*_end record for the same exec/patch call. Track in-flight
+        # calls by call_id (falling back to arrival order when a call_id is
+        # missing) so the *_end handler enriches the existing commands_run /
+        # tools_called entry instead of adding a duplicate.
+        exec_call_ids: dict[str, int] = {}
+        exec_call_fifo: list[int] = []
+        patch_call_ids: set[str] = set()
+        patch_call_fifo = 0
         files_touched: set[str] = set()
         file_diffs: dict[str, str] = {}  # path → diff text
         commands_run: list[str | CommandRecord] = []
         reasoning_snippets: list[str] = []
         task = "untitled codex session"
         created_at = _utcnow()
+        workspace_path: str | None = None
         user_prompt_tokens = 0
         seen_event_ids: set[str] = set()
         previous_unidentified_event = ""
@@ -492,6 +519,9 @@ class CodexImporter:
                 if m_meta and not model_seen:
                     model_seen = str(m_meta)
                     models_seen.add(model_seen)
+                cwd = payload.get("cwd")
+                if cwd and not workspace_path:
+                    workspace_path = str(cwd)
 
             elif ev_type == "turn_context":
                 # turn_context.payload.model is the canonical model name for this turn.
@@ -553,7 +583,7 @@ class CodexImporter:
                         user_prompt_tokens += _count_user_tokens(text)
                         extracted = _get_clean_user_text(text)[:200]
                         if extracted and task == "untitled codex session":
-                            task = extracted
+                            task = redact(extracted)
 
                 elif ptype == "exec_command_end":
                     cmd = _command_str(payload.get("command", ""))
@@ -561,15 +591,25 @@ class CodexImporter:
                         exit_code = payload.get("exit_code")
                         stdout = str(payload.get("stdout") or "")[:1024]
                         stderr = str(payload.get("stderr") or "")[:1024]
-                        commands_run.append(
-                            CommandRecord(
-                                command=cmd[:200],
-                                exit_code=exit_code,
-                                stdout=stdout,
-                                stderr=stderr,
-                            )
+                        cmd_record = CommandRecord(
+                            command=redact(cmd[:200]),
+                            exit_code=exit_code,
+                            stdout=redact(stdout),
+                            stderr=redact(stderr),
                         )
-                        tools_called["shell"] = tools_called.get("shell", 0) + 1
+                        call_id = str(payload.get("call_id") or "")
+                        idx = exec_call_ids.pop(call_id, None) if call_id else None
+                        if idx is None and not call_id and exec_call_fifo:
+                            idx = exec_call_fifo.pop(0)
+                        if idx is not None:
+                            # Already counted when the paired function_call was
+                            # seen — this event just enriches that commands_run
+                            # entry with exit code / stdout / stderr instead of
+                            # adding (and double-counting) a new one.
+                            commands_run[idx] = cmd_record
+                        else:
+                            commands_run.append(cmd_record)
+                            tools_called["shell"] = tools_called.get("shell", 0) + 1
 
                 elif ptype == "patch_apply_end":
                     # changes = {absolute_path: {"type":"update","unified_diff":"..."}}
@@ -582,12 +622,25 @@ class CodexImporter:
                         if diff_text:
                             file_diffs[str(fpath)] = diff_text
                     if changes:
-                        tools_called["patch"] = tools_called.get("patch", 0) + 1
+                        call_id = str(payload.get("call_id") or "")
+                        if call_id and call_id in patch_call_ids:
+                            patch_call_ids.discard(call_id)
+                        elif not call_id and patch_call_fifo > 0:
+                            patch_call_fifo -= 1
+                        else:
+                            # No paired function_call/custom_tool_call was seen
+                            # for this patch (older rollouts only emit
+                            # patch_apply_end) — count it here.
+                            tools_called["patch"] = tools_called.get("patch", 0) + 1
 
                 elif ptype == "mcp_tool_call_end":
                     invocation = payload.get("invocation") or {}
                     tool_name = invocation.get("tool", "mcp")
-                    tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
+                    if invocation.get("server") == "atelier":
+                        key = f"atelier_{tool_name}"
+                        mcp_atelier_calls[key] = mcp_atelier_calls.get(key, 0) + 1
+                    else:
+                        tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
 
             elif ev_type == "response_item":
                 # Newer CLI still wraps in event_msg but also emits response_item
@@ -598,7 +651,7 @@ class CodexImporter:
                 if ptype == "reasoning":
                     reasoning_text = str(payload.get("summary") or payload.get("text") or "")
                     if reasoning_text:
-                        reasoning_snippets.append(reasoning_text[:500])
+                        reasoning_snippets.append(redact(reasoning_text[:500]))
 
                 if ptype == "function_call":
                     name = payload.get("name", "")
@@ -610,7 +663,12 @@ class CodexImporter:
                         args = {}
                     tool_args[name] = args
                     curr_tool_calls.append((name, args))
+                    call_id = str(payload.get("call_id") or "")
                     if name == "apply_patch":
+                        if call_id:
+                            patch_call_ids.add(call_id)
+                        else:
+                            patch_call_fifo += 1
                         patch_text = args.get("patch", "")
                         for fp in _files_from_patch(patch_text):
                             files_touched.add(fp)
@@ -621,13 +679,23 @@ class CodexImporter:
                     elif name in ("exec_command", "shell_command"):
                         cmd = str(args.get("cmd") or args.get("command") or "")
                         if cmd:
-                            commands_run.append(cmd[:200])
+                            commands_run.append(redact(cmd[:200]))
+                            idx = len(commands_run) - 1
+                            if call_id:
+                                exec_call_ids[call_id] = idx
+                            else:
+                                exec_call_fifo.append(idx)
 
                 elif ptype == "custom_tool_call":
                     name = payload.get("name", "custom_tool")
                     tools_called[name] = tools_called.get(name, 0) + 1
                     curr_tool_calls.append((name, payload.get("input", "")))
                     if name == "apply_patch":
+                        call_id = str(payload.get("call_id") or "")
+                        if call_id:
+                            patch_call_ids.add(call_id)
+                        else:
+                            patch_call_fifo += 1
                         patch_text = str(payload.get("input", ""))
                         for fp in _files_from_patch(patch_text):
                             files_touched.add(fp)
@@ -669,6 +737,17 @@ class CodexImporter:
 
         usage_summary = summarize_usage_entries(usage_entries, fallback_model=model_seen)
 
+        # Reconcile Atelier MCP calls: remove their duplicate function_call counts,
+        # then merge with atelier_<tool> prefix so downstream can classify correctly.
+        for atelier_key, mcp_count in mcp_atelier_calls.items():
+            native_key = atelier_key[len("atelier_") :]  # strip prefix to get base name
+            native_remaining = tools_called.get(native_key, 0) - mcp_count
+            if native_remaining <= 0:
+                tools_called.pop(native_key, None)
+            else:
+                tools_called[native_key] = native_remaining
+        tools_called.update(mcp_atelier_calls)
+
         # ── Build Trace with reasoning ───────────────────────────────────────────────
         return Trace(
             id=f"codex-{session_id}",
@@ -705,6 +784,7 @@ class CodexImporter:
             model=usage_summary["model"],
             usage_entries=usage_summary["usage_entries"],
             model_usages=usage_summary["model_usages"],
+            workspace_path=workspace_path,
             created_at=created_at,
         )
 
@@ -721,6 +801,7 @@ class CodexImporter:
         reasoning_snippets: list[str] = []
         task = "untitled codex session"
         created_at = _utcnow()
+        workspace_path: str | None = None
         first_ts_set = False
         user_prompt_tokens = 0
         model_seen = ""
@@ -763,12 +844,15 @@ class CodexImporter:
             if ev_type == "reasoning":
                 reasoning_text = str(ev.get("summary") or ev.get("text") or "")
                 if reasoning_text:
-                    reasoning_snippets.append(reasoning_text[:500])
+                    reasoning_snippets.append(redact(reasoning_text[:500]))
 
             # Session meta: flat object with no "type" field
             if ev_type is None and "id" in ev and "timestamp" in ev and not first_ts_set:
                 created_at = _parse_ts(ev.get("timestamp"))
                 first_ts_set = True
+                cwd = ev.get("cwd")
+                if cwd:
+                    workspace_path = str(cwd)
                 continue
 
             if ev_type == "message":
@@ -814,7 +898,7 @@ class CodexImporter:
                             user_prompt_tokens += _count_user_tokens(text)
                             extracted = _get_clean_user_text(text)[:200]
                             if extracted and task == "untitled codex session":
-                                task = extracted
+                                task = redact(extracted)
                                 break
 
             elif ev_type == "function_call":
@@ -841,7 +925,7 @@ class CodexImporter:
                 elif name in ("exec_command", "shell_command"):
                     cmd = str(args.get("cmd") or args.get("command") or "")
                     if cmd:
-                        commands_run.append(cmd[:200])
+                        commands_run.append(redact(cmd[:200]))
 
         # Build enriched files_touched
         files_enriched: list[str | FileEditRecord] = []
@@ -880,6 +964,7 @@ class CodexImporter:
             usage_entries=usage_summary["usage_entries"],
             model_usages=usage_summary["model_usages"],
             user_prompt_tokens=user_prompt_tokens,
+            workspace_path=workspace_path,
             created_at=created_at,
         )
 
@@ -889,8 +974,20 @@ class CodexImporter:
 # ---------------------------------------------------------------------------
 
 
+_FORMAT_DETECT_MAX_LINES = 20
+
+
 def _detect_format(raw_content: str) -> str:
-    """Return 'event_msg' or 'flat' based on the first parseable event."""
+    """Return 'event_msg' or 'flat' based on the first several parseable events.
+
+    Only a handful of leading record shapes are decisive (``session_meta`` for
+    event_msg; ``message``/``reasoning``/``function_call``/``function_call_output``
+    or a type-less id+timestamp preamble for flat). A single unrecognized
+    leading record — e.g. a stray telemetry line — must not make us silently
+    mis-parse an otherwise well-formed file, so we scan a few more lines
+    before defaulting.
+    """
+    scanned = 0
     for line in raw_content.splitlines():
         line = line.strip()
         if not line:
@@ -905,8 +1002,9 @@ def _detect_format(raw_content: str) -> str:
         if ev_type in ("message", "reasoning", "function_call", "function_call_output"):
             return "flat"
         if ev_type is None and "id" in ev and "timestamp" in ev:
-            # Flat format: first line is session meta without "type"
+            # Flat format: session meta without "type"
             return "flat"
-        # Unknown type — assume event_msg format
-        return "event_msg"
+        scanned += 1
+        if scanned >= _FORMAT_DETECT_MAX_LINES:
+            break
     return "event_msg"

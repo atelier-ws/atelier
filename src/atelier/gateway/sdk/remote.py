@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import urllib.parse
-from typing import Any, Protocol, cast
+from typing import Any
 
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
-    FailureCluster,
-    ReasonBlock,
+    Playbook,
     RescueResult,
     Rubric,
     RubricResult,
@@ -22,7 +21,6 @@ from atelier.gateway.sdk.client import (
     AtelierClient,
     ContextResult,
     EvalRunResult,
-    FailureAnalysisResult,
     LessonDecisionResult,
     LessonInboxResult,
     MemoryArchiveResult,
@@ -34,45 +32,6 @@ from atelier.gateway.sdk.client import (
 from atelier.gateway.trace_payloads import serialize_trace_learnings, serialize_validation_results
 
 
-class _ServiceClient(Protocol):
-    def get_context(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-    def rescue_failure(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-    def run_rubric_gate(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-    def record_trace(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-    def list_reasonblocks(
-        self,
-        *,
-        domain: str | None = None,
-        query: str | None = None,
-    ) -> list[dict[str, Any]]: ...
-
-    def get_reasonblock(self, block_id: str) -> dict[str, Any]: ...
-
-    def list_rubrics(self, *, domain: str | None = None) -> list[dict[str, Any]]: ...
-
-    def get_rubric(self, rubric_id: str) -> dict[str, Any]: ...
-
-    def analyze_failures(self, *, domain: str | None = None, limit: int = 100) -> dict[str, Any]: ...
-
-    def get_savings(self) -> dict[str, Any]: ...
-
-    def _get(self, path: str) -> dict[str, Any]: ...
-
-    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]: ...
-
-    def list_evals(self, *, domain: str | None = None) -> dict[str, Any]: ...
-
-    def run_evals(self, *, domain: str | None = None, limit: int = 50) -> dict[str, Any]: ...
-
-    def lesson_inbox(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-    def lesson_decide(self, args: dict[str, Any]) -> dict[str, Any]: ...
-
-
 class RemoteClient(AtelierClient):
     def __init__(
         self,
@@ -81,13 +40,10 @@ class RemoteClient(AtelierClient):
         api_key: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self._client = cast(
-            _ServiceClient,
-            service_remote_client.RemoteClient(
-                base_url=base_url,
-                api_key=api_key,
-                timeout=timeout,
-            ),
+        self._client = service_remote_client.RemoteClient(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
         )
         super().__init__()
 
@@ -196,22 +152,13 @@ class RemoteClient(AtelierClient):
                 }
             )
         )
-        payload = {"id": str(payload.get("id") or payload.get("trace_id") or payload.get("session_id") or "")}
-        return TraceRecordResult.model_validate(payload)
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        limit: int = 100,
-    ) -> FailureAnalysisResult:
-        payload = self._ensure_ok(self._client.analyze_failures(domain=domain, limit=limit))
-        return FailureAnalysisResult(
-            clusters=[FailureCluster.model_validate(item) for item in payload.get("clusters", [])]
-        )
+        trace_id = str(payload.get("id") or payload.get("trace_id") or payload.get("session_id") or "")
+        if not trace_id:
+            raise RuntimeError("remote record_trace returned no trace id")
+        return TraceRecordResult.model_validate({"id": trace_id})
 
     def get_savings(self) -> SavingsSummary:
-        payload = self._ensure_ok(self._client.get_savings())
+        payload = self._ensure_ok(self._client._get("/v1/savings/summary"))
         return SavingsSummary.model_validate(payload)
 
     def lesson_inbox(self, *, domain: str | None = None, limit: int = 25) -> LessonInboxResult:
@@ -274,7 +221,7 @@ class RemoteClient(AtelierClient):
     def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
         payload = self._ensure_ok(
             self._client._get(
-                "/v1/memory/blocks" f"?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
+                f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&label={urllib.parse.quote(label)}"
             )
         )
         return MemoryBlock.model_validate(payload) if payload else None
@@ -325,35 +272,46 @@ class RemoteClient(AtelierClient):
         )
         return MemoryRecallResult.model_validate(payload)
 
-    def _list_reasonblocks(
+    def _list_playbooks(
         self,
         *,
         domain: str | None = None,
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
-        items = self._client.list_reasonblocks(domain=domain)
-        blocks = [ReasonBlock.model_validate(item) for item in items]
+    ) -> list[Playbook]:
+        items = self._client._get("/blocks")
+        blocks: list[Playbook] = [Playbook.model_validate(item) for item in items] if isinstance(items, list) else []
+        if domain is not None:
+            blocks = [block for block in blocks if block.domain == domain]
         if include_deprecated:
             return blocks
         return [block for block in blocks if block.status == "active"]
 
-    def _search_reasonblocks(self, *, query: str, limit: int = 20) -> list[ReasonBlock]:
-        items = self._client.list_reasonblocks(query=query)
-        return [ReasonBlock.model_validate(item) for item in items[:limit]]
+    def _search_playbooks(self, *, query: str, limit: int = 20) -> list[Playbook]:
+        items = self._client._get("/blocks")
+        blocks: list[Playbook] = [Playbook.model_validate(item) for item in items] if isinstance(items, list) else []
+        needle = query.lower()
+        matched = [block for block in blocks if needle in block.title.lower() or needle in block.situation.lower()]
+        return matched[:limit]
 
-    def _get_reasonblock(self, block_id: str) -> ReasonBlock | None:
-        payload = self._client.get_reasonblock(block_id)
-        return ReasonBlock.model_validate(payload) if payload else None
+    def _get_playbook(self, block_id: str) -> Playbook | None:
+        payload = self._client._get(f"/blocks/{urllib.parse.quote(block_id)}")
+        if isinstance(payload, dict) and payload.get("id"):
+            return Playbook.model_validate(payload)
+        return None
 
     def _list_rubrics(self, *, domain: str | None = None) -> list[Rubric]:
-        return [Rubric.model_validate(item) for item in self._client.list_rubrics(domain=domain)]
+        suffix = f"?domain={urllib.parse.quote(domain)}" if domain else ""
+        items = self._client._get(f"/v1/rubrics{suffix}")
+        return [Rubric.model_validate(item) for item in items] if isinstance(items, list) else []
 
     def _get_rubric(self, rubric_id: str) -> Rubric | None:
-        payload = self._client.get_rubric(rubric_id)
-        return Rubric.model_validate(payload) if payload else None
+        payload = self._client._get(f"/v1/rubrics/{urllib.parse.quote(rubric_id)}")
+        if isinstance(payload, dict) and payload.get("id"):
+            return Rubric.model_validate(payload)
+        return None
 
     def _get_trace(self, trace_id: str) -> Trace | None:
-        payload = self._client._get(f"/traces/{urllib.parse.quote(trace_id)}")
+        payload = self._client._get(f"/v1/traces/{urllib.parse.quote(trace_id)}")
         if isinstance(payload, dict) and payload.get("id"):
             return Trace.model_validate(payload)
         return None
@@ -376,8 +334,7 @@ class RemoteClient(AtelierClient):
         return [Trace.model_validate(item) for item in payload] if isinstance(payload, list) else []
 
     def _list_evals(self, *, domain: str | None = None) -> list[dict[str, Any]]:
-        payload = self._ensure_ok(self._client.list_evals(domain=domain))
-        return [item for item in payload.get("evals", []) if isinstance(item, dict)]
+        raise NotImplementedError("evals are not available over the remote service API")
 
     def _run_evals(
         self,
@@ -386,7 +343,4 @@ class RemoteClient(AtelierClient):
         domain: str | None = None,
         limit: int = 50,
     ) -> EvalRunResult:
-        payload = self._ensure_ok(self._client.run_evals(domain=domain, limit=limit))
-        if case_id is not None:
-            payload["case_id"] = case_id
-        return EvalRunResult.model_validate(payload)
+        raise NotImplementedError("evals are not available over the remote service API")

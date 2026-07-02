@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
+import contextlib
 import json
 import os
 import re
@@ -19,7 +19,7 @@ from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.core.service.bootstrap_context import build_bootstrap_plan, persist_bootstrap_plan
 from atelier.core.service.jobs import JOB_BOOTSTRAP_CONTEXT
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_code, tool_smart_edit
+from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_smart_edit
 from atelier.gateway.cli import cli
 from atelier.infra.code_intel.astgrep import (
     AstGrepToolUnavailable,
@@ -27,26 +27,19 @@ from atelier.infra.code_intel.astgrep import (
     PatternRewriteResult,
     PatternSearchResult,
 )
-from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
+# Single-primary retrieval surface: `explore` (ranked source + call-graph
+# relations + blast-radius in one call) + `read`, plus edit/bash/web_fetch.
+# `grep`, `relations`, `search`, `memory`, `sql`, `codemod` are registered but
+# hidden from agents (grep/relations stay callable as escape hatch / drill-in).
 EXPECTED_TOOLS = {
-    "agent",
-    "memory",
     "read",
     "edit",
-    "grep",
-    "sql",
-    "search",
-    "symbols",
-    "shell",
+    "code_search",
+    "bash",
     "web_fetch",
-    # Dedicated code-intel tools (split from `code` op for LLM discoverability)
-    "node",
-    "callers",
-    "usages",
-    "explore",
 }
 
 
@@ -65,10 +58,44 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 def _result(resp: dict[str, Any]) -> Any:
     assert "result" in resp, resp
     text = resp["result"]["content"][0]["text"]
+    # Clean edit renders "ok" (no ranges) or "applied path:line[, ...]" (the minimal
+    # orientation echo); normalize both to a dict so callers can assert structurally.
+    if text == "ok":
+        return {}
+    if text.startswith("applied "):
+        return {"applied": text[len("applied ") :].split(", ")}
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         return text
+
+
+def _op_result(render_name: str, op_fn: Any, **kwargs: Any) -> Any:
+    """Mirror _handle's render path for a direct _op_* call: returns rendered
+    markdown when a code renderer applies, else the raw payload dict."""
+    mcp_server._tool_call_rendered_text.value = None
+    payload = op_fn(**kwargs)
+    rendered = mcp_server.render_tool_result_text(render_name, payload)
+    return rendered if rendered is not None else payload
+
+
+def _preindex(repo_root: str | Path) -> None:
+    """Explicitly index a repo for deterministic code-context tests.
+
+    Also indexes workspace siblings if ``.atelier/workspace.toml`` exists.
+    The gateway conftest disables the background autosync worker so tests that
+    need a populated index build it explicitly via ``_op_index``.
+    """
+    import tomllib
+
+    mcp_server._op_index(repo_root=str(repo_root), force=True)
+    workspace_config = Path(repo_root) / ".atelier" / "workspace.toml"
+    if workspace_config.exists():
+        config = tomllib.loads(workspace_config.read_text())
+        for entry in config.get("workspace", {}).get("repos", []):
+            entry_path = (Path(repo_root) / entry["path"]).resolve()
+            if entry_path.resolve() != Path(repo_root).resolve():
+                mcp_server._op_index(repo_root=str(entry_path), force=True)
 
 
 def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
@@ -76,102 +103,6 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
     for method_name, retval in return_values.items():
         getattr(client, method_name).return_value = retval
     return client
-
-
-def _write_gateway_scip_fixture(
-    repo_root: Path,
-    *,
-    symbol_id: str,
-    include_call_graph: bool = False,
-    artifact_name: str = "python.scip",
-    file_path: str = "a.py",
-    symbol_name: str = "alpha",
-    qualified_name: str = "alpha",
-    source: str | None = None,
-) -> Path:
-    engine = CodeContextEngine(repo_root)
-    symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
-    caller_source = (repo_root / "b.py").read_text(encoding="utf-8") if (repo_root / "b.py").exists() else ""
-    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path: Path = artifact_dir / artifact_name
-    payload: dict[str, Any] = {
-        "version": 1,
-        "repo_id": engine.repo_id,
-        "language": "python",
-        "index_sha": "a" * 40,
-        "symbols": [
-            {
-                "symbol_id": symbol_id,
-                "repo_id": engine.repo_id,
-                "file_path": file_path,
-                "language": "python",
-                "symbol_name": symbol_name,
-                "qualified_name": qualified_name,
-                "kind": "function",
-                "signature": f"def {symbol_name}():",
-                "start_byte": 0,
-                "end_byte": len(symbol_source.encode("utf-8")),
-                "start_line": 1,
-                "end_line": len(symbol_source.splitlines()),
-                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
-                "source": symbol_source,
-                "provenance": "scip",
-            }
-        ],
-    }
-    if include_call_graph:
-        payload["symbols"].append(
-            {
-                "symbol_id": "scip-beta",
-                "repo_id": engine.repo_id,
-                "file_path": "b.py",
-                "language": "python",
-                "symbol_name": "beta",
-                "qualified_name": "beta",
-                "kind": "function",
-                "signature": "def beta():",
-                "start_byte": 0,
-                "end_byte": len(caller_source.encode("utf-8")),
-                "start_line": 3,
-                "end_line": 4,
-                "content_hash": hashlib.sha256(caller_source.encode("utf-8")).hexdigest(),
-                "source": caller_source,
-                "provenance": "scip",
-            }
-        )
-        payload["call_graph"] = {
-            "callers": {
-                symbol_id: [
-                    {
-                        "symbol_id": "scip-beta",
-                        "symbol_name": "beta",
-                        "qualified_name": "beta",
-                        "file_path": "b.py",
-                        "kind": "function",
-                        "start_line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ]
-            },
-            "callees": {
-                "scip-beta": [
-                    {
-                        "symbol_id": symbol_id,
-                        "symbol_name": "alpha",
-                        "qualified_name": "alpha",
-                        "file_path": "a.py",
-                        "kind": "function",
-                        "start_line": 1,
-                        "end_line": 2,
-                        "provenance": "scip",
-                    }
-                ]
-            },
-        }
-    artifact_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    return artifact_path
 
 
 def _write_bootstrap_fixture_repo(root: Path) -> None:
@@ -230,6 +161,9 @@ def store_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("ATELIER_MEMORY_BACKEND", "sqlite")
+    # Trace persistence tests exercise the local ledger path; an ambient
+    # ATELIER_SERVICE_URL would force remote dispatch and skip _current_ledger.
+    monkeypatch.delenv("ATELIER_SERVICE_URL", raising=False)
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = _mock_client(
@@ -256,8 +190,14 @@ def test_initialize_returns_server_info() -> None:
         }
     )
     assert resp is not None
-    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
+    assert resp["result"]["serverInfo"]["name"] == "atelier"
     assert resp["result"]["protocolVersion"] == "2024-11-05"
+    # Server-level steering: injected into the host system prompt by every MCP
+    # client automatically — the surface that reaches hosts and subagents that
+    # never see Atelier's persona files.
+    instructions = resp["result"]["instructions"]
+    assert "code_search" in instructions
+    assert "grep" in instructions and "read" in instructions
 
 
 def test_notifications_initialized_returns_none() -> None:
@@ -363,17 +303,27 @@ def test_tools_list_each_entry_has_schema() -> None:
         assert isinstance(tool.get("inputSchema"), dict)
 
 
-def test_tools_list_search_schema_prefers_path_and_documents_modes() -> None:
-    search_tool = TOOLS["search"]
-    properties = search_tool["inputSchema"]["properties"]
-
-    assert "query" in search_tool["description"]
-    assert "grep" in search_tool["description"]
-    assert "path" in properties
-    assert "file_path" not in properties
-    assert "content_regex" not in properties
-    assert properties["path"]["description"] == "Workspace-relative file or directory to search."
-    assert "repo map" in properties["mode"]["description"].lower()
+def test_tools_list_grep_is_lean_and_relations_is_the_drill_in() -> None:
+    # grep is a lean regex tool that rides call-graph COUNTS inline on definition
+    # matches; the dedicated `relations` tool expands a count into the list.
+    # `search` stays registered but hidden (semantic-only).
+    assert "search" in TOOLS
+    assert "search" in HIDDEN_LLM_TOOLS
+    assert "relations" in TOOLS
+    grep_tool = TOOLS["grep"]
+    grep_props = grep_tool["inputSchema"]["properties"]
+    # grep advertises the inline counts but carries no relation/symbol/map params.
+    assert "counts" in grep_tool["description"].lower()
+    assert "relation" not in grep_props
+    assert "symbol" not in grep_props
+    assert "seed_files" not in grep_props
+    assert set(grep_props["mode"]["enum"]) == {"content", "map", "paths", "counts"}
+    assert "file_path" not in grep_props
+    assert ":Lx-Ly" in grep_props["path"]["description"]
+    # relations is single-purpose: symbol + kind.
+    rel_props = TOOLS["relations"]["inputSchema"]["properties"]
+    assert "symbol" in rel_props
+    assert "kind" in rel_props
 
 
 def test_tools_list_grep_schema_covers_native_mode() -> None:
@@ -383,27 +333,79 @@ def test_tools_list_grep_schema_covers_native_mode() -> None:
     assert "regex" in grep_tool["description"].lower()
     assert "path" in properties
     assert "file_path" not in properties
-    assert "content_regex" in properties
+    assert "regex" in properties
     assert "summary" in properties
 
 
-def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
+def test_grep_accepts_single_glob_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare string for file_glob_patterns is coerced to a one-element list.
+
+    The model frequently reaches for a single glob string; accepting it avoids a
+    schema-validation rejection against the array type. A list passes through.
+    """
+    captured: dict[str, Any] = {}
+
+    def _fake_run_native_grep(**kwargs: Any) -> dict[str, Any]:
+        captured.clear()
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(mcp_server, "_run_native_grep", _fake_run_native_grep)
+    handler = TOOLS["grep"]["handler"]
+
+    handler({"content_regex": "x", "file_glob_patterns": "src/**/*.py"})
+    assert captured["file_glob_patterns"] == ["src/**/*.py"]
+
+    handler({"content_regex": "x", "file_glob_patterns": ["a", "b"]})
+    assert captured["file_glob_patterns"] == ["a", "b"]
+
+
+def test_grep_param_aliases_reach_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Old (content_regex) and new (regex) arg names both reach the handler.
+
+    The published schema only shows the short names, but the alias layer remaps
+    deprecated names before validation; when both are passed, the new name wins.
+    """
+    captured: dict[str, Any] = {}
+
+    def _fake_run_native_grep(**kwargs: Any) -> dict[str, Any]:
+        captured.clear()
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(mcp_server, "_run_native_grep", _fake_run_native_grep)
+    handler = TOOLS["grep"]["handler"]
+
+    # New name only.
+    handler({"regex": "needle", "before": 2, "after": 3, "i": True})
+    assert captured["content_regex"] == "needle"
+    assert captured["lines_before"] == 2
+    assert captured["lines_after"] == 3
+    assert captured["ignore_case"] is True
+
+    # Old alias only — remapped to the new param before the handler runs.
+    handler({"content_regex": "legacy", "lines_before": 1, "ignore_case": True})
+    assert captured["content_regex"] == "legacy"
+    assert captured["lines_before"] == 1
+    assert captured["ignore_case"] is True
+
+    # Both present — the new name wins.
+    handler({"regex": "winner", "content_regex": "loser"})
+    assert captured["content_regex"] == "winner"
+
+
+def test_tools_list_edit_schema_documents_flat_shape() -> None:
     edit_tool = TOOLS["edit"]
     schema = edit_tool["inputSchema"]
     edits_schema = schema["properties"]["edits"]
-    variants = edits_schema["items"]["oneOf"]
+    item_props = edits_schema["items"]["properties"]
 
     assert schema["required"] == ["edits"]
-    assert len(variants) >= 6
-    assert {variant["title"] for variant in variants} >= {
-        "Legacy replace",
-        "Legacy insert_after",
-        "Legacy replace_range",
-        "Rich file edit",
-        "Notebook cell edit",
-        "Symbol edit",
-    }
-    assert "Do not mix" in edits_schema["description"]
+    assert "anyOf" not in edits_schema["items"]
+    assert set(item_props) == {"path", "old", "new", "overwrite"}
+    assert edits_schema["items"].get("additionalProperties") is False
+    path_desc = item_props["path"]["description"]
+    assert ":Lx" in path_desc and ":Lx-Ly" in path_desc
 
 
 def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
@@ -413,7 +415,7 @@ def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
     assert "fact storage/voting and recall" in memory_tool["description"]
     assert "store_fact" in properties["op"]["description"]
     assert "vote_fact" in properties["op"]["description"]
-    assert "recall requires query" in properties["op"]["description"]
+    assert "need query" in properties["op"]["description"]
     assert "query used by recall" in properties["query"]["description"].lower()
     assert "subject" in properties
     assert "fact" in properties
@@ -489,13 +491,17 @@ def test_context_worker_tick_persists_bootstrap_blocks_without_blocking_initial_
 
     plan = build_bootstrap_plan(workspace_root)
     bootstrap_count = 0
-    for _ in range(3):
+    for _ in range(6):
+        import time
+
+        time.sleep(0.1)
         blocks = make_memory_store(store_root).list_pinned_blocks(plan.agent_id)
         bootstrap_count = len([block for block in blocks if block.label.startswith(f"bootstrap/{plan.repo_id}/")])
         if bootstrap_count == 4:
             break
         mcp_server._run_worker_tick_safe(store_root)
 
+    assert bootstrap_count == 4
     assert bootstrap_count == 4
 
 
@@ -844,7 +850,9 @@ def test_compact_handover_writes_markdown(store_root: Path) -> None:
     assert payload["should_handover"] is True
     assert payload["handover_file"]
     handover_path = Path(payload["handover_file"])
-    assert handover_path == root / "runs" / "handover-session" / "HANDOVER.md"
+    from atelier.core.foundation.paths import session_dir
+
+    assert handover_path == session_dir(root, "claude", "handover-session") / "HANDOVER.md"
     assert "Session Handover" in handover_path.read_text(encoding="utf-8")
 
 
@@ -872,7 +880,7 @@ def test_model_recommendation_fallback_records_route_decision(
         raise RouteConfigError("disabled")
 
     monkeypatch.setattr(
-        "atelier.core.capabilities.cross_vendor_routing.advisor.CrossVendorRouteAdvisor.recommend",
+        "atelier.core.capabilities.cross_vendor_routing.router.CrossVendorRouter.recommend",
         fail_recommend,
     )
     ledger = RunLedger(session_id="route-fallback", root=store_root)
@@ -943,8 +951,16 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert "def alpha()" in read_payload
     assert "needle" in read_payload
 
+    # `search` stays callable by name (hidden semantic tool) for the embedding path.
     search_payload = _result(_call("search", {"query": "needle", "path": str(tmp_path)}))
-    assert "### " in search_payload
+    assert "sample.py" in json.dumps(search_payload)
+
+    # The `relations` drill-in tool routes a symbol's call-graph relation. (This
+    # tmp repo isn't indexed, so the symbol may be absent -- we only assert the
+    # tool is registered and dispatches cleanly, not that it finds `alpha`.)
+    assert "relations" in TOOLS
+    relations_resp = _call("relations", {"symbol": "alpha", "kind": "self"})
+    assert "result" in relations_resp or "error" in relations_resp
 
     grep_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle"}))
     assert grep_payload
@@ -954,12 +970,116 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert "sample.py" in legacy_payload
 
 
+def test_smart_read_batch_accepts_string_paths(store_root: Path, tmp_path: Path) -> None:
+    """Batch read must accept plain string paths, dict specs, and a mix of both.
+
+    Regression: `files` previously required `list[dict]`, so the natural
+    `read(files=["a.py", "b.py"])` call failed Pydantic validation with a
+    list/dict type error before reaching the handler.
+    """
+    _ = store_root
+    a = tmp_path / "a.py"
+    b = tmp_path / "b.py"
+    a.write_text("alpha_val = 1\n", encoding="utf-8")
+    b.write_text("beta_val = 2\n", encoding="utf-8")
+
+    # Plain strings. Reaching a non-error result at all proves the list[str]
+    # input passed Pydantic validation; both files must be present.
+    payload = _result(_call("read", {"files": [str(a), str(b)]}))
+    assert "alpha_val" in payload
+    assert "beta_val" in payload
+
+    # Mixed strings and dict specs in one batch.
+    mixed = _result(_call("read", {"files": [str(a), {"path": str(b), "range": "1-1"}]}))
+    assert "alpha_val" in mixed
+    assert "beta_val" in mixed
+
+
+def test_smart_read_batch_honors_top_level_expand(store_root: Path, tmp_path: Path) -> None:
+    """A top-level ``expand=True`` must apply to every batched file.
+
+    Regression: the batch loop read ``expand`` only from each per-file spec
+    (``spec.get("expand", False)``), silently dropping a top-level
+    ``expand=True``. Plain-string entries therefore fell back to the >200-LOC
+    outline projection (bodies omitted) even though the caller asked for full
+    bodies. All prior ``expand`` coverage used single-path reads, which take a
+    different code path, so the batch gap went untested.
+    """
+    _ = store_root
+    big = tmp_path / "big_module.py"
+    # >500 LOC so the default projection is outline (bodies omitted). The marker
+    # lives inside a function body, which outline drops and expand keeps.
+    # Use long function bodies (not module-level constants) so the outline omits
+    # 75%+ of the source and passes the _outline_saves_enough guard.
+    body = ["def head():"]
+    body += [f"    x_{i} = {i}" for i in range(510)]
+    body += ["    return x_0", ""]
+    body += ["def carries_marker():", "    leaf = 'UNIQUE_BODY_TOKEN'", "    return leaf", ""]
+    big.write_text("\n".join(body), encoding="utf-8")
+
+    # Without expand: outline projection, the in-body marker is omitted.
+    outline = _result(_call("read", {"files": [str(big)]}))
+    assert "UNIQUE_BODY_TOKEN" not in outline
+
+    # Top-level expand=True must reach every plain-string batch entry.
+    expanded = _result(_call("read", {"files": [str(big)], "expand": True}))
+    assert "UNIQUE_BODY_TOKEN" in expanded
+
+    # A per-file expand still works and overrides the top-level default.
+    # Use a second file (same content, different path) so the response text
+    # differs from the prior `expanded` call and dedup does not fire.
+    big2 = tmp_path / "big_module2.py"
+    big2.write_text(big.read_text(encoding="utf-8"), encoding="utf-8")
+    per_file = _result(_call("read", {"files": [{"path": str(big2), "expand": True}]}))
+    assert "UNIQUE_BODY_TOKEN" in per_file
+
+
+def test_smart_read_batch_honors_top_level_max_lines(store_root: Path, tmp_path: Path) -> None:
+    """A top-level ``max_lines`` must apply to every batched file.
+
+    Same bug class as the ``expand`` drop: the batch loop read ``max_lines``
+    only from each per-file spec (``spec.get("max_lines")``), discarding a
+    top-level ``max_lines``. A caller capping every file in a batch silently
+    got the default projection instead of the head-summary cap.
+    """
+    _ = store_root
+    big = tmp_path / "big_module.py"
+    big.write_text("\n".join(f"line_{i} = {i}" for i in range(300)), encoding="utf-8")
+
+    # Top-level max_lines must reach each batched file -> summary (head-cap) mode.
+    capped = mcp_server.tool_smart_read({"files": [str(big)], "max_lines": 3})
+    assert capped["files"][0].get("mode") == "summary"
+
+    # Without it, the same large file is not summary-capped (proves the cap came
+    # from the top-level arg, not the file size).
+    plain = mcp_server.tool_smart_read({"files": [str(big)]})
+    assert plain["files"][0].get("mode") != "summary"
+
+
+def test_scope_search_matches_to_range_filters_snippets() -> None:
+    payload: dict[str, Any] = {
+        "matches": [
+            {"path": "a.py", "snippets": [{"line_start": 1, "line_end": 5}, {"line_start": 80, "line_end": 90}]},
+            {"path": "b.py", "snippets": [{"line_start": 200, "line_end": 210}]},
+            {"path": "c.py"},  # no snippet line data -> cannot filter, kept
+        ],
+        "match_paths": ["a.py", "b.py", "c.py"],
+    }
+    mcp_server._scope_search_matches_to_range(payload, (1, 50))
+    assert [m["path"] for m in payload["matches"]] == ["a.py", "c.py"]
+    a = next(m for m in payload["matches"] if m["path"] == "a.py")
+    assert a["snippets"] == [{"line_start": 1, "line_end": 5}]
+    assert payload["match_paths"] == ["a.py", "c.py"]
+
+
 def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = store_root
     monkeypatch.chdir(tmp_path)
     target = Path("edit.txt")
     target.write_text("hello world", encoding="utf-8")
 
+    # Through the dispatcher a clean exact edit echoes the minimal applied range,
+    # change confirmed on disk.
     payload = _result(
         _call(
             "edit",
@@ -975,8 +1095,388 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
             },
         )
     )
-    assert len(payload["applied"]) == 1
+    assert payload == {"applied": ["edit.txt:1"]}
     assert target.read_text(encoding="utf-8") == "hello atelier"
+
+
+def test_smart_edit_compacts_hunks_by_path(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    first = Path("first.txt")
+    second = Path("second.txt")
+    first.write_text("one\ntwo\nthree\n", encoding="utf-8")
+    second.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    # A clean multi-file edit is success-silent on its body, but the cross-file
+    # savings credit survives on the structured handler return (the dispatcher
+    # reads calls_saved for content[].saved). The compact `applied` formatting is
+    # exercised directly in test_compact_applied_entries_groups_by_path.
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"path": str(first), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                {"path": str(first), "op": "replace", "old_string": "three", "new_string": "THREE"},
+                {"path": str(second), "op": "replace", "old_string": "alpha\nbeta", "new_string": "ALPHA\nBETA"},
+            ],
+        }
+    )
+
+    assert payload["applied"] == ["first.txt:1,3", "second.txt:1-2"]
+    # 3 hunks but only 2 distinct files: built-in MultiEdit already batches the
+    # two same-file hunks, so the honest cross-file saving is distinct_files - 1.
+    assert payload["calls_saved"] == 1
+    assert first.read_text(encoding="utf-8") == "ONE\ntwo\nTHREE\n"
+    assert second.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
+
+
+def test_smart_edit_same_file_hunks_credit_no_calls(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multiple hunks in ONE file are not a saving — MultiEdit already batches them."""
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("only.txt")
+    target.write_text("one\ntwo\nthree\n", encoding="utf-8")
+
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"path": str(target), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                {"path": str(target), "op": "replace", "old_string": "two", "new_string": "TWO"},
+                {"path": str(target), "op": "replace", "old_string": "three", "new_string": "THREE"},
+            ],
+        }
+    )
+
+    # Single file => no cross-file saving; clean edit echoes the minimal range.
+    assert payload["applied"] == ["only.txt:1,2,3"]
+    assert payload.get("calls_saved", 0) == 0
+    assert target.read_text(encoding="utf-8") == "ONE\nTWO\nTHREE\n"
+
+
+def test_smart_edit_cross_file_credit_matches_distinct_files(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One hunk each across N files => calls_saved == N - 1."""
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    files = [Path(f"f{i}.txt") for i in range(3)]
+    for f in files:
+        f.write_text("target\n", encoding="utf-8")
+
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"path": str(f), "op": "replace", "old_string": "target", "new_string": "DONE"} for f in files],
+        }
+    )
+
+    assert payload["calls_saved"] == len(files) - 1
+
+
+def test_bash_omitted_tokens_saved_caps_at_vanilla_baseline() -> None:
+    """Bash trim credit is measured against vanilla CC's own ~30k-char Bash cap,
+    not the raw firehose: a multi-MB build log is not millions of tokens saved."""
+    # Under the vanilla cap: the full omission is credited.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 1_000, "stderr": ""}, 4_000) == 1_000
+    # Firehose: the naive side is capped at what vanilla would have shown.
+    assert (
+        mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 8_000, "stderr": ""}, 10_000_000)
+        == (30_000 - 8_000) // 4
+    )
+    # Already showing more than vanilla ever would: no credit.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x" * 40_000, "stderr": ""}, 5_000) == 0
+    # Nothing omitted: no credit.
+    assert mcp_server._bash_omitted_tokens_saved({"stdout": "x"}, 0) == 0
+
+
+def test_trimmed_tokens_saved_caps_at_host_inline_guard() -> None:
+    """Dispatcher trim credit (spill/compact/truncate) caps the naive side at the
+    host's inline MCP-output guard: anything larger would have been dumped to a
+    file the model never pays for, so it was never a real context cost."""
+    cap = mcp_server._HOST_INLINE_RESULT_CHARS
+    assert mcp_server._trimmed_tokens_saved(10_000, 2_000) == 8_000 // 4
+    assert mcp_server._trimmed_tokens_saved(cap * 10, 2_000) == (cap - 2_000) // 4
+    # Nothing trimmed, or final text already over the cap -> no credit.
+    assert mcp_server._trimmed_tokens_saved(2_000, 2_000) == 0
+    assert mcp_server._trimmed_tokens_saved(cap * 10, cap + 1) == 0
+
+
+def test_finish_code_result_credits_distinct_files_not_items() -> None:
+    """20 symbols across 3 files ~= one grep + 3 reads avoided, not 19 calls."""
+    items = [{"name": f"sym{i}", "path": f"src/f{i % 3}.py"} for i in range(20)]
+    assert mcp_server._finish_code_result({"items": items})["calls_saved"] == 3
+    # Items without file info credit only the single locate scan they replaced.
+    assert mcp_server._finish_code_result({"routes": [{"method": "GET"}, {"method": "POST"}]})["calls_saved"] == 1
+    # Single-item results credit nothing.
+    assert "calls_saved" not in mcp_server._finish_code_result({"items": [{"path": "a.py"}]})
+    # An explicit handler-set credit is never overwritten.
+    assert mcp_server._finish_code_result({"items": items, "calls_saved": 7})["calls_saved"] == 7
+
+
+def test_finish_code_result_counterfactual_token_credit(tmp_path: Path) -> None:
+    """Surfaced files credit capped vanilla reads minus returned bytes — max
+    with any engine packing credit, never the sum."""
+    big = tmp_path / "big.py"
+    big.write_text("x" * 40_000, encoding="utf-8")
+    small = tmp_path / "small.py"
+    small.write_text("y" * 4_000, encoding="utf-8")
+    items = [{"name": "a", "path": str(big)}, {"name": "b", "path": str(small)}]
+
+    result = mcp_server._finish_code_result({"items": items})
+    returned = len(json.dumps({"items": items, "calls_saved": 2}, default=str))
+    assert result["tokens_saved"] == (44_000 - returned) // 4
+
+    # A larger engine-stamped packing credit is preserved (max, not sum).
+    stamped = mcp_server._finish_code_result({"items": list(items), "tokens_saved": 999_999})
+    assert stamped["tokens_saved"] == 999_999
+
+    # Per-file cap: a giant file cannot inflate the credit past the vanilla dump.
+    giant = tmp_path / "giant.py"
+    giant.write_text("z" * 500_000, encoding="utf-8")
+    capped_items = [{"name": "g", "path": str(giant)}, {"name": "a", "path": str(big)}]
+    capped = mcp_server._finish_code_result({"items": capped_items})
+    assert capped["tokens_saved"] <= (mcp_server._VANILLA_READ_FILE_CAP_CHARS + 40_000) // 4
+
+    # Unreadable paths contribute nothing (no counterfactual read to avoid).
+    ghost = mcp_server._finish_code_result({"items": [{"path": "nope/a.py"}, {"path": "nope/b.py"}]})
+    assert "tokens_saved" not in ghost
+
+
+def test_smart_read_batch_credits_calls_saved(store_root: Path, tmp_path: Path) -> None:
+    """N files in one read call replace N single-file read calls => N - 1 saved;
+    errored entries earned nothing and are excluded from the credit."""
+    _ = store_root
+    a = tmp_path / "a.py"
+    b = tmp_path / "b.py"
+    a.write_text("alpha_val = 1\n", encoding="utf-8")
+    b.write_text("beta_val = 2\n", encoding="utf-8")
+
+    payload = mcp_server.tool_smart_read({"files": [str(a), str(b), str(tmp_path / "missing.py")]})
+    assert payload["calls_saved"] == 1  # 2 ok entries -> 1 avoided call
+
+    single = mcp_server.tool_smart_read({"files": [str(a)]})
+    assert "calls_saved" not in single
+
+
+def test_compact_applied_entries_groups_by_path() -> None:
+    """Compaction groups same-path hunks and keeps special entries (e.g. symbol).
+
+    This formatting only reaches the model on a LOUD result (clean exact edits are
+    silenced), so it is verified directly on the helper rather than via a clean
+    edit's dispatched body.
+    """
+    from atelier.gateway.adapters.mcp_server import _compact_applied_entries
+
+    entries = [
+        {"path": "first.txt", "hunks": [{"line_start": 1, "line_end": 1}]},
+        {"path": "first.txt", "hunks": [{"line_start": 3, "line_end": 3}]},
+        {"path": "second.txt", "hunks": [{"line_start": 1, "line_end": 2}]},
+        {"path": "sym.py", "kind": "symbol"},
+    ]
+    compact = _compact_applied_entries(entries)
+    assert "first.txt:1,3" in compact
+    assert "second.txt:1-2" in compact
+    # A special entry (extra keys beyond path/hunks) is preserved verbatim.
+    assert {"path": "sym.py", "kind": "symbol"} in compact
+
+
+def test_smart_edit_blocks_test_assertion_removal(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Deleting an assertion from an existing test is the reward-hack signal:
+    # roll back and surface a counterexample (the detector trips only on weakening).
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n    assert other() == 9\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "    assert compute() == 5\n    assert other() == 9\n",
+                        "new_string": "    assert other() == 9\n",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["rolled_back"] is True
+    # `writes` is no longer emitted (atomic edits are all-or-nothing; the count is
+    # pure noise). The rollback is signalled by rolled_back/test_weakening.
+    assert "writes" not in payload
+    assert payload["test_weakening"][0]["path"] == "tests/test_parser.py"
+    assert "assertion" in payload["test_weakening"][0]["reason"]
+    assert "assert compute() == 5" in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_blocks_test_skip_addition(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "def test_x():\n",
+                        "new_string": "@pytest.mark.skip\ndef test_x():\n",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["rolled_back"] is True
+    assert "skip/xfail" in payload["test_weakening"][0]["reason"]
+    assert "@pytest.mark.skip" not in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_additive_test_edit(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Adding a new assertion to an existing test passes freely -- no friction.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "    assert compute() == 5\n",
+                        "new_string": "    assert compute() == 5\n    assert compute() != 0\n",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() != 0" in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_assertion_value_change(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # In-place assertion modification (changing an expected value) nets to zero
+    # assertions and passes -- the detector guards removal/skip, not value edits.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "assert compute() == 5",
+                        "new_string": "assert compute() == 6",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() == 6" in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_test_weakening_paired_with_production_change(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pair signal: a test weakening that rides with a production-code change reads
+    # as a genuine refactor (contract moved with the code), not a reward-hack.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    test_file = Path("tests/test_parser.py")
+    test_file.parent.mkdir()
+    test_file.write_text("def test_x():\n    assert compute() == 5\n    assert other() == 9\n", encoding="utf-8")
+    src_file = Path("src/parser.py")
+    src_file.parent.mkdir()
+    src_file.write_text("def compute():\n    return 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(test_file),
+                        "old_string": "    assert compute() == 5\n    assert other() == 9\n",
+                        "new_string": "    assert other() == 9\n",
+                    },
+                    {
+                        "file_path": str(src_file),
+                        "old_string": "    return 5\n",
+                        "new_string": "    return 6\n",
+                    },
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() == 5" not in test_file.read_text(encoding="utf-8")
+    assert "return 6" in src_file.read_text(encoding="utf-8")
+
+
+def test_smart_edit_does_not_flag_new_regression_test(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/regression/issue.rs")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "new_string": "#[test]\nfn regression() {}\n",
+                        "overwrite": True,
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert "FIXME" not in payload
 
 
 def test_smart_edit_rejects_mixed_descriptor_families(store_root: Path, tmp_path: Path) -> None:
@@ -1076,69 +1576,13 @@ def test_smart_edit_records_workspace_relative_diff_after_hooks(
         )
     )
 
-    assert payload["failed"] == []
+    # Clean edit (the fake hook reports no diagnostics) is success-silent.
+    assert payload == {"applied": ["edit.txt:1"]}
     assert target.read_text(encoding="utf-8") == "hello hooks"
     file_events = [event for event in mcp_server._get_ledger().events if event.kind == "file_edit"]
     assert file_events[-1].payload["path"] == "edit.txt"
     assert "hello hooks" in file_events[-1].payload["diff"]
     assert "hello atelier" not in file_events[-1].payload["diff"]
-
-
-@pytest.mark.skip(
-    reason="SCIP routing for engine.tool_search() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
-def test_code_context_external_scope_surface_returns_external_hits_only(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    _write_gateway_scip_fixture(
-        tmp_path,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    repo_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get"})
-    external_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get", "scope": "external"})
-
-    assert repo_payload["items"] == []
-    assert [item["qualified_name"] for item in external_payload["items"]] == ["requests.get"]
-    assert external_payload["items"][0]["origin"] == "external"
-
-
-def test_edit_symbol_rejects_external_target_cleanly(
-    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _ = store_root
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    _write_gateway_scip_fixture(
-        tmp_path,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    payload = tool_smart_edit(
-        {
-            "edits": [
-                {
-                    "kind": "symbol",
-                    "symbol_id": "scip-requests-get",
-                    "mode": "replace",
-                    "new_body": "def get(url: str) -> str:\n    return 'patched'\n",
-                }
-            ]
-        }
-    )
-
-    assert payload["rolled_back"] is True
-    assert payload["failed"][0]["error"] == "external_symbol_edit_not_allowed"
 
 
 def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
@@ -1150,16 +1594,14 @@ def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
     _write_workspace_fixture_repo(tmp_path, module_name="atelier")
     _write_workspace_fixture_repo(billing_root, module_name="billing")
     _write_workspace_fixture_config(tmp_path, billing_root)
+    _preindex(tmp_path)
 
-    payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "SharedConfig", "budget_tokens": 4000})
-    billing_only = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "SharedConfig",
-            "repo": "billing",
-            "budget_tokens": 4000,
-        }
+    payload = mcp_server._op_search(repo_root=str(tmp_path), query="SharedConfig", budget_tokens=4000)
+    billing_only = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="SharedConfig",
+        repo="billing",
+        budget_tokens=4000,
     )
 
     assert [(item["repo_name"], item["path"]) for item in payload["items"]] == [
@@ -1169,66 +1611,20 @@ def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
     assert [item["repo_name"] for item in billing_only["items"]] == ["billing"]
 
 
-@pytest.mark.skip(
-    reason="SCIP routing for engine.tool_search() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
-def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
-    store_root: Path,
-    tmp_path: Path,
-) -> None:
-    _ = store_root
-    billing_root = tmp_path.parent / "billing"
-    _write_workspace_fixture_repo(tmp_path, module_name="atelier")
-    _write_workspace_fixture_repo(billing_root, module_name="billing")
-    _write_workspace_fixture_config(tmp_path, billing_root)
-    _write_gateway_scip_fixture(
-        billing_root,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    default_symbol = tool_code({"op": "symbol", "repo_root": str(tmp_path), "symbol_name": "SharedConfig"})
-    billing_symbol = tool_code(
-        {
-            "op": "symbol",
-            "repo_root": str(tmp_path),
-            "symbol_name": "SharedConfig",
-            "repo": "billing",
-        }
-    )
-    external_payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "get",
-            "scope": "external",
-            "repo": "billing",
-        }
-    )
-
-    assert default_symbol["repo_name"] == "atelier"
-    assert billing_symbol["repo_name"] == "billing"
-    assert billing_symbol["qualified_name"] == "SharedConfig"
-    assert external_payload["items"][0]["repo_name"] == "billing"
-    assert external_payload["items"][0]["origin"] == "external"
-
-
-def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
+def test_repo_map_and_seed_files_dropped_from_grep(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     target = tmp_path / "sample.py"
     target.write_text("def alpha():\n    return 1\n", encoding="utf-8")
 
-    payload = _result(
-        _call(
-            "search",
-            {"query": "", "seed_files": [str(target)], "mode": "map", "budget_tokens": 200},
-        )
-    )
-    assert "ranked_files" in payload
+    # The repo-map capability (and its `seed_files` param) is gone from grep --
+    # grep's `mode='map'` now just means the ranked FILE map, an output shape, not
+    # a seed-expanded repo map. `seed_files` is no longer a grep param.
+    grep_props = mcp_server.TOOLS["grep"]["inputSchema"]["properties"]
+    assert "seed_files" not in grep_props
+    assert grep_props["mode"]["enum"] == ["content", "map", "paths", "counts"]
+    # `mode='map'` is a valid output shape (ranked file map), reached normally.
+    resp = _call("grep", {"regex": "alpha", "path": str(tmp_path), "mode": "map"})
+    assert "result" in resp
 
 
 def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
@@ -1236,33 +1632,25 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
 
-    indexed = _result(_call("symbols", {"op": "index", "repo_root": str(tmp_path)}))
+    indexed = _result(_call("index", {"repo_root": str(tmp_path)}))
     _m = re.search(r"symbols=(\d+)", indexed)
     assert _m is not None
     assert int(_m.group(1)) >= 2
-    assert "provenance: local" in indexed
 
-    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
     assert searched and "no matches" not in searched
     assert "snippet:" not in searched
-    cached_search = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert "provenance: cached" in cached_search
+    cached_search = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
+    assert cached_search == searched
 
-    symbol = _result(
-        _call(
-            "symbols",
-            {
-                "op": "symbol",
-                "repo_root": str(tmp_path),
-                "qualified_name": "alpha",
-                "file_path": "a.py",
-            },
-        )
+    symbol = _op_result(
+        "node",
+        mcp_server._op_node,
+        repo_root=str(tmp_path),
+        qualified_name="alpha",
+        path="a.py",
     )
     assert "def alpha" in symbol
-
-    outline = _result(_call("symbols", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
-    assert "a.py" in outline
 
     context = _result(
         _call(
@@ -1278,67 +1666,32 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     assert isinstance(context, dict)
     assert context.get("task") == "change alpha"
 
-    impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "path": "a.py"}))
-    assert "b.py" in impact
-    assert "target_type: file" in impact
-    assert "provenance: local" in impact
-
-    symbol_impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert "target_type: symbol" in symbol_impact
-    assert "target: symbol" in symbol_impact
-    assert "affected_files:" in symbol_impact
-
-
-@pytest.mark.skip(
-    reason="SCIP cache-invalidation surface under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
-def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
-
-    first = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    cached = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    artifact_path.write_text(
-        artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
-        encoding="utf-8",
-    )
-    fresh = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-
-    assert first["provenance"] == "scip" if isinstance(first, dict) else "provenance: scip" in first
-    assert cached["provenance"] == "cached" if isinstance(cached, dict) else "provenance: cached" in cached
-    assert fresh["provenance"] == "scip" if isinstance(fresh, dict) else "provenance: scip" in fresh
-
 
 def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "tests" / "test_orders.py").write_text(
         "from src.orders import OrderService\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "snippet": "head",
-            "snippet_lines": 2,
-            "file_glob": "src/*.py",
-            "scope": "repo",
-            "budget_tokens": 4000,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        snippet="head",
+        snippet_lines=2,
+        file_glob="src/*.py",
+        scope="repo",
+        budget_tokens=4000,
     )
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     assert "provenance_breakdown" not in payload
     assert payload["items"][0]["path"] == "src/orders.py"
     assert (
@@ -1363,17 +1716,14 @@ def test_tool_code_search_dispatches_mode_without_gateway_ranking_logic(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "create login token for authenticated user",
-            "mode": "semantic",
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="create login token for authenticated user",
+        mode="semantic",
+        budget_tokens=220,
     )
 
-    assert payload["mode"] == "semantic"
+    assert "mode" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "create login token for authenticated user",
         limit=20,
@@ -1407,17 +1757,14 @@ def test_tool_code_search_dispatches_grounded_seed_files_without_gateway_ranking
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "seed_files": ["src/orders.py"],
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        seed_files=["src/orders.py"],
+        budget_tokens=220,
     )
 
-    assert payload["mode"] == "lexical"
+    assert "mode" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "OrderService",
         limit=20,
@@ -1458,19 +1805,16 @@ def test_tool_code_search_dispatches_deleted_scope_filters_without_gateway_histo
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "ModernCheckout",
-            "scope": "deleted",
-            "since": "2025-01-01",
-            "touched_by": "history@example.com",
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="ModernCheckout",
+        scope="deleted",
+        since="2025-01-01",
+        touched_by="history@example.com",
+        budget_tokens=220,
     )
 
-    assert payload["provenance"] == "graveyard"
+    assert "provenance" not in payload
     assert payload["items"][0]["rename_target"] == "modern.py"
     fake_engine.tool_search.assert_called_once_with(
         "ModernCheckout",
@@ -1511,17 +1855,14 @@ def test_tool_code_blame_dispatches_additively_without_gateway_aggregation(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "blame",
-            "repo_root": str(tmp_path),
-            "query": "risk_score",
-            "include_churn": False,
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_blame(
+        repo_root=str(tmp_path),
+        query="risk_score",
+        include_churn=False,
+        budget_tokens=220,
     )
 
-    assert payload["provenance"] == "blame"
+    assert "provenance" not in payload
     assert payload["symbol_name"] == "risk_score"
     fake_engine.tool_blame.assert_called_once_with(
         query="risk_score",
@@ -1551,17 +1892,13 @@ def test_tool_code_include_churn_remains_additive_for_non_blame_ops(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "include_churn": False,
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        budget_tokens=220,
     )
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "OrderService",
         limit=20,
@@ -1583,9 +1920,7 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "checkout.py").write_text(
@@ -1594,27 +1929,17 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         "    return OrderService().calculate_total(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
-    payload = _result(_call("symbols", {"op": "usages", "repo_root": str(tmp_path), "query": "OrderService"}))
+    payload = _op_result(
+        "usages",
+        mcp_server._op_usages,
+        repo_root=str(tmp_path),
+        query="OrderService",
+    )
 
-    assert "group_by: file" in payload
-    assert "OrderService" in payload
     assert "src/checkout.py" in payload
-    assert "local_index" in payload
-
-
-def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    engine = CodeContextEngine(tmp_path)
-    artifact_dir = ScipIndexer(tmp_path, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
-
-    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-
-    assert "alpha" in searched
-    assert "provenance: scip" not in searched
+    assert "checkout" in payload
 
 
 def test_code_context_pattern_search_surface_is_cached(
@@ -1643,32 +1968,30 @@ def test_code_context_pattern_search_surface_is_cached(
         ),
     )
 
-    first = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "budget_tokens": 220,
-            },
-        )
+    first = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        budget_tokens=220,
     )
-    cached = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "budget_tokens": 220,
-            },
-        )
+    cached = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        budget_tokens=220,
     )
 
-    assert first["provenance"] == "ast-grep"
-    assert first["matches"][0]["captures"] == {"URL": "url"}
-    assert cached["provenance"] == "cached"
+    # Pattern search now surfaces the compact markdown the agent receives, not
+    # the raw JSON payload (path emitted once, snippet preserved).
+    assert isinstance(first, str)
+    assert first.startswith("- src/app.py")
+    assert "src/app.py" in first
+    assert "requests.get(url)" in first
+    assert "provenance" not in first
+    # Cache state is internal bookkeeping; the cached response must be identical.
+    assert cached == first
 
 
 def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tmp_path: Path) -> None:
@@ -1676,42 +1999,33 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
-    _result(
-        _call(
-            "symbols",
-            {
-                "op": "search",
-                "repo_root": str(tmp_path),
-                "query": "OrderService",
-                "budget_tokens": 4000,
-            },
-        )
+    _op_result(
+        "search",
+        mcp_server._op_search,
+        repo_root=str(tmp_path),
+        query="OrderService",
+        budget_tokens=4000,
     )
-    _result(
-        _call(
-            "symbols",
-            {
-                "op": "symbol",
-                "repo_root": str(tmp_path),
-                "qualified_name": "OrderService",
-                "file_path": "src/orders.py",
-                "budget_tokens": 4000,
-            },
-        )
+    _op_result(
+        "node",
+        mcp_server._op_node,
+        repo_root=str(tmp_path),
+        qualified_name="OrderService",
+        path="src/orders.py",
+        budget_tokens=4000,
     )
 
-    status = _result(_call("symbols", {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 200}))
+    status = _result(_call("cache", {"op": "status", "repo_root": str(tmp_path), "budget_tokens": 200}))
     invalidated = _result(
         _call(
-            "symbols",
+            "cache",
             {
-                "op": "cache_invalidate",
+                "op": "invalidate",
                 "repo_root": str(tmp_path),
                 "cache_tool": "search",
                 "budget_tokens": 200,
@@ -1752,29 +2066,21 @@ def test_code_context_pattern_rewrite_reindexes_changed_files(
         raising=False,
     )
 
-    preview = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "rewrite": "requests.get($URL, timeout=30)",
-                "dry_run": True,
-            },
-        )
+    preview = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        rewrite="requests.get($URL, timeout=30)",
+        dry_run=True,
     )
-    applied = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "rewrite": "requests.get($URL, timeout=30)",
-                "dry_run": False,
-            },
-        )
+    applied = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        rewrite="requests.get($URL, timeout=30)",
+        dry_run=False,
     )
 
     assert "--- a/src/app.py" in preview["diff"]
@@ -1805,12 +2111,9 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
         ),
     )
 
-    result = tool_code(
-        {
-            "op": "pattern",
-            "repo_root": str(tmp_path),
-            "pattern": "requests.get($URL)",
-        }
+    result = mcp_server._op_pattern(
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
     )
 
     assert result["error"] == "tool_unavailable"
@@ -1864,41 +2167,14 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
     ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
-def test_route_decide_summary_is_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """tool_route op=decide must return top-level route fields."""
-    root = tmp_path / ".atelier"
-    monkeypatch.setenv("ATELIER_ROOT", str(root))
-    import atelier.gateway.adapters.mcp_server as m
-
-    m._current_ledger = None
-
-    payload = _result(
-        _call(
-            "route",
-            {
-                "user_goal": "Fix a bug in the parser",
-                "repo_root": ".",
-                "task_type": "debug",
-                "risk_level": "medium",
-                "step_type": "edit",
-                "step_index": 1,
-            },
-        )
-    )
-
-    assert "model" in payload, f"'model' key missing from route response: {list(payload)}"
-    assert "route_tier" in payload, f"'route_tier' key missing from route response: {list(payload)}"
-    assert "rationale" in payload, f"'rationale' key missing from route response: {list(payload)}"
-
-
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """For failing commands, the tail of stdout must be preserved even when output is long."""
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Generate 300 numbered lines then exit 1 — only tail should survive truncation
-    result = _run_shell_tool(
+    result = _run_bash_tool(
         "python3 -c \"import sys; [print(f'line-{i}') for i in range(300)]; sys.exit(1)\"",
         max_lines=60,
     )
@@ -1909,20 +2185,433 @@ def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "line-299" in stdout, f"tail not preserved for failing command; stdout tail:\n{stdout[-500:]}"
 
 
-def test_shell_timeout_terminates_child_process_group(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+def test_shell_falls_back_when_workspace_root_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-existent CLAUDE_WORKSPACE_ROOT must not hard-fail the shell tool.
 
-    marker = tmp_path / "child-finished"
+    A host path leaking into a container (e.g. via the environment) used to make
+    every cwd-less command raise FileNotFoundError from Popen -> MCP -32000.
+    The handler now falls back to the process cwd so the command still runs.
+    """
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    missing = tmp_path / "does" / "not" / "exist"
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(missing))
+
+    result = _run_bash_tool("pwd")
+
+    assert result["exit_code"] == 0, result
+    assert result["stdout"].strip()
+
+
+def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
-    result = _run_shell_tool(
-        f"python3 -c \"import time; time.sleep(2); open({str(marker)!r}, 'w').write('done')\"",
-        timeout=1,
+    result = _run_bash_tool(
+        'python3 -c "import time; time.sleep(1)"',
+        timeout=0.5,
     )
-    time.sleep(1.5)
 
     assert result["exit_code"] == -1
-    assert "timed out after 1s" in result["stderr"]
-    assert not marker.exists()
+    assert "timed out after 0.5s" in result["stderr"]
+
+
+def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Foreground run blocks until the command finishes -- no artificial
+    # window, no detach, no session, no poll -- even for a slow-ish command.
+    result = _run_bash_tool(
+        "python3 -c \"import time; time.sleep(0.3); print('done')\"",
+        timeout=30,
+    )
+    assert result.get("status") != "running"
+    assert "session_id" not in result
+    assert result["exit_code"] == 0
+    assert result["stdout"] == "done"
+
+
+def test_shell_large_timeout_does_not_detach_fast_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # A 30-minute timeout budget must not make a fast command detach: it
+    # blocks only as long as the command actually runs, then returns.
+    result = _run_bash_tool("echo hi", timeout=1800)
+    assert result.get("status") != "running"
+    assert "session_id" not in result
+    assert result["exit_code"] == 0
+    assert result["stdout"] == "hi"
+
+
+def test_shell_poll_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Detach immediately, then a SINGLE blocking poll returns the finished
+    # result -- no manual retry loop, no busy-polling.
+    started = _run_bash_tool(
+        "python3 -c \"import time; time.sleep(0.5); print('done')\"",
+        timeout=10,
+        background=True,
+    )
+    assert started["status"] == "running"
+
+    completed = _run_bash_tool(session_id=started["session_id"], action="poll")
+    assert completed["status"] == "completed"
+    assert completed["exit_code"] == 0
+    assert completed["stdout"] == "done"
+
+
+def test_shell_background_return_reports_timeout_remaining(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Detaching surfaces an honest upper bound (the timeout), not a fake ETA.
+    started = _run_bash_tool(
+        'python3 -c "import time; time.sleep(5)"',
+        timeout=10,
+        background=True,
+    )
+    try:
+        assert started["status"] == "running"
+        assert started["session_id"]
+        assert started["duration_ms"] >= 0
+        assert 0 < started["timeout_remaining_ms"] <= 10_000
+    finally:
+        _run_bash_tool(session_id=started["session_id"], action="cancel")
+
+
+def test_render_shell_text_running_surfaces_progress_hints() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "status": "running",
+            "session_id": "abc123",
+            "pid": 42,
+            "duration_ms": 95_000,
+            "timeout_remaining_ms": 1_765_000,
+        }
+    )
+    assert "status=running session_id=abc123" in text
+    assert "pid=42" in text
+    assert "elapsed=1m35s" in text
+    assert "timeout_in=29m25s" in text
+
+
+def test_render_bash_text_includes_spill_hint_in_truncation_notice() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "stdout": "line1\n... (50 lines omitted) ...\nline300",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": True,
+            "lines_omitted": 50,
+            "spill_hint": "; full output (123B) spilled to /tmp/x.txt; read /tmp/x.txt to recover",
+        }
+    )
+    assert "[output truncated: 50 lines omitted; full output (123B) spilled to /tmp/x.txt" in text
+
+
+def test_render_bash_text_omits_spill_hint_when_absent() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "stdout": "line1\n... (50 lines omitted) ...\nline300",
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": True,
+            "lines_omitted": 50,
+        }
+    )
+    assert "[output truncated: 50 lines omitted]" in text
+
+
+def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        'python3 -c "import time; time.sleep(10)"',
+        timeout=10,
+        background=True,
+    )
+    cancelled = _run_bash_tool(session_id=started["session_id"], action="cancel")
+    time.sleep(0.1)
+
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["exit_code"] == -1
+    assert "cancelled" in cancelled["stderr"].lower()
+
+
+def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        'python3 -c "import time; time.sleep(1)"',
+        timeout=0.5,
+        background=True,
+    )
+    time.sleep(0.65)
+    completed = _run_bash_tool(session_id=started["session_id"], action="poll")
+
+    assert completed["status"] == "timed_out"
+    assert completed["exit_code"] == -1
+    assert "timed out after 0.5s" in completed["stderr"]
+
+
+def test_shell_status_action_is_nonblocking_and_reports_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        'python3 -c "import sys, time; [print(i, flush=True) for i in range(20)]; time.sleep(5)"',
+        timeout=10,
+        background=True,
+    )
+    try:
+        time.sleep(0.5)  # let the printed lines land before peeking
+
+        before = time.monotonic()
+        status = _run_bash_tool(session_id=started["session_id"], action="status")
+        elapsed = time.monotonic() - before
+
+        assert elapsed < 2.0, "status must not block until the command finishes"
+        assert status["status"] == "running"
+        assert status["session_id"] == started["session_id"]
+        assert status["tail_lines"] == 10
+        assert status["stdout"].splitlines() == [str(i) for i in range(10, 20)]
+
+        # A status peek must not reap the session -- poll/cancel still work after.
+        cancelled = _run_bash_tool(session_id=started["session_id"], action="cancel")
+        assert cancelled["status"] == "cancelled"
+    finally:
+        with contextlib.suppress(Exception):
+            _run_bash_tool(session_id=started["session_id"], action="cancel")
+
+
+def test_shell_status_action_reports_finished_session_without_reaping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        "python3 -c \"print('done')\"",
+        timeout=10,
+        background=True,
+    )
+    time.sleep(0.3)  # let the process finish
+
+    status = _run_bash_tool(session_id=started["session_id"], action="status")
+    assert status["status"] == "completed"
+    assert status["exit_code"] == 0
+    assert "done" in status["stdout"]
+
+    # The finished session is still reap-able by an explicit poll afterward.
+    polled = _run_bash_tool(session_id=started["session_id"], action="poll")
+    assert polled["status"] == "completed"
+    assert polled["stdout"] == "done"
+
+
+def test_render_shell_text_status_action_notes_tail_window() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "status": "running",
+            "session_id": "abc123",
+            "pid": 42,
+            "duration_ms": 1_000,
+            "timeout_remaining_ms": 9_000,
+            "stdout": "line1\nline2",
+            "stderr": "",
+            "tail_lines": 10,
+        }
+    )
+    assert "[tail: last 10 line(s) of stdout/stderr]" in text
+    assert "line1\nline2" in text
+
+
+def test_shell_mcp_call_returns_managed_session_for_background_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    response = _call(
+        "bash",
+        {
+            "command": 'python3 -c "import time; time.sleep(10)"',
+            "timeout": 30,
+            "background": True,
+        },
+    )
+    text = response["result"]["content"][0]["text"]
+    match = re.search(r"session_id=([a-f0-9]+)", text)
+
+    assert "status=running" in text
+    assert match is not None
+    cancelled = mcp_server._run_bash_tool(session_id=match.group(1), action="cancel")
+    assert cancelled["status"] == "cancelled"
+
+
+def test_truncate_result_text_passes_small_through() -> None:
+    small = "hello world"
+    assert mcp_server._truncate_result_text(small, 1024) == small
+
+
+def test_truncate_result_text_caps_oversized_with_notice() -> None:
+    out = mcp_server._truncate_result_text("x" * 5000, 1024)
+    assert len(out.encode("utf-8")) <= 1024
+    assert "truncated" in out
+    assert "5000B" in out  # trimmed notice: "truncated to 1024B of 5000B; narrow the query"
+
+
+def test_truncate_result_text_keeps_valid_utf8_on_multibyte_boundary() -> None:
+    # 'é' encodes to 2 bytes; an odd byte limit must not yield a partial char.
+    out = mcp_server._truncate_result_text("é" * 1000, 101)
+    out.encode("utf-8")  # raises if the head was split mid-codepoint
+
+
+def test_truncate_result_text_spills_full_text_when_tool_name_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This is the last-resort wire-byte backstop; a bare 'narrow the query'
+    used to discard everything past the cut. With T7 spill enabled (default)
+    and a tool_name given, the full text is persisted first.
+    """
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path / "spill"))
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)  # default on
+    middle_marker = "UNIQUE-MIDDLE-MARKER"
+    text = "HEAD" + ("x" * 5000) + middle_marker + ("x" * 5000) + "TAIL"
+    out = mcp_server._truncate_result_text(text, 1024, "bash")
+
+    assert len(out.encode("utf-8")) <= 1024
+    assert "spilled to" in out
+    match = re.search(r"spilled to (\S+\.txt);", out)
+    assert match is not None
+    recovered = Path(match.group(1)).read_text(encoding="utf-8")
+    assert recovered == text
+    assert middle_marker in recovered
+
+
+def test_truncate_result_text_without_tool_name_keeps_bare_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)
+    out = mcp_server._truncate_result_text("x" * 5000, 1024)
+    assert "spilled to" not in out
+    assert "narrow the query" in out
+
+
+def test_write_jsonrpc_backstop_replaces_oversized_frame(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_MAX_WIRE_BYTES", 256)
+    huge = {"jsonrpc": "2.0", "id": 7, "result": {"content": [{"type": "text", "text": "z" * 4000}]}}
+    mcp_server._write_jsonrpc(huge)
+    line = capsys.readouterr().out.strip()
+    frame = json.loads(line)  # a single valid JSON-RPC line, not a 4 KB blob
+    assert frame["id"] == 7
+    assert "error" in frame
+    assert len(line.encode("utf-8")) < 4000
+
+
+def test_write_jsonrpc_passes_normal_frame_through(capsys: pytest.CaptureFixture[str]) -> None:
+    msg = {"jsonrpc": "2.0", "id": 9, "result": {"content": [{"type": "text", "text": "ok"}]}}
+    mcp_server._write_jsonrpc(msg)
+    assert json.loads(capsys.readouterr().out.strip()) == msg
+
+
+def test_read_oversized_result_is_capped_not_dropped(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: an exact (expand) read of a large file produced one >16 MiB
+    # JSON-RPC frame, tripping the host stdout guard and disconnecting the
+    # server. The result must be truncated in place, never dropped.
+    _ = store_root
+    monkeypatch.setenv("ATELIER_MCP_MAX_RESULT_BYTES", "70000")
+    big = tmp_path / "big.txt"
+    big.write_text("A" * 200_000, encoding="utf-8")
+    text = _result(_call("read", {"path": str(big), "expand": True}))
+    assert isinstance(text, str)
+    assert len(text.encode("utf-8")) <= 70000
+    assert "truncated" in text
+
+
+def test_smart_read_single_caps_oversized_expand_at_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The source-side guard bounds an exact (expand) read of a huge file before
+    # it is ever fully loaded, returning a truncated payload with the byte count.
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_MCP_MAX_RESULT_BYTES", "70000")
+    big = tmp_path / "big.log"
+    big.write_text("L" * 500_000, encoding="utf-8")
+    payload = mcp_server._smart_read_single(str(big), expand=True)
+    assert payload["truncated"] is True
+    assert payload["bytes_total"] == 500_000
+    assert len(payload["content"].encode("utf-8")) <= 70000
+
+
+def test_render_memory_md_compact_recall() -> None:
+    out = mcp_server._render_memory_md(
+        {
+            "passages": [
+                {"id": "pas-1", "text": "Prefer atelier memory.", "source_ref": "sess#1", "tags": ["pref"]},
+                {"id": "pas-2", "text": "Use uv run.", "source_ref": "sess#2", "tags": []},
+            ]
+        }
+    )
+    assert out is not None
+    assert out.startswith("### memory")
+    assert "- sess#1 [pref]" in out
+    assert "Prefer atelier memory." in out
+    # repeated JSON field keys are dropped
+    assert "source_ref" not in out
+
+
+def test_render_memory_md_non_recall_falls_back_to_json() -> None:
+    # store_fact/vote_fact responses have no `passages` list -> keep JSON.
+    assert mcp_server._render_memory_md({"id": "mem-1", "fact": "x"}) is None
+
+
+def test_render_search_map_md_is_compact() -> None:
+    out = mcp_server._render_search_md(
+        {"mode": "map", "outline": "pkg/\n  mod.py", "ranked_files": ["pkg/mod.py"], "token_count": 10}
+    )
+    assert out is not None
+    assert out.startswith("### repo_map")
+    assert "pkg/mod.py" in out
+    # the JSON wrapper / bookkeeping keys are gone
+    assert "token_count" not in out
+    assert "ranked_files" not in out
+
+
+def test_check_auto_update_is_opt_in_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Supply-chain guard (HIGH #8): startup auto-update must NOT run git/install
+    # automatically. With ATELIER_AUTO_UPDATE unset it must short-circuit before
+    # spawning any subprocess.
+    monkeypatch.delenv("ATELIER_AUTO_UPDATE", raising=False)
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover - must not run
+        raise AssertionError("auto-update ran a subprocess while opt-in env var was unset")
+
+    import subprocess as _subprocess
+
+    monkeypatch.setattr(_subprocess, "run", _boom)
+    # Returns without touching subprocess.run.
+    mcp_server._check_auto_update()

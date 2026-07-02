@@ -1,7 +1,9 @@
 """Tests for the provider authentication wizard."""
+
 from __future__ import annotations
 
 import os
+import stat
 
 import pytest
 
@@ -62,6 +64,24 @@ def test_all_provider_configs_have_required_fields():
             assert "name" in field, pid
             assert "label" in field, pid
             assert "secret" in field, pid
+
+
+def test_save_credentials_sets_owner_only_file_and_dir_perms(tmp_path, monkeypatch):
+    # Point ATELIER_ROOT at a directory that does NOT exist yet so
+    # save_credentials has to create the parent and tighten it to 0o700.
+    fresh_root = tmp_path / "fresh"
+    assert not fresh_root.exists()
+    monkeypatch.setenv("ATELIER_ROOT", str(fresh_root))
+
+    wizard.save_credentials({"ANTHROPIC_API_KEY": "sk-secret"})
+
+    path = wizard.credentials_path()
+    assert path.exists()
+    # .env file must be owner read/write only.
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    # The freshly-created parent dir must be owner-only.
+    assert path.parent == fresh_root
+    assert stat.S_IMODE(fresh_root.stat().st_mode) == 0o700
 
 
 def test_validate_provider_unknown():

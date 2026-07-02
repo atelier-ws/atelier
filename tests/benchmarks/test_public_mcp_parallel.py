@@ -35,7 +35,10 @@ def _ensure_benchmarks_package() -> None:
 
 def _load(module_name: str) -> ModuleType:
     _ensure_benchmarks_package()
-    sys.modules.pop(module_name, None)
+    # Clear dependency modules so source edits take effect on reload
+    for cached in list(sys.modules):
+        if cached.startswith("benchmarks.mcp_tools."):
+            sys.modules.pop(cached, None)
     return importlib.import_module(module_name)
 
 
@@ -92,7 +95,8 @@ def test_select_suite_specs_expands_code_alias() -> None:
     specs = EXPORTER._select_suite_specs(["code"])
     names = [name for name, _size, _runner in specs]
 
-    assert "symbols" in names
+    # "symbols" was merged into "search" — not a separate suite name
+    assert "search" in names
     assert "node" in names
     assert "callers" in names
     assert "code" not in names
@@ -160,7 +164,7 @@ def test_flatten_reports_adds_case_input_and_stable_args(monkeypatch: pytest.Mon
     monkeypatch.setattr(EXPORTER, "_repo_root", lambda: tmp_path / "repo")
 
     case = harness.BenchCase(
-        op="shell",
+        op="bash",
         label="shell/example",
         args={"command": f"cat {tmp_path}/repo/src/example.py"},
         baseline_tokens=100,
@@ -179,7 +183,7 @@ def test_flatten_reports_adds_case_input_and_stable_args(monkeypatch: pytest.Mon
         passed=True,
     )
 
-    rows = EXPORTER._flatten_reports([harness.ToolReport(tool_name="shell", results=[result])])
+    rows = EXPORTER._flatten_reports([harness.ToolReport(tool_name="bash", results=[result])])
 
     assert rows[0]["case_input"].startswith("cat ")
     assert "$REPO_ROOT" in rows[0]["stable_args_json"]

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.capabilities.semantic_file_memory.capability import _outline_saves_enough
 from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
     SUPPORTED_LANGUAGES,
     outline_text,
@@ -49,6 +50,9 @@ FIXTURES: tuple[LanguageFixture, ...] = (
     LanguageFixture("yaml", "config.yaml", frozenset({"name", "services", "metadata"})),
     LanguageFixture("toml", "config.toml", frozenset({"package", "name", "tool.atelier", "tool.atelier.metadata"})),
     LanguageFixture("json", "config.json", frozenset({"name", "version", "settings", "metadata"})),
+    LanguageFixture("html", "sample.html"),
+    LanguageFixture("css", "sample.css", frozenset({"button", "header"})),
+    LanguageFixture("lua", "sample.lua", frozenset({"M", "helper"})),
 )
 
 
@@ -90,7 +94,7 @@ def test_tree_sitter_outline_matrix_honors_guard(fixture: LanguageFixture, tmp_p
 
     cap = SemanticFileMemoryCapability(tmp_path)
     payload = cap.smart_read(fixture.path, outline_threshold=0)
-    guard_passes = len(dedicated_outline) <= int(len(source) * 0.75)
+    guard_passes = _outline_saves_enough(dedicated_outline, source)
 
     if fixture.language in AST_OUTLINE_LANGUAGES:
         assert payload["mode"] == "outline"

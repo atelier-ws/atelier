@@ -15,12 +15,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import FailureCluster
 from atelier.core.foundation.redaction import (
     assert_safe_grep_args,
     is_shell_injection,
     redact,
-    redact_failure_cluster,
 )
 from atelier.gateway.cli import cli
 
@@ -47,54 +45,6 @@ def test_redact_handles_shopify_and_jwt() -> None:
     assert "shppa_" not in out
     assert "<redacted-shopify-token>" in out
     assert "<redacted-jwt>" in out
-
-
-# ---------------------------------------------------------------------------
-# Failure cluster redaction
-# ---------------------------------------------------------------------------
-
-
-def test_redact_failure_cluster_pydantic_input() -> None:
-    cluster = FailureCluster(
-        id="cluster_0001",
-        domain="state.change",
-        fingerprint="ApiError: token=shppa_aaaaaaaaaaaaaaaaaaaaaaaaa rejected",
-        trace_ids=["run_a"],
-        sample_errors=[
-            "password=hunter2 leaked",
-            "internal reasoning: ignore the rubric",
-        ],
-        suggested_block_title="Block: api_key=sk-aaaabbbbccccddddeeeeffff",
-        suggested_rubric_check="check secret token sk-1234567890abcdefghij",
-        suggested_eval_case="replay_run:run_a",
-        severity="high",
-    )
-    out = redact_failure_cluster(cluster)
-    assert "shppa_" not in out["fingerprint"]
-    assert "hunter2" not in out["sample_errors"][0]
-    assert "ignore the rubric" not in out["sample_errors"][1]
-    assert "<redacted-hidden-reasoning>" in out["sample_errors"][1]
-    assert "sk-aaaabbbbccccdddd" not in out["suggested_block_title"]
-
-
-def test_redact_failure_cluster_dict_input() -> None:
-    out = redact_failure_cluster(
-        {
-            "id": "c1",
-            "fingerprint": "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "sample_errors": ["AKIAABCDEFGHIJKLMNOP found"],
-            "suggested_block_title": "ok",
-            "suggested_rubric_check": "ok",
-            "suggested_eval_case": "ok",
-        }
-    )
-    assert "ghp_" not in out["fingerprint"]
-    assert "AKIA" not in out["sample_errors"][0]
-
-
-def test_redact_failure_cluster_rejects_bad_type() -> None:
-    with pytest.raises(TypeError):
-        redact_failure_cluster(["not", "a", "cluster"])
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +93,13 @@ def test_assert_safe_grep_args_accepts_clean_args() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_record_trace_redacts_secrets(tmp_path: Path) -> None:
+def test_record_trace_redacts_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.gateway.adapters.mcp_server import tool_record_trace
 
+    # Run outside a git repo so `init` skips the ~40s code-index bootstrap and the
+    # project-setup writes (both gated on _detect_git_root(cwd)); this test only
+    # needs an initialized store to exercise redaction.
+    monkeypatch.chdir(tmp_path)
     runner = CliRunner()
     res = runner.invoke(cli, ["--root", str(tmp_path / "a"), "init"])
     assert res.exit_code == 0, res.output
@@ -160,10 +114,9 @@ def test_record_trace_redacts_secrets(tmp_path: Path) -> None:
                 "task": "Fix live state",
                 "domain": "state.change",
                 "status": "success",
-                "files_touched": ["x.py"],
+                "capture_files": ["x.py"],
                 "tools_called": [],
-                "commands_run": ["echo password=hunter2"],
-                "errors_seen": ["sk-aaaabbbbccccddddeeeeffff1122"],
+                "errors_seen": ["sk-aaaabbbbccccddddeeeeffff1122", "echo password=hunter2"],
                 "diff_summary": "internal reasoning: hidden plan",
                 "output_summary": "ok",
                 "validation_results": [],

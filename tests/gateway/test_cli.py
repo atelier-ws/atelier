@@ -11,7 +11,7 @@ from click.testing import CliRunner, Result
 
 # Must set dev mode before importing cli for @_dev_command registration
 from atelier.core.capabilities.plugin_runtime import update_session_stats
-from atelier.core.foundation.models import ReasonBlock, Rubric
+from atelier.core.foundation.models import Playbook, Rubric
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 from atelier.gateway.adapters import mcp_server
@@ -53,7 +53,7 @@ def _seed_state_change_rubric(root: Path) -> None:
 
 def _seed_rescue_block(root: Path) -> None:
     ContextStore(root).upsert_block(
-        ReasonBlock(
+        Playbook(
             id="state-change-rescue",
             title="Recover from wrong target update",
             domain="state.change",
@@ -74,7 +74,7 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     res = _invoke(tmp_path / "a", "init")
     assert res.exit_code == 0, res.output
     assert "seeded" in res.output
-    assert "reasonblocks and" in res.output
+    assert "playbooks and" in res.output
     assert "rubrics" in res.output
 
 
@@ -197,9 +197,16 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
             "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
         },
     )
-    # Real measured savings come from live_savings_events.jsonl (written by
-    # MCP tool handlers at result time, priced at the model in use that turn).
-    (root / "live_savings_events.jsonl").write_text(
+    # Real measured savings come from the canonical session dir's savings.jsonl
+    # (written by the stop hook at session end, priced at the model in use
+    # that turn).
+    from atelier.core.foundation.paths import session_dir
+
+    savings_file = session_dir(root, "claude", "s1") / "savings.jsonl"
+    savings_file.parent.mkdir(parents=True, exist_ok=True)
+    import datetime
+
+    savings_file.write_text(
         json.dumps(
             {
                 "session_id": "s1",
@@ -208,6 +215,7 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
                 "tokens_saved": 1200,
                 "cost_saved_usd": 0.0036,
                 "model": "claude-sonnet-4-5",
+                "ts": datetime.datetime.now(datetime.UTC).isoformat(),
             }
         )
         + "\n",
@@ -270,7 +278,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -282,7 +290,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",
@@ -361,8 +369,7 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert res.exit_code == 0, res.output
     stack_unit = (unit_dir / "atelier-stack.service").read_text(encoding="utf-8")
     assert "docker compose" not in stack_unit
-    assert "stack run" in stack_unit
-    assert "stack stop" in stack_unit
+    assert "background service start" in stack_unit
     assert any(cmd[:3] == ["systemctl", "--user", "enable"] for cmd in commands)
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
@@ -487,7 +494,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -499,7 +506,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",
@@ -672,77 +679,6 @@ def test_servicectl_tick_imports_only_new_or_updated_sessions(
 
 
 @pytest.mark.slow
-def test_servicectl_tick_collects_external_analytics(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-
-    monkeypatch.setattr(
-        "atelier.gateway.integrations.external_analytics.run_external_reports",
-        lambda tool="all", period="today", cwd=None, include_optimize=False: {
-            "generated_at": "2026-05-11T12:00:00+00:00",
-            "tool": tool,
-            "period": period,
-            "reports": [
-                {
-                    "tool": "tokscale",
-                    "period": period,
-                    "ok": True,
-                    "returncode": 0,
-                    "command_display": "tokscale --json --no-spinner --today",
-                    "payload": {"summary": {"cost": 3.25, "input_tokens": 1200}},
-                    "stdout": "{}",
-                    "stderr": "",
-                },
-                {
-                    "tool": "codeburn",
-                    "period": period,
-                    "ok": True,
-                    "returncode": 0,
-                    "command_display": "codeburn report --format json -p today",
-                    "payload": {"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
-                    "stdout": "{}",
-                    "stderr": "",
-                },
-            ],
-        },
-    )
-
-    def unavailable(messages: object, json_schema: object | None = None) -> None:
-        _ = (messages, json_schema)
-        raise OllamaUnavailable("offline")
-
-    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
-
-    res = _invoke(
-        root,
-        "servicectl",
-        "tick",
-        "--maintenance-interval-seconds",
-        "0",
-        "--session-import-interval-seconds",
-        "-1",
-        "--external-analytics-interval-seconds",
-        "0",
-        "--external-analytics-period",
-        "today",
-        "--json",
-    )
-
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["external_analytics_ran"] is True
-    assert {item["tool"] for item in payload["external_analytics_runs"]} == {"tokscale", "codeburn"}
-
-    store = ContextStore(root)
-    runs = store.list_external_analytics_runs(limit=10)
-    assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
-    assert all(item["source"] == "servicectl" for item in runs)
-
-
-@pytest.mark.slow
 def test_servicectl_surfaces_job_queue_health(
     tmp_path: Path,
 ) -> None:
@@ -802,93 +738,6 @@ def test_servicectl_surfaces_job_queue_health(
     assert status_after.exit_code == 0, status_after.output
     status_after_payload = json.loads(status_after.output)
     assert status_after_payload["job_queue_health"] == tick_payload["job_queue_health"]
-
-
-@pytest.mark.slow
-def test_servicectl_tick_collects_multiple_external_analytics_periods(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-
-    def fake_run_external_reports(
-        tool: str = "all",
-        period: str = "today",
-        cwd: Path | None = None,
-        include_optimize: bool = False,
-    ) -> dict[str, object]:
-        _ = (cwd, include_optimize)
-        return {
-            "generated_at": "2026-05-11T12:00:00+00:00",
-            "tool": tool,
-            "period": period,
-            "reports": [
-                {
-                    "tool": "tokscale",
-                    "period": period,
-                    "ok": True,
-                    "returncode": 0,
-                    "command_display": f"tokscale --json --no-spinner --{period}",
-                    "payload": {"summary": {"cost": 3.25, "input_tokens": 1200}},
-                    "stdout": "{}",
-                    "stderr": "",
-                },
-                {
-                    "tool": "codeburn",
-                    "period": period,
-                    "ok": True,
-                    "returncode": 0,
-                    "command_display": f"codeburn report --format json -p {period}",
-                    "payload": {"overview": {"cost": 4.5, "calls": 9, "sessions": 2}},
-                    "stdout": "{}",
-                    "stderr": "",
-                },
-            ],
-        }
-
-    monkeypatch.setattr(
-        "atelier.gateway.integrations.external_analytics.run_external_reports",
-        fake_run_external_reports,
-    )
-
-    def unavailable(messages: object, json_schema: object | None = None) -> None:
-        _ = (messages, json_schema)
-        raise OllamaUnavailable("offline")
-
-    monkeypatch.setattr("atelier.core.capabilities.consolidation.worker.chat", unavailable)
-
-    res = _invoke(
-        root,
-        "servicectl",
-        "tick",
-        "--maintenance-interval-seconds",
-        "0",
-        "--session-import-interval-seconds",
-        "-1",
-        "--external-analytics-interval-seconds",
-        "0",
-        "--external-analytics-period",
-        "week",
-        "--external-analytics-period",
-        "month",
-        "--json",
-    )
-
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["external_analytics_ran"] is True
-    assert payload["external_analytics_periods"] == ["week", "month"]
-    assert len(payload["external_analytics_runs"]) == 4
-    assert {item["period"] for item in payload["external_analytics_runs"]} == {
-        "week",
-        "month",
-    }
-
-    store = ContextStore(root)
-    runs = store.list_external_analytics_runs(limit=10)
-    assert {item["period"] for item in runs} == {"week", "month"}
-    assert {item["tool"] for item in runs} == {"tokscale", "codeburn"}
 
 
 # `atelier task` command removed — cut in CLI consolidation.

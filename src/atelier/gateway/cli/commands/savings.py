@@ -17,11 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
-import sys
-from datetime import UTC, datetime
 from pathlib import Path
-from shutil import which
 from typing import Any
 
 import click
@@ -34,30 +30,43 @@ from atelier.gateway.cli.commands._shared import (
     _save_smart_state,
 )
 from atelier.gateway.hosts.session_parsers.registry import SUPPORTED_SESSION_IMPORT_HOSTS
-from atelier.gateway.integrations.external_analytics import REPORTABLE_TOOL_IDS
 
 logger = logging.getLogger(__name__)
-
-# `--tool` choices for the external-report CLI. Built once from the source-of-
-# truth `SPECS` tuple plus the special-case `codeburn:optimize` sub-report and
-# the `all` aggregator. Adding a new analyzer to external_analytics.SPECS now
-# flows here automatically - no second hardcoded list to keep in sync.
-_EXTERNAL_REPORT_TOOL_CHOICES = ("all", *REPORTABLE_TOOL_IDS, "codeburn:optimize")
-# Order matters for the human-readable `all` iteration: keep it focused on the
-# core report trio and leave newer analyzers available via explicit --tool.
-_EXTERNAL_REPORT_ALL_TOOLS = (
-    *(t for t in REPORTABLE_TOOL_IDS if t in {"tokscale", "codeburn"}),
-    "codeburn:optimize",
-)
 
 
 @click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
+@click.option("--segment", is_flag=True, help="Pre-formatted rotating segment for statusline.sh.")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     if ctx.invoked_subcommand is not None:
+        return
+    if segment:
+        from atelier.core.capabilities.savings_summary import savings_segment
+
+        _session_id = os.environ.get("ATELIER_STATUS_SESSION_ID", "")
+        _live_cost = float(os.environ.get("ATELIER_STATUSLINE_COST_USD") or 0)
+        _live_in = int(os.environ.get("ATELIER_STATUSLINE_LIVE_IN_TOK") or 0)
+        _live_cache = int(os.environ.get("ATELIER_STATUSLINE_LIVE_CACHE_TOK") or 0)
+        _live_out = int(os.environ.get("ATELIER_STATUSLINE_LIVE_OUT_TOK") or 0)
+        _no_color = bool(os.environ.get("ATELIER_STATUSLINE_NO_COLOR") or os.environ.get("ATELIER_NO_COLOR"))
+        # Write directly — click.echo strips ANSI when stdout is not a TTY
+        # (always the case when captured via $() in statusline.sh).
+        import sys
+
+        sys.stdout.write(
+            savings_segment(
+                _session_id,
+                live_cost_usd=_live_cost,
+                live_in_tok=_live_in,
+                live_cache_tok=_live_cache,
+                live_out_tok=_live_out,
+                no_color=_no_color,
+            )
+        )
+        sys.stdout.flush()
         return
     if line:
         from atelier.core.capabilities.savings_summary import savings_line
@@ -99,116 +108,9 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     if as_json:
         _emit(payload, as_json=True)
     else:
-        for k, v in payload.items():
-            if isinstance(v, dict):
-                click.echo(f"{k}:")
-                for k2, v2 in v.items():
-                    click.echo(f"  {k2}: {v2}")
-            else:
-                click.echo(f"{k}: {v}")
+        from atelier.core.capabilities.savings_summary import render_savings_summary
 
-
-@savings_cmd.command("wire")
-@click.argument("captures", nargs=-1, required=False)
-@click.option(
-    "--input-price",
-    type=float,
-    default=3.0,
-    show_default=True,
-    help="Input token price per 1M tokens.",
-)
-@click.option(
-    "--output-price",
-    type=float,
-    default=15.0,
-    show_default=True,
-    help="Output token price per 1M tokens.",
-)
-@click.option(
-    "--cache-read",
-    type=float,
-    default=0.30,
-    show_default=True,
-    help="Cache-read token price per 1M tokens.",
-)
-@click.option(
-    "--cache-write",
-    type=float,
-    default=3.75,
-    show_default=True,
-    help="Cache-write token price per 1M tokens.",
-)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-def savings_wire_cmd(
-    captures: tuple[str, ...],
-    input_price: float,
-    output_price: float,
-    cache_read: float,
-    cache_write: float,
-    out: Path | None,
-) -> None:
-    """Compare provider-billed usage from mitmproxy .flow captures."""
-    if not captures:
-        raise click.ClickException(
-            "Provide captures as LABEL=PATH. Example: " "atelier savings wire baseline=off.flow atelier=on.flow"
-        )
-    repo_root = Path.cwd().resolve()
-    run_dir = _wire_report_dir(out)
-    report_path = run_dir / "report.txt"
-    report = _run_capture(
-        [
-            *_python_cmd(repo_root),
-            "-m",
-            "benchmarks.wire_savings.report",
-            *captures,
-            "--in",
-            str(input_price),
-            "--out",
-            str(output_price),
-            "--cache-read",
-            str(cache_read),
-            "--cache-write",
-            str(cache_write),
-        ],
-        cwd=repo_root,
-        label="wire savings report",
-    )
-    report_path.write_text(report, encoding="utf-8")
-    click.echo(f"Report: {report_path}")
-
-
-def _wire_report_dir(out: Path | None) -> Path:
-    if out is not None:
-        path = out.resolve()
-    else:
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        path = Path.cwd().resolve() / "reports" / "savings" / "wire" / timestamp
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _python_cmd(repo_root: Path) -> list[str]:
-    if which("uv") and (repo_root / "pyproject.toml").is_file():
-        return ["uv", "run", "--project", str(repo_root), "python"]
-    return [sys.executable]
-
-
-def _run_capture(cmd: list[str], *, cwd: Path, label: str) -> str:
-    click.echo("Running: " + " ".join(cmd))
-    completed = subprocess.run(
-        cmd,
-        check=False,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if completed.stdout:
-        click.echo(completed.stdout.rstrip())
-    if completed.stderr:
-        click.echo(completed.stderr.rstrip(), err=True)
-    if completed.returncode != 0:
-        raise click.ClickException(f"{label} failed with exit {completed.returncode}")
-    return completed.stdout
+        click.echo(render_savings_summary(payload))
 
 
 def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:
@@ -216,26 +118,6 @@ def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, lim
 
     store = _load_store(ctx.obj["root"])
     return build_trace_optimization_report(store.list_traces(limit=5000), days=days, host=host, limit=limit)
-
-
-def _run_external_optimize(ctx: click.Context, days: int) -> dict[str, Any] | None:
-    from atelier.gateway.integrations.external_analytics import (
-        persist_external_reports,
-        run_external_reports,
-    )
-
-    period = "week" if days <= 7 else "30days"
-    try:
-        external_batch = run_external_reports(
-            tool="codeburn:optimize", period=period, cwd=Path.cwd(), include_optimize=True
-        )
-        store = _load_store(ctx.obj["root"])
-        persist_external_reports(store, external_batch, source="cli_optimize")
-        return external_batch["reports"][0] if external_batch["reports"] else None
-    except Exception as exc:
-        logging.exception("Recovered from broad exception handler")
-        logger.debug("External optimization report failed: %s", exc)
-        return None
 
 
 def _advisor_result(ctx: click.Context, host: str | None, days: int) -> Any:
@@ -292,15 +174,13 @@ def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, 
     result = _advisor_result(ctx, host, days)
     append_history(ctx.obj["root"], result)
     report["advisor"] = result.to_dict()
-    report["external"] = _run_external_optimize(ctx, days)
     if as_json:
         _emit(report, as_json=True)
         return
     _render_optimization_summary(result)
     click.echo("")
     click.echo(
-        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, "
-        f"${report['estimated_usd_saved']:.4f}"
+        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, ${report['estimated_usd_saved']:.4f}"
     )
     if not report["recommendations"]:
         click.echo("No legacy trace recommendations found for this window.")
@@ -802,145 +682,6 @@ def optimize_gate(
             click.echo(f"- {reason}")
 
 
-@click.command("external-status")
-@click.option("--json", "as_json", is_flag=True)
-def external_status_cmd(as_json: bool) -> None:
-    """Show optional upstream analyzer availability and integration posture."""
-    from atelier.gateway.integrations.external_analytics import external_status
-
-    payload = {"tools": external_status(cwd=Path.cwd())}
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    click.echo("External analyzers")
-    click.echo("")
-    for item in payload["tools"]:
-        state = "available" if item["available"] else "missing"
-        click.echo(f"- {item['display_name']} [{state}]")
-        click.echo(f"  license: {item['license']}")
-        click.echo(f"  mode: {item['execution_mode']}")
-        if item.get("path"):
-            click.echo(f"  path: {item['path']}")
-        click.echo(f"  update: {item['update_strategy']}")
-        for note in item.get("notes", []):
-            click.echo(f"  note: {note}")
-        warning = item.get("warning")
-        if warning:
-            click.echo(f"  warning: {warning}")
-        click.echo(f"  install: {item['install_hint']}")
-        click.echo("")
-
-
-@click.command("external-report")
-@click.option(
-    "--tool",
-    type=click.Choice(_EXTERNAL_REPORT_TOOL_CHOICES),
-    default="all",
-    show_default=True,
-)
-@click.option(
-    "--period",
-    type=click.Choice(["today", "week", "month", "30days", "all"]),
-    default="week",
-    show_default=True,
-)
-@click.option(
-    "--persist",
-    is_flag=True,
-    default=False,
-    help="Store the collected report snapshots for the API/UI.",
-)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: bool, as_json: bool) -> None:
-    """Run upstream JSON reports from supported external analyzers."""
-    from atelier.gateway.integrations.external_analytics import (
-        persist_external_reports,
-        run_external_report,
-        run_external_reports,
-    )
-
-    if as_json:
-        try:
-            payload = run_external_reports(tool=tool, period=period, cwd=Path.cwd(), include_optimize=True)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
-
-        if persist:
-            store = _load_store(ctx.obj["root"])
-            payload["persisted"] = persist_external_reports(store, payload, source="cli")
-        _emit(payload, as_json=True)
-        return
-
-    selected_tools = list(_EXTERNAL_REPORT_ALL_TOOLS) if tool == "all" else [tool]
-    store = _load_store(ctx.obj["root"]) if persist else None
-
-    click.echo(f"External reports  period={period}")
-    click.echo("")
-
-    total_persisted = 0
-    for selected_tool in selected_tools:
-        click.echo(f"[external-report] running {selected_tool} period={period}...")
-        sys.stdout.flush()
-        try:
-            report = run_external_report(selected_tool, period=period, cwd=Path.cwd())
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
-
-        persisted: list[dict[str, Any]] = []
-        if store is not None:
-            batch = {
-                "generated_at": datetime.now(UTC).isoformat(),
-                "tool": selected_tool,
-                "period": period,
-                "reports": [report],
-            }
-            persisted = persist_external_reports(store, batch, source="cli")
-            total_persisted += len(persisted)
-
-        status = "ok" if report.get("ok") else "failed"
-        persisted_suffix = f" persisted={len(persisted)}" if persist else ""
-        click.echo(f"[external-report] done {selected_tool} status={status}{persisted_suffix}")
-
-        click.echo(f"- {report['tool']}")
-        click.echo(f"  cmd: {report.get('command_display') or '-'}")
-        if report["ok"]:
-            click.echo("  status: ok")
-        else:
-            click.echo(f"  status: failed ({report.get('error') or report.get('returncode')})")
-            message = report.get("message")
-            if message:
-                click.echo(f"  detail: {message}")
-            stderr = report.get("stderr")
-            if stderr:
-                click.echo(f"  stderr: {stderr[:240]}")
-            parse_error = report.get("parse_error")
-            if parse_error:
-                click.echo(f"  parse: {parse_error}")
-            continue
-
-        body = report.get("payload")
-        if isinstance(body, dict):
-            if report["tool"] == "codeburn":
-                overview = body.get("overview") or {}
-                click.echo(
-                    "  summary: "
-                    f"cost={overview.get('cost', '-')} calls={overview.get('calls', '-')} sessions={overview.get('sessions', '-')}"
-                )
-            elif report["tool"] == "codeburn:optimize":
-                overview = body.get("overview") or {}
-                click.echo(
-                    "  summary: "
-                    f"waste={overview.get('estimated_usd_saved', '-')} grade={overview.get('health_grade', '-')} score={overview.get('health_score', '-')}"
-                )
-            elif report["tool"] == "tokscale":
-                click.echo(f"  summary: keys={', '.join(sorted(body.keys())[:6])}")
-        click.echo("")
-
-    if persist:
-        click.echo(f"persisted {total_persisted} snapshots")
-
-
 @click.command("savings-detail")
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--limit", default=20, show_default=True, help="Top N operations.")
@@ -994,9 +735,5 @@ def savings_reset(ctx: click.Context) -> None:
     click.echo("savings reset (cache + cost history)")
 
 
-external_group = click.Group("external", help="Run supported external analyzer reports.")
-external_group.add_command(external_status_cmd, name="status")
-external_group.add_command(external_report_cmd, name="report")
-savings_cmd.add_command(external_group)
 savings_cmd.add_command(savings_detail, name="detail")
 savings_cmd.add_command(savings_reset, name="reset")

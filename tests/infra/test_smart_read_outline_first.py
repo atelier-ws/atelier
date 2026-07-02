@@ -3,8 +3,8 @@ from typing import Any
 
 from atelier.core.capabilities.semantic_file_memory.capability import (
     SemanticFileMemoryCapability,
-    _claude_read_baseline_text,
     _count_tokens,
+    claude_read_baseline_text,
 )
 from atelier.gateway.adapters.mcp_server import _handle
 from tests.helpers import init_store_at
@@ -42,7 +42,7 @@ def test_smart_read_outline_first_for_large_python_file(tmp_path: Path, monkeypa
 
     outline_md = _smart_read({"path": str(target), "include_meta": True})
     assert outline_md.startswith("Projection: outline")
-    assert "hint:" in outline_md
+    assert "hint:" not in outline_md
     assert "Demo" in outline_md
 
     full_md = _smart_read({"path": str(target), "expand": True})
@@ -102,7 +102,7 @@ def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> No
     target.write_text(source, encoding="utf-8")
 
     payload = SemanticFileMemoryCapability(tmp_path).smart_read(target, outline_threshold=10)
-    baseline_tokens = _count_tokens(_claude_read_baseline_text(source))
+    baseline_tokens = _count_tokens(claude_read_baseline_text(source))
     full_file_tokens = _count_tokens(source)
 
     assert payload["mode"] == "outline"
@@ -110,8 +110,12 @@ def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> No
     assert payload["tokens_saved"] < full_file_tokens
 
 
-def test_smart_read_compact_projection_banner_for_safe_language(tmp_path: Path, monkeypatch: Any) -> None:
+def test_smart_read_minified_projection_banner_for_safe_language(tmp_path: Path, monkeypatch: Any) -> None:
     _seed_store(tmp_path, monkeypatch)
+    # Pin the outline threshold above this file's LOC so the read stays in
+    # full mode — this test exercises the minified projection banner, not the
+    # outline-by-default behavior.
+    monkeypatch.setenv("ATELIER_OUTLINE_THRESHOLD", "200")
 
     target = tmp_path / "sample.go"
     target.write_text(
@@ -121,5 +125,5 @@ def test_smart_read_compact_projection_banner_for_safe_language(tmp_path: Path, 
 
     rendered = _smart_read({"path": str(target)})
 
-    assert rendered.startswith("Projection: compact")
+    assert rendered.startswith("Projection: minified")
     assert "package main" in rendered

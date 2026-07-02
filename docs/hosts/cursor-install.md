@@ -20,10 +20,10 @@ bash scripts/install_cursor.sh --workspace /path/to/workspace
 
 ## What Gets Installed
 
-| Artifact          | Global install                         | `--workspace DIR` install              |
-| ----------------- | -------------------------------------- | -------------------------------------- |
-| MCP server config | `~/.cursor/mcp.json`                   | `<workspace>/.cursor/mcp.json`         |
-| Rules (optional)  | (none — Cursor rules are project-only) | `<workspace>/.cursor/rules/*.mdc`|
+| Artifact          | Global install                         | `--workspace DIR` install         |
+| ----------------- | -------------------------------------- | --------------------------------- |
+| MCP server config | `~/.cursor/mcp.json`                   | `<workspace>/.cursor/mcp.json`    |
+| Rules (optional)  | (none — Cursor rules are project-only) | `<workspace>/.cursor/rules/*.mdc` |
 
 The installer merges an `atelier` entry into the `mcpServers` key:
 
@@ -32,7 +32,7 @@ The installer merges an `atelier` entry into the `mcpServers` key:
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "args": ["--host", "cursor"]
     }
   }
@@ -71,7 +71,7 @@ make verify
 Or manually:
 
 ```bash
-atelier-mcp --host cursor --version
+atelier mcp --host cursor --version
 ```
 
 ---
@@ -79,7 +79,7 @@ atelier-mcp --host cursor --version
 ## Expected Behavior
 
 - Cursor connects to the Atelier MCP server via stdio on startup
-- Atelier tools (`context`, `trace`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, `code`) appear in Cursor's tool list
+- Atelier tools (`context`, `trace`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `bash`, `code`) appear in Cursor's tool list
 - With `ATELIER_DEV_MODE=1`, all tools are fully visible and active
 - `trace` remains the stable observable recording surface
 - Cursor's agent uses Atelier's `context` tool for task-level reasoning
@@ -88,12 +88,12 @@ atelier-mcp --host cursor --version
 
 ## Troubleshooting
 
-| Problem                          | Fix                                                                                |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| "atelier-mcp: command not found" | Run `pip install atelier-runtime` or reinstall via `make install`                  |
-| MCP tools not showing up         | Restart Cursor completely (Cmd+Shift+P → "Developer: Reload Window")              |
+| Problem                           | Fix                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| "atelier mcp: command not found"  | Run `pip install atelier-ws` or reinstall via `make install`                       |
+| MCP tools not showing up          | Restart Cursor completely (Cmd+Shift+P → "Developer: Reload Window")               |
 | Tools fail with "host not cursor" | Check `~/.cursor/mcp.json` has `--host cursor` in args                             |
-| Cursor workspace not detected    | For global installs, ensure you open a folder/workspace in Cursor before using MCP |
+| Cursor workspace not detected     | For global installs, ensure you open a folder/workspace in Cursor before using MCP |
 
 ---
 

@@ -54,8 +54,8 @@ def _count_tiktoken(text: str) -> int:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / ".atelier-runtime"))
+def _isolate_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / ".atelier-ws"))
     _reset_runtime_cache_for_testing()
     yield
     _reset_runtime_cache_for_testing()
@@ -66,7 +66,31 @@ def test_edit_ab_real(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     src = tmp_path / "src"
     src.mkdir(parents=True, exist_ok=True)
     target = src / "app.py"
-    before = "VALUE = 1\n" "def run() -> int:\n" "    return VALUE\n"
+    # A representative module, not a 3-line toy: the edit tool intentionally
+    # echoes the unified diff so the caller never re-reads the file, so its
+    # fixed response overhead only loses to the before+diff+after baseline on
+    # degenerately tiny inputs. A realistic file is what this A/B should size.
+    before = (
+        "VALUE = 1\n"
+        "SCALE = 10\n"
+        "OFFSET = 3\n"
+        "\n"
+        "def run() -> int:\n"
+        "    total = 0\n"
+        "    for index in range(SCALE):\n"
+        "        total += index * VALUE + OFFSET\n"
+        "    return total\n"
+        "\n"
+        "def describe() -> str:\n"
+        '    return f"value={VALUE} scale={SCALE} offset={OFFSET}"\n'
+        "\n"
+        "def reset() -> None:\n"
+        "    global VALUE\n"
+        "    VALUE = 0\n"
+        "\n"
+        "def scaled(factor: int) -> int:\n"
+        "    return run() * factor + VALUE\n"
+    )
     target.write_text(before, encoding="utf-8")
     after = before.replace("VALUE = 1", "VALUE = 2")
 

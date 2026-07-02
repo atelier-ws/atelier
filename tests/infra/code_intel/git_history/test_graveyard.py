@@ -52,7 +52,7 @@ def _create_history_fixture(tmp_path: Path) -> tuple[Path, str, str]:
     _git(["config", "user.name", "Fixture Tester"], repo_root)
     _git(["config", "user.email", "fixture@example.com"], repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol")
@@ -70,7 +70,7 @@ def _create_delete_fixture(tmp_path: Path) -> tuple[Path, str]:
     _git(["config", "user.name", "Fixture Tester"], repo_root)
     _git(["config", "user.email", "fixture@example.com"], repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol")
@@ -86,7 +86,7 @@ def _create_rename_fixture(tmp_path: Path) -> tuple[Path, str]:
     _git(["config", "user.name", "Fixture Tester"], repo_root)
     _git(["config", "user.email", "fixture@example.com"], repo_root)
     (repo_root / "legacy.py").write_text(
-        "class LegacyCheckout:\n" "    def process(self) -> int:\n" "        return 1\n",
+        "class LegacyCheckout:\n    def process(self) -> int:\n        return 1\n",
         encoding="utf-8",
     )
     _commit_all(repo_root, "add legacy symbol")
@@ -147,3 +147,112 @@ def test_walk_history_is_idempotent_for_repeated_ingestion(tmp_path: Path) -> No
 
     assert len(entries) == 2
     assert {entry.rename_target for entry in entries} == {None, "renamed.py"}
+
+
+def _create_old_delete_then_filler_fixture(tmp_path: Path, *, filler: int) -> Path:
+    """Repo where ``OldThing`` is deleted early, then *filler* later commits land.
+
+    With a commit cap smaller than ``filler + 1`` the delete commit falls outside
+    the most-recent window, so ``OldThing`` should not reach the graveyard.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _git(["init"], repo_root)
+    _git(["config", "user.name", "Fixture Tester"], repo_root)
+    _git(["config", "user.email", "fixture@example.com"], repo_root)
+    (repo_root / "old.py").write_text(
+        "class OldThing:\n    def process(self) -> int:\n        return 1\n",
+        encoding="utf-8",
+    )
+    _commit_all(repo_root, "add old symbol")
+    (repo_root / "old.py").unlink()
+    _commit_all(repo_root, "delete old symbol")
+    for i in range(filler):
+        (repo_root / f"filler_{i}.py").write_text(f"VALUE_{i} = {i}\n", encoding="utf-8")
+        _commit_all(repo_root, f"filler {i}")
+    return repo_root
+
+
+def test_walk_history_limit_bounds_commits_walked(tmp_path: Path) -> None:
+    repo_root = _create_old_delete_then_filler_fixture(tmp_path, filler=4)
+    graveyard_module = importlib.import_module("atelier.infra.code_intel.git_history.graveyard")
+    walker_module = importlib.import_module("atelier.infra.code_intel.git_history.walker")
+    graveyard = graveyard_module.SymbolGraveyard(sqlite3.connect(":memory:"))
+
+    summary = walker_module.walk_history(repo_root, graveyard, limit=2)
+
+    assert summary["commits_walked"] == 2
+    # The delete commit is older than the 2-commit window, so it is skipped.
+    assert graveyard.find_deleted("OldThing", since_ts=None, language="python") == []
+
+
+def test_walk_history_unbounded_limit_zero_records_old_delete(tmp_path: Path) -> None:
+    repo_root = _create_old_delete_then_filler_fixture(tmp_path, filler=4)
+    graveyard_module = importlib.import_module("atelier.infra.code_intel.git_history.graveyard")
+    walker_module = importlib.import_module("atelier.infra.code_intel.git_history.walker")
+    graveyard = graveyard_module.SymbolGraveyard(sqlite3.connect(":memory:"))
+
+    walker_module.walk_history(repo_root, graveyard, limit=0)
+
+    assert len(graveyard.find_deleted("OldThing", since_ts=None, language="python")) == 1
+
+
+def test_walk_history_default_limit_reads_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = _create_old_delete_then_filler_fixture(tmp_path, filler=4)
+    graveyard_module = importlib.import_module("atelier.infra.code_intel.git_history.graveyard")
+    walker_module = importlib.import_module("atelier.infra.code_intel.git_history.walker")
+    graveyard = graveyard_module.SymbolGraveyard(sqlite3.connect(":memory:"))
+
+    monkeypatch.setenv("ATELIER_HISTORY_MAX_COMMITS", "2")
+    summary = walker_module.walk_history(repo_root, graveyard)
+
+    assert summary["commits_walked"] == 2
+    assert graveyard.find_deleted("OldThing", since_ts=None, language="python") == []
+
+
+def test_history_when_enabled_indexes_deletions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root, _delete_sha = _create_delete_fixture(tmp_path)
+    adapter_module = importlib.import_module("atelier.infra.code_intel.git_history.adapter")
+    db_path = tmp_path / "intel.sqlite"
+
+    def conn_factory() -> sqlite3.Connection:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE IF NOT EXISTS engine_state (key TEXT PRIMARY KEY, value TEXT)")
+        return conn
+
+    adapter = adapter_module.DeletedHistorySearchAdapter(
+        repo_root=repo_root, repo_id="repo", connection_factory=conn_factory
+    )
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "1")  # feature is opt-in (default off)
+
+    summary = adapter._ensure_history_ready()
+
+    assert summary["deletions_found"] >= 1
+    results = adapter.search("LegacyCheckout", since_ts=None, touched_by=None, language="python")
+    assert any(item["symbol_name"] == "LegacyCheckout" for item in results)
+
+
+def test_history_disabled_via_env_skips_walk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root, _delete_sha = _create_delete_fixture(tmp_path)
+    adapter_module = importlib.import_module("atelier.infra.code_intel.git_history.adapter")
+    db_path = tmp_path / "intel.sqlite"
+
+    def conn_factory() -> sqlite3.Connection:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    adapter = adapter_module.DeletedHistorySearchAdapter(
+        repo_root=repo_root, repo_id="repo", connection_factory=conn_factory
+    )
+    walked: list[int] = []
+    monkeypatch.setattr(adapter_module, "walk_history", lambda *a, **k: walked.append(1))
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "0")
+
+    summary = adapter._ensure_history_ready()
+
+    assert summary == {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
+    assert walked == []  # fully disabled -> the expensive walk never runs
+    # Deleted-symbol search degrades to empty (no error) when disabled.
+    assert adapter.search("LegacyCheckout", since_ts=None, touched_by=None, language="python") == []

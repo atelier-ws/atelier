@@ -104,12 +104,12 @@ class ProofGateConfig(BaseModel):
     )
     premium_only_baseline_cost_per_accepted_patch: float = Field(
         default=1.0,
-        description=("Baseline cost per accepted patch if all tasks used premium tier. " "Routing must beat this."),
+        description=("Baseline cost per accepted patch if all tasks used premium tier. Routing must beat this."),
     )
     premium_only_baseline_accepted_patch_rate: float = Field(
         default=0.80,
         description=(
-            "Baseline accepted-patch rate if all tasks used premium tier. " "Routing must stay within 0.03 of this."
+            "Baseline accepted-patch rate if all tasks used premium tier. Routing must stay within 0.03 of this."
         ),
     )
     routing_regression_rate_max: float = Field(default=0.02, description="Maximum routing regression rate (2%).")
@@ -248,11 +248,11 @@ class ProofGateCapability:
         if routing_regression_rate > config.routing_regression_rate_max:
             failed.append("routing_regression_rate")
 
-        if cheap_success_rate < config.min_cheap_success_rate:
+        if cheap_cases and cheap_success_rate < config.min_cheap_success_rate:
             failed.append("cheap_success_rate")
 
         # --- every benchmark case must link to trace evidence ---
-        missing_trace = [c.case_id for c in benchmark_cases if c.trace_id is None]
+        missing_trace = [c.case_id for c in benchmark_cases if not (c.trace_id or "").strip()]
         if missing_trace:
             failed.append("missing_trace_evidence")
 

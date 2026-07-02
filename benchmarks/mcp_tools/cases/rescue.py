@@ -38,15 +38,15 @@ def _assert_matched_rescue(
 
 def _assert_unmatched_rescue(result: dict[str, Any]) -> None:
     rescue = str(result.get("rescue") or "")
-    assert rescue.startswith("No matching ReasonBlock found."), (
-        f"unmatched rescue must return fallback text, got: {rescue[:200]!r}"
-    )
-    assert result.get("matched_blocks") == [], f"unmatched rescue must not match blocks, got: {result.get('matched_blocks')!r}"
+    assert rescue.startswith(
+        "No matching Playbook found."
+    ), f"unmatched rescue must return fallback text, got: {rescue[:200]!r}"
+    assert (
+        result.get("matched_blocks") == []
+    ), f"unmatched rescue must not match blocks, got: {result.get('matched_blocks')!r}"
 
 
-def _matched_assert(
-    expected_block_id: str, expected_procedure_fragment: str
-) -> Callable[[dict[str, Any]], None]:
+def _matched_assert(expected_block_id: str, expected_procedure_fragment: str) -> Callable[[dict[str, Any]], None]:
     def _assert(result: dict[str, Any]) -> None:
         _assert_matched_rescue(result, expected_block_id, expected_procedure_fragment)
 
@@ -76,7 +76,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                     "domain": "coding",
                     "files": [symbol.path],
                     "recent_actions": [f"ran pytest for {symbol.name}", f"read {symbol.path}"],
-                    "_seed_reasonblocks": [
+                    "_seed_playbooks": [
                         {
                             "id": block_id,
                             "title": f"Fix {symbol.name} failure",
@@ -116,7 +116,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                 },
                 assert_keys=["rescue", "matched_blocks", "analysis"],
                 custom_assert=_matched_assert(block_id, procedure_fragment),
-                baseline_tokens=1800,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     for index, symbol in enumerate(unmatched_symbols, start=1):
@@ -133,7 +133,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                 },
                 assert_keys=["rescue", "matched_blocks"],
                 custom_assert=_assert_unmatched_rescue,
-                baseline_tokens=1200,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     return cases

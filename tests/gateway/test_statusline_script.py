@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -36,6 +35,19 @@ def _run_statusline(root: Path, payload: dict[str, object], *, env_extra: dict[s
     return result.stdout.strip()
 
 
+def _seed_savings_sidecar(root: Path, session_id: str, row: dict[str, object]) -> Path:
+    """Seed savings.jsonl at the canonical (dated + host) session dir the
+    statusline script's reader (savings_summary._find_savings_sidecar)
+    actually looks under."""
+    from atelier.core.foundation.paths import session_dir
+
+    sidecar_dir = session_dir(root, "claude", session_id)
+    sidecar_dir.mkdir(parents=True, exist_ok=True)
+    path = sidecar_dir / "savings.jsonl"
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    return path
+
+
 def _payload() -> dict[str, object]:
     return {
         "session_id": "s1",
@@ -52,49 +64,62 @@ def _payload() -> dict[str, object]:
     }
 
 
-def test_statusline_shows_update_priority(tmp_path: Path) -> None:
-    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
-    (tmp_path / "update.json").write_text(
-        json.dumps({"fromVersion": "1.0.0", "toVersion": "1.1.0"}),
-        encoding="utf-8",
-    )
+def test_statusline_prefers_fresh_mcp_sidecar_in_canonical_session_dir(tmp_path: Path) -> None:
+    """The MCP server writes statusline_segment under the date+host partitioned
+    session dir (sessions/YYYY/MM/DD/<host>/<id>/); the script must find it
+    there — the flat sessions/<id>/ path is only a legacy fallback."""
+    from atelier.core.foundation.paths import session_dir
+
+    seg_dir = session_dir(tmp_path, "claude", "s1")
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | SIDECAR-SEGMENT-MARKER", encoding="utf-8")
 
     output = _run_statusline(tmp_path, _payload())
+    assert "SIDECAR-SEGMENT-MARKER" in output
 
-    assert "update 1.1.0" in output
 
+def test_statusline_rotates_multiframe_sidecar_by_wall_clock(tmp_path: Path) -> None:
+    """statusline_frames (all frames, one per line) is preferred over the
+    legacy single-frame statusline_segment, and the shown frame is one of the
+    file's lines — picked by wall clock, so rotation continues even when the
+    sidecar is not rewritten between renders."""
+    from atelier.core.foundation.paths import session_dir
 
-def test_statusline_shows_missing_login_before_update(tmp_path: Path) -> None:
-    (tmp_path / "update.json").write_text(
-        json.dumps({"fromVersion": "1.0.0", "toVersion": "1.1.0"}),
-        encoding="utf-8",
-    )
+    seg_dir = session_dir(tmp_path, "claude", "s1")
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | STALE-SINGLE-FRAME", encoding="utf-8")
+    os.utime(seg_dir / "statusline_segment", (1, 1))  # ancient — must lose to frames
+    frames = [" | FRAME-ALPHA", " | FRAME-BETA", " | FRAME-GAMMA"]
+    (seg_dir / "statusline_frames").write_text("\n".join(frames) + "\n", encoding="utf-8")
 
     output = _run_statusline(tmp_path, _payload())
+    assert "STALE-SINGLE-FRAME" not in output
+    assert sum(marker in output for marker in ("FRAME-ALPHA", "FRAME-BETA", "FRAME-GAMMA")) == 1
 
-    assert "login" in output
-    assert "update 1.1.0" not in output
+
+def test_statusline_falls_back_to_legacy_flat_sidecar(tmp_path: Path) -> None:
+    seg_dir = tmp_path / "sessions" / "s1"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | FLAT-SEGMENT-MARKER", encoding="utf-8")
+
+    output = _run_statusline(tmp_path, _payload())
+    assert "FLAT-SEGMENT-MARKER" in output
 
 
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
-    # MCP dispatcher writes one row per tool call to session_stats/claude/<session_id>.jsonl.
-    sidecar = tmp_path / "session_stats" / "claude"
-    sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    # MCP dispatcher writes one row per tool call to the canonical session dir.
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
 
-    # Savings at Sonnet 4.5 rate ($3/MTok x 12k = $0.036).
+    # Savings at Sonnet 4.6 rate ($3/MTok x 12k = $0.036).
     # The payload has no model.id so compute_savings_summary falls back to
     # claude-sonnet-4-5 for pricing.
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
     output = _run_statusline(tmp_path, _payload())
 
-    # Format: "$0.036(12k)" — saved USD with token count in parens.
-    # Token breakdown (I: C: O:) is now always shown alongside the live cost.
-    assert "$0.036(12k)" in output
-    assert "I: 100 C: 300 O: 50" in output
+    # Format: "$0.036(12k+12000)" — saved USD with (formatted+raw) token count in parens.
+    # Token breakdown (I:.. C:.. O:..) rides inside the live-cost segment.
+    assert "$0.036(12k+12000)" in output
+    assert "(I:100 C:300 O:50)" in output
     assert "calls saved" not in output
 
 
@@ -102,12 +127,7 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     tmp_path: Path,
 ) -> None:
     # Write session sidecar with token counts.
-    sidecar = tmp_path / "session_stats" / "claude"
-    sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     home = tmp_path / "home"
     transcript_dir = home / ".claude" / "projects" / "workspace"
     transcript_dir.mkdir(parents=True)
@@ -156,25 +176,21 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     # + 1 Sonnet turn (2k in @ $3/MTok) -> weighted = (2x15 + 1x3) / (2+2) = 8.25/MTok
     # -> 12k x 8.25/MTok ~ $0.099. Env model does NOT affect pricing.
     # Just verify savings are non-zero and token count is shown.
-    assert "(12k)" in sonnet_output
-    assert "(12k)" in opus_output
+    assert "(12k+12000)" in sonnet_output
+    assert "(12k+12000)" in opus_output
 
 
 def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    state_dir = tmp_path / "workspaces" / workspace_hash
+    from atelier.core.foundation.paths import workspace_key
+
+    state_dir = tmp_path / "workspaces" / workspace_key(workspace)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
     # Savings are keyed under "s1" (the real session id from session_state.json).
-    sidecar = tmp_path / "session_stats" / "claude"
-    sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
 
     payload = _payload()
@@ -190,17 +206,13 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
 def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    state_dir = tmp_path / "workspaces" / workspace_hash
+    from atelier.core.foundation.paths import workspace_key
+
+    state_dir = tmp_path / "workspaces" / workspace_key(workspace)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
-    sidecar = tmp_path / "session_stats" / "claude"
-    sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
 
     payload = _payload()
@@ -215,12 +227,7 @@ def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path)
 
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
     # Session sidecar has the real per-session data.
-    sidecar = tmp_path / "session_stats" / "claude"
-    sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
-        json.dumps({"tool": "search", "tokens": 2_000, "calls": 2}) + "\n",
-        encoding="utf-8",
-    )
+    _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 2_000, "calls": 2})
     # Lifetime / global files should NOT be summed into session savings.
     (tmp_path / "smart_state.json").write_text(
         json.dumps({"savings": {"calls_avoided": 99, "tokens_saved": 999_999_999}}),
@@ -245,5 +252,21 @@ def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
 
     output = _run_statusline(tmp_path, _payload())
 
-    assert "$0.006(2k)" in output
+    assert "$0.006(2k+2000)" in output
     assert "calls saved" not in output
+
+
+def test_statusline_empty_session_never_writes_shared_segment_cache(tmp_path: Path) -> None:
+    # With no session id, the subprocess cache key used to collapse to a shared
+    # "statusline_segment_cache_default" slot that every unbound window
+    # read/wrote -- leaking one window's cost/savings into another. Fail closed:
+    # an empty-session render must not create any shared segment cache file.
+    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
+    payload = _payload()
+    payload["session_id"] = ""  # empty id -> previously hit the shared "default" cache
+
+    _run_statusline(tmp_path, payload)
+
+    leaked = sorted(p.name for p in tmp_path.glob("statusline_segment_cache*"))
+    leaked += sorted(p.name for p in tmp_path.glob("statusline_segment_ts*"))
+    assert leaked == [], f"empty-session render leaked shared cache files: {leaked}"

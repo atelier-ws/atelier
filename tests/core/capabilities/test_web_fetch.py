@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import concurrent.futures
 from collections.abc import Iterator
-from typing import ClassVar
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+from typing import Any, ClassVar
 
 import pytest
 
@@ -66,6 +68,46 @@ class _FakeBinaryResponse:
         return None
 
 
+def _build_minimal_pdf(text: str = "Hello PDF") -> bytes:
+    """Build a minimal single-page PDF containing *text*, using only pypdf."""
+    import io
+
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=200, height=200)
+    content = DecodedStreamObject()
+    content.set_data(f"BT /F1 24 Tf 20 100 Td ({text}) Tj ET".encode())
+    page[NameObject("/Contents")] = writer._add_object(content)
+    font = DictionaryObject()
+    font[NameObject("/Type")] = NameObject("/Font")
+    font[NameObject("/Subtype")] = NameObject("/Type1")
+    font[NameObject("/BaseFont")] = NameObject("/Helvetica")
+    resources = DictionaryObject()
+    font_dict = DictionaryObject()
+    font_dict[NameObject("/F1")] = writer._add_object(font)
+    resources[NameObject("/Font")] = font_dict
+    page[NameObject("/Resources")] = resources
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+class _FakePdfResponse:
+    status = 200
+    headers: ClassVar[dict[str, str]] = {"content-type": "application/pdf"}
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def stream(self, amt: int = 65536, decode_content: bool = True) -> Iterator[bytes]:
+        yield self._body
+
+    def release_conn(self) -> None:
+        return None
+
+
 class _FakeHTTP:
     def __init__(self) -> None:
         self.calls = 0
@@ -114,8 +156,30 @@ def test_validate_url_rejects_bad_scheme() -> None:
 
 def test_validate_url_accepts_loopback_url_format_only() -> None:
     """Format check alone should accept loopback — IP validation happens at connect time."""
-    result = web_fetch._validate_public_url("http://127.0.0.1:8080")
-    assert result == "http://127.0.0.1:8080"
+    result = web_fetch._validate_public_url("http://127.0.0.1")
+    assert result == "http://127.0.0.1"
+
+
+def test_validate_url_accepts_standard_ports() -> None:
+    """Explicit standard ports (80, 443) are on the allowlist."""
+    assert web_fetch._validate_public_url("http://example.com:80/path") == "http://example.com:80/path"
+    assert web_fetch._validate_public_url("https://example.com:443/path") == "https://example.com:443/path"
+
+
+def test_validate_url_accepts_default_port() -> None:
+    """No explicit port is allowed — the scheme default is used at connect time."""
+    assert web_fetch._validate_public_url("http://example.com/path") == "http://example.com/path"
+
+
+def test_validate_url_accepts_non_standard_ports() -> None:
+    assert web_fetch._validate_public_url("http://localhost:8080/path") == "http://localhost:8080/path"
+    assert web_fetch._validate_public_url("http://example.com:8443/path") == "http://example.com:8443/path"
+
+
+def test_validate_url_rejects_malformed_port() -> None:
+    """A malformed (non-numeric / out-of-range) port is rejected."""
+    with pytest.raises(ValueError, match="malformed port"):
+        web_fetch._validate_public_url("http://example.com:notaport/path")
 
 
 # --------------------------------------------------------------------------- #
@@ -123,42 +187,66 @@ def test_validate_url_accepts_loopback_url_format_only() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_assert_public_ip_rejects_loopback() -> None:
+def test_assert_fetchable_ip_accepts_loopback() -> None:
+    web_fetch._assert_fetchable_ip("127.0.0.1")
+    web_fetch._assert_fetchable_ip("127.23.45.67")
+    web_fetch._assert_fetchable_ip("::1")
+
+
+def test_assert_fetchable_ip_rejects_private() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("127.0.0.1")
+        web_fetch._assert_fetchable_ip("10.0.0.1")
 
 
-def test_assert_public_ip_rejects_private() -> None:
+def test_assert_fetchable_ip_rejects_link_local() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("10.0.0.1")
+        web_fetch._assert_fetchable_ip("169.254.1.1")
 
 
-def test_assert_public_ip_rejects_link_local() -> None:
+def test_assert_fetchable_ip_rejects_multicast() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("169.254.1.1")
+        web_fetch._assert_fetchable_ip("224.0.0.1")
 
 
-def test_assert_public_ip_rejects_multicast() -> None:
+def test_assert_fetchable_ip_rejects_unspecified() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("224.0.0.1")
+        web_fetch._assert_fetchable_ip("0.0.0.0")
 
 
-def test_assert_public_ip_rejects_unspecified() -> None:
-    with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("0.0.0.0")
+def test_assert_fetchable_ip_accepts_public_ipv4() -> None:
+    web_fetch._assert_fetchable_ip("8.8.8.8")
 
 
-def test_assert_public_ip_rejects_ipv6_loopback() -> None:
-    with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("::1")
+def test_assert_fetchable_ip_accepts_public_ipv6() -> None:
+    web_fetch._assert_fetchable_ip("2001:4860:4860::8888")
 
 
-def test_assert_public_ip_accepts_public_ipv4() -> None:
-    web_fetch._assert_public_ip("8.8.8.8")
+def test_fetch_url_allows_loopback_on_non_standard_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = b"localhost fetch works"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
+        def log_message(self, _format: str, *args: object) -> None:
+            pass
 
-def test_assert_public_ip_accepts_public_ipv6() -> None:
-    web_fetch._assert_public_ip("2001:4860:4860::8888")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "127.0.0.1")
+
+    try:
+        port = server.server_address[1]
+        result = web_fetch.fetch_url(f"http://localhost:{port}/health", output_format="text")
+        assert result["content"] == "localhost fetch works"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5.0)
 
 
 # --------------------------------------------------------------------------- #
@@ -194,6 +282,191 @@ def test_rejects_binary_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="unsupported content type"):
         web_fetch._fetch_uncached("https://example.com/file", accept="*/*", timeout_s=5.0)
+
+
+# --------------------------------------------------------------------------- #
+# PDF extraction                                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_accepts_pdf_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_http = _FakeHTTP()
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(_build_minimal_pdf())
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    raw = web_fetch._fetch_uncached("https://example.com/doc.pdf", accept="*/*", timeout_s=5.0)
+    assert raw.content_type == "application/pdf"
+
+
+def test_pdf_to_text_extracts_text() -> None:
+    text = web_fetch._pdf_to_text(_build_minimal_pdf("Hello PDF"))
+    assert text == "Hello PDF"
+
+
+def test_pdf_to_text_raises_on_corrupt_pdf() -> None:
+    with pytest.raises(ValueError, match="failed to extract PDF text"):
+        web_fetch._pdf_to_text(b"this is not a pdf")
+
+
+def test_table_to_markdown_renders_header_and_rows() -> None:
+    table = [["Model", "Score"], ["Opus 4.8", "88.6"], [None, "87.6"]]
+    md = web_fetch._table_to_markdown(table)
+    lines = md.splitlines()
+    assert lines[0] == "| Model | Score |"
+    assert lines[1] == "| --- | --- |"
+    assert "| Opus 4.8 | 88.6 |" in md
+    assert "|  | 87.6 |" in md  # None cell renders as empty, not "None"
+
+
+def test_table_to_markdown_empty_table_returns_empty_string() -> None:
+    assert web_fetch._table_to_markdown([]) == ""
+    assert web_fetch._table_to_markdown([[]]) == ""
+
+
+class _FakePlumberPage:
+    def __init__(self, text: str, tables: list[list[list[Any]]], page_number: int) -> None:
+        self._text = text
+        self._tables = tables
+        self.page_number = page_number
+
+    def extract_text(self) -> str:
+        return self._text
+
+    def extract_tables(self) -> list[list[list[Any]]]:
+        return self._tables
+
+
+class _FakePlumberPdf:
+    def __init__(self, pages: list[_FakePlumberPage]) -> None:
+        self.pages = pages
+
+    def __enter__(self) -> _FakePlumberPdf:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+class _FakePypdfImage:
+    def __init__(self, name: str, data: bytes) -> None:
+        self.name = name
+        self.data = data
+
+
+class _FakePypdfPage:
+    def __init__(self, images: list[_FakePypdfImage]) -> None:
+        self.images = images
+
+
+def test_pdf_to_text_assembles_prose_tables_and_image_notes(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Prose, detected tables (as Markdown), and per-image spill pointers must
+    all survive into the extracted text -- not just the prose, which was the
+    old (pypdf-text-only) behavior that silently dropped tables and images."""
+    import pdfplumber
+    import pypdf
+
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+
+    fake_plumber_pages = [
+        _FakePlumberPage("Intro prose.", [[["A", "B"], ["1", "2"]]], 1),
+        _FakePlumberPage("", [], 2),
+    ]
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **kw: _FakePlumberPdf(fake_plumber_pages))
+
+    fake_pypdf_pages = [
+        _FakePypdfPage([]),
+        _FakePypdfPage([_FakePypdfImage("Im0.png", b"fake-png-bytes"), _FakePypdfImage("Im1.jpg", b"fake-jpg-bytes")]),
+    ]
+
+    class _FakeReader:
+        def __init__(self, *a: object, **kw: object) -> None:
+            self.pages = fake_pypdf_pages
+
+    monkeypatch.setattr(pypdf, "PdfReader", _FakeReader)
+
+    text = web_fetch._pdf_to_text(b"irrelevant-bytes-since-both-parsers-are-mocked")
+
+    assert "Intro prose." in text
+    assert "| A | B |" in text
+    assert "[image on page 2:" in text
+    saved_images = sorted(tmp_path.glob("pdf-image-web_fetch-*"))
+    assert len(saved_images) == 2
+    assert {p.suffix for p in saved_images} == {".png", ".jpg"}
+    assert saved_images[0].read_bytes() in (b"fake-png-bytes", b"fake-jpg-bytes")
+
+
+def test_pdf_to_text_notes_images_past_the_extraction_cap(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Past _MAX_PDF_IMAGES_EXTRACTED, remaining images are counted, not spilled."""
+    import pdfplumber
+    import pypdf
+
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+    monkeypatch.setattr(web_fetch, "_MAX_PDF_IMAGES_EXTRACTED", 1)
+
+    fake_plumber_pages = [_FakePlumberPage("Prose.", [], 1)]
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **kw: _FakePlumberPdf(fake_plumber_pages))
+
+    fake_pypdf_pages = [
+        _FakePypdfPage([_FakePypdfImage("Im0.png", b"one"), _FakePypdfImage("Im1.png", b"two")]),
+    ]
+
+    class _FakeReader:
+        def __init__(self, *a: object, **kw: object) -> None:
+            self.pages = fake_pypdf_pages
+
+    monkeypatch.setattr(pypdf, "PdfReader", _FakeReader)
+
+    text = web_fetch._pdf_to_text(b"irrelevant-bytes")
+
+    assert "[image on page 1:" in text
+    assert "1 additional embedded image(s) not extracted" in text
+    assert len(list(tmp_path.glob("pdf-image-web_fetch-*"))) == 1
+
+
+def test_render_content_raises_clearly_on_truncated_pdf() -> None:
+    """A PDF that exceeded the fetch cap must fail with an actionable message,
+    not a cryptic pypdf parse error on the corrupted (truncated) bytes."""
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="application/pdf",
+        headers={},
+        body=_build_minimal_pdf("Hello PDF")[:10],  # truncated mid-file
+        truncated_body=True,
+    )
+    with pytest.raises(ValueError, match=r"exceeds the .*MB fetch cap"):
+        web_fetch._render_content(raw, requested_format="text")
+
+
+def test_fetch_url_renders_pdf_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_http = _FakeHTTP()
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(_build_minimal_pdf("Hello PDF"))
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    result = web_fetch.fetch_url("https://example.com/doc.pdf", output_format="text")
+    assert result["content"].startswith("Hello PDF")
+    assert result["format"] == "text"
+
+
+def test_fetch_url_pdf_points_at_the_downloaded_original(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """The raw PDF is spilled to disk and the returned text names its path,
+    so an agent can open the real file when extraction loses charts/tables."""
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+    fake_http = _FakeHTTP()
+    pdf_bytes = _build_minimal_pdf("Hello PDF")
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(pdf_bytes)
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    result = web_fetch.fetch_url("https://example.com/doc.pdf", output_format="text")
+    assert "downloaded PDF:" in result["content"]
+
+    saved = list(tmp_path.glob("original-web_fetch-*.pdf"))
+    assert len(saved) == 1
+    assert saved[0].read_bytes() == pdf_bytes
 
 
 # --------------------------------------------------------------------------- #
@@ -306,6 +579,26 @@ def test_html_to_markdown_preserves_coding_docs_structure() -> None:
     assert "alert" not in markdown
 
 
+def test_html_to_markdown_handles_decomposed_descendants() -> None:
+    # Regression: a hidden container holding child tags. _remove_noise
+    # decomposes the container, which nulls its descendants' .attrs while those
+    # descendants are still pending in find_all(True)'s materialized list.
+    # Reaching one used to raise "AttributeError: 'NoneType' object has no
+    # attribute 'get'" and broke every fetch of a page with such markup.
+    html = (
+        "<html><body>"
+        '<div style="display:none"><span>secret</span><p>hidden body</p></div>'
+        "<p>visible body</p>"
+        "</body></html>"
+    )
+
+    markdown = web_fetch.html_to_markdown_for_agent(html)
+
+    assert "visible body" in markdown
+    assert "secret" not in markdown
+    assert "hidden body" not in markdown
+
+
 def test_clean_markdown_removes_converter_noise() -> None:
     cleaned = web_fetch.clean_markdown_for_agent("Title\nTitle\n\n\n\n\n![](pixel.gif)\n[](/empty)\n    ```\ncode\n```")
 
@@ -325,3 +618,69 @@ def test_is_ip_address() -> None:
     assert web_fetch._is_ip_address("::1") is True
     assert web_fetch._is_ip_address("example.com") is False
     assert web_fetch._is_ip_address("") is False
+
+
+# --------------------------------------------------------------------------- #
+# Query-gated relevance truncation                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_chunk_markdown_splits_a_big_table_one_row_per_chunk_pinned_to_header() -> None:
+    md = "| Rank | Model |\n|---|---|\n" + "".join(f"| {i} | m{i} |\n" for i in range(50))
+    chunks = web_fetch._chunk_markdown(md)
+    assert len(chunks) == 50
+    assert all(pin == "| Rank | Model |\n|---|---|" for _text, pin in chunks)
+
+
+def test_chunk_markdown_keeps_short_prose_as_one_chunk() -> None:
+    md = "# Title\n\nJust a short paragraph of prose."
+    chunks = web_fetch._chunk_markdown(md)
+    assert len(chunks) == 2
+    assert all(pin is None for _text, pin in chunks)
+
+
+def test_finish_fetch_without_query_is_unchanged_head_truncation() -> None:
+    md = "x" * 5000
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="text/plain",
+        headers={},
+        body=md.encode(),
+        truncated_body=False,
+    )
+    payload = web_fetch._finish_fetch(
+        raw, rendered={"content": md, "format": "text"}, char_limit=1000, include_meta=False
+    )
+    assert payload["content"].startswith("x" * 100)
+    assert "[truncated to 1000 of 5000 chars" in payload["content"]
+
+
+def test_finish_fetch_with_query_surfaces_a_row_the_head_cut_would_miss() -> None:
+    header = "| Rank | Model | Score |\n|---|---|---|\n"
+    body = "".join(f"| {i} | {'Claude Code / Opus 4.6' if i == 130 else f'Model-{i}'} | {i} |\n" for i in range(142))
+    md = header + body
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="text/html",
+        headers={},
+        body=md.encode(),
+        truncated_body=False,
+    )
+    no_query = web_fetch._finish_fetch(
+        raw, rendered={"content": md, "format": "markdown"}, char_limit=1500, include_meta=False
+    )
+    assert "Claude Code" not in no_query["content"]
+
+    with_query = web_fetch._finish_fetch(
+        raw,
+        rendered={"content": md, "format": "markdown"},
+        char_limit=1500,
+        include_meta=False,
+        query="Claude Code",
+    )
+    assert "Claude Code / Opus 4.6" in with_query["content"]
+    assert "matching" in with_query["content"]

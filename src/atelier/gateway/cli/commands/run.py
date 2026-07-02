@@ -1,39 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import click
 
+from atelier.core.capabilities.providers.config import LITELLM_PREFIX
 from atelier.gateway.cli.commands._shared import _emit
 
 if TYPE_CHECKING:
     from atelier.core.capabilities.owned_agent_session import OwnedAgentSession
-
-
-# litellm provider-prefix map; bare model names get auto-prefixed
-_PROVIDER_LITELLM_PREFIX: dict[str, str] = {
-    "anthropic": "anthropic/",
-    "openai": "openai/",
-    "google": "gemini/",
-    "gemini": "gemini/",
-    "azure": "azure/",
-    "bedrock": "bedrock/",
-    "cohere": "cohere/",
-    "mistral": "mistral/",
-    "ollama": "ollama/",
-    "together": "together_ai/",
-    "groq": "groq/",
-    "fireworks": "fireworks_ai/",
-    "vertex": "vertex_ai/",
-    "huggingface": "huggingface/",
-    "replicate": "replicate/",
-    "deepinfra": "deepinfra/",
-    "perplexity": "perplexity/",
-    "openrouter": "openrouter/",
-}
+    from atelier.core.capabilities.owned_agent_session.receipt import SessionReceipt
 
 
 def _resolve_litellm_model(provider: str, model: str) -> str:
@@ -50,7 +30,7 @@ def _resolve_litellm_model(provider: str, model: str) -> str:
         return model
     if "/" in model:
         return model  # already provider-prefixed
-    prefix = _PROVIDER_LITELLM_PREFIX.get(provider.lower(), "")
+    prefix = LITELLM_PREFIX.get(provider.lower(), "")
     return f"{prefix}{model}" if prefix else model
 
 
@@ -60,6 +40,74 @@ def _root_from_obj(obj: dict[str, Any]) -> Path:
         if isinstance(root, Path):
             return root
     return Path.home() / ".atelier"
+
+
+def _execute_owned_tool_session(
+    task: str,
+    *,
+    provider: str,
+    model: str,
+    yolo: bool,
+    root: Path,
+) -> tuple[OwnedAgentSession, SessionReceipt, str]:
+    """Execute one real model/tool loop shared with the TUI and HTTP gateway."""
+    import asyncio
+
+    from atelier.core.capabilities.owned_agent_session import OwnedAgentSession
+    from atelier.core.capabilities.owned_agent_session.receipt import PhaseTokens, SessionReceipt
+    from atelier.core.capabilities.owned_agent_session.task_primer import build_task_primer
+    from atelier.gateway.cli.events import AssistantMessage, ContextUsageUpdated, RuntimeErrorEvent
+    from atelier.gateway.cli.runtime import InteractiveRuntime
+
+    session = OwnedAgentSession.new(
+        provider=provider,
+        model=model,
+        transport="litellm",
+        phase_linear=False,
+    )
+    runtime = InteractiveRuntime(root=root, yolo=yolo, model=model, provider=provider)
+
+    primer = build_task_primer(task, Path(os.getcwd()))
+    prompt = f"{task}\n\n{primer}" if primer else task
+
+    async def _run() -> tuple[str, ContextUsageUpdated | None]:
+        await runtime.start_session(os.getcwd(), session_id=session.session_id)
+        final_text = ""
+        usage: ContextUsageUpdated | None = None
+        try:
+            async for event in runtime.handle_user_message(session.session_id, prompt):
+                if isinstance(event, AssistantMessage):
+                    final_text = event.text
+                elif isinstance(event, ContextUsageUpdated):
+                    usage = event
+                elif isinstance(event, RuntimeErrorEvent):
+                    raise RuntimeError(event.message)
+        finally:
+            session.messages = runtime.session_messages(session.session_id)
+            runtime.shutdown()
+        return final_text, usage
+
+    try:
+        final_text, usage = asyncio.run(_run())
+    except Exception:
+        session.save(root=root)
+        raise
+    receipt = SessionReceipt(
+        session_id=session.session_id,
+        provider=provider,
+        model=model,
+        turn_count=sum(1 for message in session.messages if message.get("role") == "assistant"),
+    )
+    receipt.phases.append(
+        PhaseTokens(
+            phase="agent",
+            input_tokens=usage.input_tokens if usage else 0,
+            output_tokens=usage.output_tokens if usage else 0,
+            cache_read_tokens=usage.cache_read_tokens if usage else 0,
+            cache_write_tokens=usage.cache_write_tokens if usage else 0,
+        )
+    )
+    return session, receipt, final_text
 
 
 def _run_owned_session(
@@ -80,12 +128,10 @@ def _run_owned_session(
     )
     from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
     from atelier.core.capabilities.owned_agent_session import (
-        KeepaliveThread,
         OwnedAgentSession,
         run_phase_linear,
         run_single_shot,
     )
-    from atelier.core.capabilities.owned_agent_session.phase_runner import _provider_cache_style
     from atelier.core.capabilities.owned_execution_routing import (
         OwnedCachePolicy,
         OwnedRouteBudget,
@@ -139,59 +185,32 @@ def _run_owned_session(
     # Ensure the final model is litellm-prefixed
     litellm_model = _resolve_litellm_model(decision.provider, decision.model)
 
-    session = OwnedAgentSession.new(
-        provider=decision.provider,
-        model=litellm_model,
-        transport=decision.transport,
-        cache_policy=cache_policy_cast,
-        phase_linear=phase_linear,
-    )
-
-    click.echo(
-        f"[atelier run] session={session.session_id}  "
-        f"provider={decision.provider}  model={litellm_model}"
-    )
+    final_text = ""
     if dry_run:
-        click.echo("[atelier run] --dry-run: planning only, no edits will be applied")
-
-    # Gemini context cache (created before the session starts)
-    gemini_cached_content: str | None = None
-    if _provider_cache_style(decision.provider) == "gemini" and not dry_run:
-        try:
-            from atelier.core.capabilities.owned_agent_session.gemini_cache import (
-                GeminiContextCache,
-            )
-            from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_SYSTEM_PROMPT
-
-            gc = GeminiContextCache.create(model=litellm_model, system_prompt=STEM_SYSTEM_PROMPT)
-            gemini_cached_content = gc.name
-            click.echo(f"  Gemini context cache: {gc.name}")
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  Warning: Gemini context cache creation failed ({exc}); continuing without it", err=True)
-            gc = None  # type: ignore[assignment]
-    else:
-        gc = None  # type: ignore[assignment]
-
-    # Start keepalive (provider-aware — no-op for OpenAI, skips thread for others)
-    keepalive: KeepaliveThread | None = None
-    if not dry_run:
-        keepalive = KeepaliveThread(
-            model=litellm_model,
+        session = OwnedAgentSession.new(
             provider=decision.provider,
-            gemini_cache=gc,
+            model=litellm_model,
+            transport=decision.transport,
+            cache_policy=cache_policy_cast,
+            phase_linear=phase_linear,
         )
-        keepalive.start()
-
-    try:
-        if phase_linear:
-            receipt = run_phase_linear(session, task, dry_run=dry_run, gemini_cached_content=gemini_cached_content)
-        else:
-            receipt = run_single_shot(session, task, dry_run=dry_run, gemini_cached_content=gemini_cached_content)
-    finally:
-        if keepalive is not None:
-            keepalive.stop()
-        if gc is not None:
-            gc.delete()
+        click.echo(f"[atelier run] session={session.session_id}  provider={decision.provider}  model={litellm_model}")
+        click.echo("[atelier run] --dry-run: planning only, no edits will be applied")
+        receipt = (
+            run_phase_linear(session, task, dry_run=True)
+            if phase_linear
+            else run_single_shot(session, task, dry_run=True)
+        )
+    else:
+        session, receipt, final_text = _execute_owned_tool_session(
+            task,
+            provider=decision.provider,
+            model=litellm_model,
+            yolo=yolo,
+            root=root,
+        )
+        session.cache_policy = cache_policy_cast
+        click.echo(f"[atelier run] session={session.session_id}  provider={decision.provider}  model={litellm_model}")
 
     if max_cost is not None and receipt.cost_usd() > max_cost:
         click.echo(
@@ -200,6 +219,8 @@ def _run_owned_session(
         )
 
     session_path = session.save()
+    if final_text:
+        click.echo(f"\n{final_text}")
     click.echo(f"\nSession saved: {session_path}")
     click.echo("")
     click.echo(receipt.format_receipt())
@@ -217,91 +238,68 @@ def _run_ci_session(
     root: Path,
 ) -> None:
     """Non-interactive CI session — outputs JSON."""
-    import asyncio
+    from atelier.core.capabilities.cross_vendor_routing.configuration import (
+        detect_api_key_vendors,
+    )
+    from atelier.core.capabilities.cross_vendor_routing.router import (
+        NoFeasibleRouteError,
+    )
+    from atelier.core.capabilities.owned_execution_routing import (
+        OwnedCachePolicy,
+        OwnedRouteBudget,
+        OwnedRouteRequest,
+        select_owned_route,
+    )
 
-    async def _run() -> None:
-        from atelier.core.capabilities.cross_vendor_routing.configuration import (
-            detect_api_key_vendors,
+    vendors = detect_api_key_vendors()
+    if not vendors:
+        sys.stdout.write(json.dumps({"error": "no_api_key", "message": "No API key configured"}) + "\n")
+        raise SystemExit(1)
+
+    budget_cast: OwnedRouteBudget = (
+        budget if budget in ("cheap", "balanced", "best") else "balanced"  # type: ignore[assignment]
+    )
+    cache_policy_cast: OwnedCachePolicy = "fresh" if cache_policy == "fresh" else "inherit"
+
+    try:
+        decision = select_owned_route(
+            root,
+            OwnedRouteRequest(
+                tool_name="run",
+                task_text=task,
+                mode="explicit" if (provider or model) else "auto",
+                budget=budget_cast,
+                provider=provider,
+                model=model,
+                cache_policy=cache_policy_cast,
+            ),
         )
-        from atelier.core.capabilities.cross_vendor_routing.router import (
-            NoFeasibleRouteError,
-        )
-        from atelier.core.capabilities.owned_agent_session import (
-            OwnedAgentSession,
-            run_phase_linear,
-            run_single_shot,
-        )
-        from atelier.core.capabilities.owned_execution_routing import (
-            OwnedCachePolicy,
-            OwnedRouteBudget,
-            OwnedRouteRequest,
-            select_owned_route,
-        )
+    except NoFeasibleRouteError as exc:
+        sys.stdout.write(json.dumps({"error": "no_route", "message": str(exc)}) + "\n")
+        raise SystemExit(1) from exc
 
-        vendors = detect_api_key_vendors()
-        if not vendors:
-            sys.stdout.write(
-                json.dumps(
-                    {"error": "no_api_key", "message": "No API key configured"}
-                )
-                + "\n"
-            )
-            raise SystemExit(1)
+    litellm_model = _resolve_litellm_model(decision.provider, decision.model)
+    session, receipt, final_text = _execute_owned_tool_session(
+        task,
+        provider=decision.provider,
+        model=litellm_model,
+        yolo=True,
+        root=root,
+    )
+    session.cache_policy = cache_policy_cast
+    session_path = session.save()
 
-        budget_cast: OwnedRouteBudget = (
-            budget if budget in ("cheap", "balanced", "best") else "balanced"  # type: ignore[assignment]
-        )
-        cache_policy_cast: OwnedCachePolicy = (
-            "fresh" if cache_policy == "fresh" else "inherit"
-        )
-
-        try:
-            decision = select_owned_route(
-                root,
-                OwnedRouteRequest(
-                    tool_name="run",
-                    task_text=task,
-                    mode="explicit" if (provider or model) else "auto",
-                    budget=budget_cast,
-                    provider=provider,
-                    model=model,
-                    cache_policy=cache_policy_cast,
-                ),
-            )
-        except NoFeasibleRouteError as exc:
-            sys.stdout.write(
-                json.dumps({"error": "no_route", "message": str(exc)}) + "\n"
-            )
-            raise SystemExit(1) from exc
-
-        litellm_model = _resolve_litellm_model(decision.provider, decision.model)
-        session = OwnedAgentSession.new(
-            provider=decision.provider,
-            model=litellm_model,
-            transport=decision.transport,
-            cache_policy=cache_policy_cast,
-            phase_linear=phase_linear,
-        )
-
-        if phase_linear:
-            receipt = run_phase_linear(session, task)
-        else:
-            receipt = run_single_shot(session, task)
-
-        session_path = session.save()
-
-        output = {
-            "session_id": session.session_id,
-            "model": litellm_model,
-            "provider": decision.provider,
-            "phases": [p.phase for p in receipt.phases],
-            "receipt": receipt.to_dict(),
-            "session_path": str(session_path),
-            "exit_code": 0,
-        }
-        sys.stdout.write(json.dumps(output) + "\n")
-
-    asyncio.run(_run())
+    output = {
+        "session_id": session.session_id,
+        "model": litellm_model,
+        "provider": decision.provider,
+        "phases": [p.phase for p in receipt.phases],
+        "receipt": receipt.to_dict(),
+        "session_path": str(session_path),
+        "result": final_text,
+        "exit_code": 0,
+    }
+    sys.stdout.write(json.dumps(output) + "\n")
 
 
 @click.group("run")
@@ -312,7 +310,11 @@ def run_group() -> None:
 @run_group.command("start", context_settings={"ignore_unknown_options": False})
 @click.argument("task")
 @click.option("--provider", default="", help="Provider: anthropic, openai, google, groq, mistral, …")
-@click.option("--model", default="", help="Model name (bare or litellm-prefixed, e.g. gpt-4o or openai/gpt-4o)")
+@click.option(
+    "--model",
+    default="",
+    help="Model name (bare or litellm-prefixed, e.g. gpt-4o or openai/gpt-4o)",
+)
 @click.option(
     "--budget",
     type=click.Choice(["cheap", "balanced", "best"]),
@@ -405,10 +407,7 @@ def run_resume(obj: dict[str, Any], session_id: str, task: str) -> None:
         click.echo(f"Error: session {session_id!r} not found in {root / 'runs'}", err=True)
         sys.exit(1)
 
-    click.echo(
-        f"[atelier run resume] session={session.session_id}  "
-        f"provider={session.provider}  model={session.model}"
-    )
+    click.echo(f"[atelier run resume] session={session.session_id}  provider={session.provider}  model={session.model}")
     click.echo(f"  Restoring {len(session.messages)} turns from previous session")
 
     if not task:
@@ -462,5 +461,3 @@ def _print_receipt_from_session(session: OwnedAgentSession) -> None:
 
 
 __all__ = ["run_group"]
-
-

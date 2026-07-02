@@ -259,7 +259,7 @@ def test_rule_compact_aggression_fires() -> None:
     outcomes: dict[str, dict[str, Any]] = {
         f"s{i}": {
             "route_outcomes": [],
-            "compact_outcomes": [{"extra_read_rate": 0.25, "outcome_score": 0.8}],
+            "compact_outcomes": [{"outcome_window": {"extra_read_rate": 0.25, "outcome_score": 0.8}}],
         }
         for i in range(5)
     }
@@ -274,7 +274,7 @@ def test_rule_compact_aggression_does_not_fire_below_threshold() -> None:
     outcomes: dict[str, dict[str, Any]] = {
         f"s{i}": {
             "route_outcomes": [],
-            "compact_outcomes": [{"extra_read_rate": 0.10, "outcome_score": 0.9}],
+            "compact_outcomes": [{"outcome_window": {"extra_read_rate": 0.10, "outcome_score": 0.9}}],
         }
         for i in range(5)
     }
@@ -392,7 +392,10 @@ def _write_run_file(
         },
         "events": events if events is not None else [],
     }
-    (runs_dir / f"{session_id}.json").write_text(json.dumps(snap), encoding="utf-8")
+    # Ledgers live in <root>/sessions/<id>/run.json; callers pass <root>/runs historically.
+    session_dir = runs_dir.parent / "sessions" / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "run.json").write_text(json.dumps(snap), encoding="utf-8")
 
 
 def test_build_insights_empty_window(tmp_path: Path) -> None:
@@ -523,14 +526,18 @@ def test_build_insights_outcomes_summary(tmp_path: Path) -> None:
     # Write an outcomes file.
     outcomes_data = {
         "route_outcomes": [
-            {"outcome_score": 0.9, "tool_name": "Edit"},
-            {"outcome_score": 0.8, "tool_name": "Bash"},
+            {"outcome_window": {"outcome_score": 0.9}, "tool": "Edit"},
+            {"outcome_window": {"outcome_score": 0.8}, "tool": "Bash"},
         ],
         "compact_outcomes": [
-            {"outcome_score": 0.7, "extra_read_rate": 0.1},
+            {"outcome_window": {"outcome_score": 0.7, "extra_read_rate": 0.1}},
         ],
     }
-    (runs_dir / "s1_outcomes.json").write_text(json.dumps(outcomes_data))
+    from atelier.core.foundation.paths import session_dir
+
+    outcomes_dir = session_dir(runs_dir.parent, "claude", "s1")
+    outcomes_dir.mkdir(parents=True, exist_ok=True)
+    (outcomes_dir / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),
@@ -547,9 +554,13 @@ def test_build_insights_high_extra_reads_flagged(tmp_path: Path) -> None:
     _write_run_file(runs_dir, "s1", cost_usd=1.0)
     outcomes_data = {
         "route_outcomes": [],
-        "compact_outcomes": [{"outcome_score": 0.5, "extra_read_rate": 0.35}],
+        "compact_outcomes": [{"outcome_window": {"outcome_score": 0.5, "extra_read_rate": 0.35}}],
     }
-    (runs_dir / "s1_outcomes.json").write_text(json.dumps(outcomes_data))
+    from atelier.core.foundation.paths import session_dir
+
+    outcomes_dir = session_dir(runs_dir.parent, "claude", "s1")
+    outcomes_dir.mkdir(parents=True, exist_ok=True)
+    (outcomes_dir / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),

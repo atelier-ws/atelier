@@ -6,18 +6,19 @@ Public API::
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     turns = parse_session_turns(content, source="claude")
 
-Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"gemini"``, ``"copilot"``.
+Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"copilot"``.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 import mimetypes
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from atelier.gateway.hosts.session_parsers._common import _SYSTEM_PREFIXES_CLAUDE
 
 _NORMALIZED_SESSION_SOURCES = {
     "antigravity",
@@ -38,16 +39,9 @@ _NORMALIZED_SESSION_SOURCES = {
 # Maximum number of turns to return
 _MAX_TURNS = 1000
 
-# System-message prefixes to skip in user blocks (Claude + Codex)
-_SYSTEM_PREFIXES_CLAUDE = (
-    "<local-command",
-    "<ide_",
-    "<command-",
-    "<thinking>",
-    "I have been initialized",
-    "Environment context:",
-)
-
+# System-message prefixes to skip in user blocks (Codex). The Claude
+# equivalent lives in _common.py, shared with claude.py's own user-text
+# extraction so the two lists can't drift apart.
 _SYSTEM_PREFIXES_CODEX = (
     "<user_instructions>",
     "<environment_context>",
@@ -106,8 +100,7 @@ def _extract_claude_session_id(content: str) -> str:
             continue
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         sid = ev.get("sessionId")
         if isinstance(sid, str) and sid.strip():
@@ -120,7 +113,7 @@ def _normalize_tool_basename(name: str) -> str:
 
     Examples:
         ``mcp__atelier__grep``                       → ``grep``
-        ``mcp__plugin_atelier_atelier__shell``       → ``shell``
+        ``mcp__plugin_atelier_atelier__bash``        → ``bash``
         ``edit``                                     → ``edit``
     """
     base = (name or "").strip()
@@ -137,7 +130,7 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     Claude Code drops unknown fields off MCP ``content[]`` items when it
     persists the transcript, so the in-response ``saved`` block doesn't
     survive to disk.  The MCP server's host sidecar
-    (``session_stats/<host>/<session_id>.jsonl``) does survive, and its rows
+    (``sessions/<session_id>/savings.jsonl``) does survive, and its rows
     are appended in the order tools were called.  We pair each Atelier MCP
     tool turn against the next matching sidecar row, by tool name.
 
@@ -145,30 +138,30 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     """
     if not session_id:
         return
-    stats_dir = atelier_root / "session_stats"
-    if not stats_dir.is_dir():
+    from atelier.core.foundation.paths import find_session_dir
+
+    existing = find_session_dir(atelier_root, session_id)
+    sidecar = (
+        (existing / "savings.jsonl")
+        if existing is not None
+        else (atelier_root / "sessions" / session_id / "savings.jsonl")
+    )
+    if not sidecar.is_file():
         return
 
-    # Collect sidecar rows from any host directory that contains a matching file
-    # (Claude UUIDs are unique enough that we don't need to scope by host).
+    # Sidecar rows are appended in tool-call order; pair them FIFO by tool name.
     sidecar_rows: list[dict[str, Any]] = []
-    for host_dir in sorted(stats_dir.iterdir()):
-        if not host_dir.is_dir():
-            continue
-        sidecar = host_dir / f"{session_id}.jsonl"
-        if not sidecar.is_file():
-            continue
-        try:
-            for line in sidecar.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    sidecar_rows.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-        except OSError:
-            continue
+    try:
+        for line in sidecar.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                sidecar_rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    except OSError:
+        return
     if not sidecar_rows:
         return
 
@@ -221,8 +214,6 @@ def parse_session_turns(content: str, source: str) -> list[dict[str, Any]]:
         turns = _parse_codex(content)
     elif source == "opencode":
         turns = _parse_opencode(content)
-    elif source == "gemini":
-        turns = _parse_gemini(content)
     elif source == "copilot":
         turns = _parse_copilot(content)
     elif source in _NORMALIZED_SESSION_SOURCES:
@@ -531,8 +522,7 @@ def _coerce_jsonish(value: Any) -> Any:
             return ""
         try:
             return json.loads(stripped)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             return value
     return value
 
@@ -687,8 +677,6 @@ def extract_session_usage_summary(content: str, source: str) -> dict[str, Any]:
         return _summarize_codex_usage(content)
     if source == "copilot":
         return _summarize_copilot_usage(content)
-    if source == "gemini":
-        return _summarize_gemini_usage(content)
     if source == "opencode":
         return _summarize_opencode_usage(content)
     if source in _NORMALIZED_SESSION_SOURCES:
@@ -722,8 +710,7 @@ def _summarize_claude_usage(content: str) -> dict[str, Any]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         if ev.get("type") != "assistant":
             continue
@@ -768,8 +755,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         et = ev.get("type")
         if et == "turn_context":
@@ -780,9 +766,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
             continue
         if et == "message" and str(ev.get("role") or "") == "assistant":
             model = str(ev.get("model") or current_model or "").strip()
-            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
-                ev.get("usage")
-            )
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
             if model or in_t or out_t or cached_t or cache_write_t:
                 saw_flat_usage = True
                 _record_usage_turn(
@@ -805,8 +789,8 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         total_usage = info.get("total_token_usage") or {}
         model = current_model or str(payload.get("model") or "").strip()
         model_key = model or "_default"
-        total_in, total_out, total_reason, total_think, cached_total, cache_write_total = (
-            _extract_codex_usage(total_usage)
+        total_in, total_out, total_reason, total_think, cached_total, cache_write_total = _extract_codex_usage(
+            total_usage
         )
         if model_key not in legacy_totals:
             legacy_totals[model_key] = {
@@ -856,8 +840,7 @@ def _summarize_copilot_usage(content: str) -> dict[str, Any]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         et = ev.get("type")
         data = ev.get("data") or {}
@@ -930,50 +913,12 @@ def _summarize_copilot_usage(content: str) -> dict[str, Any]:
     return fallback_summary
 
 
-def _summarize_gemini_usage(content: str) -> dict[str, Any]:
-    summary = _empty_usage_summary()
-    merged: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
-    for line in content.splitlines():
-        try:
-            ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            continue
-        if ev.get("type") != "gemini":
-            continue
-        mid = str(ev.get("id") or "")
-        if not mid:
-            continue
-        if mid not in merged:
-            merged[mid] = {
-                "model": "",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "thinking_tokens": 0,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-            }
-            order.append(mid)
-        record = merged[mid]
-        tokens = ev.get("tokens") or {}
-        record["model"] = str(ev.get("model") or record["model"] or "").strip()
-        record["input_tokens"] = max(record["input_tokens"], int(tokens.get("input", 0) or 0))
-        record["output_tokens"] = max(record["output_tokens"], int(tokens.get("output", 0) or 0))
-        record["thinking_tokens"] = max(record["thinking_tokens"], int(tokens.get("thoughts", 0) or 0))
-        record["cached_input_tokens"] = max(record["cached_input_tokens"], int(tokens.get("cached", 0) or 0))
-    for mid in order:
-        _record_usage_turn(summary, **merged[mid])
-    return summary
-
-
 def _summarize_opencode_usage(content: str) -> dict[str, Any]:
     summary = _empty_usage_summary()
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         if ev.get("_type") != "message":
             continue
@@ -1041,8 +986,7 @@ def _parse_normalized_session(content: str) -> list[dict[str, Any]]:
             continue
         try:
             event = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         if event.get("type") != "message":
             continue
@@ -1160,11 +1104,17 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
     # Store global metadata to yield if no messages exist
     meta: dict[str, Any] = {}
 
+    # A single logical assistant message is often split across multiple
+    # JSONL lines sharing the same message.id (one line per content block),
+    # each repeating that message's usage. Track which turn already carries
+    # a msg_id's tokens so later lines enrich it (max-merge, matching
+    # _summarize_claude_usage) instead of tallying a fresh turn each time.
+    assistant_token_state: dict[str, dict[str, Any]] = {}
+
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
 
         et = ev.get("type", "")
@@ -1337,7 +1287,26 @@ def _parse_claude(content: str) -> list[dict[str, Any]]:
                     )
 
             if blocks:
-                messages.setdefault(msg_id, []).extend(_apply_tokens_once(blocks, tokens))
+                if msg_id and msg_id in assistant_token_state:
+                    state = assistant_token_state[msg_id]
+                    normalized = _normalize_turn_tokens(tokens)
+                    merged = {
+                        key: max(state["tokens"].get(key) or 0, normalized.get(key) or 0)
+                        for key in set(state["tokens"]) | set(normalized)
+                    }
+                    if merged != state["tokens"]:
+                        state["turn"]["tokens"] = merged
+                        state["tokens"] = merged
+                    for block in blocks:
+                        block["tokens"] = {}
+                    messages.setdefault(msg_id, []).extend(blocks)
+                else:
+                    toked = _apply_tokens_once(blocks, tokens)
+                    messages.setdefault(msg_id, []).extend(toked)
+                    if msg_id:
+                        target = next((t for t in toked if t.get("tokens")), None)
+                        if target is not None:
+                            assistant_token_state[msg_id] = {"turn": target, "tokens": target["tokens"]}
 
         elif et == "attachment":
             attachment = ev.get("attachment") or {}
@@ -1468,8 +1437,7 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
             if ev.get("type") in ("message", "reasoning"):
                 fmt = "flat"
                 break
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
 
     turns = _parse_codex_format_a(content) if fmt == "event_msg" else _parse_codex_format_b(content)
@@ -1491,8 +1459,7 @@ def _parse_codex(content: str) -> list[dict[str, Any]]:
                         )
                     )
                     break
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
+            except json.JSONDecodeError:
                 continue
 
     return turns
@@ -1504,8 +1471,7 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         ev_type = ev.get("type")
         if ev_type not in {"event_msg", "response_item"}:
@@ -1550,11 +1516,8 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
                 )
                 turns.append(last_turn)
         elif pt == "exec_command_end":
-            cmd = str(
-                payload.get("command", "")[-1]
-                if isinstance(payload.get("command"), list)
-                else payload.get("command", "")
-            )
+            _cmd_val = payload.get("command", "")
+            cmd = str((_cmd_val[-1] if _cmd_val else "") if isinstance(_cmd_val, list) else _cmd_val)
             if cmd:
                 last_turn = _turn("shell_command", cmd[:100], cmd, at=at, raw=ev)
                 turns.append(last_turn)
@@ -1669,8 +1632,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -1680,9 +1642,7 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
                 turns.append(_turn("thinking", t[:80], t, at=at, raw=ev))
         elif et == "message":
             role = ev.get("role", "")
-            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
-                ev.get("usage")
-            )
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
             tokens = {
                 "in": max(in_t - cached_t, 0),
                 "out": out_t,
@@ -1786,183 +1746,6 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Gemini parser
-# ---------------------------------------------------------------------------
-
-
-def _parse_gemini(content: str) -> list[dict[str, Any]]:
-    merged: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
-    for line in content.splitlines():
-        try:
-            ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            continue
-        mid = str(ev.get("id") or "")
-        et = ev.get("type")
-        at = ev.get("timestamp")
-        if not mid or et in ("$set", "session_start"):
-            continue
-        if mid not in merged:
-            order.append(mid)
-            merged[mid] = {
-                "kind": "unknown",
-                "content": "",
-                "at": at,
-                "tokens": {
-                    "in": 0,
-                    "out": 0,
-                    "thinking": 0,
-                    "cache_read": 0,
-                    "cache_write": 0,
-                },
-                "raw": ev,
-                "structured_turns": [],
-            }
-
-        t_raw = ev.get("tokens") or {}
-        merged[mid]["tokens"]["in"] = max(merged[mid]["tokens"]["in"], t_raw.get("input", 0))
-        merged[mid]["tokens"]["out"] = max(merged[mid]["tokens"]["out"], t_raw.get("output", 0))
-        merged[mid]["tokens"]["thinking"] = max(merged[mid]["tokens"]["thinking"], t_raw.get("thoughts", 0))
-        merged[mid]["tokens"]["cache_read"] = max(merged[mid]["tokens"].get("cache_read", 0), t_raw.get("cached", 0))
-
-        if et == "user":
-            merged[mid]["kind"] = "user_message"
-            txt = "".join(p.get("text", "") for p in ev.get("content", []) if isinstance(p, dict))
-            if txt:
-                merged[mid]["content"] = txt
-        elif et in ("gemini", "info"):
-            merged[mid]["kind"] = "agent_message" if et == "gemini" else "user_message"
-            thoughts = "\n".join(th.get("description", "") for th in ev.get("thoughts") or [])
-            if thoughts:
-                merged[mid]["thinking_content"] = thoughts
-            c = ev.get("content")
-            txt = c if isinstance(c, str) else "".join(p.get("text", "") for p in (c or []) if isinstance(p, dict))
-            if txt:
-                merged[mid]["content"] = txt
-            tcalls = ev.get("toolCalls") or []
-            if tcalls:
-                _FILE_TOOL_NAMES = {
-                    "write_file",
-                    "edit_file",
-                    "apply_patch",
-                    "str_replace_editor",
-                    "create_file",
-                    "replace_file",
-                    "patch_file",
-                }
-                for tc in tcalls:
-                    name = tc.get("name", "unknown")
-                    args = tc.get("args") or {}
-                    todos = _extract_todos(args) or _extract_todos(tc.get("result"))
-                    if todos:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "todo_write",
-                                f"{name} · {len(todos)} item{'s' if len(todos) != 1 else ''}",
-                                "",
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                                todos=todos,
-                            )
-                        )
-                        continue
-                    if str(name).lower() in {"agent", "task"}:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "subagent_event",
-                                f"{name} subagent",
-                                str(args.get("prompt") or args.get("description") or ""),
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                                subagent_status="started",
-                                subagent_name=str(args.get("subagent_type") or args.get("agent") or name),
-                            )
-                        )
-                        continue
-                    if name in _FILE_TOOL_NAMES:
-                        _fpath = (
-                            str(args.get("path") or args.get("file_path") or args.get("filename") or "").strip() or None
-                        )
-                        _raw_diff = args.get("patch") or args.get("diff")
-                        if not _raw_diff and args.get("old_string") is not None:
-                            old = str(args.get("old_string") or "")
-                            new = str(args.get("new_string") or "")
-                            _raw_diff = f"--- a/{_fpath or 'file'}\n+++ b/{_fpath or 'file'}\n"
-                            for _line in old.splitlines():
-                                _raw_diff += f"-{_line}\n"
-                            for _line in new.splitlines():
-                                _raw_diff += f"+{_line}\n"
-                        _diff = str(_raw_diff).strip() if _raw_diff else None
-                        _fcontent = _diff or str(args.get("content") or args.get("text") or _text_from_value(args))
-                        merged[mid].setdefault("file_edits", []).append((name, _fpath, _diff, _fcontent))
-                    else:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "tool_call",
-                                f"{name}(...)",
-                                _text_from_value(args),
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                            )
-                        )
-
-    final = []
-    for mid in order:
-        turn = merged[mid]
-        assistant_turns: list[dict[str, Any]] = []
-        if turn.get("thinking_content"):
-            assistant_turns.append(
-                _turn(
-                    "thinking",
-                    turn["thinking_content"][:80],
-                    turn["thinking_content"],
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                )
-            )
-        # Emit file_edit turns before the agent response turn
-        for fe_name, fe_path, fe_diff, fe_content in turn.get("file_edits", []):
-            assistant_turns.append(
-                _turn(
-                    "file_edit",
-                    f"{fe_name}({fe_path or ''})",
-                    fe_content,
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                    path=fe_path,
-                    diff=fe_diff,
-                )
-            )
-        assistant_turns.extend(turn.get("structured_turns", []))
-        if turn["kind"] != "unknown":
-            assistant_turns.append(
-                _turn(
-                    turn["kind"],
-                    turn["content"][:80],
-                    turn["content"],
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                )
-            )
-        final.extend(_apply_tokens_once(assistant_turns, turn["tokens"]))
-    return final
-
-
-# ---------------------------------------------------------------------------
 # Copilot parser
 # ---------------------------------------------------------------------------
 
@@ -1973,8 +1756,7 @@ def _parse_copilot(content: str) -> list[dict[str, Any]]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         et = ev.get("type")
         at = ev.get("timestamp")
@@ -2194,8 +1976,7 @@ def _parse_opencode(content: str) -> list[dict[str, Any]]:
     for line in content.splitlines():
         try:
             ev = json.loads(line)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
+        except json.JSONDecodeError:
             continue
         _type = ev.get("_type", "")
         data = ev.get("data") or {}

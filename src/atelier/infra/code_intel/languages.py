@@ -10,8 +10,6 @@ Design constraints:
 * Imports nothing from ``atelier.core`` (avoids the import cycle — Pitfall 1).
 * Shell extensions canonicalize to ``bash`` at the data layer (DLS-LANG-03); the
   legacy ``"shell"`` spelling is intentionally not reproduced here.
-* ``scip_indexer`` is a bare fallback binary name; SCIP-specific argv metadata
-  lives in ``infra.code_intel.scip``.
 * This is a static table — no auto-detection machinery.
 """
 
@@ -28,37 +26,34 @@ class Language:
     name: str
     extensions: frozenset[str]
     parser_name: str
-    scip_indexer: str | None
 
 
 LANGUAGES: tuple[Language, ...] = (
-    Language("python", frozenset({".py", ".pyi"}), "python", "scip-python"),
-    Language("typescript", frozenset({".ts", ".tsx"}), "typescript", "scip-typescript"),
-    Language(
-        "javascript",
-        frozenset({".js", ".jsx", ".mjs", ".cjs"}),
-        "javascript",
-        "scip-typescript",
-    ),
+    Language("python", frozenset({".py", ".pyi"}), "python"),
+    Language("typescript", frozenset({".ts", ".tsx"}), "typescript"),
+    Language("javascript", frozenset({".js", ".jsx", ".mjs", ".cjs"}), "javascript"),
     # Shell extensions canonicalize to bash (DLS-LANG-03).
-    Language("bash", frozenset({".sh", ".bash", ".zsh"}), "bash", None),
+    Language("bash", frozenset({".sh", ".bash", ".zsh"}), "bash"),
     # Canonical spelling is `csharp`, NOT `c_sharp`.
-    Language("csharp", frozenset({".cs"}), "csharp", None),
-    Language("go", frozenset({".go"}), "go", "scip-go"),
-    Language("rust", frozenset({".rs"}), "rust", "rust-analyzer"),
-    Language("java", frozenset({".java"}), "java", "scip-java"),
-    Language("kotlin", frozenset({".kt", ".kts"}), "kotlin", None),
-    Language("scala", frozenset({".scala"}), "scala", None),
-    Language("ruby", frozenset({".rb"}), "ruby", "scip-ruby"),
-    Language("cpp", frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hh"}), "cpp", "scip-clang"),
-    Language("c", frozenset({".c", ".h"}), "c", "scip-clang"),
-    Language("swift", frozenset({".swift"}), "swift", None),
-    Language("php", frozenset({".php"}), "php", None),
-    Language("sql", frozenset({".sql"}), "sql", None),
-    Language("markdown", frozenset({".md", ".markdown"}), "markdown", None),
-    Language("yaml", frozenset({".yaml", ".yml"}), "yaml", None),
-    Language("toml", frozenset({".toml"}), "toml", None),
-    Language("json", frozenset({".json"}), "json", None),
+    Language("csharp", frozenset({".cs"}), "csharp"),
+    Language("go", frozenset({".go"}), "go"),
+    Language("rust", frozenset({".rs"}), "rust"),
+    Language("java", frozenset({".java"}), "java"),
+    Language("kotlin", frozenset({".kt", ".kts"}), "kotlin"),
+    Language("scala", frozenset({".scala"}), "scala"),
+    Language("ruby", frozenset({".rb"}), "ruby"),
+    Language("cpp", frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hh"}), "cpp"),
+    Language("c", frozenset({".c", ".h"}), "c"),
+    Language("swift", frozenset({".swift"}), "swift"),
+    Language("php", frozenset({".php"}), "php"),
+    Language("sql", frozenset({".sql"}), "sql"),
+    Language("markdown", frozenset({".md", ".markdown"}), "markdown"),
+    Language("yaml", frozenset({".yaml", ".yml"}), "yaml"),
+    Language("toml", frozenset({".toml"}), "toml"),
+    Language("json", frozenset({".json"}), "json"),
+    Language("html", frozenset({".html", ".htm"}), "html"),
+    Language("css", frozenset({".css"}), "css"),
+    Language("lua", frozenset({".lua"}), "lua"),
 )
 
 

@@ -21,11 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from atelier.core.foundation.lesson_models import LessonCandidate
 from atelier.core.foundation.models import (
     FileEditRecord,
-    ReasonBlock,
+    Playbook,
     ToolCall,
     Trace,
     ValidationResult,
-    coerce_trace_json,
 )
 from atelier.core.foundation.store import ContextStore
 
@@ -50,7 +49,7 @@ class DomainRubricRate(BaseModel):
     pass_rate: float | None
 
 
-class ReasonBlockRetrieval(BaseModel):
+class PlaybookRetrieval(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -101,7 +100,7 @@ class Report(BaseModel):
     git_sha: str
     rubric_pass_rate: RateMetric
     rubric_pass_rate_by_domain: list[DomainRubricRate] = Field(default_factory=list)
-    top_reasonblocks: list[ReasonBlockRetrieval] = Field(default_factory=list)
+    top_playbooks: list[PlaybookRetrieval] = Field(default_factory=list)
     top_rubric_failures: list[RubricFailureSummary] = Field(default_factory=list)
     pending_lesson_candidates_count: int = 0
     top_lesson_candidates: list[LessonCandidateSummary] = Field(default_factory=list)
@@ -139,7 +138,7 @@ def generate_report(
         git_sha=git_sha or _git_sha(repo_root or Path.cwd()),
         rubric_pass_rate=current_rates,
         rubric_pass_rate_by_domain=current_by_domain,
-        top_reasonblocks=_top_reasonblocks(store, current_traces),
+        top_playbooks=_top_playbooks(store, current_traces),
         top_rubric_failures=_top_rubric_failures(current_traces),
         pending_lesson_candidates_count=_pending_lesson_count(store),
         top_lesson_candidates=_top_lesson_candidates(store),
@@ -201,10 +200,10 @@ def render_markdown(report: Report) -> str:
     else:
         lines.append("No rubric validations recorded in this period.")
 
-    lines.extend(["", "## Top ReasonBlocks Retrieved"])
-    if report.top_reasonblocks:
-        lines.extend(["| ReasonBlock | Domain | Count |", "|---|---|---:|"])
-        for retrieval in report.top_reasonblocks:
+    lines.extend(["", "## Top Playbooks Retrieved"])
+    if report.top_playbooks:
+        lines.extend(["| Playbook | Domain | Count |", "|---|---|---:|"])
+        for retrieval in report.top_playbooks:
             title = retrieval.title or retrieval.id
             lines.append(f"| `{retrieval.id}` {title} | `{retrieval.domain}` | {retrieval.count} |")
     else:
@@ -242,16 +241,8 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _list_traces_between(store: ContextStore, start: datetime, end: datetime) -> list[Trace]:
-    with store._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT payload FROM traces
-            WHERE created_at >= ? AND created_at < ?
-            ORDER BY created_at DESC
-            """,
-            (start.isoformat(), end.isoformat()),
-        ).fetchall()
-    return [Trace.model_validate_json(coerce_trace_json(row["payload"])) for row in rows]
+    # Traces live in the file-based session store; window the upper bound in Python.
+    return [trace for trace in store.list_traces(since=start, limit=100_000) if trace.created_at < end]
 
 
 def _rubric_rates(traces: Iterable[Trace]) -> tuple[RateMetric, list[DomainRubricRate]]:
@@ -279,14 +270,14 @@ def _rubric_rates(traces: Iterable[Trace]) -> tuple[RateMetric, list[DomainRubri
     return RateMetric(passed=passed, total=total, pass_rate=_rate(passed, total)), domain_rates
 
 
-def _top_reasonblocks(store: ContextStore, traces: Iterable[Trace]) -> list[ReasonBlockRetrieval]:
+def _top_playbooks(store: ContextStore, traces: Iterable[Trace]) -> list[PlaybookRetrieval]:
     known_blocks = {block.id: block for block in store.list_blocks(include_deprecated=True)}
     counts: Counter[str] = Counter()
     for trace in traces:
         for tool in trace.tools_called:
             if tool.name not in _CONTEXT_TOOL_NAMES:
                 continue
-            ids = _reasonblock_ids_from_tool(tool, known_blocks)
+            ids = _playbook_ids_from_tool(tool, known_blocks)
             for block_id in ids:
                 counts[block_id] += max(1, tool.count)
 
@@ -295,11 +286,11 @@ def _top_reasonblocks(store: ContextStore, traces: Iterable[Trace]) -> list[Reas
             if block.usage_count > 0:
                 counts[block.id] = block.usage_count
 
-    out: list[ReasonBlockRetrieval] = []
+    out: list[PlaybookRetrieval] = []
     for block_id, count in counts.most_common(5):
         known_block = known_blocks.get(block_id)
         out.append(
-            ReasonBlockRetrieval(
+            PlaybookRetrieval(
                 id=block_id,
                 title=known_block.title if known_block else "",
                 domain=known_block.domain if known_block else "",
@@ -309,15 +300,15 @@ def _top_reasonblocks(store: ContextStore, traces: Iterable[Trace]) -> list[Reas
     return out
 
 
-def _reasonblock_ids_from_tool(tool: ToolCall, known_blocks: dict[str, ReasonBlock]) -> list[str]:
+def _playbook_ids_from_tool(tool: ToolCall, known_blocks: dict[str, Playbook]) -> list[str]:
     ids: list[str] = []
     args = tool.args or {}
     for key in (
         "matched_blocks",
         "block_ids",
-        "reasonblocks",
-        "reason_blocks",
-        "active_reasonblocks",
+        "playbooks",
+        "playbooks",
+        "active_playbooks",
     ):
         ids.extend(_string_items(args.get(key)))
     matched = args.get("matched")
@@ -517,8 +508,8 @@ __all__ = [
     "DomainRubricRate",
     "DriftSignals",
     "LessonCandidateSummary",
+    "PlaybookRetrieval",
     "RateMetric",
-    "ReasonBlockRetrieval",
     "Report",
     "RubricFailureSummary",
     "generate_report",

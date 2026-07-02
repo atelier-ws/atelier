@@ -3,7 +3,6 @@
 Tests cover:
 - context_reuse: BM25 ranking, rescue boost, savings accumulation
 - semantic_file_memory: AST truncation, symbol details, module_summary, symbol_search, cache hits
-- loop_detection: LoopReport returned, signature stability, loop type detection
 - tool_supervision: token savings accumulation, tool_report structure
 - context_compression: CompressionResult provenance metadata
 - engine lifecycle hooks: pre_tool, post_tool, finalize
@@ -16,7 +15,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.runtime import AtelierRuntimeCore, AtelierRuntimeV3
 from atelier.gateway.cli import cli
 from tests.helpers import init_store_at
@@ -92,8 +91,8 @@ def test_context_reuse_inject_includes_rescue_chains(tmp_path: Path) -> None:
     assert isinstance(payload["rescue_chains"], list)
 
 
-def _high_match_block(block_id: str, title: str, trigger: str) -> ReasonBlock:
-    return ReasonBlock(
+def _high_match_block(block_id: str, title: str, trigger: str) -> Playbook:
+    return Playbook(
         id=block_id,
         title=title,
         domain="state.change",
@@ -112,7 +111,7 @@ def test_context_reuse_filters_to_strong_top_two(tmp_path: Path) -> None:
     for idx, trigger in enumerate(["deploy", "rollback", "configuration"], start=1):
         rt.store.upsert_block(_high_match_block(f"strong-{idx}", f"Strong {idx}", trigger), write_markdown=False)
     rt.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="weak-context",
             title="Weak context",
             domain="state.change",
@@ -139,7 +138,7 @@ def test_context_reuse_filters_to_strong_top_two(tmp_path: Path) -> None:
 def test_context_reuse_returns_empty_when_no_strong_match(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
     rt.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="weak-only",
             title="Weak only",
             domain="weak.only",
@@ -258,149 +257,6 @@ def test_semantic_memory_symbol_search(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# loop_detection                                                              #
-# --------------------------------------------------------------------------- #
-
-
-def test_loop_detection_check_returns_looproport_dict(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-1", task="fix bug", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # check() returns a LoopReport with .to_dict()
-    d = report.to_dict()
-    assert "loop_detected" in d
-    assert "severity" in d
-    assert "prior_attempts" in d
-    assert "rescue_strategies" in d
-    assert "loop_types" in d
-    assert isinstance(d["rescue_strategies"], list)
-
-
-def test_loop_detection_severity_none_for_empty_ledger(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-2", task="nothing", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    assert report.severity == "none"
-    assert report.loop_detected is False
-
-
-def test_loop_detection_signature_stable(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import _loop_signature
-
-    parts = ["error_A", "error_A", "error_A"]
-    sig1 = _loop_signature(parts)
-    sig2 = _loop_signature(parts)
-    assert sig1 == sig2
-    assert len(sig1) == 12  # SHA1 truncated hex digest
-
-
-def test_loop_detection_patch_revert_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-3", task="patch fix", domain="test")
-    # Simulate alternating edit/revert events on same file
-    for i in range(4):
-        kind = "file_edit" if i % 2 == 0 else "file_revert"
-        led.record(kind=kind, summary="op on foo.py", payload={"path": "foo.py"})
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # patch_revert_cycle should be among detected types
-    # (may be low/medium depending on count)
-    d = report.to_dict()
-    assert isinstance(d["loop_types"], list)
-
-
-# Phase 3 loop_detection tests
-
-
-def test_loop_detection_phase3_fields_present(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-1", task="check fields", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    d = report.to_dict()
-    assert "risk_velocity" in d
-    assert "rescue_scores" in d
-    assert isinstance(d["risk_velocity"], float)
-    assert isinstance(d["rescue_scores"], dict)
-
-
-def test_loop_detection_stall_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-2", task="stall test", domain="test")
-    # 10 tool_call events with no file writes => stall
-    for i in range(10):
-        led.record(
-            kind="tool_call",
-            summary=f"grep call {i}",
-            payload={"tool": "grep", "args_signature": f"q{i}"},
-        )
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # stall should be in loop_types
-    assert "stall" in report.loop_types
-
-
-def test_loop_detection_second_guess_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-3", task="second guess test", domain="test")
-    # 5 reasoning events out of 8 total => second_guess_loop (ratio >= 0.4)
-    for i in range(5):
-        led.record(kind="reasoning", summary=f"clarify {i}", payload={})
-    for i in range(3):
-        led.record(kind="tool_call", summary=f"tool {i}", payload={"tool": "grep"})
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    assert "second_guess_loop" in report.loop_types
-
-
-def test_loop_detection_rescue_scores_nonempty_when_loop(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-4", task="rescue score test", domain="test")
-    for i in range(10):
-        led.record(
-            kind="tool_call",
-            summary=f"search {i}",
-            payload={"tool": "grep", "args_signature": f"q{i}"},
-        )
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    if report.loop_detected:
-        assert len(report.rescue_scores) > 0
-        for score in report.rescue_scores.values():
-            assert 0.0 <= score <= 1.0
-
-
-# --------------------------------------------------------------------------- #
 # tool_supervision                                                            #
 # --------------------------------------------------------------------------- #
 
@@ -507,6 +363,45 @@ def test_context_compression_provenance_present(tmp_path: Path) -> None:
     assert "dropped" in d
 
 
+def test_context_compression_keystone_survives_budget(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A keystone event below the budget cutoff must never be dropped."""
+    import sys
+
+    import atelier.bench.mode  # noqa: F401 — ensures the sys.modules entry exists
+    from atelier.core.capabilities.context_compression import ContextCompressionCapability
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    # atelier.bench.__init__ exports a `mode` function that shadows the submodule,
+    # so retrieve the real module via sys.modules to reset the singleton.
+    _bm = sys.modules["atelier.bench.mode"]
+    monkeypatch.setattr(_bm, "_mode", None)
+    monkeypatch.setenv("ATELIER_BENCH_MODE", "on")
+
+    root = tmp_path / ".atelier"
+    _init_root(root)
+    led = RunLedger(session_id="test-cc-keystone", task="unrelated task", domain="test")
+    # Distinct, high-weight filler events (not collapsed by dedup) that exhaust the budget.
+    for summary in (
+        "configured database connection pooling for the analytics warehouse system today",
+        "rewrote the markdown parser to support nested footnote references throughout",
+        "optimized image thumbnail generation using vectorized numpy kernels everywhere",
+    ):
+        led.record(kind="file_edit", summary=summary, payload={"diff": summary * 4})
+    # A keystone fact recorded last; on score alone it sorts below the budget cutoff
+    # and would be evicted without keystone protection.
+    led.record(
+        kind="note",
+        summary="do not retry this operation under any circumstances whatsoever",
+        payload={"detail": "do not retry this operation under any circumstances whatsoever" * 2},
+    )
+
+    cap = ContextCompressionCapability()
+    result = cap.compress_with_provenance(led, token_budget=40)
+
+    assert any("do not retry" in fact for fact in result.preserved_facts), "keystone fact must be preserved"
+    assert all("do not retry" not in d.summary for d in result.dropped), "keystone fact must not be dropped"
+
+
 def test_context_compression_context_report(tmp_path: Path) -> None:
     from atelier.core.capabilities.context_compression import ContextCompressionCapability
     from atelier.infra.runtime.run_ledger import RunLedger
@@ -539,7 +434,6 @@ def test_runtime_pre_tool_hook(tmp_path: Path) -> None:
     result = rt.pre_tool("read_file", {"path": "foo.py"}, ledger=led)
     assert isinstance(result, dict)
     assert "cache_available" in result
-    assert "loop_alert" in result
 
 
 def test_runtime_post_tool_hook(tmp_path: Path) -> None:
@@ -571,15 +465,10 @@ def test_runtime_finalize_returns_aggregate(tmp_path: Path) -> None:
     assert "token_savings" in result["savings"]
 
 
-def test_runtime_loop_report_no_ledger(tmp_path: Path) -> None:
+def test_runtime_loop_report_removed(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    # Should raise ClickException or return error dict — no crash
-    try:
-        report = rt.loop_report(session_id=None)
-        # If there's no ledger, it may return an error dict or raise
-        assert isinstance(report, dict)
-    except FileNotFoundError:
-        pass  # raising is acceptable when no ledger exists
+    # loop_report was hard-removed together with the loop_detection capability.
+    assert not hasattr(rt, "loop_report")
 
 
 def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
@@ -600,7 +489,7 @@ def test_cli_tool_report_no_crash(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _init_root(root)
     runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "tool-report"])
+    res = runner.invoke(cli, ["--root", str(root), "tools", "report"])
     assert res.exit_code == 0
 
 
@@ -613,16 +502,16 @@ def test_telemetry_emit_and_query() -> None:
     from atelier.core.capabilities.telemetry import TelemetryEvent, TelemetrySubstrate
 
     bus = TelemetrySubstrate()
-    bus.emit("loop_detection", "loop_probability", 0.8, session_id="r1")
+    bus.emit("tool_supervision", "redundancy_score", 0.8, session_id="r1")
     bus.emit("context_reuse", "hit_quality", 0.95, session_id="r1")
-    bus.emit("loop_detection", "retry_count", 2.0, session_id="r1")
+    bus.emit("tool_supervision", "retry_count", 2.0, session_id="r1")
 
     all_events = bus.query()
     assert len(all_events) == 3
 
-    ld_events = bus.query(capability="loop_detection")
+    ld_events = bus.query(capability="tool_supervision")
     assert len(ld_events) == 2
-    assert all(e.capability == "loop_detection" for e in ld_events)
+    assert all(e.capability == "tool_supervision" for e in ld_events)
 
     hp_events = bus.query(metric="hit_quality")
     assert len(hp_events) == 1
@@ -794,7 +683,7 @@ def test_budget_optimizer_to_dict_shape() -> None:
     from atelier.core.capabilities.budget_optimizer import ContextBlock, PromptBudgetOptimizer
 
     blocks = [
-        ContextBlock("x1", "content", token_cost=10, utility=0.5, source="loop_detection"),
+        ContextBlock("x1", "content", token_cost=10, utility=0.5, source="tool_supervision"),
     ]
     plan = PromptBudgetOptimizer().solve(blocks, token_budget=100)
     d = plan.to_dict()
@@ -936,20 +825,41 @@ def test_pricing_no_prefix_fallback_for_unknown_variant() -> None:
 def test_pricing_copilot_explicit_models() -> None:
     from atelier.core.capabilities.pricing import get_model_pricing
 
-    # Explicit copilot models from LiteLLM should match via alias stripping.
+    # GitHub Copilot is a flat-rate subscription product ($19-39/mo). Alias
+    # stripping must NOT resolve "copilot/<model>" through to the underlying
+    # model's real LiteLLM per-token rate -- that would massively overbill
+    # usage the subscription already covers (regression: this used to match
+    # "copilot/gpt-5.5" -> real gpt-5.5 pricing at $5/$30 per Mtok).
     p = get_model_pricing("copilot/gpt-5.5")
-    assert p.known is True
-    assert p.input == 5.0
-    assert p.output == 30.0
-    assert p.cache_read == 0.5
-    assert p.cache_write == 0.0
-    assert p.thinking == 30.0
-    assert p.model_id == "gpt-5.5"
+    assert p.known is False
+    assert p.input == 0.0
+    assert p.output == 0.0
+    assert p.cache_read == 0.0
+    assert p.model_id == "copilot/gpt-5.5"
 
-    # Other copilot models should NOT match a wildcard anymore.
+    # Unknown copilot models behave identically -- zero cost either way.
     p2 = get_model_pricing("copilot/some-new-model")
     assert p2.known is False
     assert p2.model_id == "copilot/some-new-model"
+
+
+def test_pricing_copilot_subscription_usage_is_zero_cost() -> None:
+    """Regression: copilot.py namespaces the real underlying model as
+    ``copilot/<model>`` (e.g. ``copilot/gpt-5``) so GitHub Copilot's flat
+    subscription fee is never double-billed at the model's real per-token
+    API rate. A copilot trace must always cost $0 regardless of how many
+    tokens were reported.
+    """
+    from atelier.core.capabilities.pricing import usage_cost_usd
+
+    cost = usage_cost_usd(
+        "copilot/gpt-5",
+        input_tokens=50_000,
+        output_tokens=10_000,
+        cache_read_tokens=5_000,
+        cache_write_tokens=1_000,
+    )
+    assert cost == 0.0
 
 
 def test_pricing_cursor_agent_auto() -> None:

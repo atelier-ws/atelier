@@ -22,7 +22,6 @@ Payload received on stdin:
 from __future__ import annotations
 
 import datetime
-import hashlib
 import json
 import os
 import sys
@@ -36,14 +35,28 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
+
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
 def _session_state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
-    root = Path(
-        os.environ.get("ATELIER_ROOT")
-        or os.environ.get("ATELIER_STORE_ROOT")
-        or Path.home() / ".atelier"
-    )
+    h = _workspace_key(workspace)
+    root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -63,7 +76,22 @@ def _write_session_state(updates: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     state = _read_session_state()
     state.update(updates)
-    p.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=p.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            json.dump(state, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(p)
+    except OSError:
+        if tmp_path:
+            with suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
 
 
 def _atelier_root() -> Path:
@@ -113,7 +141,7 @@ def _initialize_session_stats(payload: dict[str, Any]) -> None:
         from atelier.core.capabilities.plugin_runtime import update_session_stats
 
         update_session_stats(_atelier_root(), payload)
-    except (OSError, json.JSONDecodeError, TypeError):
+    except (ImportError, OSError, json.JSONDecodeError, TypeError):
         pass
 
 
@@ -129,8 +157,11 @@ def _append_session_start_event(
     cwd: str,
     transcript_path: str,
 ) -> None:
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
 
@@ -206,6 +237,32 @@ def main() -> int:
                 state_update["transcript_path"] = transcript_path
             _write_session_state(state_update)
 
+            # Window-anchored identity: write THIS window's own file so the
+            # long-lived MCP server recovers the live id across /clear without
+            # racing a shared workspace slot. Best-effort; uses the same
+            # workspace key the MCP server resolves with.
+            # Skipped for source=="clear": Claude Code fires SessionStart(clear)
+            # with the PRE-clear session id — anchoring it would point the MCP
+            # server's savings attribution at a dead session. The
+            # UserPromptSubmit hook re-anchors with the live post-clear id on
+            # the first prompt instead.
+            if source != "clear":
+                with suppress(Exception):
+                    from atelier.core.foundation.session_window import (
+                        register_window_session,
+                        workspace_hash,
+                    )
+
+                    _ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+                    register_window_session(
+                        _atelier_root(),
+                        workspace_hash(_ws),
+                        session_id=session_id_raw,
+                        source=source,
+                        transcript_path=transcript_path,
+                        model=model,
+                    )
+
         # On /clear, drop a marker so the statusline snapshots the current
         # cumulative live cost as a baseline and shows only post-clear spend.
         # Claude's cost.total_cost_usd is process-cumulative and does NOT reset
@@ -216,24 +273,26 @@ def main() -> int:
                 reset_dir = _atelier_root() / "statusline_cost_reset"
                 reset_dir.mkdir(parents=True, exist_ok=True)
                 (reset_dir / session_id_raw).write_text("", encoding="utf-8")
+                # Also write a workspace-keyed marker so the statusline can
+                # find it even when /clear assigns a new session_id. Claude
+                # Code fires SessionStart(clear) with the pre-clear session_id,
+                # but the statusline renders with the post-clear session_id, so
+                # the session-keyed marker above is never matched.
+                # The workspace key uses the same encoding Claude Code applies
+                # to project dirs: replace "/" with "-" in the cwd.
+                if cwd:
+                    ws_key = cwd.replace("/", "-")
+                    (reset_dir / f"ws_{ws_key}").write_text("", encoding="utf-8")
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
 
-        session_id: str | None = _active_session_id() or session_id_raw
+        session_id: str | None = session_id_raw or _active_session_id()
         if not session_id:
             return 0
 
         _append_session_start_event(session_id, source, model, cwd, transcript_path)
     except (OSError, TypeError, ValueError):
         pass  # fail-open
-
-    # Autopilot (M5): warm relevant prior context for this repo. Fail-open.
-    try:
-        from atelier.core.capabilities.autopilot.factory import run_and_emit
-
-        run_and_emit("session_start", {"cwd": cwd})
-    except (OSError, json.JSONDecodeError, TypeError):
-        pass
 
     return 0
 

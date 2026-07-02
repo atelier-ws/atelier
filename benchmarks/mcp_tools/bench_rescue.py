@@ -24,7 +24,7 @@ def bench_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def make_rescue_tool_fn(base_root: Path) -> Any:
-    from atelier.core.foundation.models import ReasonBlock, Trace
+    from atelier.core.foundation.models import Playbook, Trace
     from atelier.core.foundation.store import ContextStore
     from atelier.gateway.adapters import mcp_server
 
@@ -32,15 +32,15 @@ def make_rescue_tool_fn(base_root: Path) -> Any:
 
     def _call(args: dict[str, Any]) -> Any:
         payload = dict(args)
-        seed_blocks = list(payload.pop("_seed_reasonblocks", []) or [])
+        seed_playbooks = list(payload.pop("_seed_playbooks", []) or [])
         seed_traces = list(payload.pop("_seed_traces", []) or [])
         case_root = base_root / payload.get("task", "case").replace("/", "-").replace(" ", "-")[:80]
         configure_benchmark_runtime(case_root, workspace_root=repo_root)
         mcp_server._reset_runtime_cache_for_testing()
         store = ContextStore(Path(mcp_server._atelier_root()))
         store.init()
-        for block in seed_blocks:
-            store.upsert_block(ReasonBlock.model_validate(block), write_markdown=False)
+        for block in seed_playbooks:
+            store.upsert_block(Playbook.model_validate(block), write_markdown=False)
         for trace in seed_traces:
             store.record_trace(Trace.model_validate(trace), write_json=False)
         return mcp_server.tool_rescue_failure(payload)

@@ -1,4 +1,153 @@
-"""Thin ``atelier benchmark`` command group."""
+"""``atelier benchmark`` command group.
+
+Quick-reference invocation patterns
+------------------------------------
+
+All examples use ``atelier benchmark codebench``
+(default task = all, default model = sonnet).
+
+
+Atelier vs Baseline on Claude CLI (default transport)
+......................................................
+
+  # Atelier arm (latent + swarm), local Claude CLI:
+  atelier benchmark codebench --arm atelier
+
+  # Baseline arm (no Atelier, vanilla Claude CLI):
+  atelier benchmark codebench --arm baseline
+
+  # Compare both in one run:
+  atelier benchmark codebench --arm baseline --arm atelier
+
+  # With a specific model:
+  atelier benchmark codebench --arm atelier --model claude-sonnet-4-20250514
+
+  # Limit to a single task for fast iteration:
+  atelier benchmark codebench --task codegen_hello_world --arm atelier
+
+
+
+OpenCode as the CLI driver (--cli-driver opencode)
+...................................................
+
+  # Atelier arm, but the sub-task prompt is handed to `opencode run`:
+  atelier benchmark codebench --arm atelier --cli-driver opencode
+
+  # Compare atelier vs baseline on OpenCode driver:
+  atelier benchmark codebench --arm baseline --arm atelier --cli-driver opencode
+
+
+Atelier on Bedrock (AWS) with rate limiting
+............................................
+
+  Shorthand via --provider:
+
+    atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5
+    atelier benchmark codebench --arm baseline --arm atelier --provider bedrock --rate-limit-rpm 5
+
+  Explicit preset (same effect):
+
+    atelier benchmark codebench --arm atelier --claude-provider-preset aws-claude --rate-limit-rpm 5
+
+  With token-level rate limit:
+
+    atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5 --rate-limit-tpm 50000
+
+
+Baseline on Bedrock with rate limiting
+.......................................
+
+  atelier benchmark codebench --arm baseline --provider bedrock --rate-limit-rpm 5
+
+
+Atelier on GCP Vertex with rate limiting
+........................................
+
+  atelier benchmark codebench --arm atelier --provider gcp --rate-limit-rpm 5
+  atelier benchmark codebench --arm baseline --arm atelier --provider gcp --rate-limit-rpm 5
+
+
+Atelier on Azure with rate limiting
+....................................
+
+  atelier benchmark codebench --arm atelier --provider azure --rate-limit-rpm 5
+  atelier benchmark codebench --arm baseline --arm atelier --provider azure --rate-limit-rpm 5
+
+
+Atelier on OpenRouter
+.....................
+
+  atelier benchmark codebench --arm atelier --provider openrouter --rate-limit-rpm 10
+  atelier benchmark codebench --arm baseline --arm atelier --provider openrouter --rate-limit-rpm 10
+
+
+All five arms together (compare everything)
+...........................................
+
+  atelier benchmark codebench --arm baseline --arm atelier --arm atelier.raw \
+      --cli-driver claude --reps 3
+
+
+Atelier-run arm (runs ``atelier run start`` as the driver -- Atelier's own
+owned-agent loop, using YOUR API credentials directly)
+........................................................
+
+  atelier benchmark codebench --arm atelier --cli-driver atelier-run
+
+  # Atelier-run on Bedrock with rate limiting (the driver is `atelier run start`,
+  # not the `claude` CLI -- `atelier run` uses your own ANTHROPIC_API_KEY or
+  # other provider credentials):
+  atelier benchmark codebench --arm atelier --cli-driver atelier-run \
+      --model us.anthropic.claude-sonnet-4-6 --rate-limit-rpm 10
+
+  # Compare atelier (plugin) vs atelier-run (owned-agent loop) on Bedrock:
+  atelier benchmark codebench \
+      --arm atelier \
+      --cli-driver atelier-run \
+      --model us.anthropic.claude-sonnet-4-6 \
+      --rate-limit-rpm 10 \
+      --reps 1
+
+
+Atelier on Bedrock with explicit model + rate limit (copy-paste ready)
+......................................................................
+
+  # Atelier plugin arm via Claude CLI routed through Bedrock:
+  atelier benchmark codebench \
+      --arms atelier \
+      --provider bedrock \
+      --model us.anthropic.claude-sonnet-4-6 \
+      --rate-limit-rpm 10 \
+      --transport cli --cli-driver claude \
+      --reps 1 --tasks all
+
+  # Compare atelier vs baseline on Bedrock:
+  atelier benchmark codebench \
+      --arms baseline --arms atelier \
+      --provider bedrock \
+      --model us.anthropic.claude-sonnet-4-6 \
+      --rate-limit-rpm 10 \
+      --reps 1 --tasks all
+
+
+Common pitfalls
+...............
+
+  # WRONG: --cli-driver atelier-run gets rejected by the CLI gateway if the
+  # click.Choice is out of sync. This is now fixed.
+  #
+  # WRONG: --cli-extra-arg=--provider --cli-extra-arg=bedrock
+  # Those get forwarded to the CLI driver binary (claude / atelier run start),
+  # not to the benchmark harness. Use --provider / --agent-env instead.
+  #
+  # CORRECT: use --provider to set cloud-provider env vars for the claude CLI:
+  atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5
+
+
+Use --help on the sub-command for all available flags:
+
+  atelier benchmark codebench --help
+"""
 
 from __future__ import annotations
 
@@ -6,43 +155,33 @@ import importlib.util
 import json
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 from datetime import UTC, datetime
 from os import cpu_count, environ
 from pathlib import Path
-from shutil import rmtree, which
+from shutil import which
 
 import click
-import yaml
 
 from atelier.core.capabilities.benchmark_evidence import (
-    build_atelierbench_evidence,
-    build_terminalbench_evidence,
+    build_codebench_evidence,
     git_state,
     write_benchmark_evidence,
 )
 from atelier.core.capabilities.benchmark_gate import (
-    evaluate_atelierbench_gate,
-    evaluate_terminalbench_gate,
+    evaluate_codebench_gate,
     load_benchmark_gate,
     require_benchmark_gate_pass,
     write_benchmark_gate,
 )
 from atelier.core.capabilities.benchmark_manifest import (
-    build_atelierbench_manifest,
-    build_terminalbench_manifest,
+    build_codebench_manifest,
     write_benchmark_manifest,
 )
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     resolve_claude_provider_preset,
 )
-from atelier.core.domains.manager import DomainManager
 from atelier.gateway.cli.progress import ProgressReporter
-
-from .benchmark_solver import benchmark_solver_cmd
 
 _PROVIDER_ALIASES: dict[str, str] = {
     "aws": "aws-claude",
@@ -59,163 +198,359 @@ def benchmark_group() -> None:
     """Run Atelier benchmark suites and reports."""
 
 
-@benchmark_group.command("packs")
-@click.option("--json", "as_json", is_flag=True, help="Emit the domain benchmark summary as JSON.")
+@benchmark_group.command("mini")
+@click.option("--dry-run", "dry_run", is_flag=True, help="Validate cases, print plan, no API calls.")
+@click.option("--limit", default=5, show_default=True, type=int, help="Max cases to run.")
+@click.option("--json", "as_json", is_flag=True, help="Print JSON report to stdout.")
+@click.option("--output", default=None, help="Path to write JSON report (default: .atelier/evals/mini-report.json)")
+@click.option("--cases", "cases_path", default=None, help="Path to cases YAML (default: benchmarks/mini/cases.yaml)")
 @click.pass_context
-def benchmark_packs_cmd(ctx: click.Context, as_json: bool) -> None:
-    """Summarize benchmarkable shipped domain bundles."""
-    manager = DomainManager(ctx.obj["root"])
-    refs = manager.list_bundles()
-    bundle_infos = [manager.info(ref.bundle_id) for ref in refs]
-    benchmarked = [
-        {
-            "bundle_id": str(info["bundle_id"]),
-            "domain": str(info["domain"]),
-            "benchmarks": list(info.get("benchmarks") or []),
-        }
-        for info in bundle_infos
-        if isinstance(info, dict) and info.get("benchmarks")
-    ]
-    payload = {
-        "suite": "domains",
-        "domains_total": len(refs),
-        "domains_benchmarked": len(benchmarked),
-        "domains": benchmarked,
-    }
-    if as_json:
-        click.echo(json.dumps(payload))
-        return
-    click.echo(f"benchmarkable domains: {payload['domains_benchmarked']}/{payload['domains_total']}")
-
-
-@benchmark_group.command("mcp")
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-@click.option(
-    "--jobs",
-    type=int,
-    default=0,
-    show_default="auto",
-    help="Parallel suite shards. Use 0 to auto-size.",
-)
-def benchmark_mcp_cmd(out: Path | None, jobs: int) -> None:
-    """Run the public MCP tool benchmark suite and write results."""
-    repo_root = Path.cwd().resolve()
-    run_dir = _run_dir("mcp", out)
-    workspace_dir = _workspace_dir("mcp", repo_root=repo_root, run_id=run_dir.name)
-    resolved_jobs = _resolve_mcp_jobs(jobs, repo_root=repo_root)
-    progress = ProgressReporter("mcp", total=1)
-    progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
-    _run(
-        [
-            *_python_cmd(repo_root),
-            "-m",
-            "benchmarks.mcp_tools.export_public_mcp_csv",
-            "--artifact-root",
-            str(workspace_dir),
-            "--csv-out",
-            str(run_dir / "results.csv"),
-            "--jobs",
-            str(resolved_jobs),
-        ],
-        cwd=repo_root,
-        label="MCP benchmark",
-    )
-    progress.step("benchmark command complete", current="public MCP tools")
-    progress.finish("benchmark complete")
-    click.echo(f"Results: {run_dir}")
-
-
-@benchmark_group.command("providers")
-@click.option("--repo-root", type=click.Path(path_type=Path, file_okay=False), default=Path("."))
-@click.option(
-    "--workspace-root",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=None,
-    help="Benchmark workspace/cache root. Defaults outside the repo under ../benchmarks/<repo>/.",
-)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-@click.option("--iterations", type=int, default=1, show_default=True)
-@click.option("--max-cases", type=int, default=100, show_default=True)
-@click.option(
-    "--jobs",
-    type=int,
-    default=0,
-    show_default="auto",
-    help="Parallel provider processes. Use 0 to auto-size.",
-)
-@click.option(
-    "--providers",
-    default=(
-        "atelier,atelier-zoekt,zoekt,atelier-serena,serena," "atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"
-    ),
-    show_default=True,
-)
-@click.option("--families", default="exact_search,substring_search,nohit_search", show_default=True)
-@click.option("--install", is_flag=True, help="Install/check external provider tools first.")
-def benchmark_providers_cmd(
-    repo_root: Path,
-    workspace_root: Path | None,
-    out: Path | None,
-    iterations: int,
-    max_cases: int,
-    jobs: int,
-    providers: str,
-    families: str,
-    install: bool,
+def benchmark_mini_cmd(
+    ctx: click.Context,
+    dry_run: bool,
+    limit: int,
+    as_json: bool,
+    output: str | None,
+    cases_path: str | None,
 ) -> None:
-    """Run the external code-search provider matrix and write CSV/JSON artifacts."""
-    repo_root = repo_root.resolve()
-    run_dir = _run_dir("providers", out, repo_root=repo_root)
-    workspace_root = (
-        workspace_root.resolve()
-        if workspace_root is not None
-        else _workspace_dir("providers", repo_root=repo_root, run_id=run_dir.name)
-    )
-    cache_root = _cache_dir("providers", repo_root=repo_root)
-    provider_list = _csv_values(providers)
-    resolved_jobs = _resolve_provider_jobs(jobs, provider_list)
-    csv_out = run_dir / "results.csv"
-    json_out = run_dir / "results.json"
-    progress = ProgressReporter("providers", total=1)
-    progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
-    cmd = [
-        *_python_cmd(repo_root),
-        "-m",
-        "benchmarks.mcp_tools.bench_external_matrix",
-        "--repo-root",
-        str(repo_root),
-        "--workspace-root",
-        str(workspace_root),
-        "--cache-root",
-        str(cache_root),
-        "--manifest-path",
-        str(workspace_root / "external_matrix_cases.json"),
-        "--audit-path",
-        str(workspace_root / "external_tool_surfaces.json"),
-        "--json-out",
-        str(json_out),
-        "--csv-out",
-        str(csv_out),
-        "--iterations",
-        str(iterations),
-        "--jobs",
-        str(resolved_jobs),
-        "--tools",
-        providers,
-        "--families",
-        families,
+    """Run the Atelier mini eval suite (5-10 tasks, cost-quality proof).
+
+    \b
+    Usage:
+      atelier benchmark mini --dry-run --json       # Offline validation, no API keys needed
+      atelier benchmark mini --limit 5 --json        # Run 5 cases, write JSON report
+    """
+    import json as _json
+
+    bench_root = _bench_source_root()
+    if str(bench_root) not in sys.path:
+        sys.path.insert(0, str(bench_root))
+    from benchmarks.mini import load_cases, render_markdown, repo_root, run_suite, save_report
+
+    root: Path = ctx.obj["root"]
+    git_repo = repo_root()
+
+    try:
+        cases = load_cases(cases_path)
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    report = run_suite(cases, root=root, git_repo=git_repo, dry_run=dry_run, limit=limit)
+
+    if output:
+        json_path = Path(output)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
+            _json.dumps(report.model_dump(mode="json"), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        md_path = json_path.with_suffix(".md")
+        md_path.write_text(render_markdown(report), encoding="utf-8")
+    else:
+        json_path, _md_path = save_report(report, Path(root) / "evals")
+
+    if as_json:
+        click.echo(_json.dumps(report.model_dump(mode="json"), indent=2, ensure_ascii=False))
+        return
+
+    status_str = {"pass": "PASS", "fail": "FAIL", "dry_run": "DRY RUN"}.get(report.status, report.status)
+    click.echo(f"eval mini status={status_str} suite={report.suite}")
+    click.echo(f"tasks={report.total_tasks} accepted={report.accepted_tasks} failed={report.failed_tasks}")
+    click.echo(f"accepted_patch_rate={report.accepted_patch_rate:.2f}")
+    click.echo(f"total_cost_usd=${report.total_cost_usd:.4f}")
+    click.echo(f"cost_per_accepted_patch=${report.cost_per_accepted_patch:.4f}")
+    click.echo(f"cheap_success_rate={report.cheap_success_rate:.2f}")
+    click.echo(f"trace_coverage_pct={report.trace_coverage_pct:.0f}%")
+    click.echo(f"routing_regression_rate={report.routing_regression_rate:.4f}")
+    click.echo(f"report: {json_path}")
+
+
+@benchmark_group.command("harbor")
+@click.option(
+    "--dataset",
+    "-d",
+    default="terminal-bench/terminal-bench-2-1",
+    show_default=True,
+    help="Harbor dataset to run against.",
+)
+@click.option("--limit", default=None, type=int, help="Max tasks to run (default: all).")
+@click.option(
+    "--agent",
+    "agent_arm",
+    default="atelier-claude-code",
+    type=click.Choice(["atelier", "atelier-bedrock", "atelier-claude-code"]),
+    show_default=True,
+    help="Agent arm: direct API, Bedrock, or Claude Code CLI + Atelier plugin.",
+)
+@click.option("--baseline", is_flag=True, default=False, help="Run baseline arm (bench_mode=off, no plugin).")
+@click.option("--model", default=None, help="Model override (default: ATELIER_BENCH_MODEL or claude-opus-4-8).")
+@click.option(
+    "--attempts",
+    "-n",
+    default=5,
+    show_default=True,
+    type=int,
+    help="Number of attempts per task (pass@k scoring).",
+)
+@click.option(
+    "--concurrent",
+    "-c",
+    default=None,
+    type=int,
+    help="Max concurrent trials. Default: slots x tokens (2 slots x num_tokens).",
+)
+@click.option(
+    "--slots",
+    default=2,
+    show_default=True,
+    type=int,
+    help="Token slots per OAuth token (ATELIER_BENCH_TOKEN_SLOTS).",
+)
+@click.option(
+    "--bundle",
+    default="/tmp/avbuild/atelier-bundle.tar.gz",
+    show_default=True,
+    help="Path to prebuilt atelier bundle (claude-code arm only).",
+)
+@click.option(
+    "--rebuild-bundle",
+    is_flag=True,
+    default=True,
+    help="Rebuild bundle from current source before a fresh run (default: on).",
+)
+@click.option("--resume", "resume_dir", default=None, help="Resume an existing job dir instead of starting fresh.")
+@click.option(
+    "--output", "-o", default=None, help="Output directory for results (default: benchmarks/harbor/results/<arm>/)."
+)
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
+@click.pass_context
+def benchmark_harbor_cmd(
+    ctx: click.Context,
+    dataset: str,
+    limit: int | None,
+    agent_arm: str,
+    baseline: bool,
+    model: str | None,
+    attempts: int,
+    concurrent: int | None,
+    slots: int,
+    bundle: str,
+    rebuild_bundle: bool,
+    resume_dir: str | None,
+    output: str | None,
+    yes: bool,
+) -> None:
+    """Run Atelier on a Harbor benchmark dataset.
+
+    \b
+    Requires: Docker (for container execution)
+    Reads tokens from benchmarks/harbor/.env (CLAUDE_CODE_OAUTH_TOKEN_1/_2).
+
+    \b
+    Examples:
+      # Fresh run, all tasks, 5 attempts, 2 slots/token (auto-rebuilds bundle):
+      atelier benchmark harbor -y
+
+      # Baseline arm (no Atelier plugin):
+      atelier benchmark harbor --baseline -y
+
+      # Resume a rate-limited job (must point at the dated job dir, not its parent):
+      atelier benchmark harbor --resume benchmarks/harbor/results/atelier/2026-07-01__12-00-00 -y
+
+      # Quick smoke test (3 tasks, 1 attempt):
+      atelier benchmark harbor --limit 3 --attempts 1 -y
+    """
+    import json as _json
+    import os as _os
+    import shutil
+    import subprocess as _subprocess
+    from pathlib import Path as _Path
+
+    try:
+        import harbor  # noqa: F401
+    except ImportError as exc:
+        raise click.ClickException("harbor package not found. Install: uv add harbor --project benchmarks") from exc
+
+    repo_root = _Path(__file__).parents[5]
+    repo_root_str = str(repo_root)
+
+    # ── helpers ────────────────────────────────────────────────────────────
+    def _read_env(key: str) -> str:
+        """Read key from shell env or benchmarks/harbor/.env."""
+        val = _os.environ.get(key, "")
+        if val:
+            return val
+        env_file = repo_root / "benchmarks" / "harbor" / ".env"
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#") or "=" not in stripped:
+                    continue
+                k, _, v = stripped.partition("=")
+                if k.strip() == key:
+                    return v.strip().strip("'\"")
+        return ""
+
+    harbor_bin = shutil.which("harbor") or shutil.which("uv")
+    if harbor_bin is None:
+        raise click.ClickException("harbor / uv not found on PATH.")
+    # Prefer `uv run --no-sync harbor` so the benchmarks venv is used.
+    harbor_cmd_prefix: list[str] = ["uv", "run", "--no-sync", "harbor"] if shutil.which("uv") else ["harbor"]
+
+    # ── OAuth token pool ───────────────────────────────────────────────────
+    tokens = [
+        _read_env("CLAUDE_CODE_OAUTH_TOKEN_1"),
+        _read_env("CLAUDE_CODE_OAUTH_TOKEN_2"),
     ]
-    if max_cases > 0:
-        cmd.extend(["--max-cases", str(max_cases)])
-    if install:
-        cmd.append("--install")
-    _run(cmd, cwd=repo_root, label="provider benchmark")
-    progress.step("benchmark command complete", current="external provider matrix")
-    progress.finish("benchmark complete")
-    click.echo(f"Results: {run_dir}")
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        # Fall back to bare CLAUDE_CODE_OAUTH_TOKEN
+        single = _read_env("CLAUDE_CODE_OAUTH_TOKEN")
+        if single:
+            tokens = [single]
+    if agent_arm == "atelier-claude-code" and not tokens:
+        raise click.ClickException(
+            "No OAuth token found. Set CLAUDE_CODE_OAUTH_TOKEN_1 (and optionally _2) "
+            "in benchmarks/harbor/.env or your shell."
+        )
+    n_concurrent = concurrent if concurrent is not None else slots * max(len(tokens), 1)
+
+    # ── Agent setup ────────────────────────────────────────────────────────
+    _agent_import_paths = {
+        "atelier": "benchmarks.harbor.atelier_agent:AtelierHarborAgent",
+        "atelier-bedrock": "benchmarks.harbor.atelier_agent:AtelierBedrockHarborAgent",
+        "atelier-claude-code": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+    }
+    agent_import_path = _agent_import_paths[agent_arm]
+
+    # ── Output dir ─────────────────────────────────────────────────────────
+    arm_label = "baseline" if baseline else "atelier"
+    out_dir = _Path(output) if output else repo_root / "benchmarks" / "harbor" / "results" / arm_label
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir_str = str(out_dir)
+
+    # ── Resume path ────────────────────────────────────────────────────────
+    if resume_dir:
+        jd = _Path(resume_dir)
+        click.echo(f"Resuming job at: {jd}")
+        if not yes:
+            click.confirm("Proceed?", abort=True)
+        existing_pythonpath = _os.environ.get("PYTHONPATH", "")
+        pythonpath = f"{repo_root_str}:{existing_pythonpath}" if existing_pythonpath else repo_root_str
+        env = {**_os.environ, "PYTHONPATH": pythonpath, "ATELIER_BENCH_TOKEN_SLOTS": str(slots)}
+        for i, tok in enumerate(tokens, 1):
+            env[f"CLAUDE_CODE_OAUTH_TOKEN_{i}"] = tok
+        ret = _subprocess.call(
+            [*harbor_cmd_prefix, "job", "resume", "-p", str(jd), "-y"],
+            env=env,
+        )
+        if ret != 0:
+            raise click.ClickException(f"harbor job resume exited with code {ret}")
+        return
+
+    # ── Bundle handling (claude-code arm only) ─────────────────────────────
+    bundle_path = _Path(bundle)
+    if agent_arm == "atelier-claude-code":
+        if rebuild_bundle:
+            click.echo(f"Rebuilding bundle from current source -> {bundle_path} ...")
+            rebuild_script = repo_root / "benchmarks" / "harbor" / "rebuild_bundle.sh"
+            bundle_path.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_cmd = [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                f"{repo_root_str}:/atelier:ro",
+                "-v",
+                f"{bundle_path.parent}:/out",
+                "debian:bullseye-slim",
+                "bash",
+                f"/atelier/{rebuild_script.relative_to(repo_root)}",
+            ]
+            click.echo(f"Command: {' '.join(rebuild_cmd)}\n")
+            ret = _subprocess.call(rebuild_cmd)
+            if ret != 0:
+                raise click.ClickException("Bundle rebuild failed.")
+            new_bundle = bundle_path.parent / "atelier-bundle-new.tar.gz"
+            if not new_bundle.exists():
+                raise click.ClickException("Bundle rebuild produced no output.")
+            new_bundle.rename(bundle_path)
+            click.echo(f"Bundle rebuilt: {bundle_path} ({bundle_path.stat().st_size // 1024 // 1024} MB)")
+        if not bundle_path.exists():
+            raise click.ClickException(
+                f"Bundle not found: {bundle_path}. Run without --no-rebuild-bundle to build it first."
+            )
+
+    # ── Print plan ─────────────────────────────────────────────────────────
+    click.echo("\n◆ Harbor eval")
+    click.echo(f"  dataset          : {dataset}")
+    click.echo(f"  arm              : {arm_label}")
+    click.echo(f"  model            : {model or _read_env('ATELIER_BENCH_MODEL') or 'claude-opus-4-8'}")
+    click.echo(f"  attempts/task    : {attempts}")
+    click.echo(f"  concurrent       : {n_concurrent}  ({slots} slots x {len(tokens)} token(s))")
+    click.echo(f"  output           : {out_dir_str}")
+    if agent_arm == "atelier-claude-code":
+        click.echo(f"  bundle           : {bundle_path}")
+    click.echo("")
+    if not yes:
+        click.confirm("Start run?", abort=True)
+
+    # ── Build harbor run command ────────────────────────────────────────────
+    mounts = [{"type": "bind", "source": repo_root_str, "target": "/atelier", "read_only": True}]
+    if agent_arm == "atelier-claude-code":
+        mounts.append(
+            {"type": "bind", "source": str(bundle_path), "target": "/atelier-bundle.tar.gz", "read_only": True}
+        )
+
+    cmd = [
+        *harbor_cmd_prefix,
+        "run",
+        "--dataset",
+        dataset,
+        "--agent-import-path",
+        agent_import_path,
+        "--jobs-dir",
+        out_dir_str,
+        "--mounts",
+        _json.dumps(mounts),
+        "-k",
+        "1",
+        "-n",
+        str(attempts),
+        "--n-concurrent",
+        str(n_concurrent),
+        "-y",
+    ]
+    if limit is not None:
+        cmd += ["--n-tasks", str(limit)]
+    if model:
+        cmd += ["--model", model]
+    if baseline:
+        cmd += ["--ak", "bench_mode=off"]
+
+    # ── Env: PYTHONPATH + token pool + slots ───────────────────────────────
+    existing_pythonpath = _os.environ.get("PYTHONPATH", "")
+    pythonpath = f"{repo_root_str}:{existing_pythonpath}" if existing_pythonpath else repo_root_str
+    run_env = {**_os.environ, "PYTHONPATH": pythonpath, "ATELIER_BENCH_TOKEN_SLOTS": str(slots)}
+    # Forward all bench env vars from .env
+    for key in ("ATELIER_BENCH_MODEL", "ATELIER_BENCH_EFFORT", "ATELIER_BENCH_DISALLOWED_TOOLS"):
+        val = _read_env(key)
+        if val:
+            run_env[key] = val
+    # Token pool: _1 / _2 for dual-subscription management
+    for i, tok in enumerate(tokens, 1):
+        run_env[f"CLAUDE_CODE_OAUTH_TOKEN_{i}"] = tok
+    if len(tokens) == 1:
+        run_env["CLAUDE_CODE_OAUTH_TOKEN"] = tokens[0]
+
+    click.echo(f"Command: {' '.join(cmd)}\n")
+    ret = _subprocess.call(cmd, env=run_env)
+    if ret != 0:
+        raise click.ClickException(f"harbor run exited with code {ret}")
+    click.echo(f"\n✓ Harbor eval complete. Results in: {out_dir_str}")
 
 
-@benchmark_group.command("gate")
+@benchmark_group.command("gate", hidden=True)
 @click.option(
     "--run-dir",
     type=click.Path(path_type=Path, file_okay=False),
@@ -246,281 +581,21 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
             raise click.ClickException(str(exc)) from exc
 
 
-@benchmark_group.command("terminalbench")
-@click.option("--task", default="all", show_default=True, help="TerminalBench task id or 'all'.")
-@click.option("--mode", default="all", show_default=True, type=click.Choice(["all", "on", "off"]))
-@click.option("--model", default="claude-sonnet-4-5", show_default=True)
-@click.option(
-    "--provider",
-    default="claude",
-    type=click.Choice(["claude", "ollama", "owned"]),
-    show_default=True,
-)
-@click.option("--rep", type=int, default=1, show_default=True, help="Repetitions per task/arm.")
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-@click.option(
-    "--require-pass/--allow-failed-gate",
-    default=False,
-    show_default=True,
-    help="Exit non-zero after writing artifacts when the benchmark gate does not pass.",
-)
-def benchmark_terminalbench_cmd(
-    task: str,
-    mode: str,
-    model: str,
-    provider: str,
-    rep: int,
-    out: Path,
-    require_pass: bool,
-) -> None:
-    """Run TerminalBench tasks and write transcripts plus summary."""
-    repo_root = Path.cwd().resolve()
-    run_dir = _run_dir("terminalbench", out)
-    tasks_path = repo_root / "benchmarks" / "terminalbench" / "tasks.yaml"
-    known_tasks, dataset_meta = _load_terminalbench_catalog(tasks_path)
-    task_ids = known_tasks if task == "all" else [task]
-    unknown = [task_id for task_id in task_ids if task_id not in known_tasks]
-    if unknown:
-        raise click.ClickException(f"Unknown TerminalBench task(s): {', '.join(unknown)}")
-    modes = ["on", "off"] if mode == "all" else [mode]
-    total_trials = len(task_ids) * len(modes) * rep
-    manifest_path = write_benchmark_manifest(
-        run_dir,
-        build_terminalbench_manifest(
-            task_ids=task_ids,
-            modes=modes,
-            rep=rep,
-            model=model,
-            provider=provider,
-            dataset_meta=dataset_meta,
-            tasks_path=tasks_path,
-        ),
-    )
-    repo_state = git_state(repo_root)
-    progress = ProgressReporter("terminalbench", total=total_trials + 1)
-    progress.start(
-        "starting benchmark",
-        current=f"{len(task_ids)} tasks x {len(modes)} modes x {rep} rep(s)",
-    )
-    for task_id in task_ids:
-        for mode_name in modes:
-            for rep_index in range(1, rep + 1):
-                _run(
-                    [
-                        *_python_cmd(repo_root),
-                        "-m",
-                        "benchmarks.terminalbench.runner",
-                        "--task",
-                        task_id,
-                        "--mode",
-                        mode_name,
-                        "--model",
-                        model,
-                        "--provider",
-                        provider,
-                        "--rep",
-                        str(rep_index),
-                        "--dataset-name",
-                        dataset_meta["name"],
-                        "--dataset-version",
-                        dataset_meta["version"],
-                        "--out",
-                        str(run_dir),
-                    ],
-                    cwd=repo_root,
-                    label="TerminalBench trial",
-                )
-                progress.step("trial complete", current=f"{task_id} {mode_name} rep {rep_index}")
-    _run(
-        [
-            *_python_cmd(repo_root),
-            "-m",
-            "benchmarks.terminalbench.aggregate",
-            "--runs",
-            str(run_dir / "runs.jsonl"),
-            "--out",
-            str(run_dir / "summary.json"),
-        ],
-        cwd=repo_root,
-        label="TerminalBench summary",
-    )
-    progress.step("summary complete", current="summary.json")
-    write_benchmark_evidence(
-        run_dir,
-        build_terminalbench_evidence(
-            run_dir=run_dir,
-            manifest_path=manifest_path,
-            repo_state=repo_state,
-        ),
-    )
-    write_benchmark_gate(run_dir, evaluate_terminalbench_gate(run_dir))
-    if require_pass:
-        try:
-            require_benchmark_gate_pass(run_dir)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
-    progress.finish("benchmark complete")
-    click.echo(f"Results: {run_dir}")
-
-
-benchmark_group.add_command(benchmark_solver_cmd)
-
-
-@benchmark_group.command("swe")
-@click.option(
-    "--swebench-config",
-    "--config",
-    "swebench_config",
-    type=click.Path(path_type=Path, dir_okay=False),
-    default=None,
-    help="Path to mini-SWE-agent's swebench.yaml. Auto-detected if omitted.",
-)
-@click.option(
-    "--baseline-input",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=None,
-    help="mini-SWE-agent baseline output directory.",
-)
-@click.option(
-    "--atelier-input",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=None,
-    help="mini-SWE-agent Atelier output directory.",
-)
-@click.option("--savings-log", type=click.Path(path_type=Path, dir_okay=False), default=None)
-@click.option(
-    "--baseline-config",
-    type=click.Path(path_type=Path, dir_okay=False),
-    default=Path("benchmarks/swe/configs/ollama_baseline.yaml"),
-    show_default=True,
-    help="Baseline mini-SWE-agent override config.",
-)
-@click.option(
-    "--atelier-config",
-    type=click.Path(path_type=Path, dir_okay=False),
-    default=Path("benchmarks/swe/configs/ollama_atelier.yaml"),
-    show_default=True,
-    help="Atelier mini-SWE-agent override config.",
-)
-@click.option("--subset", default="lite", show_default=True, help="SWE-bench subset.")
-@click.option("--split", default="dev", show_default=True, help="SWE-bench split.")
-@click.option("--slice", "slice_expr", default="0:5", show_default=True, help="Python slice of tasks.")
-@click.option("--workers", type=int, default=1, show_default=True, help="mini-SWE-agent worker count.")
-@click.option(
-    "--proxy-upstream",
-    default="http://localhost:11434/v1",
-    show_default=True,
-    help="OpenAI-compatible upstream for the Atelier proxy.",
-)
-@click.option("--proxy-port", type=int, default=11435, show_default=True)
-@click.option("--run-id", default="atelier-eval", show_default=True)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-def benchmark_swe_cmd(
-    swebench_config: Path | None,
-    baseline_input: Path | None,
-    atelier_input: Path | None,
-    savings_log: Path | None,
-    baseline_config: Path,
-    atelier_config: Path,
-    subset: str,
-    split: str,
-    slice_expr: str,
-    workers: int,
-    proxy_upstream: str,
-    proxy_port: int,
-    run_id: str,
-    out: Path | None,
-) -> None:
-    """Run the SWE benchmark and write predictions, metrics, and reports."""
-    run_dir = _run_dir("swe", out)
-    if baseline_input is None and atelier_input is None and savings_log is None:
-        _run_swe_eval(
-            swebench_config=swebench_config,
-            baseline_config=baseline_config,
-            atelier_config=atelier_config,
-            subset=subset,
-            split=split,
-            slice_expr=slice_expr,
-            workers=workers,
-            proxy_upstream=proxy_upstream,
-            proxy_port=proxy_port,
-            run_id=run_id,
-            run_dir=run_dir,
-        )
-        click.echo(f"Results: {run_dir}")
-        return
-    if baseline_input is None or atelier_input is None or savings_log is None:
-        raise click.ClickException(
-            "Provide all of --baseline-input, --atelier-input, and --savings-log, "
-            "or provide none to run the default real mini-SWE-agent benchmark."
-        )
-    baseline_preds = run_dir / "baseline_preds.json"
-    atelier_preds = run_dir / "atelier_preds.json"
-    report_path = run_dir / "report.md"
-    progress = ProgressReporter("swe", total=3)
-    progress.start("starting benchmark", current=f"reports {run_dir}")
-    _run(
-        [
-            *_python_cmd(Path.cwd()),
-            "-m",
-            "benchmarks.swe.make_preds",
-            "--input",
-            str(baseline_input),
-            "--output",
-            str(baseline_preds),
-            "--run-id",
-            f"{run_id}-baseline",
-        ],
-        cwd=Path.cwd(),
-        label="SWE baseline preds export",
-    )
-    progress.step("baseline predictions complete", current=baseline_preds.name)
-    _run(
-        [
-            *_python_cmd(Path.cwd()),
-            "-m",
-            "benchmarks.swe.make_preds",
-            "--input",
-            str(atelier_input),
-            "--output",
-            str(atelier_preds),
-            "--run-id",
-            f"{run_id}-atelier",
-        ],
-        cwd=Path.cwd(),
-        label="SWE Atelier preds export",
-    )
-    progress.step("atelier predictions complete", current=atelier_preds.name)
-    _run(
-        [
-            *_python_cmd(Path.cwd()),
-            "-m",
-            "benchmarks.swe.report",
-            "--baseline",
-            str(baseline_preds),
-            "--atelier",
-            str(atelier_preds),
-            "--savings-log",
-            str(savings_log),
-            "--output",
-            str(report_path),
-        ],
-        cwd=Path.cwd(),
-        label="SWE report",
-    )
-    progress.step("report complete", current=report_path.name)
-    progress.finish("benchmark complete")
-    click.echo(f"Results: {run_dir}")
-
-
-@benchmark_group.command("atelierbench")
+@benchmark_group.command("codebench")
 @click.option(
     "--task",
     "tasks",
     multiple=True,
     default=("all",),
     show_default=True,
-    help="AtelierBench task id; repeat for multiple or use 'all'.",
+    help="CodeBench task id; repeat for multiple or use 'all'.",
+)
+@click.option(
+    "--list",
+    "list_tasks",
+    is_flag=True,
+    default=False,
+    help="List available CodeBench task ids and exit.",
 )
 @click.option(
     "--arm",
@@ -528,12 +603,11 @@ def benchmark_swe_cmd(
     multiple=True,
     default=("baseline", "atelier"),
     show_default=True,
-    type=click.Choice(["baseline", "atelier", "feature", "eval", "atelier.raw"]),
+    type=click.Choice(["baseline", "atelier"]),
 )
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
 @click.option("--timeout", type=int, default=1800, show_default=True)
-@click.option("--max-output-tokens", type=click.IntRange(min=1), default=8192, show_default=True)
 @click.option(
     "--rate-limit-rpm",
     type=click.FloatRange(min=0),
@@ -548,13 +622,12 @@ def benchmark_swe_cmd(
     show_default=True,
     help="Maximum reserved output tokens per rolling minute; 0 disables throttling.",
 )
-@click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
     "--cli-driver",
-    type=click.Choice(["claude", "copilot", "codex", "opencode", "eval"]),
+    type=click.Choice(["claude", "copilot", "codex", "opencode", "atelier-run"]),
     default="claude",
     show_default=True,
-    help="CLI host to benchmark when --transport cli is used.",
+    help="CLI host to benchmark.",
 )
 @click.option(
     "--jobs",
@@ -570,22 +643,9 @@ def benchmark_swe_cmd(
     show_default=True,
     help="Use 'arm' only for throughput experiments; 'task' preserves fair per-task comparisons.",
 )
-@click.option(
-    "--api-provider",
-    type=click.Choice(["openai", "litellm", "ollama"]),
-    default="ollama",
-    show_default=True,
-)
-@click.option("--api-base-url", default=None, help="OpenAI-compatible base URL.")
-@click.option("--api-key-env", default=None, help="Environment variable containing the API key.")
-@click.option("--launch-ollama", is_flag=True, help="Start 'ollama serve' before API runs.")
 @click.option("--judge", is_flag=True, help="Score correctness with an LLM judge.")
-@click.option("--judge-transport", type=click.Choice(["cli", "api"]), default=None)
-@click.option("--judge-provider", type=click.Choice(["openai", "litellm", "ollama"]), default=None)
 @click.option("--judge-model", default=None)
 @click.option("--judge-agent-command", default=None)
-@click.option("--judge-api-base-url", default=None)
-@click.option("--judge-api-key-env", default=None)
 @click.option(
     "--agent-command",
     default="claude",
@@ -654,7 +714,7 @@ def benchmark_swe_cmd(
 @click.option("--bridge-wait", type=float, default=3.0, show_default=True)
 @click.option(
     "--task-source-dir",
-    "atelierbench_tasks_dir",
+    "codebench_tasks_dir",
     type=click.Path(path_type=Path, file_okay=False),
     default=None,
 )
@@ -674,30 +734,21 @@ def benchmark_swe_cmd(
         "Shorthand for --claude-provider-preset; explicit --agent-env takes precedence."
     ),
 )
-def benchmark_atelierbench_cmd(
+def benchmark_codebench_cmd(
     tasks: tuple[str, ...],
+    list_tasks: bool,
     arms: tuple[str, ...],
     reps: int,
     model: str,
     timeout: int,
-    max_output_tokens: int,
     rate_limit_rpm: float,
     rate_limit_tpm: int,
-    transport: str,
     cli_driver: str,
     jobs: int,
     parallel_scope: str,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
-    launch_ollama: bool,
     judge: bool,
-    judge_transport: str | None,
-    judge_provider: str | None,
     judge_model: str | None,
     judge_agent_command: str | None,
-    judge_api_base_url: str | None,
-    judge_api_key_env: str | None,
     agent_command: str,
     agent_env: tuple[str, ...],
     agent_env_from_host: tuple[str, ...],
@@ -711,40 +762,31 @@ def benchmark_atelierbench_cmd(
     clear_claude_api_key: bool,
     bridge_command: str | None,
     bridge_wait: float,
-    atelierbench_tasks_dir: Path | None,
+    codebench_tasks_dir: Path | None,
     require_pass: bool,
     provider: str | None,
 ) -> None:
-    """Run AtelierBench and write a head-to-head report."""
+    """Run cost/quality comparison (Atelier vs baseline) and write a report."""
     repo_root = Path.cwd().resolve()
-    run_dir = _atelierbench_run_dir(repo_root)
-    resolved_atelierbench_tasks_dir = _ensure_atelierbench_tasks_dir(repo_root, atelierbench_tasks_dir)
-    env = {"ATELIERBENCH_TASKS_DIR": str(resolved_atelierbench_tasks_dir)}
+    if list_tasks:
+        catalog = _load_codebench_catalog(repo_root)
+        click.echo(f"{len(catalog)} CodeBench tasks:")
+        for task in catalog:
+            click.echo(f"  {task.get('id', '?')!s:30} {task.get('language', '')!s:12} {task.get('source', '')!s}")
+        return
+    run_dir = _codebench_run_dir(repo_root)
+    resolved_codebench_tasks_dir = _ensure_codebench_tasks_dir(repo_root, codebench_tasks_dir)
+    env = {"CODEBENCH_TASKS_DIR": str(resolved_codebench_tasks_dir)}
     bridge_args = []
     if bridge_command:
         bridge_args = ["--bridge-command", bridge_command, "--bridge-wait", str(bridge_wait)]
-    api_args = ["--transport", transport, "--api-provider", api_provider]
-    if api_base_url:
-        api_args.extend(["--api-base-url", api_base_url])
-    if api_key_env:
-        api_args.extend(["--api-key-env", api_key_env])
-    if launch_ollama:
-        api_args.append("--launch-ollama")
     judge_args = []
     if judge:
         judge_args.append("--judge")
-    if judge_transport:
-        judge_args.extend(["--judge-transport", judge_transport])
-    if judge_provider:
-        judge_args.extend(["--judge-provider", judge_provider])
     if judge_model:
         judge_args.extend(["--judge-model", judge_model])
     if judge_agent_command:
         judge_args.extend(["--judge-agent-command", judge_agent_command])
-    if judge_api_base_url:
-        judge_args.extend(["--judge-api-base-url", judge_api_base_url])
-    if judge_api_key_env:
-        judge_args.extend(["--judge-api-key-env", judge_api_key_env])
     agent_env_args: list[str] = []
     if provider:
         preset_key = _PROVIDER_ALIASES.get(provider.lower())
@@ -754,13 +796,7 @@ def benchmark_atelierbench_cmd(
             )
         claude_provider_preset = claude_provider_preset or preset_key
     if openrouter_claude:
-        if transport != "cli" or cli_driver != "claude":
-            raise click.ClickException("--openrouter-claude only applies to --transport cli --cli-driver claude.")
         claude_provider_preset = claude_provider_preset or "openrouter-claude"
-    if (transport != "cli" or cli_driver != "claude") and (
-        claude_provider_preset or claude_base_url or claude_auth_token_env or claude_api_key_env or clear_claude_api_key
-    ):
-        raise click.ClickException("Claude CLI provider env flags only apply to --transport cli --cli-driver claude.")
     if claude_provider_preset:
         preset = resolve_claude_provider_preset(
             claude_provider_preset,
@@ -788,36 +824,38 @@ def benchmark_atelierbench_cmd(
         agent_env_args.extend(["--agent-env-from-host", item])
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     candidate_arm = next((arm for arm in arms if arm != baseline_arm), baseline_arm)
-    task_catalog = _load_atelierbench_catalog(repo_root)
+    task_catalog = _load_codebench_catalog(repo_root)
     task_ids = [task["id"] for task in task_catalog] if tasks == ("all",) else list(tasks)
     task_payload = [task for task in task_catalog if task["id"] in task_ids]
     manifest_path = write_benchmark_manifest(
         run_dir,
-        build_atelierbench_manifest(
+        build_codebench_manifest(
             tasks=task_payload,
             arms=list(arms),
             reps=reps,
             model=model,
             cli_driver=cli_driver,
-            transport=transport,
-            api_provider=api_provider,
             timeout=timeout,
             jobs=jobs,
             parallel_scope=parallel_scope,
-            atelierbench_tasks_dir=resolved_atelierbench_tasks_dir,
+            codebench_tasks_dir=resolved_codebench_tasks_dir,
             bridge_command=bridge_command,
         ),
     )
     repo_state = git_state(repo_root)
     forwarded_cli_extra_args = [f"--cli-extra-arg={arg}" for arg in cli_extra_args]
-    progress = ProgressReporter("atelierbench", total=1)
+    # The heavy lifting runs in a subprocess that streams its own per-arm
+    # progress straight to the terminal, so this reporter only brackets the
+    # run. Disable the heartbeat (it would otherwise re-print a static bar
+    # every 30s) and write whole lines (in_place would fight the subprocess
+    # output for the cursor).
+    progress = ProgressReporter("codebench", total=1, heartbeat_seconds=0, in_place=False)
     progress.start("starting benchmark", current=f"{len(tasks)} task selector(s) x {len(arms)} arm(s)")
-    _run(
+    returncode = _run(
         [
             *_python_cmd(repo_root),
             "-m",
-            "benchmarks.atelierbench.run",
-            "--tasks",
+            "benchmarks.codebench.run",
             *tasks,
             "--arms",
             *arms,
@@ -827,8 +865,6 @@ def benchmark_atelierbench_cmd(
             model,
             "--timeout",
             str(timeout),
-            "--max-output-tokens",
-            str(max_output_tokens),
             "--rate-limit-rpm",
             str(rate_limit_rpm),
             "--rate-limit-tpm",
@@ -843,20 +879,28 @@ def benchmark_atelierbench_cmd(
             agent_command,
             *forwarded_cli_extra_args,
             *agent_env_args,
-            *api_args,
             *judge_args,
             *bridge_args,
             "--out",
             str(run_dir),
         ],
         cwd=repo_root,
-        label="AtelierBench",
+        label="CodeBench",
         env=env,
+        check=False,
     )
+    results_path = run_dir / "results.jsonl"
+    if returncode != 0:
+        if not results_path.is_file() or results_path.stat().st_size == 0:
+            raise click.ClickException(f"CodeBench failed with exit {returncode} before producing results")
+        click.echo(
+            f"Note: CodeBench exited {returncode} -- some runs failed, timed out, or were off-topic; "
+            "per-task detail is in report.txt. Writing evidence + gate from the runs that completed."
+        )
     progress.step("benchmark command complete", current=run_dir.name)
     write_benchmark_evidence(
         run_dir,
-        build_atelierbench_evidence(
+        build_codebench_evidence(
             run_dir=run_dir,
             manifest_path=manifest_path,
             repo_state=repo_state,
@@ -864,7 +908,7 @@ def benchmark_atelierbench_cmd(
     )
     write_benchmark_gate(
         run_dir,
-        evaluate_atelierbench_gate(
+        evaluate_codebench_gate(
             run_dir,
             baseline_arm=baseline_arm,
             candidate_arm=candidate_arm,
@@ -879,11 +923,312 @@ def benchmark_atelierbench_cmd(
     click.echo(f"Results: {run_dir}")
 
 
-def _atelierbench_run_dir(repo_root: Path) -> Path:
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = repo_root.resolve() / "benchmarks" / "atelierbench" / "results" / timestamp
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+@benchmark_group.command("local")
+@click.option(
+    "--repo",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=Path("."),
+    show_default=True,
+    help="Your repo to benchmark against (copied per run; never mutated).",
+)
+@click.option(
+    "--prompt",
+    "prompts",
+    multiple=True,
+    required=True,
+    metavar="TEXT",
+    help="A real coding prompt to run on the repo; repeat for up to 10.",
+)
+@click.option("--model", default="sonnet", show_default=True)
+@click.option("--reps", type=int, default=1, show_default=True)
+@click.option("--max-turns", type=int, default=15, show_default=True, help="Turn cap per run.")
+@click.option(
+    "--arm",
+    "arms",
+    multiple=True,
+    default=("baseline", "atelier"),
+    show_default=True,
+    type=click.Choice(["baseline", "atelier"]),
+)
+@click.option(
+    "--cli-driver",
+    type=click.Choice(["claude", "copilot", "codex", "opencode", "atelier-run"]),
+    default="claude",
+    show_default=True,
+    help="CLI host to benchmark.",
+)
+@click.option(
+    "--setup",
+    "setup",
+    multiple=True,
+    metavar="CMD",
+    help="Setup command run inside each workspace before the agent; repeatable.",
+)
+@click.option(
+    "--provider",
+    default=None,
+    metavar="PROVIDER",
+    help=(
+        "Cloud provider shorthand: aws/bedrock, gcp/vertex, azure, openrouter. "
+        "Reads credentials from .env or the current environment."
+    ),
+)
+@click.option("--estimate-only", is_flag=True, help="Print the cost estimate and exit without spending.")
+@click.option(
+    "--capture/--no-capture",
+    default=False,
+    show_default=True,
+    help=(
+        "Capture model traffic via mitmproxy for wire-level cost verification "
+        "(requires mitmproxy). Off by default — cost comes from CLI receipts."
+    ),
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip the confirmation prompt and run.")
+def benchmark_local_cmd(
+    repo: Path,
+    prompts: tuple[str, ...],
+    model: str,
+    reps: int,
+    max_turns: int,
+    arms: tuple[str, ...],
+    cli_driver: str,
+    setup: tuple[str, ...],
+    provider: str | None,
+    estimate_only: bool,
+    capture: bool,
+    yes: bool,
+) -> None:
+    """Uses LLM: Benchmark Atelier vs vanilla on YOUR repo with YOUR prompts (real spend).
+
+    Runs each prompt for both arms on the same model and driver, then reports
+    cost / turn / time deltas. Prints an up-front cost estimate and asks to
+    confirm before spending. Uses provider API credentials, not a Claude
+    subscription.
+    """
+    repo_abs = repo.expanduser().resolve()
+    if not repo_abs.is_dir():
+        raise click.ClickException(f"--repo is not a directory: {repo_abs}")
+    git_check = subprocess.run(
+        ["git", "-C", str(repo_abs), "rev-parse", "--git-dir"],
+        capture_output=True,
+        check=False,
+    )
+    if git_check.returncode != 0:
+        raise click.ClickException(f"--repo is not a git repository: {repo_abs}")
+    if not 1 <= len(prompts) <= 10:
+        raise click.ClickException("provide between 1 and 10 --prompt values")
+
+    agent_env_args: list[str] = []
+    if provider:
+        preset_key = _PROVIDER_ALIASES.get(provider.lower())
+        if preset_key is None:
+            raise click.ClickException(
+                f"unknown --provider {provider!r}; choices: {', '.join(sorted(_PROVIDER_ALIASES))}"
+            )
+        preset = resolve_claude_provider_preset(preset_key)
+        if cli_driver not in preset.supported_drivers:
+            raise click.ClickException(f"{preset_key} only supports CLI drivers: {', '.join(preset.supported_drivers)}")
+        for key, value in preset.env.items():
+            agent_env_args.extend(["--agent-env", f"{key}={value}"])
+        for dest, source in preset.env_from_host.items():
+            agent_env_args.extend(["--agent-env-from-host", f"{dest}={source}"])
+
+    run_dir = _run_dir("local", None)
+    bench_root = _bench_source_root()
+
+    def _bench_cmd(*, estimate: bool) -> list[str]:
+        cmd = [
+            *_python_cmd(bench_root),
+            "-m",
+            "benchmarks.codebench.run",
+            "--repo",
+            str(repo_abs),
+            "--arm",
+            *arms,
+            "--reps",
+            str(reps),
+            "--model",
+            model,
+            "--max-turns",
+            str(max_turns),
+            "--cli-driver",
+            cli_driver,
+            "--out",
+            str(run_dir),
+        ]
+        for prompt in prompts:
+            cmd.extend(["--prompt", prompt])
+        for cmd_str in setup:
+            cmd.extend(["--setup", cmd_str])
+        cmd.extend(agent_env_args)
+        cmd.append("--capture" if capture else "--no-capture")
+        if estimate:
+            cmd.append("--estimate-only")
+        return cmd
+
+    # Always show the estimate first.
+    _run(_bench_cmd(estimate=True), cwd=bench_root, label="benchmark local estimate", check=False)
+    if estimate_only:
+        return
+    if not yes and not click.confirm("Proceed and spend real tokens?"):
+        raise click.ClickException("Aborted; no tokens spent.")
+    _run(_bench_cmd(estimate=False), cwd=bench_root, label="benchmark local", check=False)
+    click.echo(f"Results: {run_dir}")
+
+
+@benchmark_group.command("swe")
+@click.option(
+    "--suite",
+    type=click.Choice(["multi-swe-bench", "swe-bench-verified"]),
+    default="multi-swe-bench",
+    show_default=True,
+    help="Backend: multi-swe-bench (7 non-Python langs) or swe-bench-verified (Python).",
+)
+@click.option(
+    "--dataset",
+    default=None,
+    help="Dataset path/name (default: per-suite default — Multi-SWE-bench flash or SWE-bench Verified).",
+)
+@click.option(
+    "--language",
+    "languages",
+    multiple=True,
+    metavar="LANG",
+    help="Restrict to these languages (e.g. go, rust, typescript); repeatable.",
+)
+@click.option("--per-language-limit", type=int, default=None, help="Max instances per language.")
+@click.option(
+    "--min-changed-files",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Min files in the gold patch (multi-file filter).",
+)
+@click.option("--limit", type=int, default=None, help="Max total instances across all languages.")
+@click.option(
+    "--instance",
+    "instances",
+    multiple=True,
+    metavar="ID",
+    help="Run only these explicit instance ids; repeatable.",
+)
+@click.option(
+    "--arm",
+    "arms",
+    multiple=True,
+    default=("baseline", "atelier"),
+    show_default=True,
+    type=click.Choice(["baseline", "atelier"]),
+    help="Arm to run; repeat for both.",
+)
+@click.option("--reps", type=int, default=1, show_default=True)
+@click.option("--model", default="claude-opus-4-8", show_default=True)
+@click.option(
+    "--max-turns",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Runaway-loop safety cap on agentic turns; real tasks finish well below it. --timeout is the hard credit guard.",
+)
+@click.option("--timeout", type=int, default=1800, show_default=True, help="Per-run agent timeout (s).")
+@click.option("--jobs", type=int, default=1, show_default=True, help="Parallel container runs.")
+@click.option(
+    "--grade-workers",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Docker eval workers for the suite's grading harness.",
+)
+@click.option(
+    "--grade/--no-grade",
+    "grade",
+    default=True,
+    show_default=True,
+    help="Grade each diff with the suite's official Docker harness (off = cost/turns only).",
+)
+def benchmark_swe_cmd(
+    suite: str,
+    dataset: str | None,
+    languages: tuple[str, ...],
+    per_language_limit: int | None,
+    min_changed_files: int,
+    limit: int | None,
+    instances: tuple[str, ...],
+    arms: tuple[str, ...],
+    reps: int,
+    model: str,
+    max_turns: int,
+    timeout: int,
+    jobs: int,
+    grade_workers: int,
+    grade: bool,
+) -> None:
+    """Uses LLM: SWE A/B (vanilla Claude Code vs Atelier), graded in-container (real spend).
+
+    Loads + filters instances, builds per-arm Docker overlays, runs each
+    (instance, arm, rep) inside its image, extracts the git diff, and grades
+    every diff with the suite's official harness. Same model and instance per
+    pair, so any cost / quality delta is attributable to Atelier.
+
+    \b
+    --suite multi-swe-bench    -> 7 non-Python languages (multi_swe_bench harness)
+    --suite swe-bench-verified -> Python (swebench harness); --language is ignored
+
+    \b
+    Usage:
+      atelier benchmark swe --language go --language rust --per-language-limit 5
+      atelier benchmark swe --suite swe-bench-verified --limit 3 --jobs 2
+    """
+    bench_root = _bench_source_root()
+    run_dir = _run_dir("swe", None)
+    # multi-swe-bench is declared in benchmarks/pyproject.toml (not the root
+    # project), so the subprocess env must resolve against that project while
+    # cwd stays at bench_root, where ``benchmarks`` is importable as a package.
+    cmd = [
+        *_python_cmd(bench_root / "benchmarks"),
+        "-m",
+        "benchmarks.codebench.multiswe_run",
+        "--suite",
+        suite,
+        "--arms",
+        *arms,
+        "--reps",
+        str(reps),
+        "--model",
+        model,
+        "--max-turns",
+        str(max_turns),
+        "--timeout",
+        str(timeout),
+        "--jobs",
+        str(jobs),
+        "--grade-workers",
+        str(grade_workers),
+        "--min-changed-files",
+        str(min_changed_files),
+        "--out",
+        str(run_dir),
+    ]
+    if dataset:
+        cmd.extend(["--dataset", dataset])
+    if languages:
+        cmd.extend(["--languages", *languages])
+    if per_language_limit is not None:
+        cmd.extend(["--per-language-limit", str(per_language_limit)])
+    if limit is not None:
+        cmd.extend(["--limit", str(limit)])
+    if instances:
+        cmd.extend(["--instances", *instances])
+    if not grade:
+        cmd.append("--no-grade")
+    _run(cmd, cwd=bench_root, label="benchmark swe", check=False)
+    click.echo(f"Results: {run_dir}")
+
+
+def _codebench_run_dir(repo_root: Path) -> Path:
+    # Central, verifiable record location shared with every other suite:
+    # reports/benchmark/codebench/<timestamp>/ (NOT benchmarks/codebench/results).
+    return _run_dir("codebench", None, repo_root=repo_root)
 
 
 def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> Path:
@@ -898,13 +1243,12 @@ def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> 
 
 
 def _workspace_dir(suite: str, *, repo_root: Path, run_id: str) -> Path:
-    path = repo_root.resolve().parent / "benchmarks" / repo_root.name / suite / run_id
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _cache_dir(suite: str, *, repo_root: Path) -> Path:
-    path = repo_root.resolve().parent / "benchmarks" / repo_root.name / f"{suite}-cache"
+    # mcp-only helper (eval_mcp is the sole caller): scratch per-shard
+    # artifacts and logs live inside the repo under benchmarks/mcp_tools/results/
+    # (gitignored), not a sibling directory outside the checkout. The
+    # committed results.csv/summary.csv stay at reports/benchmark/<suite>/ --
+    # the documented convention every other suite uses (see _codebench_run_dir).
+    path = repo_root.resolve() / "benchmarks" / "mcp_tools" / "results" / run_id / "workspace"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -918,7 +1262,7 @@ def _auto_jobs(item_count: int, *, hard_cap: int) -> int:
     return max(1, min(item_count, hard_cap, detected))
 
 
-def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path) -> int:
+def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path, suite_names: list[str] | None = None) -> int:
     if requested_jobs > 0:
         return requested_jobs
     repo_root = repo_root.resolve()
@@ -926,42 +1270,46 @@ def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path) -> int:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools.export_public_mcp_csv import _select_suite_specs
 
-    return _auto_jobs(len(_select_suite_specs(None)), hard_cap=32)
+    return _auto_jobs(len(_select_suite_specs(suite_names)), hard_cap=32)
 
 
-def _resolve_provider_jobs(requested_jobs: int, providers: list[str]) -> int:
-    if requested_jobs > 0:
-        return requested_jobs
-    return _auto_jobs(len(providers), hard_cap=32)
+def _mcp_suite_filter(tools: tuple[str, ...]) -> list[str] | None:
+    requested: list[str] = []
+    for value in tools:
+        requested.extend(_csv_values(value))
+    return requested or None
 
 
-def _ensure_atelierbench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:
+def _validate_mcp_suites(suite_names: list[str], *, repo_root: Path) -> None:
+    repo_root = repo_root.resolve()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from benchmarks.mcp_tools.export_public_mcp_csv import (
+        _select_suite_specs,
+        _suite_aliases,
+        _suite_specs,
+    )
+
+    try:
+        _select_suite_specs(suite_names)
+    except ValueError as exc:
+        available = sorted({name for name, _size, _runner in _suite_specs()} | set(_suite_aliases()))
+        raise click.ClickException(f"{exc}. Available --tool values: {', '.join(available)}") from exc
+
+
+def _ensure_codebench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:
     resolved = (
         configured_dir.resolve()
         if configured_dir is not None
-        else repo_root.parent / "benchmarks" / repo_root.name / "atelierbench-tasks"
+        else repo_root.parent / "benchmarks" / repo_root.name / "codebench-tasks"
     )
     tasks_dir = resolved / "tasks"
     if tasks_dir.is_dir():
         return resolved
-    if resolved.exists() and not tasks_dir.is_dir():
-        raise click.ClickException(f"AtelierBench tasks directory not found: {tasks_dir}")
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    clone = subprocess.run(
-        ["git", "clone", "--depth", "1", "https://github.com/kirby88/eval-eval", str(resolved)],
-        check=False,
-        cwd=resolved.parent,
-        capture_output=True,
-        text=True,
+    raise click.ClickException(
+        f"CodeBench tasks directory not found: {tasks_dir}\n"
+        "Pass --task-source-dir pointing to a directory that contains a 'tasks/' subdirectory."
     )
-    if clone.returncode != 0:
-        raise click.ClickException(
-            "Failed to clone AtelierBench task data from kirby88/eval-eval. "
-            f"Pass --task-source-dir explicitly or fix git/network access.\n{clone.stderr.strip()}"
-        )
-    if not tasks_dir.is_dir():
-        raise click.ClickException(f"AtelierBench tasks directory not found after clone: {tasks_dir}")
-    return resolved
 
 
 def _python_cmd(repo_root: Path) -> list[str]:
@@ -971,38 +1319,28 @@ def _python_cmd(repo_root: Path) -> list[str]:
     return [sys.executable]
 
 
-def _resolve_repo_path(repo_root: Path, path: Path) -> Path:
-    return path.resolve() if path.is_absolute() else (repo_root / path).resolve()
+def _bench_source_root() -> Path:
+    """Atelier source root that contains the ``benchmarks/`` harness package.
+
+    The ``benchmarks.*`` packages live in the Atelier source tree, not in the
+    target repo under test, so subprocesses that import them must run from here
+    (the target repo is passed explicitly via ``--repo-root``).
+    """
+    return Path(__file__).resolve().parents[5]
 
 
-def _load_terminalbench_catalog(tasks_path: Path) -> tuple[list[str], dict[str, str]]:
-    payload = yaml.safe_load(tasks_path.read_text(encoding="utf-8")) or {}
-    dataset = payload.get("dataset")
-    tasks = payload.get("tasks")
-    if not isinstance(dataset, dict) or not isinstance(tasks, list):
-        raise click.ClickException(f"Invalid TerminalBench catalog: {tasks_path}")
-    name = dataset.get("name")
-    version = dataset.get("version")
-    if not isinstance(name, str) or not isinstance(version, str):
-        raise click.ClickException(f"Invalid TerminalBench dataset metadata: {tasks_path}")
-    task_ids = [task_id for task_id in tasks if isinstance(task_id, str)]
-    if len(task_ids) != len(tasks):
-        raise click.ClickException(f"Invalid TerminalBench task list: {tasks_path}")
-    return task_ids, {"name": name, "version": version}
-
-
-def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
-    tasks_path = repo_root / "benchmarks" / "atelierbench" / "tasks.py"
-    module_name = "_atelierbench_tasks"
+def _load_codebench_catalog(repo_root: Path) -> list[dict[str, object]]:
+    tasks_path = repo_root / "benchmarks" / "codebench" / "tasks.py"
+    module_name = "_codebench_tasks"
     spec = importlib.util.spec_from_file_location(module_name, tasks_path)
     if spec is None or spec.loader is None:
-        raise click.ClickException(f"Unable to load AtelierBench task catalog: {tasks_path}")
+        raise click.ClickException(f"Unable to load CodeBench task catalog: {tasks_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     tasks = getattr(module, "TASKS", None)
     if not isinstance(tasks, list):
-        raise click.ClickException(f"Invalid AtelierBench task catalog: {tasks_path}")
+        raise click.ClickException(f"Invalid CodeBench task catalog: {tasks_path}")
     catalog: list[dict[str, object]] = []
     for task in tasks:
         task_id = getattr(task, "id", None)
@@ -1016,7 +1354,7 @@ def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
             or not isinstance(weight, int)
             or not isinstance(task_dir, str)
         ):
-            raise click.ClickException(f"Invalid AtelierBench task metadata: {tasks_path}")
+            raise click.ClickException(f"Invalid CodeBench task metadata: {tasks_path}")
         catalog.append(
             {
                 "id": task_id,
@@ -1029,204 +1367,16 @@ def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
     return catalog
 
 
-def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=5) as response:
-                if 200 <= response.status < 500:
-                    return True
-        except (TimeoutError, OSError, urllib.error.URLError):
-            time.sleep(0.5)
-    return False
-
-
-def _resolve_miniswebench_config_path(repo_root: Path, configured_path: Path | None) -> Path:
-    if configured_path is not None:
-        resolved = _resolve_repo_path(repo_root, configured_path)
-        if not resolved.is_file():
-            raise click.ClickException(f"mini-SWE-agent config not found: {resolved}")
-        return resolved
-    spec = importlib.util.find_spec("minisweagent")
-    if spec is None:
-        raise click.ClickException(
-            "mini-SWE-agent is not installed in this environment. "
-            "Install it in the uv environment, then rerun `atelier benchmark swe`."
-        )
-    search_roots: list[Path] = []
-    if spec.submodule_search_locations is not None:
-        search_roots.extend(Path(root).resolve() for root in spec.submodule_search_locations)
-    if spec.origin:
-        search_roots.append(Path(spec.origin).resolve().parent)
-    for root in search_roots:
-        candidate = root / "config" / "benchmarks" / "swebench.yaml"
-        if candidate.is_file():
-            return candidate
-    roots_text = ", ".join(str(root) for root in search_roots) or "<unknown>"
-    raise click.ClickException(
-        "Could not find mini-SWE-agent's swebench.yaml under: " f"{roots_text}. Pass --swebench-config explicitly."
-    )
-
-
-def _run_swe_eval(
-    *,
-    swebench_config: Path | None,
-    baseline_config: Path,
-    atelier_config: Path,
-    subset: str,
-    split: str,
-    slice_expr: str,
-    workers: int,
-    proxy_upstream: str,
-    proxy_port: int,
-    run_id: str,
-    run_dir: Path,
-) -> None:
-    repo_root = Path.cwd().resolve()
-    baseline_config = _resolve_repo_path(repo_root, baseline_config)
-    atelier_config = _resolve_repo_path(repo_root, atelier_config)
-    swebench_config = _resolve_miniswebench_config_path(repo_root, swebench_config)
-    for path in (baseline_config, atelier_config, swebench_config):
-        if not path.is_file():
-            raise click.ClickException(f"Required SWE benchmark config not found: {path}")
-    if importlib.util.find_spec("fastapi") is None or importlib.util.find_spec("uvicorn") is None:
-        raise click.ClickException(
-            "SWE benchmark proxy dependencies are missing. Install fastapi and uvicorn in the uv environment."
-        )
-    if which("docker") is None:
-        raise click.ClickException("Docker is required for the real mini-SWE-agent benchmark.")
-    upstream_models_url = f"{proxy_upstream.rstrip('/')}/models"
-    if not _wait_for_http(upstream_models_url, timeout_seconds=5):
-        raise click.ClickException(f"Upstream model endpoint is not reachable: {upstream_models_url}")
-
-    baseline_dir = run_dir / "baseline"
-    atelier_dir = run_dir / "atelier"
-    baseline_preds = run_dir / "baseline_preds.json"
-    atelier_preds = run_dir / "atelier_preds.json"
-    proxy_log = run_dir / "proxy_savings.jsonl"
-    report_path = run_dir / "report.md"
-    for path in (baseline_dir, atelier_dir):
-        if path.exists():
-            rmtree(path)
-        path.mkdir(parents=True, exist_ok=True)
-    if proxy_log.exists():
-        proxy_log.unlink()
-
-    progress = ProgressReporter("swe", total=5)
-    progress.start("starting mini-SWE benchmark", current=f"{subset}/{split} {slice_expr}")
-    benchmark_base_cmd = [
-        *_python_cmd(repo_root),
-        "-m",
-        "minisweagent.run.benchmarks.swebench",
-        "-c",
-        str(swebench_config),
-        "--subset",
-        subset,
-        "--split",
-        split,
-        "--slice",
-        slice_expr,
-        "--workers",
-        str(workers),
-    ]
-    _run(
-        [*benchmark_base_cmd, "-c", str(baseline_config), "--output", str(baseline_dir)],
-        cwd=repo_root,
-        label="SWE baseline run",
-    )
-    progress.step("baseline run complete", current=baseline_dir.name)
-
-    proxy_cmd = [
-        *_python_cmd(repo_root),
-        "benchmarks/swe/atelier_proxy.py",
-        "--upstream",
-        proxy_upstream,
-        "--port",
-        str(proxy_port),
-        "--log",
-        str(proxy_log),
-    ]
-    click.echo("Running: " + _display_cmd(proxy_cmd))
-    proxy_env = dict(environ)
-    proxy_process = subprocess.Popen(proxy_cmd, cwd=repo_root, env=proxy_env)
-    try:
-        proxy_models_url = f"http://localhost:{proxy_port}/v1/models"
-        if not _wait_for_http(proxy_models_url, timeout_seconds=15):
-            raise click.ClickException(f"Atelier proxy did not become ready at {proxy_models_url}")
-        progress.step("proxy ready", current=f"localhost:{proxy_port}")
-        _run(
-            [*benchmark_base_cmd, "-c", str(atelier_config), "--output", str(atelier_dir)],
-            cwd=repo_root,
-            label="SWE Atelier run",
-        )
-        progress.step("atelier run complete", current=atelier_dir.name)
-    finally:
-        if proxy_process.poll() is None:
-            proxy_process.terminate()
-            try:
-                proxy_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proxy_process.kill()
-                proxy_process.wait(timeout=5)
-
-    _run(
-        [
-            *_python_cmd(repo_root),
-            "benchmarks/swe/make_preds.py",
-            "--input",
-            str(baseline_dir),
-            "--output",
-            str(baseline_preds),
-            "--run-id",
-            f"{run_id}-baseline",
-        ],
-        cwd=repo_root,
-        label="SWE baseline preds export",
-    )
-    _run(
-        [
-            *_python_cmd(repo_root),
-            "benchmarks/swe/make_preds.py",
-            "--input",
-            str(atelier_dir),
-            "--output",
-            str(atelier_preds),
-            "--run-id",
-            f"{run_id}-atelier",
-        ],
-        cwd=repo_root,
-        label="SWE Atelier preds export",
-    )
-    progress.step("predictions exported", current=atelier_preds.name)
-    _run(
-        [
-            *_python_cmd(repo_root),
-            "benchmarks/swe/report.py",
-            "--baseline",
-            str(baseline_preds),
-            "--atelier",
-            str(atelier_preds),
-            "--savings-log",
-            str(proxy_log),
-            "--output",
-            str(report_path),
-        ],
-        cwd=repo_root,
-        label="SWE report",
-    )
-    progress.step("report complete", current=report_path.name)
-    progress.finish("benchmark complete")
-
-
-def _run(cmd: list[str], *, cwd: Path, label: str, env: dict[str, str] | None = None) -> None:
+def _run(cmd: list[str], *, cwd: Path, label: str, env: dict[str, str] | None = None, check: bool = True) -> int:
     click.echo("Running: " + _display_cmd(cmd))
     run_env = None
     if env is not None:
         run_env = dict(environ)
         run_env.update(env)
     completed = subprocess.run(cmd, check=False, cwd=cwd, env=run_env)
-    if completed.returncode != 0:
+    if check and completed.returncode != 0:
         raise click.ClickException(f"{label} failed with exit {completed.returncode}")
+    return completed.returncode
 
 
 def _display_cmd(cmd: list[str]) -> str:

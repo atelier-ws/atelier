@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from atelier.core.capabilities.benchmark_evidence import (
-    build_atelierbench_evidence,
+    build_codebench_evidence,
     build_terminalbench_evidence,
 )
 
@@ -36,8 +36,8 @@ def test_build_terminalbench_evidence_embeds_summary_and_artifact_paths(tmp_path
     assert evidence["summary"]["delta_on_minus_off"]["pass_rate"] == 0.2
 
 
-def test_build_atelierbench_evidence_summarizes_results_and_judge_fields(tmp_path: Path) -> None:
-    run_dir = tmp_path / "atelierbench"
+def test_build_codebench_evidence_summarizes_results_and_judge_fields(tmp_path: Path) -> None:
+    run_dir = tmp_path / "codebench"
     run_dir.mkdir()
     manifest_path = run_dir / "benchmark-manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
@@ -72,7 +72,7 @@ def test_build_atelierbench_evidence_summarizes_results_and_judge_fields(tmp_pat
         encoding="utf-8",
     )
 
-    evidence = build_atelierbench_evidence(
+    evidence = build_codebench_evidence(
         run_dir=run_dir,
         manifest_path=manifest_path,
         repo_state={"commit": "def456", "dirty": True},
@@ -82,4 +82,16 @@ def test_build_atelierbench_evidence_summarizes_results_and_judge_fields(tmp_pat
     assert evidence["judge_outputs"]["fields"] == ["correct", "score", "judge_model", "judge_reason"]
     assert evidence["summary"]["by_arm"]["atelier"]["correct"] == 1
     assert evidence["summary"]["by_arm"]["baseline"]["cost_usd_sum"] == 1.2
+    assert evidence["artifacts"]["task_metrics_csv"]["exists"] is False
+    assert evidence["artifacts"]["task_correctness_csv"]["exists"] is False
+    assert evidence["artifacts"]["model_audit_csv"]["exists"] is False
+    assert evidence["artifacts"]["pairwise_quality_csv"]["exists"] is False
+    assert evidence["artifacts"]["quality_adjusted_summary_csv"]["exists"] is False
+    assert evidence["judge_outputs"]["pairwise_fields"] == [
+        "candidate_at_least_baseline",
+        "baseline_score",
+        "candidate_score",
+        "quality_delta",
+        "judge_reason",
+    ]
     assert evidence["artifacts"]["flow_paths"] == ["atelier.flow", "baseline.flow"]

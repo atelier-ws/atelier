@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.paths import default_store_root
-from atelier.core.service.ingest_session_directory import ingest_session_file
+from atelier.core.service.ingest_session import ingest_session_file
 from atelier.core.service.jobs import (
     JOB_BOOTSTRAP_CONTEXT,
     JOB_CONSOLIDATE_BLOCKS,
@@ -97,7 +97,8 @@ class Worker:
 
         def optimize_handler(payload: dict[str, Any]) -> dict[str, Any]:
             store_root = Path(getattr(self._store, "root", default_store_root())).resolve()
-            host = str(payload.get("host")).strip() or None
+            host_raw = payload.get("host")
+            host = str(host_raw).strip() or None if host_raw is not None else None
             days = int(payload.get("days", 7) or 7)
             return run_optimization_cycle(
                 store_root=store_root,

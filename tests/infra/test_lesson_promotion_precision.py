@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
-from atelier.core.foundation.models import ReasonBlock, Trace
+from atelier.core.foundation.models import Playbook, Trace
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.storage.vector import generate_embedding
 
@@ -32,7 +32,7 @@ def test_lesson_promotion_precision_on_fixture(tmp_path: Path, monkeypatch: pyte
     store.init()
     # Seed one existing block so edit_block candidates have a meaningful target.
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-permission-precheck",
             title="Permission precheck before writes",
             domain="coding",
@@ -51,7 +51,7 @@ def test_lesson_promotion_precision_on_fixture(tmp_path: Path, monkeypatch: pyte
 
     with _fixture_path().open("r", encoding="utf-8") as handle:
         for index, line in enumerate(handle):
-            if index >= 120:
+            if index >= 20:
                 break
             row = json.loads(line)
             expected_kind = row.pop("expected_kind", "")

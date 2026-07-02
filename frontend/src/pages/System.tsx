@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState, type ElementType } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
+  Activity,
   Archive,
   Bot,
   Brain,
@@ -11,23 +12,28 @@ import {
   ChevronRight,
   ChevronUp,
   Command,
+  Flag,
   HardDrive,
   Heart,
+  HeartPulse,
+  Hexagon,
+  Layers,
   Microscope,
   Minus,
   Plus,
   Search,
+  Sparkles,
   Terminal,
   Wrench,
 } from "lucide-react";
 import {
   api,
   type Agent,
+  type HealthResponse,
   type HostAdapter,
   type MCPStatus,
   type Skill,
 } from "../api";
-import { getTelemetryConfig, type TelemetryConfig } from "../lib/insightsApi";
 import {
   Alert,
   Card,
@@ -35,7 +41,14 @@ import {
   DisclosureCard,
   EmptyState,
   FieldLabel,
+  MetricCard,
+  SectionHeader,
+  ToggleGroup,
 } from "../components/WorkbenchUI";
+import { fmtDate } from "../lib/format";
+import Telemetry from "./Telemetry";
+import Watchdogs from "./Watchdogs";
+import ProjectionInspector from "./ProjectionInspector";
 
 // ---------------------------------------------------------------------------
 // Hosts section
@@ -143,7 +156,7 @@ export function HostsSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Hosts
       </h2>
       <p className="text-xs text-neutral-400">
@@ -186,7 +199,7 @@ export function HostsSection() {
                   </p>
                   {host.install_command && (
                     <div className="space-y-1">
-                      <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                      <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-mono">
                         Install
                       </div>
                       <code className="block break-all border border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] text-neutral-300">
@@ -217,21 +230,21 @@ const AGENT_ICON: Record<string, React.ElementType> = {
 };
 
 const AGENT_BG: Record<string, string> = {
-  purple: "bg-purple-700",
-  cyan: "bg-cyan-700",
-  green: "bg-green-700",
-  red: "bg-red-700",
-  blue: "bg-blue-700",
-  yellow: "bg-yellow-700",
+  purple: "bg-brand-500/15",
+  cyan: "bg-cyan-500/15",
+  green: "bg-green-500/15",
+  red: "bg-red-500/15",
+  blue: "bg-blue-500/15",
+  yellow: "bg-yellow-500/15",
 };
 
 const AGENT_TEXT: Record<string, string> = {
-  purple: "text-purple-400",
-  cyan: "text-cyan-400",
-  green: "text-green-400",
-  red: "text-red-400",
-  blue: "text-blue-400",
-  yellow: "text-yellow-400",
+  purple: "text-brand-300",
+  cyan: "text-cyan-200",
+  green: "text-green-200",
+  red: "text-red-200",
+  blue: "text-blue-200",
+  yellow: "text-yellow-200",
 };
 
 export function AgentsSection() {
@@ -248,17 +261,17 @@ export function AgentsSection() {
   if (agents === null) {
     return (
       <section className="space-y-3">
-        <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
           Agents
         </h2>
-        <p className="text-xs text-neutral-500">Loading…</p>
+        <p className="text-xs text-neutral-400">Loading…</p>
       </section>
     );
   }
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Agents
       </h2>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -302,7 +315,7 @@ function AgentCard({
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-3">
               <span
-                className={`${bg} font-mono text-xs px-2 py-1 transition-transform inline-flex items-center gap-2 ${
+                className={`${bg} ${color} font-mono text-xs px-2 py-1 transition-transform inline-flex items-center gap-2 ${
                   expanded ? "rotate-0" : ""
                 }`}
               >
@@ -310,9 +323,7 @@ function AgentCard({
                   size={14}
                   className={`transition-transform ${expanded ? "rotate-90" : ""}`}
                 />
-                <span className="font-bold text-neutral-200 text-sm">
-                  {agent.name}
-                </span>
+                <span className="font-bold text-sm">{agent.name}</span>
               </span>
               {agent.model && (
                 <Chip
@@ -361,7 +372,7 @@ function AgentCard({
       {/* Source */}
       <div className="pt-2 border-t border-neutral-800">
         <FieldLabel className="mb-2">Source</FieldLabel>
-        <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-500 font-mono border border-neutral-700 block break-all">
+        <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-400 font-mono border border-neutral-700 block break-all">
           {agent.file}
         </code>
       </div>
@@ -375,61 +386,42 @@ function AgentCard({
 
 export function SkillsSection() {
   const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [config, setConfig] = useState<TelemetryConfig | null>(null);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
-  const hiddenSkillCount = config === null ? 0 : config.dev_mode ? 0 : 4;
   const visibleSkills = skills ?? [];
-  const totalSkillCount =
-    skills === null ? null : visibleSkills.length + hiddenSkillCount;
+  const totalSkillCount = skills === null ? null : visibleSkills.length;
 
   useEffect(() => {
     api
       .skills()
       .then(setSkills)
       .catch((e) => console.error("Failed to load skills:", e));
-
-    getTelemetryConfig()
-      .then(setConfig)
-      .catch(() => undefined);
   }, []);
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Skills
       </h2>
       <p className="text-xs text-neutral-400 mb-3">
         {totalSkillCount === null
           ? "Loading skill catalog..."
-          : `${totalSkillCount} common skills in the repo. Click to expand and see full documentation for the ones available in this mode.`}
+          : `${totalSkillCount} skills available on the public host surface.`}
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
-        {visibleSkills.length > 0 ? (
+        {visibleSkills.length === 0 ? (
+          <EmptyState title="Loading skills..." className="p-4 sm:col-span-2" />
+        ) : (
           visibleSkills.map((s) => (
             <SkillCard
               key={s.name}
-              skill={{
-                name: s.name,
-                desc: s.description,
-                icon: Check,
-              }}
+              skill={{ name: s.name, desc: s.description, icon: Check }}
               isExpanded={expandedSkill === s.name}
               onToggle={() =>
                 setExpandedSkill(expandedSkill === s.name ? null : s.name)
               }
             />
           ))
-        ) : (
-          <EmptyState title="Loading skills..." className="p-4 sm:col-span-2" />
-        )}
-        {hiddenSkillCount > 0 && (
-          <Card className="border-dashed bg-neutral-950/40 px-4 py-3 sm:col-span-2">
-            <p className="text-[11px] font-mono text-neutral-500">
-              {hiddenSkillCount} dev-only skills hidden. Enable dev mode with{" "}
-              <code>ATELIER_DEV_MODE=1</code> to install and inspect them.
-            </p>
-          </Card>
         )}
       </div>
     </section>
@@ -478,17 +470,17 @@ function SkillCard({
         className="flex items-start gap-2 w-full text-left"
       >
         <span className="mt-0.5">
-          <skill.icon size={14} className="text-emerald-500" />
+          <skill.icon size={14} className="text-emerald-300" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-mono font-medium text-neutral-200 truncate">
             {skill.name}
           </div>
-          <div className="text-[10px] text-neutral-500 leading-tight">
+          <div className="text-[10px] text-neutral-400 leading-tight">
             {skill.desc}
           </div>
         </div>
-        <span className="text-neutral-600">
+        <span className="text-neutral-400">
           {loading ? (
             "..."
           ) : isExpanded ? (
@@ -537,7 +529,7 @@ const NS_META: Record<
   reasoning: {
     icon: Brain,
     label: "reasoning",
-    color: "text-purple-400 border-purple-900/50 bg-purple-950/10",
+    color: "text-brand-400 border-brand-900/50 bg-brand-950/10",
   },
   code_intel: {
     icon: Command,
@@ -562,7 +554,7 @@ const NS_META: Record<
   state: {
     icon: Archive,
     label: "state",
-    color: "text-amber-400 border-amber-900/50 bg-amber-950/10",
+    color: "text-amber-300 border-amber-900/50 bg-amber-950/10",
   },
 };
 
@@ -608,7 +600,7 @@ export function ToolsSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Tools
       </h2>
       {!mcpTools && <EmptyState title="Loading tools…" className="p-4" />}
@@ -643,8 +635,8 @@ export function ToolsSection() {
 
           return (
             <div className="grid gap-5 sm:grid-cols-2">
-              <p className="text-[10px] font-mono text-neutral-600 sm:col-span-2">
-                {deduped.length} tools on stdio server: <code>atelier-mcp</code>
+              <p className="text-[10px] font-mono text-neutral-400 sm:col-span-2">
+                {deduped.length} tools on stdio server: <code>atelier mcp</code>
               </p>
               {nsOrder
                 .filter((ns) => groups[ns]?.length)
@@ -659,11 +651,11 @@ export function ToolsSection() {
                   return (
                     <div key={ns}>
                       <div className="flex items-center gap-2 mb-2">
-                        <meta.icon size={14} className="text-neutral-500" />
-                        <span className="text-[10px] uppercase tracking-widest font-mono text-neutral-500">
+                        <meta.icon size={14} className="text-neutral-400" />
+                        <span className="text-[10px] uppercase tracking-widest font-mono text-neutral-400">
                           {meta.label}
                         </span>
-                        <span className="text-[10px] text-neutral-700 font-mono">
+                        <span className="text-[10px] text-neutral-400 font-mono">
                           ({tools.length})
                         </span>
                       </div>
@@ -695,7 +687,7 @@ export function ToolsSection() {
                                   {tool.tool_name}
                                 </span>
                                 {primaryEnum && (
-                                  <span className="text-[8px] font-bold text-cyan-300 border border-cyan-500/30 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-cyan-300 border border-cyan-500/30 px-1 py-0.5 mr-2">
                                     {primaryEnum.options.length}{" "}
                                     {primaryEnum.name}
                                     {primaryEnum.options.length === 1
@@ -704,16 +696,16 @@ export function ToolsSection() {
                                   </span>
                                 )}
                                 {isDev && (
-                                  <span className="text-[8px] font-bold text-amber-500/60 border border-amber-500/30 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-amber-300 border border-amber-500/30 px-1 py-0.5 mr-2">
                                     DEV
                                   </span>
                                 )}
                                 {isDev && tool.mode === "passive" && (
-                                  <span className="text-[8px] font-bold text-neutral-500 border border-neutral-700 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-neutral-400 border border-neutral-700 px-1 py-0.5 mr-2">
                                     PASSIVE
                                   </span>
                                 )}
-                                <span className="text-neutral-600">
+                                <span className="text-neutral-400">
                                   {isExpanded ? (
                                     <ChevronUp size={14} />
                                   ) : (
@@ -728,13 +720,13 @@ export function ToolsSection() {
                                       {cleanDescription}
                                     </p>
                                   ) : (
-                                    <p className="text-xs text-neutral-600 italic">
+                                    <p className="text-xs text-neutral-400 italic">
                                       No description available.
                                     </p>
                                   )}
                                   <div className="mt-2 flex items-center gap-3">
                                     <span
-                                      className={`text-[10px] font-mono px-2 py-0.5 ${tool.available ? "bg-emerald-900/30 text-emerald-300" : "bg-neutral-800 text-neutral-500"}`}
+                                      className={`text-[10px] font-mono px-2 py-0.5 ${tool.available ? "bg-emerald-900/30 text-emerald-300" : "bg-neutral-800 text-neutral-400"}`}
                                     >
                                       {tool.mode === "passive"
                                         ? "passive capture"
@@ -742,7 +734,7 @@ export function ToolsSection() {
                                           ? "available"
                                           : "unavailable"}
                                     </span>
-                                    <code className="text-[10px] font-mono text-neutral-600">
+                                    <code className="text-[10px] font-mono text-neutral-400">
                                       {tool.tool_name}
                                     </code>
                                   </div>
@@ -761,7 +753,7 @@ export function ToolsSection() {
                                             key={`${tool.tool_name}-${param.name}`}
                                             className="space-y-2"
                                           >
-                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-400 font-mono">
                                               <code className="border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-neutral-300 normal-case">
                                                 {param.name}
                                               </code>
@@ -770,7 +762,7 @@ export function ToolsSection() {
                                               </span>
                                             </div>
                                             {param.description && (
-                                              <p className="text-[10px] text-neutral-500">
+                                              <p className="text-[10px] text-neutral-400">
                                                 {param.description}
                                               </p>
                                             )}
@@ -806,96 +798,142 @@ export function ToolsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Main System page: Host → Agents → Skills → Tools
+// Health section — daemon health + per-host adapter status. Also surfaced
+// as a compact strip on Overview (see components/HealthStrip.tsx); this is
+// the only other place it appears, per the approved IA.
 // ---------------------------------------------------------------------------
 
-function SystemPageFrame({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
+function HealthSection() {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthErr, setHealthErr] = useState(false);
+  const [hosts, setHosts] = useState<HostAdapter[] | null>(null);
+
+  useEffect(() => {
+    Promise.allSettled([api.health(), api.hosts()]).then(([h, hs]) => {
+      if (h.status === "fulfilled") setHealth(h.value);
+      else setHealthErr(true);
+      if (hs.status === "fulfilled") setHosts(hs.value);
+    });
+  }, []);
+
+  const activeHosts = (hosts ?? []).filter((h) => h.status === "active");
+
   return (
-    <div className="space-y-8 p-6 text-sm">
-      <section className="border border-neutral-800 bg-neutral-950/70 p-5">
-        <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-neutral-500">
-            System
-          </div>
-          <h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>
-          <p className="max-w-3xl text-sm text-neutral-400">{description}</p>
+    <section className="space-y-3">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
+        Health
+      </h2>
+      <p className="text-xs text-neutral-400">
+        Daemon liveness plus per-host adapter status. "Detected" reflects
+        whether Atelier has ever seen a session from that host; last import
+        below is the real per-host import time, not detection.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <MetricCard
+          label="Daemon"
+          value={health?.status ?? (healthErr ? "unreachable" : "…")}
+          detail={health?.timestamp ? fmtDate(health.timestamp) : undefined}
+          tone={
+            health?.status === "ok" ? "emerald" : healthErr ? "red" : "neutral"
+          }
+        />
+        <MetricCard
+          label="Hosts reporting"
+          value={hosts ? `${activeHosts.length}/${hosts.length}` : "…"}
+          tone="cyan"
+        />
+      </div>
+      {hosts && hosts.length === 0 ? (
+        <EmptyState title="No host adapters found" className="p-4" />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(hosts ?? []).map((host) => (
+            <Card key={host.host_id} className="p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-neutral-200">{host.label}</span>
+                <Chip tone={host.status === "active" ? "emerald" : "neutral"}>
+                  {host.status}
+                </Chip>
+              </div>
+              <div className="mt-1 text-[10px] text-neutral-400">
+                {host.last_import_at
+                  ? `Last import: ${fmtDate(host.last_import_at)} · ${host.imported_session_count ?? 0} sessions`
+                  : "No imports recorded yet."}
+              </div>
+            </Card>
+          ))}
         </div>
-      </section>
-      <div className="space-y-10">{children}</div>
-    </div>
+      )}
+    </section>
   );
 }
 
-const LEGACY_TAB_ROUTES: Record<string, string> = {
-  hosts: "/system/hosts",
-  agents: "/system/agents",
-  skills: "/system/skills",
-  mcp: "/system/mcp",
-};
+// ---------------------------------------------------------------------------
+// Main System page: /system/:section — Health → Hosts → Agents → Skills →
+// MCP → Telemetry → Watchdogs → Projection
+// ---------------------------------------------------------------------------
 
-export function SystemHosts() {
-  return (
-    <SystemPageFrame
-      title="Host adapters"
-      description="Installed host integrations and the environments where Atelier is active."
-    >
-      <HostsSection />
-    </SystemPageFrame>
-  );
-}
+type Section =
+  | "health"
+  | "hosts"
+  | "agents"
+  | "skills"
+  | "mcp"
+  | "telemetry"
+  | "watchdogs"
+  | "projection";
 
-export function SystemAgents() {
-  return (
-    <SystemPageFrame
-      title="Agent catalog"
-      description="Available built-in agents, their models, tools, and source definitions."
-    >
-      <AgentsSection />
-    </SystemPageFrame>
-  );
-}
-
-export function SystemSkills() {
-  return (
-    <SystemPageFrame
-      title="Skill catalog"
-      description="Installed skills with descriptions and expandable source content."
-    >
-      <SkillsSection />
-    </SystemPageFrame>
-  );
-}
-
-export function SystemMcp() {
-  return (
-    <SystemPageFrame
-      title="MCP tools"
-      description="Grouped stdio MCP tool availability, descriptions, and runtime mode."
-    >
-      <ToolsSection />
-    </SystemPageFrame>
-  );
-}
+const SECTIONS: { id: Section; label: string; icon: ElementType }[] = [
+  { id: "health", label: "Health", icon: HeartPulse },
+  { id: "hosts", label: "Hosts", icon: Hexagon },
+  { id: "agents", label: "Agents", icon: Bot },
+  { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "mcp", label: "MCP", icon: Command },
+  { id: "telemetry", label: "Telemetry", icon: Activity },
+  { id: "watchdogs", label: "Watchdogs", icon: Flag },
+  { id: "projection", label: "Projection", icon: Layers },
+];
 
 export default function System() {
-  const [searchParams] = useSearchParams();
-  const legacyTab = searchParams.get("tab");
+  const { section } = useParams<{ section?: string }>();
+  const navigate = useNavigate();
+  const active = (section as Section) || "health";
+
+  const setSection = (s: Section) =>
+    navigate(`/system/${s}`, { replace: true });
+
   return (
-    <Navigate
-      to={
-        legacyTab && LEGACY_TAB_ROUTES[legacyTab]
-          ? LEGACY_TAB_ROUTES[legacyTab]
-          : "/system/hosts"
-      }
-      replace
-    />
+    <div className="space-y-8 p-6 text-sm">
+      <SectionHeader
+        eyebrow="System"
+        title="Runtime & host system"
+        description="Daemon health, host adapters, agents, skills, MCP tools, telemetry, watchdogs, and the projection inspector."
+      />
+
+      <ToggleGroup
+        variant="underline"
+        size="sm"
+        options={SECTIONS.map((s) => ({
+          value: s.id,
+          label: (
+            <span className="flex items-center gap-1.5">
+              <s.icon size={14} />
+              <span>{s.label}</span>
+            </span>
+          ),
+        }))}
+        value={active}
+        onChange={(value) => setSection(value as Section)}
+      />
+
+      {active === "health" && <HealthSection />}
+      {active === "hosts" && <HostsSection />}
+      {active === "agents" && <AgentsSection />}
+      {active === "skills" && <SkillsSection />}
+      {active === "mcp" && <ToolsSection />}
+      {active === "telemetry" && <Telemetry />}
+      {active === "watchdogs" && <Watchdogs />}
+      {active === "projection" && <ProjectionInspector />}
+    </div>
   );
 }

@@ -1,0 +1,79 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Django's ORM turns a `QuerySet` into SQL through a layered pipeline. The key idea is **laziness**: building a query does almost no work; execution happens only when results are actually needed. Here's the full path.
+
+## 1. The layers involved
+
+```
+QuerySet  →  Query  →  SQLCompiler  →  DB backend / cursor  →  model instances
+(django.db.models.query)  (django.db.models.sql.query)  (django.db.models.sql.compiler)
+```
+
+- **`QuerySet`** — the public, user-facing API (`.filter()`, `.exclude()`, `.annotate()`, slicing, etc.). Holds a `Query` object in `self.query`.
+- **`Query`** — the internal, backend-agnostic representation of the query as a tree of objects (no SQL strings yet).
+- **`SQLCompiler`** — walks the `Query` and emits an actual SQL string + parameters for a specific database backend.
+
+## 2. Building the query (lazy)
+
+Each chained method like `.filter(name="x")` does **not** hit the database. Instead:
+
+1. `QuerySet._clone()` makes a copy of the QuerySet and its `Query` (so QuerySets are immutable/chainable without side effects).
+2. The filter is translated into the `Query`'s internal structures:
+   - **`WhereNode`** — a tree of `Lookup` objects (e.g. `Exact`, `IContains`, `Gt`). Field paths like `author__name` are resolved against the model's `Meta` and `_meta.fields`.
+   - **`alias_map` / joins** — relational lookups (`__`) add `Join` entries; Django tracks table aliases and join promotion (INNER vs LEFT OUTER).
+   - Other attributes accumulate: `select`, `annotations` (an `OrderedDict` of `Expression`/`Aggregate` objects), `order_by`, `group_by`, `distinct`, `low_mark`/`high_mark` (for slicing/LIMIT-OFFSET).
+
+So `Author.objects.filter(...).exclude(...).order_by(...)` just mutates a cloned `Query` tree repeatedly. Still no SQL, no DB connection.
+
+## 3. Triggering execution
+
+Execution happens when the QuerySet is **evaluated** — iteration (`for x in qs`), `len()`, `list()`, `bool()`, slicing with a step, `repr()`, etc. Results are then cached in `qs._result_cache` so re-iteration is free.
+
+Internally, evaluation calls `qs._fetch_all()`, which runs the QuerySet's **iterable class** (e.g. `ModelIterable`), which asks the compiler to execute.
+
+## 4. Compilation to SQL
+
+`Query.get_compiler(using=db_alias)` returns a backend-specific `SQLCompiler`. Then `compiler.as_sql()`:
+
+1. **`pre_sql_setup()`** — resolves the SELECT columns, GROUP BY, ordering, and finalizes which joins are actually needed (prunes unused ones).
+2. Assembles the clauses by delegating to compiled sub-parts:
+   - SELECT columns from `get_select()`
+   - FROM + JOINs from the `alias_map`
+   - WHERE via `where.as_sql(compiler, connection)` (each `Lookup` emits its operator + a placeholder)
+   - GROUP BY / HAVING / ORDER BY / LIMIT
+3. Produces a tuple **`(sql_string, params)`** — parameters are kept separate and bound by the DB driver, which is what makes the ORM SQL-injection-safe.
+
+The backend (`django.db.backends.<engine>`) supplies dialect details: quoting, `LIMIT`/`OFFSET` vs `TOP`, operator mappings, etc. The same `Query` compiles to different SQL per backend.
+
+## 5. Execution and row → object mapping
+
+1. The compiler gets a cursor: `connection.cursor()` and `cursor.execute(sql, params)`.
+2. `compiler.execute_sql()` fetches rows (in chunks via `cursor.fetchmany`, governed by `GET_ITERATOR_CHUNK_SIZE`).
+3. The **iterable class** maps each raw row back into Python:
+   - `ModelIterable` builds model instances via `model.from_db()`, populating fields by column position and setting up related objects (e.g. for `select_related`).
+   - `ValuesIterable` → dicts, `ValuesListIterable` → tuples, `FlatValuesListIterable` → scalars.
+4. Instances are stored in `_result_cache`.
+
+## Putting it together
+
+```python
+qs = Author.objects.filter(name="x").order_by("id")   # builds Query tree, no DB
+                                                       # _clone + WhereNode + order_by
+list(qs)   # _fetch_all → ModelIterable → compiler.as_sql()
+           #   → (SELECT ... WHERE name = %s ORDER BY id, ["x"])
+           #   → cursor.execute → fetchmany → Author instances → _result_cache
+```
+
+**Key takeaways:**
+- QuerySets are **lazy and immutable** — chaining clones a `Query` tree, never touching the DB.
+- The `Query` is a **backend-agnostic object tree**; `SQLCompiler` is what turns it into dialect-specific SQL + params.
+- **Parameters stay separate** from SQL all the way to the driver (injection safety).
+- Evaluation is **triggered by consumption**, results are **cached**, and rows are mapped to objects by a pluggable **iterable class**.
+
+If you'd like, I can trace a specific case end to end (e.g. a `select_related` join, an `annotate` with aggregation, or how `__` lookups become JOINs) against the actual Django source.

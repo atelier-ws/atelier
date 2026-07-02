@@ -64,21 +64,15 @@ class EventRenderer:
             body.append(f"model: {event.model}\n", style="cyan")
             if event.reason:
                 body.append(f"reason: {event.reason}", style="dim")
-            self._console.print(
-                Panel(body, title="route", border_style="magenta", expand=False)
-            )
+            self._console.print(Panel(body, title="route", border_style="magenta", expand=False))
         elif isinstance(event, MemoryHit):
-            self._console.print(
-                Text(f"• memory: {event.key}", style="yellow")
-            )
+            self._console.print(Text(f"• memory: {event.key}", style="yellow"))
             if event.summary:
                 self._console.print(Text(f"  {event.summary}", style="dim"))
         elif isinstance(event, AssistantMessage):
             self._console.print(Markdown(event.text))
         elif isinstance(event, ToolRequested):
-            self._console.print(
-                Text(f"[tool] {event.name} {_short_args(event.args)}", style="dim")
-            )
+            self._console.print(Text(f"[tool] {event.name} {_short_args(event.args)}", style="dim"))
         elif isinstance(event, ToolStarted):
             self._console.print(Text(f"… running {event.name}", style="dim"))
         elif isinstance(event, ToolOutput):
@@ -111,9 +105,7 @@ class EventRenderer:
             if event.reason:
                 body.append(f"\n{event.reason}", style="dim")
             body.append("\n\nApprove? [/approve | /deny]", style="yellow")
-            self._console.print(
-                Panel(body, title="permission requested", border_style="yellow", expand=False)
-            )
+            self._console.print(Panel(body, title="permission requested", border_style="yellow", expand=False))
         elif isinstance(event, VerificationResult):
             style = "green" if event.ok else "red"
             body = Text(f"verification: {'passed' if event.ok else 'failed'}", style=style)

@@ -1,0 +1,76 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] OkHttp's interceptor chain is the backbone of how every HTTP call is executed. Here's the flow.
+
+## The core idea: a chain of responsibility
+
+When you call `call.execute()` or `call.enqueue()`, OkHttp builds an ordered **list of interceptors** and wraps them in a `RealInterceptorChain`. Each interceptor gets a chance to act on the request on the way *down* and on the response on the way *back up*.
+
+The list is assembled in this order (in `RealCall.getResponseWithInterceptorChain()`):
+
+1. **Client's application interceptors** (the ones you add via `OkHttpClient.Builder.addInterceptor()`)
+2. **`RetryAndFollowUpInterceptor`** — recovers from failures, follows redirects and `401`/`407` auth challenges
+3. **`BridgeInterceptor`** — translates a user request into an HTTP request: adds headers like `Content-Type`, `Content-Length`, `Host`, `Connection: Keep-Alive`, `Accept-Encoding: gzip`, cookies; and transparently un-gzips the response
+4. **`CacheInterceptor`** — serves from / writes to the HTTP cache, handles conditional requests (`304 Not Modified`)
+5. **`ConnectInterceptor`** — opens a connection (or reuses a pooled one) and a socket to the target server
+6. **Client's network interceptors** (added via `addNetworkInterceptor()`)
+7. **`CallServerInterceptor`** — the terminal interceptor: actually writes the request bytes and reads the response bytes off the wire
+
+## How the chain advances
+
+Each interceptor implements:
+
+```java
+@Override public Response intercept(Chain chain) throws IOException {
+    Request request = chain.request();
+    // ... do something before (modify request, logging, etc.)
+    Response response = chain.proceed(request);   // hand off to the next interceptor
+    // ... do something after (modify response, logging, etc.)
+    return response;
+}
+```
+
+The magic is `chain.proceed(request)`. `RealInterceptorChain` holds an **index**. When you call `proceed()`, it constructs a *new* chain with `index + 1`, looks up `interceptors[index]`, and calls its `intercept(nextChain)`. That interceptor in turn calls `proceed()` again, advancing to the next one — a recursive descent down the list.
+
+So the call stack literally nests:
+
+```
+appInterceptor.intercept
+ └─ retryAndFollowUp.intercept
+     └─ bridge.intercept
+         └─ cache.intercept
+             └─ connect.intercept
+                 └─ networkInterceptor.intercept
+                     └─ callServer.intercept   ← writes/reads the socket, returns Response
+```
+
+Everything before `proceed()` runs **top-down** (request side); everything after `proceed()` returns runs **bottom-up** (response side). `CallServerInterceptor` doesn't call `proceed()` — it's the bottom of the recursion and produces the actual `Response` that unwinds back up.
+
+## Application vs. network interceptors
+
+This ordering explains the two interceptor types:
+
+| | Application interceptor | Network interceptor |
+|---|---|---|
+| Position | Outermost (before retries/redirects) | Inner (after connection established) |
+| Called | Once per `Call`, always | Once per actual network request — **may run multiple times** (redirects, retries) or **zero times** (served from cache) |
+| Sees | The final, logical request/response | The on-the-wire request with all OkHttp headers, the raw network response (e.g. gzipped, `304`s) |
+| Use for | App-level concerns: auth tokens, logging the logical call | Wire-level concerns: observing redirects, network debugging, rewriting bytes |
+
+A redirect handled by `RetryAndFollowUpInterceptor` loops back and calls `proceed()` again, so anything *below* it (bridge, cache, connect, network interceptors, callServer) runs once per redirect hop, while application interceptors above it see only the single logical call.
+
+## Key guarantees
+
+- Each interceptor **must call `chain.proceed()` exactly once** (unless it short-circuits by returning its own response, like a cache hit, or throws).
+- The request returned up the chain and the response passed down must be consistent (OkHttp asserts, e.g., that `response.body` isn't null and that `proceed` wasn't called multiple times for the network).
+- Because it's a plain recursive list, the design is fully composable — your custom interceptor is indistinguishable in mechanism from OkHttp's built-in ones.
+
+This is OkHttp's implementation of the classic **chain-of-responsibility / pipeline** pattern, and it's what makes cross-cutting concerns (logging, auth, caching, compression, retries) cleanly separable.
+
+If you have OkHttp's source checked out in this repo, I can point you at the exact lines in `RealInterceptorChain` and `RealCall` — just say the word.

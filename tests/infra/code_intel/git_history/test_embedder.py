@@ -27,9 +27,34 @@ def _make_summary(**kwargs) -> CommitSummary:  # type: ignore[no-untyped-def]
     return CommitSummary(**{**defaults, **kwargs})
 
 
+def _use_fake_code_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deterministic test embedder (the removed 'local' pin's role): turns the
+    semantic/ANN path on so the vector store + retrieval is exercised. Test-only."""
+    import atelier.infra.embeddings.factory as _factory
+
+    class _Fake:
+        dim = 384
+        name = "test:hashing"
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            from atelier.infra.storage.vector import generate_embedding
+
+            return [generate_embedding(t, dim=self.dim) for t in texts]
+
+    fake = _Fake()
+
+    def _fake_make(pin: str | None = None, model: str | None = None) -> object:
+        return fake
+
+    _fake_make.cache_clear = lambda: None  # type: ignore[attr-defined]
+    # get_code_embedder() looks up factory.make_code_embedder at call time, so
+    # patching it here reaches every import site, including direct callers.
+    monkeypatch.setattr(_factory, "make_code_embedder", _fake_make)
+
+
 @pytest.fixture(autouse=True)
-def _pin_local_code_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+def _pin_fake_code_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_fake_code_embedder(monkeypatch)
     monkeypatch.delenv("ATELIER_CODE_EMBED_MODEL", raising=False)
     history_embedder_module._embedder = None
     make_code_embedder.cache_clear()

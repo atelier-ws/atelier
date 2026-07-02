@@ -349,7 +349,6 @@ def test_real_installer_runs_in_target_directory(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert (bin_dir / "atelier").exists()
-    assert (bin_dir / "atelier-mcp").exists()
 
     help_result = subprocess.run(
         [str(bin_dir / "atelier"), "--help"],
@@ -362,7 +361,7 @@ def test_real_installer_runs_in_target_directory(tmp_path: Path) -> None:
     assert "Usage:" in help_result.stdout
 
     mcp_result = subprocess.run(
-        [str(bin_dir / "atelier-mcp")],
+        [str(bin_dir / "atelier"), "mcp"],
         cwd=workspace,
         input="\n".join(
             [

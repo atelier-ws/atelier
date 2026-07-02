@@ -30,19 +30,61 @@ def load_script(path: Path, module_name: str) -> object:
     return module
 
 
-def test_root_entrypoints_link_to_live_docs() -> None:
-    for rel in ("AGENTS.md", ".github/copilot-instructions.md"):
-        path = ROOT / rel
-        assert "integrations/shared/coding-guidelines.md" in path.read_text(
-            encoding="utf-8"
-        ), f"{rel} must link to integrations/shared/coding-guidelines.md"
+def test_copilot_instructions_has_the_compact_managed_block() -> None:
+    block_start = "<!-- ATELIER START -->"
+    block_end = "<!-- ATELIER END -->"
+    source = (ROOT / "integrations/AGENTS.atelier.md").read_text(encoding="utf-8").strip()
+    content = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
+    _, found_start, remainder = content.partition(block_start)
+    managed_body, found_end, _ = remainder.partition(block_end)
+
+    assert found_start and found_end
+    assert managed_body.strip() == source
+    assert "docs/architecture" not in content
+    assert len(managed_body.splitlines()) <= 20, "the managed Copilot block should stay compact"
 
 
-def test_copilot_instructions_stays_thin() -> None:
-    path = ROOT / ".github/copilot-instructions.md"
-    lines = path.read_text(encoding="utf-8").splitlines()
-    # Entrypoint doc — keep it focused; warn if it grows significantly beyond the current size
-    assert len(lines) <= 100, ".github/copilot-instructions.md should stay a thin entrypoint"
+def test_copilot_distribution_instructions_match_agent_guide() -> None:
+    source = (ROOT / "integrations/AGENTS.atelier.md").read_text(encoding="utf-8")
+    copilot = (ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md").read_text(encoding="utf-8")
+
+    assert copilot == source
+
+
+def test_root_agents_md_has_a_compact_managed_block() -> None:
+    block_start = "<!-- ATELIER START -->"
+    block_end = "<!-- ATELIER END -->"
+    source = (ROOT / "integrations/AGENTS.atelier.md").read_text(encoding="utf-8").strip()
+    content = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    _, found_start, remainder = content.partition(block_start)
+    managed_body, found_end, _ = remainder.partition(block_end)
+
+    assert found_start and found_end
+    assert managed_body.strip() == source
+    assert len(managed_body.splitlines()) <= 20, "the managed AGENTS.md block should stay compact"
+
+
+def test_managed_context_preserves_existing_content() -> None:
+    module = load_script(ROOT / "scripts/sync_agent_context.py", "sync_agent_context")
+    existing = "# Project rules\n\nKeep this instruction.\n"
+
+    rendered = module.render_managed_context(existing)
+
+    assert rendered.startswith(existing.rstrip() + "\n\n---\n\n")
+    assert "Keep this instruction." in rendered
+    assert rendered.count("<!-- ATELIER START -->") == 1
+    assert rendered.count("<!-- ATELIER END -->") == 1
+
+
+def test_managed_context_updates_only_existing_block() -> None:
+    module = load_script(ROOT / "scripts/sync_agent_context.py", "sync_agent_context_update")
+    existing = "# Project rules\n\n<!-- ATELIER START -->\nstale\n<!-- ATELIER END -->\n\nKeep this too.\n"
+
+    rendered = module.render_managed_context(existing)
+
+    assert rendered.startswith("# Project rules\n\n<!-- ATELIER START -->")
+    assert rendered.endswith("<!-- ATELIER END -->\n\nKeep this too.\n")
+    assert "stale" not in rendered
 
 
 def test_copilot_tasks_include_worktree_and_runtime_evidence() -> None:

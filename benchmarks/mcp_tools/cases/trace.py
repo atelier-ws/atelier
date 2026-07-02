@@ -67,7 +67,7 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "task": "capture provider comparison findings",
         "status": "success",
         "capture_sources": ["providers.csv", "summary.csv"],
-        "capture_files": ["reports/benchmark/providers/summary.csv"],
+        "capture_files": ["benchmark/providers/summary.csv"],
     },
     {
         "label": "trace/partial/monitoring",
@@ -86,7 +86,6 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "status": "success",
         "learnings": [
             {"surface": "grep", "lesson": "preserve case for substring probes"},
-            {"surface": "impact", "lesson": "assert importer paths, not caller edges"},
         ],
     },
     {
@@ -111,7 +110,7 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "label": "trace/failed/session-limit",
         "agent": "bench",
         "domain": "eval",
-        "task": "resume VIX evaluation after prior partial run",
+        "task": "resume eval evaluation after prior partial run",
         "status": "failed",
         "errors_seen": ["session limit reached"],
         "event_type": "cli.session_limited",
@@ -135,7 +134,7 @@ TRACE_CASES: list[BenchCase] = [
         args={key: value for key, value in spec.items() if key != "label"},
         assert_keys=["trace_id", "event_recorded"],
         custom_assert=_assert_trace,
-        baseline_tokens=2600,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
     for spec in _TRACE_SPECS
 ]

@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atelier.core.capabilities.loop_detection import LoopDetectionCapability
 from atelier.core.capabilities.quality_router.config import (
     RoutingPolicyConfig,
     load_routing_policy_config,
@@ -44,12 +43,9 @@ class QualityRouterCapability:
         self,
         store: ContextStore,
         repo_root: str | Path,
-        *,
-        loop_detection: LoopDetectionCapability | None = None,
     ) -> None:
         self.store = store
         self.repo_root = Path(repo_root)
-        self.loop_detection = loop_detection or LoopDetectionCapability()
         self.config = load_routing_policy_config(self.repo_root)
 
     def reload_config(self) -> RoutingPolicyConfig:
@@ -176,34 +172,22 @@ class QualityRouterCapability:
             token_budget=2000,
             dedup=True,
         )
-        reasonblock_refs = [f"block:{entry.block.id}" for entry in scored]
-        refs.extend(reasonblock_refs)
+        playbook_refs = [f"block:{entry.block.id}" for entry in scored]
+        refs.extend(playbook_refs)
 
         errors_seen = list(ledger.errors_seen) if ledger else []
         repeated_failures = len(ledger.repeated_failures) if ledger else 0
 
-        loop_detected = False
-        loop_severity = "none"
-        loop_risk = 0.0
-        if ledger is not None and ledger.events:
-            report = self.loop_detection.check(ledger)
-            loop_detected = report.loop_detected
-            loop_severity = report.severity
-            loop_risk = report.risk_score
-            if loop_detected:
-                refs.append(f"loop:{report.severity}")
-
         estimated_tokens = summary.get("estimated_input_tokens")
         if not isinstance(estimated_tokens, int):
             estimated_tokens = self._latest_input_tokens(request.session_id) or self._estimate_input_tokens(
-                request, len(reasonblock_refs)
+                request, len(playbook_refs)
             )
 
         base_confidence = self._confidence_from_runtime(
-            reasonblock_count=len(reasonblock_refs),
+            playbook_count=len(playbook_refs),
             errors_seen=len(errors_seen),
             repeated_failures=repeated_failures,
-            loop_risk=loop_risk,
         )
         supplied_confidence = summary.get("confidence")
         if isinstance(supplied_confidence, int | float):
@@ -223,12 +207,9 @@ class QualityRouterCapability:
 
         summary["confidence"] = max(0.05, min(1.0, confidence))
         summary["estimated_input_tokens"] = int(estimated_tokens)
-        summary["reasonblock_count"] = len(reasonblock_refs)
+        summary["playbook_count"] = len(playbook_refs)
         summary["errors_seen"] = len(errors_seen)
         summary["repeated_failures"] = repeated_failures
-        summary["loop_detected"] = loop_detected
-        summary["loop_severity"] = loop_severity
-        summary["loop_risk"] = loop_risk
         summary["max_input_tokens"] = budget.max_input_tokens
         summary["refs"] = sorted({str(ref) for ref in refs})
         return summary
@@ -248,8 +229,6 @@ class QualityRouterCapability:
         verifier_coverage = float(raw_coverage) if isinstance(raw_coverage, int | float) else 1.0
         raw_confidence = summary.get("confidence", 1.0)
         confidence = float(raw_confidence) if isinstance(raw_confidence, int | float) else 1.0
-        loop_detected = bool(summary.get("loop_detected", False))
-        loop_severity = str(summary.get("loop_severity", "none"))
 
         deterministic_step = step_type in {"classify", "compress", "retrieve", "summarize"}
         if (
@@ -257,7 +236,6 @@ class QualityRouterCapability:
             and request.risk_level == "low"
             and not decision.protected_file_match
             and repeated_failures == 0
-            and not loop_detected
             and confidence >= 0.90
         ):
             decision.tier = "deterministic"
@@ -269,8 +247,6 @@ class QualityRouterCapability:
         forced_trigger: str | None = None
         if repeated_failures > 0:
             forced_trigger = "repeated_failure"
-        elif loop_detected and loop_severity in {"medium", "high"}:
-            forced_trigger = "loop_detected"
         elif verifier_coverage < 0.50:
             forced_trigger = "verifier_gap"
 
@@ -312,26 +288,24 @@ class QualityRouterCapability:
         return int(getattr(latest, "input_tokens", 0))
 
     @staticmethod
-    def _estimate_input_tokens(request: AgentRequest, reasonblock_count: int) -> int:
+    def _estimate_input_tokens(request: AgentRequest, playbook_count: int) -> int:
         goal_tokens = max(128, len(request.user_goal) // 4)
         file_tokens = 400 * max(0, len(request.changed_files))
-        reason_tokens = 200 * max(0, reasonblock_count)
+        reason_tokens = 200 * max(0, playbook_count)
         return goal_tokens + file_tokens + reason_tokens
 
     @staticmethod
     def _confidence_from_runtime(
         *,
-        reasonblock_count: int,
+        playbook_count: int,
         errors_seen: int,
         repeated_failures: int,
-        loop_risk: float,
     ) -> float:
         confidence = 1.0
-        if reasonblock_count == 0:
+        if playbook_count == 0:
             confidence -= 0.15
         confidence -= min(0.30, errors_seen * 0.10)
         confidence -= min(0.30, repeated_failures * 0.15)
-        confidence -= min(0.30, loop_risk * 0.40)
         return max(0.05, min(1.0, confidence))
 
 

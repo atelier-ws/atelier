@@ -10,24 +10,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
-    definition_node_kinds,
-    supported_tree_sitter_languages,
-    transparent_node_kinds,
-    tree_sitter_parser,
-)
 from atelier.infra.code_intel.languages import language_for_path
 
 TagKind = Literal["definition", "reference"]
 _LEGACY_REGEX_LANGUAGES = frozenset({"javascript", "typescript", "go", "rust"})
 _DATA_LANGUAGES = frozenset({"json", "toml", "yaml"})
-_NO_REFERENCE_LANGUAGES = _DATA_LANGUAGES | frozenset({"bash", "sql"})
+# Markup / style / prose languages: references are not meaningful code symbols.
+_MARKUP_LANGUAGES = frozenset({"html", "css", "markdown"})
+_NO_REFERENCE_LANGUAGES = _DATA_LANGUAGES | _MARKUP_LANGUAGES | frozenset({"bash", "sql"})
 _IDENTIFIER_KINDS = frozenset(
     {
         "bare_key",
         "constant",
         "dotted_key",
         "field_identifier",
+        "id_name",  # CSS id-selector names: #foo → id_name "foo"
         "identifier",
         "name",
         "namespace_identifier",
@@ -99,9 +96,15 @@ def _child_by_field_name(node: Any, field_name: str) -> Any | None:
 
 
 def _walk(node: Any) -> list[Any]:
-    nodes = [node]
-    for child in _children(node):
-        nodes.extend(_walk(child))
+    # Iterative pre-order traversal: a generated/minified or pathologically
+    # nested file can exceed Python's recursion limit, and callers in
+    # _treesitter_tags do not wrap _walk in a try/except.
+    nodes: list[Any] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        nodes.append(current)
+        stack.extend(reversed(_children(current)))
     return nodes
 
 
@@ -126,6 +129,19 @@ def _definition_name_node(node: Any, language: str) -> Any | None:
         return _child_by_field_name(node, "key") or (_children(node)[0] if _children(node) else None)
     if language == "sql":
         return _first_descendant(node, frozenset({"identifier"}))
+    if language == "lua":
+        if kind == "function_declaration":
+            for child in _children(node):
+                ck = _kind(child)
+                if ck in {"dot_index_expression", "method_index_expression"}:
+                    # function M.greet() / function Cls:method() — last identifier
+                    # is the function name; the first is the table/object.
+                    ids = [c for c in _children(child) if _kind(c) == "identifier"]
+                    return ids[-1] if ids else None
+                if ck == "identifier":
+                    # local function foo() or function foo()
+                    return child
+        return _first_descendant(node, _IDENTIFIER_KINDS)
 
     for field_name in ("name", "declarator"):
         field_node = _child_by_field_name(node, field_name)
@@ -136,6 +152,8 @@ def _definition_name_node(node: Any, language: str) -> Any | None:
 
 
 def _definition_candidates(root: Any, language: str, definition_kinds: frozenset[str]) -> list[Any]:
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import transparent_node_kinds
+
     if language in {"json", "yaml"}:
         unwrap = transparent_node_kinds(language)
         candidates: list[Any] = []
@@ -154,6 +172,11 @@ def _definition_candidates(root: Any, language: str, definition_kinds: frozenset
 
 
 def _treesitter_tags(path: Path, text: str, language: str) -> list[Tag] | None:
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
+        definition_node_kinds,
+        tree_sitter_parser,
+    )
+
     parser = tree_sitter_parser(language)
     if parser is None:
         return None
@@ -207,6 +230,17 @@ def _python_tags(path: Path, text: str) -> list[Tag]:
     offsets = _line_offsets(text)
     tags: list[Tag] = []
     tree = ast.parse(text)
+    # Module-level assignments: index as definitions so constants and type
+    # aliases are findable by exact name (e.g. _EXPLORE_ESSENTIAL_KEYS).
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name):
+                    line = int(target.lineno)
+                    tags.append(Tag(target.id, "definition", str(path), line, (offsets[line - 1], offsets[line])))
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            line = int(stmt.target.lineno)
+            tags.append(Tag(stmt.target.id, "definition", str(path), line, (offsets[line - 1], offsets[line])))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             line = int(getattr(node, "lineno", 1))
@@ -262,6 +296,10 @@ def detect_language(path: Path) -> str | None:
 
 def extract_tags_from_text(text: str, file_path: str | Path, language: str | None = None) -> list[Tag]:
     """Extract definition/reference tags from source text without reading from disk."""
+
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
+        supported_tree_sitter_languages,
+    )
 
     path = Path(file_path)
     resolved_language = language or detect_language(path)

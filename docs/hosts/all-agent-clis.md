@@ -11,22 +11,22 @@ Installers write user/global host config by default. To install project-local
 artifacts for a specific workspace, pass `--workspace DIR` to the script:
 
 ```bash
-bash scripts/install_agent_clis.sh --workspace /path/to/workspace
+bash scripts/install_hosts.sh --workspace /path/to/workspace
 ```
 
 ---
 
 ## Supported Hosts
 
-| Host        | Support Level                              | Advanced installer            |
-| ----------- | ------------------------------------------ | ----------------------------- |
-| Claude Code | Full plugin (skills, commands, hooks, MCP) | `scripts/install_claude.sh`   |
-| Codex CLI   | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`    |
-| Cursor      | MCP server config + rules                  | `scripts/install_cursor.sh`   |
-| opencode    | MCP + workspace agent profile              | `scripts/install_opencode.sh` |
-| Copilot     | MCP + instructions + agent + tasks     | `scripts/install_copilot.sh`  |
-| Hermes Agent| MCP server config + toolset                | `scripts/install_hermes.sh`   |
-| Antigravity | MCP + generated AGENTS surface             | `scripts/install_antigravity.sh` |
+| Host         | Support Level                                    | Advanced installer               |
+| ------------ | ------------------------------------------------ | -------------------------------- |
+| Claude Code  | Full plugin (skills, commands, hooks, MCP)       | `scripts/install_claude.sh`      |
+| Codex CLI    | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`       |
+| Cursor       | MCP server config + rules                        | `scripts/install_cursor.sh`      |
+| opencode     | MCP + workspace agent profile                    | `scripts/install_opencode.sh`    |
+| Copilot      | MCP + instructions + agent + tasks               | `scripts/install_copilot.sh`     |
+| Hermes Agent | MCP server config + toolset                      | `scripts/install_hermes.sh`      |
+| Antigravity  | MCP + generated AGENTS surface                   | `scripts/install_antigravity.sh` |
 
 ---
 
@@ -74,7 +74,7 @@ All install scripts:
 - [hermes-install.md](hermes-install.md)
 - [antigravity-install.md](antigravity-install.md)
 
-Archived capability-contract detail now lives under `docs-archive/hosts/host-capability-matrix.md`.
+Capability-contract detail lives in [host-capability-matrix.md](host-capability-matrix.md).
 
 ---
 
@@ -86,10 +86,15 @@ Detailed documentation and example configs for each host live in:
 atelier/integrations/
 ├── claude/          # Full plugin config
 ├── codex/           # Codex plugin template + marketplace docs
+├── cursor/          # Cursor MCP config + rules
 ├── opencode/        # opencode.json example
 ├── copilot/         # .vscode/mcp.json + copilot-instructions
+├── copilot-cli/     # Copilot CLI config
 └── antigravity/     # Antigravity MCP template + host guidance
 ```
+
+Hermes has no directory here — its installer writes `~/.hermes/config.yaml`
+directly.
 
 Host install entrypoints are under `scripts/install_<host>.sh`.
 
@@ -100,7 +105,7 @@ Host install entrypoints are under `scripts/install_<host>.sh`.
 All hosts ultimately invoke the same Atelier MCP server, but packaged hosts now carry their own host-specific wrapper surfaces:
 
 ```text
-atelier-mcp
+atelier mcp
 ```
 
 That repo wrapper remains the canonical MCP entrypoint for direct MCP-only installs. Codex packages that same runtime behavior behind a plugin-local wrapper, while Antigravity uses workspace or user MCP configuration plus a generated host surface.
@@ -111,7 +116,7 @@ All hosts ultimately use the same Atelier stdio MCP server.
 
 - `trace` is the consistently active observable recording surface.
 - With `ATELIER_DEV_MODE=1`, hosts can actively use `context`, `route`, `rescue`,
-  `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, and
+  `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `bash`, and
   the `atelier_code_*` helpers.
 - Packaged hosts may add wrapper tasks, skills, or commands on top of that shared
   MCP surface.

@@ -157,16 +157,16 @@ def schedule_route(
     *,
     session_id: str,
     tool: str,
-    recommended_vendor: str | None = None,
     recommended_tier: str,
     recommended_model: str,
+    recommendation_followed: bool,
+    scored_state: dict[str, Any],
+    recommended_vendor: str | None = None,
     actual_vendor: str | None = None,
     actual_model: str | None = None,
-    recommendation_followed: bool,
     applied_lessons: list[str] | None = None,
     cost_cap_triggered: bool = False,
     cost_cap_limit_usd_per_session: float | None = None,
-    scored_state: dict[str, Any],
     writer: _StateWriter | None = None,
 ) -> str:
     """Register a pending route outcome. Returns the decision_id."""
@@ -242,7 +242,7 @@ def advance(
         is_read_tool=is_read_tool,
     )
     _advance_compacts(session_id, is_error=is_error, is_read_tool=is_read_tool, errors_total=errors_total)
-    _flush(session_id, writer=writer)
+    _flush_commit(session_id, writer=writer)
 
 
 def close_session(
@@ -254,7 +254,7 @@ def close_session(
     """Finalise all still-pending outcomes at session close."""
     _finalise_routes(session_id)
     _finalise_compacts(session_id, errors_total=errors_total)
-    _flush(session_id, writer=writer)
+    _flush_commit(session_id, writer=writer)
 
 
 def get_outcomes(session_id: str) -> dict[str, list[dict[str, Any]]]:
@@ -463,26 +463,90 @@ class _StateWriter:
     def write(self, updates: dict[str, Any]) -> None:  # pragma: no cover
         raise NotImplementedError
 
+    def commit(self) -> None:  # pragma: no cover
+        """Drain any buffered writes to the store. No-op for writers that
+        persist eagerly in ``write()``."""
+
+
+# In-process cache of parsed outcome-state files, keyed by resolved path.
+# Maps path -> ((st_mtime_ns, st_size), parsed_full_state_dict). This collapses
+# the per-tool-call disk re-read + JSON-parse of the outcome state file (paid on
+# every _handle call via _route_outcome_calibration and FileStateWriter.write)
+# into a single parse that is reused until the file changes. The (mtime_ns, size)
+# stamp invalidates the entry if any *other* process rewrites the file, so the
+# cache never serves stale cross-process data; this process's own writes refresh
+# the entry in lockstep with the on-disk bytes.
+_state_cache: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+
+def _read_state_cached(path: Path) -> dict[str, Any]:
+    """Return the parsed full state dict for *path*, reusing the in-process cache.
+
+    A fresh ``os.stat`` decides cache validity: if the file's (mtime_ns, size)
+    matches the cached stamp the parsed dict is returned without re-reading or
+    re-parsing. The returned dict is the cached object and MUST NOT be mutated by
+    callers.
+    """
+    key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        _state_cache.pop(key, None)
+        return {}
+    stamp = (st.st_mtime_ns, st.st_size)
+    cached = _state_cache.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        parsed = json.loads(path.read_text("utf-8"))
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return {}
+    state = parsed if isinstance(parsed, dict) else {}
+    _state_cache[key] = (stamp, state)
+    return state
+
+
+# Module-level write buffer keyed by path string. FileStateWriter.write()
+# merges updates here without touching disk; commit() drains the buffer with a
+# single read+merge+write_text. This coalesces the two per-tool-call flushes
+# (schedule_route → _flush, then advance → _flush) into ONE disk write.
+_write_buffer: dict[str, dict[str, Any]] = {}
+
 
 class FileStateWriter(_StateWriter):
     """Write outcomes directly to a session_state.json file."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._key = str(path)
 
     def write(self, updates: dict[str, Any]) -> None:
+        """Buffer updates in memory; call commit() to flush to disk."""
+        buf = _write_buffer.setdefault(self._key, {})
+        buf.update(updates)
+
+    def commit(self) -> None:
+        """Drain the write buffer to disk in a single read+merge+write_text."""
+        updates = _write_buffer.pop(self._key, None)
+        if updates is None:
+            return
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        merged = {**_read_state_cached(self._path), **updates}
+        self._path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         try:
-            existing: dict[str, Any] = json.loads(self._path.read_text("utf-8")) if self._path.exists() else {}
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            existing = {}
-        existing.update(updates)
-        self._path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+            st = self._path.stat()
+            _state_cache[self._key] = ((st.st_mtime_ns, st.st_size), merged)
+        except OSError:
+            _state_cache.pop(self._key, None)
 
 
 def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
-    """Serialise current outcomes and push them to the state writer."""
+    """Buffer current outcomes in the writer (no disk I/O).
+
+    Call _flush_commit() at the terminal point of a tool call to drain
+    the buffer to disk in a single write.
+    """
     if writer is None:
         return
     writer.write(
@@ -493,6 +557,13 @@ def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
     )
 
 
+def _flush_commit(session_id: str, *, writer: _StateWriter | None) -> None:
+    """Buffer current outcomes then commit (one disk write per tool call)."""
+    _flush(session_id, writer=writer)
+    if writer is not None:
+        writer.commit()
+
+
 # --------------------------------------------------------------------------- #
 # CLI query helpers (used by atelier outcomes show/summary)                   #
 # --------------------------------------------------------------------------- #
@@ -500,13 +571,7 @@ def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
 
 def load_outcomes_from_state(path: Path) -> dict[str, list[dict[str, Any]]]:
     """Load outcomes stored in a session_state.json file."""
-    if not path.exists():
-        return {"route_outcomes": [], "compact_outcomes": []}
-    try:
-        state: dict[str, Any] = json.loads(path.read_text("utf-8"))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return {"route_outcomes": [], "compact_outcomes": []}
+    state = _read_state_cached(path)
     return {
         "route_outcomes": list(state.get("route_outcomes") or []),
         "compact_outcomes": list(state.get("compact_outcomes") or []),

@@ -12,7 +12,6 @@ import pytest
 if TYPE_CHECKING:
     from atelier.core.foundation.store import ContextStore
     from atelier.core.runtime import AtelierRuntimeCore
-    from atelier.gateway.adapters.runtime import ContextRuntime
 
 
 @pytest.fixture(autouse=True)
@@ -31,14 +30,52 @@ def _isolate_workspace_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> I
     isolated_root = tmp_path / ".atelier"
     monkeypatch.setenv("ATELIER_ROOT", str(isolated_root))
     monkeypatch.setenv("ATELIER_STORE_ROOT", str(isolated_root))
+    # Complete the isolation: point the workspace root at tmp_path too. Without
+    # this, _workspace_root() falls through to os.getcwd() (the real repo), so
+    # the new read/projection workspace-confinement rejects files tests create
+    # under tmp_path. Tests that need a specific workspace set it themselves.
+    monkeypatch.setenv("ATELIER_WORKSPACE_ROOT", str(tmp_path))
+    # Point host-transcript discovery at an isolated, empty dir. Savings/recall/
+    # statusline code falls back to the developer's real ~/.claude/projects when
+    # CLAUDE_CONFIG_DIR is unset, so an in-process test would replay every real
+    # host session -- tens of seconds and non-hermetic. The dir is left absent so
+    # scans short-circuit on `projects.is_dir()`; tests needing transcripts set
+    # CLAUDE_CONFIG_DIR to their own fixture dir, which overrides this.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "_isolated_claude_home"))
     yield
 
 
 @pytest.fixture(autouse=True)
 def _no_network_sync() -> Iterator[None]:
     """Block all outbound sync_usage calls so no test ever hits atelier.beseam.com."""
-    with patch("atelier.core.service.usage_sync.sync_usage", return_value=True):
+    with patch("atelier.core.service.sync.sync_usage", return_value=True):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _no_external_search_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate tests from zoekt and semantic search backends.
+
+    * ``ATELIER_ZOEKT_LOC_THRESHOLD=100000000`` — tiny test repos (< 10 k LOC)
+      never route through zoekt (which requires a built index the test fixtures
+      don't provide).  The real default is 1 (all repos).
+
+    * ``ATELIER_CODE_EMBEDDER=null`` — suppress the local feature-hashing
+      embedder so ``_build_symbol_embeddings`` is a no-op during index_repo()
+      and ``_semantic_candidate_files`` returns empty.  Without this, the ANN
+      search surfaces all sibling files, breaking tests whose intent is that
+      ``complete_families=False`` keeps only the seed file.
+
+    Tests that explicitly exercise zoekt or semantic behaviour should override
+    these env vars via their own ``monkeypatch.setenv`` call.
+    """
+    from atelier.infra.embeddings.factory import make_code_embedder
+
+    make_code_embedder.cache_clear()
+    monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "100000000")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "null")
+    yield
+    make_code_embedder.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -80,22 +117,3 @@ def store(tmp_path: Path) -> ContextStore:
     store = ContextStore(root)
     store.init()
     return store
-
-
-@pytest.fixture()
-def seeded_runtime(tmp_path: Path) -> Iterator[ContextRuntime]:
-    import yaml
-
-    from atelier.core.foundation.models import Rubric
-    from atelier.core.foundation.parser import parse_block_markdown
-    from atelier.gateway.adapters.runtime import ContextRuntime
-
-    rt = ContextRuntime(root=tmp_path / "atelier")
-    lessons_root = Path(__file__).resolve().parents[1] / ".lessons"
-    blocks_dir = lessons_root / "blocks"
-    rubrics_dir = lessons_root / "rubrics"
-    for p in sorted(blocks_dir.glob("template_*.md")):
-        rt.store.upsert_block(parse_block_markdown(p.read_text(encoding="utf-8")))
-    for p in sorted(rubrics_dir.glob("template_*.yaml")):
-        rt.store.upsert_rubric(Rubric.model_validate(yaml.safe_load(p.read_text(encoding="utf-8"))))
-    yield rt

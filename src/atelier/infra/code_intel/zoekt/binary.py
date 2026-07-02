@@ -17,6 +17,15 @@ _MODE_ENV_VAR = "ATELIER_ZOEKT_MODE"
 _DOCKER_BINARY = "docker"
 _LOCAL_REQUIRED = ("zoekt", "zoekt-index", "zoekt-git-index", "zoekt-webserver")
 _VALID_MODES = frozenset({"off", "installed", "managed"})
+# Common Go binary directories that users install into but that are absent from
+# PATH when atelier runs as an MCP server (launched by Claude Desktop / Code
+# without a user shell environment).
+_GO_BIN_PROBE_DIRS = (
+    Path.home() / "go" / "bin",  # default: go install writes here
+    Path("/usr/local/go/bin"),  # system-wide Go toolchain
+    Path("/usr/local/bin"),  # Homebrew on Intel mac / typical Linux
+    Path("/opt/homebrew/bin"),  # Homebrew on Apple Silicon
+)
 
 
 @dataclass(frozen=True)
@@ -33,9 +42,16 @@ class ZoektBinaryResolution:
 
 
 def zoekt_mode() -> str:
-    """Return the configured Zoekt policy."""
-    mode = os.environ.get(_MODE_ENV_VAR, "off").strip().lower()
-    return mode if mode in _VALID_MODES else "off"
+    """Return the configured Zoekt policy.
+
+    Defaults to ``installed``: use Zoekt's regex/trigram index whenever the
+    binaries are already on PATH (or pinned via ``ATELIER_ZOEKT_BIN``), and fall
+    back silently to native search otherwise. This never bootstraps Docker --
+    that requires explicitly opting into ``managed`` -- so the default carries no
+    runtime cost on machines where Zoekt is not installed.
+    """
+    mode = os.environ.get(_MODE_ENV_VAR, "installed").strip().lower()
+    return mode if mode in _VALID_MODES else "installed"
 
 
 def _is_executable(path: Path) -> bool:
@@ -166,6 +182,33 @@ def discover_zoekt_binary(repo_root: str | Path) -> ZoektBinaryResolution:
             checked=tuple(checked),
             runtime="binary",
         )
+
+    # shutil.which only searches PATH.  When atelier runs as an MCP server
+    # (launched by an IDE without a full user shell) PATH omits Go's default
+    # install directory (~/go/bin).  Re-run which() with an augmented PATH
+    # that includes common Go binary directories so that `go install`-ed
+    # binaries are found even in restricted environments.
+    # Only applies in "installed" mode -- "managed" mode explicitly requests
+    # Docker; skipping the probe preserves that intent.
+    if mode != "managed":
+        for go_dir in _GO_BIN_PROBE_DIRS:
+            if not go_dir.is_dir():
+                continue
+            go_probe: dict[str, str] = {}
+            for name in _LOCAL_REQUIRED:
+                candidate = go_dir / name
+                if _is_executable(candidate):
+                    go_probe[name] = str(candidate)
+            if all(name in go_probe for name in _LOCAL_REQUIRED):
+                for p in go_probe.values():
+                    checked.append(p)
+                return ZoektBinaryResolution(
+                    available=True,
+                    path=(go_dir / "zoekt").resolve(),
+                    source="go-bin",
+                    checked=tuple(checked),
+                    runtime="binary",
+                )
 
     if mode != "managed":
         return ZoektBinaryResolution(

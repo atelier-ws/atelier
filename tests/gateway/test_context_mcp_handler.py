@@ -1,7 +1,7 @@
 """Comprehensive MCP-level tests for the `context` tool handler.
 
 Covers:
-- Basic response structure (prefix_plan string, bootstrap dict always present)
+- Basic response structure (bootstrap dict always present; prefix_plan gated behind diagnostics)
 - Worker throttle (_spawn_worker_if_idle called at most once per window)
 - Bootstrap job re-queuing after failure (no longer blocked by failed jobs)
 - recall=False skips archival memory
@@ -27,12 +27,10 @@ import pytest
 
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.service.jobs import (
-    JOB_ANALYZE_FAILURES,
     JOB_BOOTSTRAP_CONTEXT,
     JOB_COMPUTE_EMBEDDINGS,
     JOB_CONSOLIDATE_BLOCKS,
-    JOB_EXTRACT_REASONBLOCK,
-    JOB_GENERATE_EVAL,
+    JOB_EXTRACT_PLAYBOOK,
     JOB_INGEST_SESSION_DIRECTORY,
     JOB_INGEST_SESSION_FILE,
     JOB_OPTIMIZE,
@@ -83,7 +81,16 @@ def ctx_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_context_returns_prefix_plan_string(ctx_root: Path) -> None:
+def test_context_omits_prefix_plan_by_default(ctx_root: Path) -> None:
+    # prefix_plan is cache/token-split diagnostics the model does not act on, so
+    # it must not appear in the default model-facing result.
+    payload = _call_context({"task": "write tests for the auth module"})
+    assert "prefix_plan" not in payload
+
+
+def test_context_emits_prefix_plan_when_diagnostics_opted_in(ctx_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Behind the diagnostics opt-in the planner output is still surfaced.
+    monkeypatch.setenv("ATELIER_MCP_DEBUG", "1")
     payload = _call_context({"task": "write tests for the auth module"})
     assert "prefix_plan" in payload
     assert isinstance(payload["prefix_plan"], dict)
@@ -169,7 +176,7 @@ def test_context_retrieve_not_called_separately(ctx_root: Path) -> None:
 def test_context_recall_false_no_agent_id(ctx_root: Path) -> None:
     """With recall=False and no agent_id, response is still valid."""
     payload = _call_context({"task": "deploy to staging", "recall": False})
-    assert "prefix_plan" in payload
+    assert "prefix_plan" not in payload  # diagnostics gated off by default
     assert "bootstrap" in payload
 
 
@@ -213,9 +220,9 @@ def test_context_with_agent_id_includes_memory_facts(ctx_root: Path) -> None:
     mem.upsert_block(block, actor="pytest")
 
     payload = _call_context({"task": "load preferences", "agent_id": "test-agent"})
-    assert "prefix_plan" in payload
-    assert isinstance(payload["prefix_plan"], dict)
+    assert "prefix_plan" not in payload  # diagnostics gated off by default
     assert "bootstrap" in payload
+    assert isinstance(payload["bootstrap"], dict)
 
 
 def test_context_no_agent_id_returns_empty_recalled_passages(ctx_root: Path) -> None:
@@ -452,9 +459,7 @@ def test_worker_run_once_handler_exception_marks_failed(ctx_root: Path) -> None:
 def test_all_known_job_types_defined(ctx_root: Path) -> None:
     """Verify all expected job type constants are present in KNOWN_JOB_TYPES."""
     expected = {
-        JOB_EXTRACT_REASONBLOCK,
-        JOB_ANALYZE_FAILURES,
-        JOB_GENERATE_EVAL,
+        JOB_EXTRACT_PLAYBOOK,
         JOB_COMPUTE_EMBEDDINGS,
         JOB_CONSOLIDATE_BLOCKS,
         JOB_OPTIMIZE,

@@ -5,7 +5,9 @@ description: Launch a single structured run by choosing subagent versus isolated
 
 # Orchestrate
 
-Use this skill when the user wants one coordinated multi-step run instead of ad hoc tool calls.
+This skill runs a **single structured multi-step task** end-to-end — think of it as "Claude with a plan": it chooses the right execution surface (a background task, a durable workflow, or a direct subagent), runs the steps, and hands back a result or a `run_id` you can track.
+
+When invoked, tell the user: "I'll coordinate this as a single structured run. Let me ask a few things to set it up correctly." Then gather inputs via `AskUserQuestion`.
 
 ## Operating loop
 
@@ -15,12 +17,12 @@ Use this skill when the user wants one coordinated multi-step run instead of ad 
    - use the **`workflow`** MCP tool for durable, prompt-driven workflow runs
    - use a direct child subagent/background task when the task does not need durable workflow state
 4. If you use `workflow`, compile the smallest valid workflow spec and call `workflow` with `op="run"`.
-5. If the user wants an isolated/background run, prefer the host's background-task surface. Do not pretend that `workflow.pause` or `workflow.stop` can kill a live synchronous run.
+5. If the user wants an isolated/background run, prefer the host's background-task surface.
 6. Return the resulting `run_id`, task handle, or child-run handle and tell the user how to inspect progress.
 
 ## Questions to gather
 
-Ask one question at a time until these are clear:
+Use `AskUserQuestion` to collect what you need — batch multiple unknowns into a single call (up to 4 questions). Gather until these are clear:
 
 - the exact goal/deliverable
 - launch mode: `subagent` or `isolated`
@@ -33,7 +35,7 @@ Ask one question at a time until these are clear:
 Use the `workflow` MCP tool truthfully:
 
 - `op="run"` starts a fresh workflow run
-- `op="status"` inspects the persisted run state
+- `op="status"` returns the persisted run state; `op="inspect"` returns a fuller per-step view of it
 - `op="resume"` continues a persisted run
 - `op="pause"` and `op="stop"` only update persisted workflow state; they do **not** interrupt a live synchronous execution already in flight
 

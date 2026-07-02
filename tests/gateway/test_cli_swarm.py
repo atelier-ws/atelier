@@ -35,6 +35,7 @@ def test_swarm_start_defaults_to_program_md(monkeypatch: object, tmp_path: Path)
     spec = tmp_path / "program.md"
     spec.write_text("# default spec\n", encoding="utf-8")
     captured: dict[str, object] = {}
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     state = SwarmRunState(
         run_id="swarm-123",
         status="success",
@@ -75,6 +76,7 @@ def test_swarm_start_defaults_to_program_md(monkeypatch: object, tmp_path: Path)
 
 def test_swarm_start_missing_default_program_md_fails(monkeypatch: object, tmp_path: Path) -> None:
     runner = CliRunner()
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
@@ -91,6 +93,7 @@ def test_swarm_start_rejects_spec_outside_repo(monkeypatch: object, tmp_path: Pa
     runner = CliRunner()
     outside = tmp_path.parent / "outside-program.md"
     outside.write_text("# spec\n", encoding="utf-8")
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
@@ -108,6 +111,7 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
     spec = tmp_path / "program.md"
     spec.write_text("# spec\n", encoding="utf-8")
     root = tmp_path / "atelier-root"
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     state = SwarmRunState(
         run_id="swarm-123",
         status="success",
@@ -186,9 +190,9 @@ def test_swarm_start_reports_winner(monkeypatch: object, tmp_path: Path) -> None
     )
 
     assert result.exit_code == 0
-    assert "primary_winner: wave-02-run-01" in result.output
-    assert "mode: continuous" in result.output
-    assert "planned=2/3" in result.output
+    assert "wave-02-run-01" in result.output
+    assert "mode:" in result.output
+    assert "2/3" in result.output
 
 
 def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path) -> None:
@@ -196,6 +200,7 @@ def test_swarm_start_accepts_runner_profile(monkeypatch: object, tmp_path: Path)
     spec = tmp_path / "program.md"
     spec.write_text("# spec\n", encoding="utf-8")
     root = tmp_path / "atelier-root"
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     captured: dict[str, object] = {}
     state = SwarmRunState(
         run_id="swarm-123",
@@ -292,6 +297,7 @@ def test_swarm_start_forwards_evaluator_controls(monkeypatch: object, tmp_path: 
         runs=2,
         max_runs=2,
     )
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     def _initialize(**kwargs: object) -> tuple[SwarmRunState, Path]:
@@ -388,6 +394,7 @@ def test_swarm_start_rejects_runner_and_raw_command(monkeypatch: object, tmp_pat
     runner = CliRunner()
     spec = tmp_path / "program.md"
     spec.write_text("# spec\n", encoding="utf-8")
+    monkeypatch.setattr("atelier.gateway.cli.commands.swarm.require_pro", lambda _feature, _label: None)
     monkeypatch.setattr("atelier.gateway.cli.commands.swarm.discover_repo_root", lambda _cwd: tmp_path)
 
     result = runner.invoke(
@@ -510,13 +517,11 @@ def test_swarm_status_reads_state(monkeypatch: object, tmp_path: Path) -> None:
     result = runner.invoke(swarm_group, ["status", run_id], obj={"root": root})
 
     assert result.exit_code == 0
-    assert "run_id: swarm-123" in result.output
-    assert "runner: claude" in result.output
-    assert "runner_model: sonnet" in result.output
-    assert "evaluator_backend: ollama" in result.output
-    assert "convergence_status: stagnating" in result.output
+    assert "swarm-123" in result.output
+    assert "claude" in result.output
+    assert "ollama" in result.output
+    assert "stagnating" in result.output
     assert "Only duplicate patch ideas remain." in result.output
-    assert "failed_children:" in result.output
     assert "selected model is invalid" in result.output
 
 

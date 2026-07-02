@@ -27,7 +27,7 @@ from atelier.core.foundation.extractor import CandidateBlock
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
-    ReasonBlock,
+    Playbook,
     RescueResult,
     RubricResult,
     ToolCall,
@@ -41,7 +41,7 @@ from atelier.core.foundation.retriever import (
     ScoredBlock,
     TaskContext,
     deduplicate_scored_blocks,
-    pack_by_reasonblock_token_budget,
+    pack_by_playbook_token_budget,
     retrieve,
     score_block,
 )
@@ -60,14 +60,14 @@ from atelier.core.foundation.watchdogs import (
 from atelier.core.runtime import AtelierRuntimeCore
 
 
-def _load_domain_reasonblocks(store_root: Path) -> list[ReasonBlock]:
+def _load_domain_playbooks(store_root: Path) -> list[Playbook]:
     from atelier.core.domains import DomainManager
 
     manager = DomainManager(store_root)
-    blocks: list[ReasonBlock] = []
+    blocks: list[Playbook] = []
     seen_ids: set[str] = set()
 
-    for block in manager.all_reasonblocks():
+    for block in manager.all_playbooks():
         if block.id in seen_ids or block.status in ("quarantined",):
             continue
         seen_ids.add(block.id)
@@ -94,7 +94,7 @@ def _retrieve_with_pack_context(
     )
     merged: dict[str, ScoredBlock] = {entry.block.id: entry for entry in learned}
 
-    for block in _load_domain_reasonblocks(store.root):
+    for block in _load_domain_playbooks(store.root):
         if block.status == "deprecated":
             continue
         scored = score_block(block, ctx)
@@ -107,7 +107,7 @@ def _retrieve_with_pack_context(
     ranked = sorted(merged.values(), key=lambda entry: entry.score, reverse=True)
     if dedup:
         ranked = deduplicate_scored_blocks(ranked)
-    return pack_by_reasonblock_token_budget(
+    return pack_by_playbook_token_budget(
         ranked,
         lambda item: item.block,
         limit=limit,
@@ -165,7 +165,7 @@ class RuntimeSession:
 
         for rank, item in enumerate(scored, start=1):
             emit_product(
-                "reasonblock_retrieved",
+                "playbook_retrieved",
                 block_id_hash=hash_identifier(item.block.id),
                 domain=item.block.domain,
                 retrieval_score=float(item.score),
@@ -318,6 +318,9 @@ class RuntimeSession:
             validation_results=validation_results or [],
         )
         self.store.record_trace(trace)
+        from atelier.core.capabilities.lesson_promotion import ingest_failed_trace
+
+        ingest_failed_trace(self.store, trace)
         self.trace_id = trace.id
         return trace
 
@@ -396,6 +399,8 @@ class ContextRuntime:
         include_telemetry: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> str | dict[str, Any]:
         return self.core_runtime.get_context(
             task=task,
@@ -409,7 +414,14 @@ class ContextRuntime:
             include_telemetry=include_telemetry,
             agent_id=agent_id,
             recall=recall,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
+
+    # Minimum raw-bm25 evidence before rescue claims a procedure match.
+    # Calibrated on the seed Playbooks: true matches score 13-22, unrelated
+    # errors top out at ~4.3. See rescue_failure below.
+    _RESCUE_MIN_BM25 = 8.0
 
     def rescue_failure(
         self,
@@ -420,17 +432,21 @@ class ContextRuntime:
         recent_actions: list[str] | None = None,
         domain: str | None = None,
     ) -> RescueResult:
-        scored = self.core_runtime.context_reuse.retrieve(
-            task=task,
-            domain=domain,
-            files=files,
-            errors=[error],
+        # Rescue is an explicit distress call: rank by raw bm25 evidence and
+        # require the floor before claiming a match; below it -> honest
+        # fallback. The unsolicited-injection pipeline (retrieve) is
+        # deliberately not used here: its keyword-trigger gate drops valid
+        # matches and its rank fusion is flat on a small block set.
+        scored = self.core_runtime.context_reuse.rescue_candidates(
+            task=f"{task} {domain or ''}".strip(),
+            error=" ".join([error, *(recent_actions or [])]),
             limit=3,
         )
+        scored = [s for s in scored if s.score >= self._RESCUE_MIN_BM25]
         if not scored:
             return RescueResult(
                 rescue=(
-                    "No matching ReasonBlock found. Stop and summarize: "
+                    "No matching Playbook found. Stop and summarize: "
                     "files changed, errors seen, assumptions tested, current "
                     "blocker. Then ask for guidance."
                 ),

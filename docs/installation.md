@@ -5,7 +5,7 @@ This page starts with the installed product flow. Source-checkout and contributo
 ## Quick Install (Production)
 
 ```bash
-curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+curl -fsSL https://install.atelier.ws | bash
 ```
 
 What the production installer does:
@@ -18,18 +18,18 @@ The binary is self-contained — no `git`, `uv`, `npm`, or `node` required at in
 
 ## Full Developer Install
 
-For host integrations, SCIP indexers, background services, and the optional
+For host integrations, background services, and the optional
 visualization stack, install from a repo checkout using the dev installer:
 
 ```bash
-git clone https://github.com/atelier-runtime/atelier.git
+git clone https://github.com/atelier-ws/atelier.git
 cd atelier
-bash scripts/dev.sh --local
+bash scripts/local.sh --local
 ```
 
 The dev installer:
 
-- installs `atelier` and `atelier-mcp` as user-level console commands in `~/.local/bin`
+- installs `atelier` and `atelier mcp` as user-level console commands in `~/.local/bin`
 - clones or updates Atelier under `~/.local/share/atelier`
 - initializes `~/.atelier`
 - starts the detached `servicectl` loop
@@ -37,32 +37,14 @@ The dev installer:
 - installs host integrations when compatible CLIs are found on `PATH`
 
 The dev installer uses uv at install time to create a managed tool environment.
-After install, `atelier` and `atelier-mcp` run directly from that environment;
+After install, `atelier` and `atelier mcp` run directly from that environment;
 normal CLI usage does not shell through `uv run`.
-
-When npm is available, the dev installer also provisions Tier-1 SCIP indexers
-(`scip-python` and `scip-typescript`) into Atelier's managed Node prefix so
-Python, TypeScript, and JavaScript semantic indexing works without a
-system-global install. Heavier indexers are discovered from user toolchains or
-reported in availability status with install hints.
-
-SCIP indexer discovery uses this precedence:
-
-1. Explicit environment override such as `ATELIER_SCIP_PYTHON_BIN`.
-2. Atelier-managed directories, including `$ATELIER_NODE_DIR/bin`, `$ATELIER_ROOT/bin`, and `$ATELIER_INSTALL_DIR/bin`.
-3. System `PATH`.
-
-| Tier | Languages | Provisioning |
-|------|-----------|--------------|
-| Tier 1 | Python, TypeScript, JavaScript | Installed at setup via npm when npm is available. |
-| Tier 2 | Go, Ruby, C, C++ | Lazy bootstrap is checksum-gated and fails closed offline or without allowlist metadata. |
-| Tier 3 | Rust, Java | User-managed toolchains only; Atelier reports install hints instead of auto-installing them. |
 
 Verify the install:
 
 ```bash
 atelier --version
-atelier-mcp --version
+atelier mcp --version
 atelier background status
 ```
 
@@ -71,31 +53,31 @@ atelier background status
 Skip host integrations:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | bash -s -- --no-hosts
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | bash -s -- --no-hosts
 ```
 
 Skip auto-starting background services:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | ATELIER_NO_SERVICECTL=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | ATELIER_NO_SERVICECTL=1 bash
 ```
 
 Skip auto-starting the visualization stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | ATELIER_NO_STACK=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | ATELIER_NO_STACK=1 bash
 ```
 
 Install from a local checkout instead of GitHub:
 
 ```bash
-bash scripts/dev.sh --local
+bash scripts/local.sh --local
 ```
 
 Install host + universal MCP artifacts into the current project (instead of user-global host config):
 
 ```bash
-bash scripts/dev.sh --local --workspace .
+bash scripts/local.sh --local --workspace .
 ```
 
 ## Runtime Modes After Install
@@ -105,7 +87,7 @@ bash scripts/dev.sh --local --workspace .
 No HTTP server is required for normal usage.
 
 - `atelier ...` is the main CLI
-- `atelier-mcp` is the MCP server used by host integrations
+- `atelier mcp` is the MCP server used by host integrations
 - `atelier background ...` manages background services and auto-updates
 
 If npm is installed and `ATELIER_NO_STACK=1` was not set during install, the
@@ -130,6 +112,7 @@ atelier background restart
 #### Auto-Update
 
 The background controller periodically checks your git repository for updates. When found, it automatically:
+
 1. Pulls the latest code.
 2. Syncs dependencies using `uv`.
 3. Restarts the services to apply changes.
@@ -183,7 +166,7 @@ atelier background logs
 Manual job control is available too:
 
 ```bash
-atelier worker enqueue consolidate_reasonblocks
+atelier worker enqueue consolidate_playbooks
 atelier worker run-once
 atelier worker list
 ```
@@ -212,7 +195,7 @@ Store layout:
 ```text
 .atelier/
 ├── atelier.db          # SQLite store (blocks, traces, rubrics, jobs)
-├── blocks/             # Markdown mirrors of ReasonBlocks
+├── blocks/             # Markdown mirrors of Playbooks
 ├── rubrics/            # YAML mirrors of rubrics
 └── traces/             # JSON mirrors of recorded traces
 ```
@@ -243,10 +226,10 @@ atelier init
 
 ### Core
 
-| Variable                 | Default            | Description                         |
-| ------------------------ | ------------------ | ----------------------------------- |
-| `ATELIER_ROOT`           | `~/.atelier`       | Main runtime store root             |
-| `ATELIER_STORE_ROOT`     | `~/.atelier`       | Alias for `ATELIER_ROOT`            |
+| Variable               | Default            | Description                       |
+| ---------------------- | ------------------ | --------------------------------- |
+| `ATELIER_ROOT`         | `~/.atelier`       | Main runtime store root           |
+| `ATELIER_STORE_ROOT`   | `~/.atelier`       | Alias for `ATELIER_ROOT`          |
 | `ATELIER_LESSONS_ROOT` | workspace-relative | Optional git-tracked lessons root |
 
 ### Storage

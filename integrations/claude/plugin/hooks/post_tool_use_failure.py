@@ -21,14 +21,30 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-REPEAT_THRESHOLD = 2  # block on the second identical failure
+REPEAT_THRESHOLD = 3  # block on the third identical failure
+
+
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
+
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
 
 
 def _session_state_path() -> Path:
-    import hashlib
-
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = _workspace_key(workspace)
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
@@ -46,7 +62,22 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
 def _save_state(state: dict) -> None:  # type: ignore[type-arg]
     sp = _session_state_path()
     sp.parent.mkdir(parents=True, exist_ok=True)
-    sp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=sp.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            json.dump(state, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(sp)
+    except OSError:
+        if tmp_path:
+            with contextlib.suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -64,15 +95,13 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 def _append_failure_event(session_id: str, command: str, error: str, repeat: int) -> None:
-    """Append a note event for the command failure to runs/<session_id>.json."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    """Append a note event for the command failure to the session's run.json."""
+    try:
+        from atelier.core.foundation.paths import session_dir
+    except ImportError:
+        return
+    run_file = session_dir(_atelier_root(), "claude", session_id) / "run.json"
     if not run_file.exists():
         return
     try:
@@ -146,7 +175,7 @@ def main() -> int:
 
     # Always write the failure to the RunLedger (fail-open)
     try:
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if session_id:
             _append_failure_event(session_id, command, error, failures[sig])
     except (OSError, json.JSONDecodeError, KeyError):
@@ -158,10 +187,8 @@ def main() -> int:
                 {
                     "decision": "ask",
                     "reason": (
-                        "Atelier: this command has now failed twice with the "
-                        "same error signature. Call `rescue` "
-                        "with the task, error, files, and recent_actions "
-                        "before running it again; do not retry the same fix a third time."
+                        "This command failed 3 times with the same error. "
+                        "Call `rescue` before any retry; do not repeat the same fix."
                     ),
                 }
             )

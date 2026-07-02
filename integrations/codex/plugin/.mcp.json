@@ -1,8 +1,7 @@
 {
   "atelier": {
-    "command": "atelier-mcp",
-    "args": ["--host", "codex"],
-    "env": {},
-    "alwaysLoad": true
+    "command": "atelier",
+    "args": ["mcp", "--host", "codex"],
+    "env": {}
   }
-  }
+}

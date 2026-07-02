@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -26,14 +24,16 @@ from atelier.core.capabilities.model_settings import (
 )
 from atelier.core.capabilities.reporting.dashboard import _render_dashboard
 from atelier.core.capabilities.workspace_host_overrides import (
+    write_workspace_agents_md,
     write_workspace_claude_overrides,
+    write_workspace_codex_agent_config,
     write_workspace_codex_agents,
     write_workspace_copilot_agents,
     write_workspace_cursor_rules,
     write_workspace_opencode_agents,
 )
-from atelier.core.foundation.models import ReasonBlock, Rubric
-from atelier.gateway.cli.commands._dev import dev_command as _dev_command
+from atelier.core.foundation.models import Playbook, Rubric
+from atelier.core.foundation.paths import detect_host
 from atelier.gateway.cli.commands._shared import (
     _core_runtime,
     _emit,
@@ -43,173 +43,29 @@ from atelier.gateway.integrations.openmemory_lifecycle import project_root as _p
 
 
 def _detect_git_root(search_path: Path) -> Path | None:
-    """Return the git repo root containing search_path, or None if not in a repo."""
-    import subprocess as _subprocess
+    """Return the git repo root containing search_path, or None if not in a repo.
 
+    Walks upward for a ``.git`` entry (a directory in a normal clone, a file in a
+    worktree/submodule) rather than shelling out to ``git rev-parse``. Forking a
+    git subprocess from this fully-imported, multi-threaded process costs seconds
+    (page-table copy of a large parent), while the walk is a few ``stat`` calls
+    and needs no ``git`` binary.
+    """
     try:
-        result = _subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=str(search_path),
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip())
-    except (OSError, _subprocess.SubprocessError):
+        current = search_path.resolve()
+    except OSError:
         return None
+    for candidate in (current, *current.parents):
+        git_entry = candidate / ".git"
+        # A worktree/submodule uses a `.git` *file* (a gitlink); a normal clone
+        # uses a `.git` *directory*, which always contains HEAD. Requiring HEAD
+        # matches `git rev-parse` and rejects stray/empty `.git` dirs.
+        if git_entry.is_file() or (git_entry.is_dir() and (git_entry / "HEAD").is_file()):
+            return candidate
     return None
 
 
-def _ensure_gitignore(git_root: Path) -> list[str]:
-    """Add ``.atelier/`` to the project's ``.gitignore`` if not present.
-
-    Returns a list of entries added.
-    """
-    gitignore_path = git_root / ".gitignore"
-    existing = gitignore_path.read_text(encoding="utf-8").splitlines() if gitignore_path.exists() else []
-    added: list[str] = []
-    entries = [
-        "# Atelier runtime data",
-        ".atelier/",
-    ]
-    for entry in entries:
-        if entry not in existing:
-            existing.append(entry)
-            added.append(entry)
-    if added:
-        gitignore_path.write_text("\n".join(existing) + "\n", encoding="utf-8")
-    return added
-
-
-_ATELIER_CLAUDE_MD_TEMPLATE = """# CLAUDE.md — Atelier
-
-This file guides Claude Code when working in this repository. This project uses **Atelier** for code intelligence, context reuse, and agent reasoning.
-
-## Environment
-
-**All Python commands must use `uv run`** — this project uses `uv` for dependency management.
-
-```bash
-uv run python -c "..."          # one-off Python
-uv run pytest ...               # tests
-uv run mypy src                 # type-check
-uv run atelier ...              # Atelier CLI
-```
-
-## Common Commands
-
-```bash
-# Test
-uv run pytest -q                          # all tests
-uv run pytest -q -x -m "not slow"        # fast, stop on first failure
-uv run pytest tests/path/test_file.py -q # single file
-uv run pytest -q -k "test_name"          # single test by name
-
-# Lint / format / typecheck
-make lint           # ruff
-make format         # ruff --fix + black + prettier (frontend)
-make typecheck      # mypy --strict src
-
-# Full pre-commit gate
-make pre-commit     # format + lint + typecheck + docs + test
-
-# Docs governance
-make sync-agent-context   # regenerate host instruction files from integrations/shared/
-make check-agent-context  # verify generated files are up to date
-```
-
-## Atelier Commands
-
-| Command | Description |
-|---|---|
-| ``uv run atelier init`` | Initialize project for Atelier (store, seed, index) |
-| ``uv run atelier init --project`` | Also set up .gitignore, CLAUDE.md, AGENTS.md |
-| ``uv run atelier code index`` | Build or refresh code index |
-| ``uv run atelier search <query>`` | Semantic code search |
-| ``uv run atelier status`` | Show runtime status (runs dashboard) |
-| ``uv run atelier status --index`` | Show code index stats |
-| ``uv run atelier doctor`` | Run installation diagnostics |
-| ``uv run atelier reset`` | Reset code index (--all for full store reset) |
-
-## Architecture
-
-```
-gateway/  →  core/  →  infra/
-```
-
-- **`gateway/`** — agent-facing entry points: CLI, MCP server, SDK façade. Keep thin.
-- **`core/`** — domain logic: capabilities, models, orchestrator, API.
-- **`infra/`** — persistence and integrations: storage, code intelligence, embeddings.
-
-## Coding Guidelines
-
-Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution over speed; use judgment for trivial tasks.
-
-**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask; if multiple interpretations exist, present them; push back when a simpler approach exists.
-
-**2. Simplicity First** — minimum code that solves the problem; no speculative features, abstractions for single-use code, or error handling for impossible scenarios; if 200 lines could be 50, rewrite it.
-
-**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that *your* changes made unused.
-
-**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
-
-See [integrations/shared/coding-guidelines.md](integrations/shared/coding-guidelines.md) for the full reference.
-
-## Code Intelligence
-
-Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
-
-| Need | Tool |
-|---|---|
-| Find a symbol definition by name | `mcp__atelier__symbols` |
-| Read the full source of one symbol | `mcp__atelier__node` |
-| Who calls a function / what it calls | `mcp__atelier__callers` / `mcp__atelier__callees` |
-| All references to a symbol | `mcp__atelier__usages` |
-| Blast radius before refactoring | `mcp__atelier__impact` |
-| Match/rewrite code by AST shape | `mcp__atelier__pattern` |
-| Grouped source + relationships in one call | `mcp__atelier__explore` |
-
-## Agent Spawning Rules
-
-When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
-
-| Role | `subagent_type` | When |
-|---|---|---|
-| Code-review **finder** (read, search, grep — never edits) | `atelier:explore` | All Phase 1 / Angle A-G finder agents in `/code-review` |
-| Code-review **verifier** (applies rubric, never edits) | `atelier:review` | All Phase 2 verifier agents in `/code-review` |
-| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages |
-| Coding, edits, fixes | `atelier:code` | Any agent that writes or modifies files |
-
-**Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
-
-## Validation by Change Surface
-
-| What changed | Minimum check |
-|---|---|
-| Python / CLI | ``make lint && make typecheck && make test`` |
-| MCP tool handlers | ``uv run pytest tests/gateway/test_mcp_tool_handlers.py -q`` |
-| Code-intel engine | ``uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck`` |
-| Frontend | ``cd frontend && npm run build && npm run test`` |
-| Documentation | ``make docs-check && make check-agent-context`` |
-"""
-
-
-_ATELIER_AGENTS_MD_TEMPLATE = """# Project Instructions — Atelier
-
-This project uses Atelier for code intelligence, context reuse, and agent reasoning.
-
-## Atelier commands
-
-| Command | Description |
-|---|---|
-| ``atelier init`` | Initialize project (gitignore, host files) |
-| ``atelier code index`` | Build or refresh code index |
-| ``atelier search <query>`` | Semantic search across the codebase |
-| ``atelier status`` | Show runtime status |
-| ``atelier doctor`` | Run diagnostics |
-"""
-
+from atelier.core.foundation.paths import ensure_gitignore as _ensure_gitignore  # noqa: E402
 
 _RUNTIME_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "general", "explore", "plan", "research", "review")
 _HOST_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "explore", "plan", "research", "review")
@@ -427,7 +283,9 @@ def _detected_workspace_hosts(workspace_root: Path) -> tuple[str, ...]:
         ("cursor", bool((workspace_root / ".cursor").exists())),
         (
             "hermes",
-            bool(os.environ.get("HERMES_HOME") or os.environ.get("HERMES_SESSION_ID") or shutil.which("hermes")),
+            # detect_host() covers the env-var signal canonically; shutil.which
+            # catches an installed hermes binary even with no session active.
+            bool(detect_host() == "hermes" or shutil.which("hermes")),
         ),
     )
     return tuple(host for host, present in checks if present)
@@ -532,57 +390,53 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
     """
     results: dict[str, list[str]] = {}
 
-    # .gitignore
+    # .gitignore \u2014 write .atelier/.gitignore so the dir stays visible in git
     added = _ensure_gitignore(git_root)
     if added:
-        results["gitignore"] = [f"added to .gitignore: {', '.join(a for a in added if not a.startswith('#'))}"]
+        results["gitignore"] = [".atelier/.gitignore written (ignores everything inside .atelier/)"]
     else:
-        results["gitignore"] = [".atelier/ already in .gitignore"]
+        results["gitignore"] = [".atelier/.gitignore already present"]
 
-    # CLAUDE.md
-    claude_path = git_root / "CLAUDE.md"
-    if not claude_path.exists():
-        claude_path.write_text(_ATELIER_CLAUDE_MD_TEMPLATE.lstrip(), encoding="utf-8")
-        results["claude_md"] = ["created CLAUDE.md"]
-    else:
-        content = claude_path.read_text(encoding="utf-8")
-        # Detect whether the file already has any CLAUDE.md-style header or Atelier content
-        has_header = any(
-            marker in content for marker in ("# CLAUDE.md", "# CLAUDE.md — Atelier", "# Atelier", "mcp__atelier__")
-        )
-        if not has_header:
-            claude_path.write_text(
-                content.rstrip() + "\n\n" + _ATELIER_CLAUDE_MD_TEMPLATE,
-                encoding="utf-8",
+    # jj — colocated Jujutsu repo for session-level undo without git history noise
+    jj_dir = git_root / ".jj"
+    if jj_dir.exists():
+        results["jj"] = ["jj already initialized"]
+    elif shutil.which("jj"):
+        try:
+            proc = subprocess.run(
+                ["jj", "git", "init", "--colocate"],
+                cwd=git_root,
+                capture_output=True,
+                text=True,
             )
-            results["claude_md"] = ["appended Atelier guidance to CLAUDE.md"]
-        else:
-            results["claude_md"] = ["CLAUDE.md already has Atelier guidance"]
+            if proc.returncode == 0:
+                results["jj"] = ["jj initialized (colocated) — use `jj undo` to roll back any edit"]
+            else:
+                results["jj"] = [f"jj init failed: {proc.stderr.strip()}"]
+        except OSError as exc:
+            results["jj"] = [f"jj init error: {exc}"]
+    else:
+        results["jj"] = ["jj not found — install via `brew install jj` or `cargo install --locked jj-cli`"]
 
-    # AGENTS.md
-    agents_path = git_root / "AGENTS.md"
-    if not agents_path.exists():
-        agents_path.write_text(_ATELIER_AGENTS_MD_TEMPLATE.lstrip(), encoding="utf-8")
-        results["agents_md"] = ["created AGENTS.md"]
-    else:
-        content = agents_path.read_text(encoding="utf-8")
-        if "Atelier" not in content:
-            agents_path.write_text(
-                content.rstrip() + "\n\n" + _ATELIER_AGENTS_MD_TEMPLATE,
-                encoding="utf-8",
-            )
-            results["agents_md"] = ["appended Atelier guidance to AGENTS.md"]
-        else:
-            results["agents_md"] = ["AGENTS.md already has Atelier guidance"]
+    agents_path = write_workspace_agents_md(git_root)
+    results["agents_md"] = [f"updated {agents_path.relative_to(git_root)}"]
+
+    if "codex" in _detected_workspace_hosts(git_root):
+        codex_agents = write_workspace_codex_agents(git_root)
+        codex_config = write_workspace_codex_agent_config(git_root)
+        results["codex"] = [
+            f"updated {len(codex_agents)} workspace-local Codex agents",
+            f"updated {codex_config.relative_to(git_root)}",
+        ]
 
     return results
 
 
 def _code_index_db_path(repo_root: Path) -> Path:
     """Return the default code index database path for a repo."""
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    workspace_hash = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    workspace_hash = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / workspace_hash / "code_context.sqlite"
 
 
@@ -612,7 +466,7 @@ def _index_stats_pretty(repo_root: Path) -> list[str]:
 
 def _seed_resources() -> tuple[list[Path], list[Path]]:
     """Return (block_files, rubric_files) bundled with the package."""
-    blocks_dir = resources.files("atelier") / "infra" / "seed_blocks"
+    blocks_dir = resources.files("atelier") / "infra" / "seed_playbooks"
     rubrics_dir = resources.files("atelier") / "core" / "rubrics"
     block_files = sorted(Path(str(p)) for p in blocks_dir.iterdir() if p.name.endswith(".yaml"))
     rubric_files = sorted(Path(str(p)) for p in rubrics_dir.iterdir() if p.name.endswith(".yaml"))
@@ -655,23 +509,16 @@ def _parse_since_arg(value: str) -> datetime:
         pass
 
     raise click.ClickException(
-        f"Cannot parse --since value {value!r}. " "Use a duration like '7d', '24h', or a date like '2026-05-01'."
+        f"Cannot parse --since value {value!r}. Use a duration like '7d', '24h', or a date like '2026-05-01'."
     )
 
 
 @click.command()
 @click.option("--seed/--no-seed", default=True, help="Import bundled seed blocks and rubrics.")
-@click.option("--stack", default=None, help="Copy starter ReasonBlock templates for a stack.")
-@click.option("--list-stacks", "show_stacks", is_flag=True, help="List available starter stacks.")
 @click.option(
     "--index/--no-index",
     default=True,
     help="Bootstrap the code index for the current git repo (default: on).",
-)
-@click.option(
-    "--project",
-    is_flag=True,
-    help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md.",
 )
 @click.option(
     "--configure-models/--no-configure-models",
@@ -682,25 +529,10 @@ def _parse_since_arg(value: str) -> datetime:
 def init(
     ctx: click.Context,
     seed: bool,
-    stack: str | None,
-    show_stacks: bool,
     index: bool,
-    project: bool,
     configure_models: bool | None,
 ) -> None:
     """Initialize the runtime store at --root."""
-    if show_stacks:
-        from atelier.core.capabilities.starter_packs import list_stacks
-
-        stacks = list_stacks()
-        if not stacks:
-            click.echo("No starter stacks available.")
-            return
-        click.echo("Available starter stacks:")
-        for item in stacks:
-            click.echo(f"  {item.slug:20} {item.name} ({item.version}) - {item.description}")
-        return
-
     root: Path = ctx.obj["root"]
     from atelier.infra.storage.factory import create_store
 
@@ -712,14 +544,17 @@ def init(
     click.echo(f"initialized atelier store at {store.root}")
     if seed:
         block_files, rubric_files = _seed_resources()
-        seeded_blocks: dict[str, ReasonBlock] = {}
+        seeded_blocks: dict[str, Playbook] = {}
         for path in block_files:
             data = _load_yaml(path)
-            if "id" not in data:
-                data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
-            block = ReasonBlock.model_validate(data)
+            try:
+                if "id" not in data:
+                    data["id"] = Playbook.make_id(data["title"], data["domain"])
+                block = Playbook.model_validate(data)
+            except (KeyError, ValueError) as exc:
+                raise click.ClickException(f"invalid seed playbook {path}: {exc}") from exc
             seeded_blocks[block.id] = block
-        for block in _load_domain_manager(root).all_reasonblocks():
+        for block in _load_domain_manager(root).all_playbooks():
             seeded_blocks[block.id] = block
         n_b = 0
         for block in seeded_blocks.values():
@@ -728,19 +563,13 @@ def init(
         n_r = 0
         for path in rubric_files:
             data = _load_yaml(path)
-            rubric = Rubric.model_validate(data)
+            try:
+                rubric = Rubric.model_validate(data)
+            except (KeyError, ValueError) as exc:
+                raise click.ClickException(f"invalid seed rubric {path}: {exc}") from exc
             store.upsert_rubric(rubric)
             n_r += 1
-        click.echo(f"seeded {n_b} reasonblocks and {n_r} rubrics")
-    if stack:
-        from atelier.core.capabilities.starter_packs import copy_stack_templates
-
-        try:
-            copied, skipped = copy_stack_templates(stack, store.blocks_dir)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
-        suffix = f", skipped {skipped} existing" if skipped else ""
-        click.echo(f"copied {copied} starter reasonblocks for stack {stack}{suffix}")
+        click.echo(f"seeded {n_b} playbooks and {n_r} rubrics")
     if index:
         git_root = _detect_git_root(Path.cwd())
         if git_root is not None:
@@ -763,6 +592,11 @@ def init(
         else:
             click.echo("code index skipped (no git repository detected in current directory)")
     git_root = _detect_git_root(Path.cwd())
+    if git_root is not None:
+        results = _project_init_setup(git_root)
+        for section, messages in results.items():
+            for msg in messages:
+                click.echo(f"  [{section}] {msg}")
     should_offer_model_config = bool(git_root is not None and _is_interactive_terminal())
     if configure_models and not should_offer_model_config:
         raise click.ClickException("--configure-models requires an interactive terminal inside a git repository.")
@@ -776,15 +610,6 @@ def init(
             for section, messages in results.items():
                 for msg in messages:
                     click.echo(f"  [{section}] {msg}")
-    if project:
-        if git_root is not None:
-            click.echo("running project-scoped setup ...")
-            results = _project_init_setup(git_root)
-            for section, messages in results.items():
-                for msg in messages:
-                    click.echo(f"  [{section}] {msg}")
-        else:
-            click.echo("project init skipped (no git repository detected)")
 
 
 @click.command("doctor")
@@ -996,11 +821,11 @@ def quarantine(ctx: click.Context, block_id: str) -> None:
 @click.option("--token", default=None, help="Credentials JSON, base64 payload, or refresh token.")
 @click.option("--anonymous", "anonymous", is_flag=True, help="Start a local anonymous trial.")
 @click.option("--json", "as_json", is_flag=True)
+@click.option("--dev", "dev_mode", is_flag=True, help="Login against local dev server (http://localhost:4321).")
 @click.pass_context
-def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: bool) -> None:
+def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: bool, dev_mode: bool) -> None:
     """Create local Atelier auth state for plugin operations."""
     from atelier.core.capabilities.plugin_runtime import (
-        begin_browser_login,
         claim_anonymous_trial,
         parse_login_token,
         write_auth_state,
@@ -1008,27 +833,146 @@ def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: b
 
     if anonymous:
         payload = {"auth": claim_anonymous_trial(ctx.obj["root"]), "mode": "anonymous"}
+        if as_json:
+            _emit(payload, as_json=True)
+            return
+        auth_payload = payload.get("auth")
+        auth = auth_payload if isinstance(auth_payload, dict) else {}
+        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        click.echo(f"logged in: {label}")
     elif token:
         payload = {
             "auth": write_auth_state(ctx.obj["root"], parse_login_token(token)),
             "mode": "token",
         }
-    else:
-        pending = begin_browser_login(ctx.obj["root"])
-        payload = {"mode": "browser", "pending": pending}
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    if str(payload.get("mode")) == "browser":
-        pending_payload = payload.get("pending")
-        pending = pending_payload if isinstance(pending_payload, dict) else {}
-        click.echo("Open this URL to finish login:")
-        click.echo(pending.get("url", ""))
-    else:
+        if as_json:
+            _emit(payload, as_json=True)
+            return
         auth_payload = payload.get("auth")
         auth = auth_payload if isinstance(auth_payload, dict) else {}
-        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        label = auth.get("email") or auth.get("userId")
         click.echo(f"logged in: {label}")
+    else:
+        _oauth_login(as_json, dev_mode=dev_mode)
+
+
+def _oauth_login(as_json: bool, dev_mode: bool = False) -> None:
+    """Run the OAuth browser flow and persist the returned session token."""
+    import http.server
+    import json
+    import socket
+    import threading
+    import urllib.parse
+    import urllib.request
+    import webbrowser
+
+    from atelier.core.capabilities.licensing.store import (
+        load_or_create_device_id,
+        save_auth_base,
+        save_auth_token,
+        save_auth_user,
+    )
+
+    base = "http://localhost:4321" if dev_mode else "https://atelier.ws"
+
+    # Always open the browser — atelier login is intentional and issues a fresh device token.
+
+    # Find a free port
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    import platform
+
+    hostname = platform.node() or "cli"
+    stable_device_id = load_or_create_device_id()
+    cli_redirect = f"http://localhost:{port}/callback"
+    oauth_url = (
+        f"{base}/account"
+        f"?cli_redirect={urllib.parse.quote(cli_redirect, safe='')}"
+        f"&device_name={urllib.parse.quote(hostname, safe='')}"
+        f"&stable_device_id={urllib.parse.quote(stable_device_id, safe='')}"
+    )
+
+    received: dict[str, str] = {}
+    server_ready = threading.Event()
+    shutdown_event = threading.Event()
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/callback":
+                qs = urllib.parse.parse_qs(parsed.query)
+                received["token"] = qs.get("token", [""])[0]
+                received["email"] = qs.get("email", [""])[0]
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(
+                    b"<html><body><p>Logged in. You can close this tab.</p>"
+                    b"<script>window.close()</script></body></html>"
+                )
+            else:
+                self.send_response(404)
+                self.end_headers()
+            shutdown_event.set()
+
+        def log_message(self, *args: object) -> None:
+            pass  # suppress access log
+
+    httpd = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+    httpd.timeout = 1
+
+    def _serve() -> None:
+        server_ready.set()
+        deadline = 120
+        import time
+
+        start = time.monotonic()
+        while not shutdown_event.is_set() and time.monotonic() - start < deadline:
+            httpd.handle_request()
+        httpd.server_close()
+
+    thread = threading.Thread(target=_serve, daemon=True)
+    thread.start()
+    server_ready.wait()
+
+    click.secho("Opening browser to sign in...", fg="cyan", dim=True)
+    webbrowser.open(oauth_url)
+
+    shutdown_event.wait(timeout=120)
+    thread.join(timeout=5)
+
+    session_token = received.get("token", "")
+    email = received.get("email", "")
+
+    if not session_token:
+        click.secho("✗ Login timed out or was cancelled.", fg="red", err=True)
+        raise SystemExit(1)
+
+    save_auth_token(session_token)
+
+    # Best-effort: fetch plan + device_id from server
+    plan = "free"
+    device_id = session_token[:8]
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/auth/me",
+            headers={"Authorization": f"Bearer {session_token}"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data: dict[str, object] = json.loads(resp.read())
+        plan = str(data.get("plan") or plan)
+        device_id = str(data.get("device_id") or device_id)
+        save_auth_user({**data, "_base": base})
+        save_auth_base(base)
+    except Exception:  # noqa: BLE001
+        pass
+
+    if as_json:
+        _emit({"email": email, "plan": plan, "device_id": device_id, "mode": "oauth"}, as_json=True)
+        return
+    click.secho(f"✓ Logged in as {email} ({plan}) · device {device_id}", fg="green")
 
 
 @click.command("logout")
@@ -1037,13 +981,17 @@ def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: b
 @click.pass_context
 def logout_cmd(ctx: click.Context, no_trial: bool, as_json: bool) -> None:
     """Remove local auth and optionally activate an anonymous trial."""
+    from atelier.core.capabilities.licensing.store import delete_auth_base, delete_auth_token, delete_auth_user
     from atelier.core.capabilities.plugin_runtime import logout_local
 
+    delete_auth_token()
+    delete_auth_user()
+    delete_auth_base()
     payload = logout_local(ctx.obj["root"], claim_trial=not no_trial)
     if as_json:
         _emit(payload, as_json=True)
         return
-    click.echo("logged out" + ("; anonymous trial active" if payload.get("anonymous") else ""))
+    click.secho("✓ Logged out", fg="green")
 
 
 @click.command("status")
@@ -1087,29 +1035,102 @@ def status_cmd(
         return
 
     if auth_mode:
-        from atelier.core.capabilities.plugin_runtime import auth_status, load_plugin_settings
+        from atelier.core.capabilities.licensing.store import (
+            load_auth_base,
+            load_auth_token,
+            load_auth_user,
+            save_auth_user,
+        )
 
-        payload = auth_status(root)
-        payload["settings"] = load_plugin_settings(root)
-        if as_json:
-            _emit(payload, as_json=True)
-            return
-        click.echo(f"authenticated: {payload['authenticated']}")
-        click.echo(f"anonymous: {payload['isAnonymous']}")
-        if payload.get("email"):
-            click.echo(f"email: {payload['email']}")
-        if payload.get("subscription"):
-            click.echo(f"subscription: {payload['subscription']}")
-        click.echo(f"root: {payload['root']}")
+        auth_token = load_auth_token()
+
+        # Always fetch live for status — disk cache is for background entitlement
+        # checks, not explicit status queries.
+        cached: dict[str, object] | None = None
+        if auth_token:
+            import json as _json
+            import urllib.request
+
+            _base_url = load_auth_base()
+            try:
+                req = urllib.request.Request(
+                    f"{_base_url}/api/auth/me",
+                    headers={"Authorization": f"Bearer {auth_token}"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    cached = _json.loads(resp.read())
+                save_auth_user({**cached, "_base": _base_url})
+            except Exception:  # noqa: BLE001
+                cached = load_auth_user()  # fall back to disk if offline
+
+        if auth_token and cached:
+            # OAuth session — show cached user info
+            email = str(cached.get("email") or "")
+            plan = str(cached.get("plan") or "free")
+            device_id = str(cached.get("device_id") or auth_token[:8])
+            cli_count = int(cached.get("cli_device_count") or 0)  # type: ignore[call-overload]
+            cli_limit = int(cached.get("cli_device_limit") or 3)  # type: ignore[call-overload]
+            if as_json:
+                _emit(
+                    {
+                        "authenticated": True,
+                        "email": email,
+                        "plan": plan,
+                        "device_id": device_id,
+                        "cli_devices": f"{cli_count}/{cli_limit}",
+                        "mode": "oauth",
+                    },
+                    as_json=True,
+                )
+                return
+            click.secho(f"✓ {email}", fg="green", bold=True)
+            click.echo(f"  plan:    {plan}")
+            click.echo(f"  device:  {device_id}")
+            click.echo(f"  devices: {cli_count} of {cli_limit} used")
+        elif auth_token and not cached:
+            # fetch failed and no disk fallback
+            if as_json:
+                _emit({"mode": "oauth", "status": "unreachable"}, as_json=True)
+                return
+            click.secho("⚠ Could not reach auth server", fg="yellow")
+        else:
+            # No OAuth token — check plugin-runtime auth state (written by `login --token`),
+            # which lives at root/auth.json and is distinct from the global licensing store.
+            import json as _json2
+
+            from atelier.core.capabilities.plugin_runtime import auth_state_path as _auth_state_path
+
+            _plugin_auth: dict[str, Any] | None = None
+            try:
+                _plugin_auth_path = _auth_state_path(root)
+                if _plugin_auth_path.exists():
+                    _plugin_auth = _json2.loads(_plugin_auth_path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                pass
+
+            if isinstance(_plugin_auth, dict) and _plugin_auth.get("authenticated") and _plugin_auth.get("email"):
+                email = str(_plugin_auth["email"])
+                if as_json:
+                    _emit({"authenticated": True, "email": email, "mode": "token"}, as_json=True)
+                    return
+                click.secho(f"✓ {email}", fg="green", bold=True)
+            else:
+                if as_json:
+                    _emit({"mode": "none", "status": "not logged in"}, as_json=True)
+                    return
+                click.secho("✗ Not logged in — run: atelier login", fg="red")
         return
 
     if as_json:
-        runs_dir = root / "runs"
+        sessions_dir = root / "sessions"
         target: Path | None
         if session_id:
-            target = runs_dir / f"{session_id}.json"
+            from atelier.core.foundation.paths import find_session_dir
+
+            existing = find_session_dir(root, session_id)
+            target = (existing / "run.json") if existing is not None else None
         else:
-            files = sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
+            files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)
             target = files[0] if files else None
         if target and target.exists():
             click.echo(target.read_text().strip())
@@ -1138,72 +1159,66 @@ def share_cmd(ctx: click.Context, as_json: bool) -> None:
 
 @click.group("settings")
 def plugin_settings_group() -> None:
-    """Manage local plugin settings."""
+    """Manage local Atelier settings — every ATELIER_* env-var-backed knob plus the plugin toggles.
+
+    Settings persist to ``<root>/plugin_settings.json`` and are applied to the
+    process environment (via ``setdefault``) the next time Atelier starts, so
+    an explicitly-exported env var always wins over a stored setting. Use
+    ``show --category <name>`` to browse one area (service, retrieval,
+    embeddings, code_context, tool_supervision, mcp, statusline, telemetry,
+    memory, swarm, zoekt, bench, routing, llm, licensing, lessons, cli, core,
+    plugin, internal).
+    """
+
+
+def _format_setting_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 @plugin_settings_group.command("show")
+@click.option("--category", "category", default=None, help="Filter to one category (e.g. service, retrieval, mcp).")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def plugin_settings_show(ctx: click.Context, as_json: bool) -> None:
-    from atelier.core.capabilities.plugin_runtime import load_plugin_settings
+def plugin_settings_show(ctx: click.Context, category: str | None, as_json: bool) -> None:
+    from atelier.core.settings import CATEGORIES, all_settings, load_settings
 
-    payload = load_plugin_settings(ctx.obj["root"])
+    if category is not None and category not in CATEGORIES:
+        raise click.ClickException(f"unknown category: {category} (choices: {', '.join(CATEGORIES)})")
+    payload = load_settings(ctx.obj["root"], category=category)
     if as_json:
         _emit(payload, as_json=True)
         return
-    for key, value in payload.items():
-        click.echo(f"{key}: {str(value).lower()}")
+    by_category: dict[str, list[str]] = {}
+    for spec in all_settings():
+        if spec.key not in payload:
+            continue
+        by_category.setdefault(spec.category, []).append(spec.key)
+    for cat in sorted(by_category):
+        click.echo(f"# {cat}")
+        for key in sorted(by_category[cat]):
+            click.echo(f"{key}: {_format_setting_value(payload[key])}")
 
 
 @plugin_settings_group.command("set")
 @click.argument("key")
-@click.argument("value", type=click.Choice(["true", "false", "on", "off", "1", "0"]))
+@click.argument("value")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def plugin_settings_set(ctx: click.Context, key: str, value: str, as_json: bool) -> None:
-    from atelier.core.capabilities.plugin_runtime import write_plugin_setting
+    from atelier.core.settings import load_settings, write_setting
 
-    enabled = value in {"true", "on", "1"}
     try:
-        payload = write_plugin_setting(ctx.obj["root"], key, enabled)
+        coerced = write_setting(ctx.obj["root"], key, value)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     if as_json:
-        _emit(payload, as_json=True)
+        _emit(load_settings(ctx.obj["root"]), as_json=True)
         return
-    click.echo(f"set {key}={str(enabled).lower()}")
-
-
-@_dev_command("detect-loop")  # type: ignore[untyped-decorator]
-@click.option("--session-id", default=None, help="Specific session ID. Defaults to latest.")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def detect_loop_cmd(ctx: click.Context, session_id: str | None, as_json: bool) -> None:
-    """Detect loops, repeated failures, and dead-end trajectories in a run ledger."""
-    rt = _core_runtime(ctx.obj["root"])
-    payload = rt.loop_report(session_id=session_id)
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    click.echo(f"loop_detected: {payload['loop_detected']}")
-    click.echo(f"severity: {payload['severity']}")
-    click.echo(f"loop_types: {', '.join(payload['loop_types']) or 'none'}")
-    click.echo(f"prior_attempts: {payload['prior_attempts']}")
-    if payload["rescue_strategies"]:
-        click.echo("rescue_strategies:")
-        for s in payload["rescue_strategies"]:
-            click.echo(f"  - {s}")
-
-
-@click.command("loop-report")
-@click.option("--session-id", default=None, help="Specific session ID. Defaults to latest.")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def loop_report_cmd(ctx: click.Context, session_id: str | None, as_json: bool) -> None:
-    """Full loop analysis: signature, severity, alerts, rescue strategies."""
-    rt = _core_runtime(ctx.obj["root"])
-    payload = rt.loop_report(session_id=session_id)
-    _emit(payload, as_json=True) if as_json else click.echo(json.dumps(payload, indent=2))
+    click.echo(f"set {key}={_format_setting_value(coerced)}")
 
 
 @click.command("tool-report")
@@ -1494,48 +1509,40 @@ def insights_cmd(
             click.echo(f"No sessions found since {since_str}.")
         return
 
-    if vendor and not as_json:
+    cost_by_vendor = window.cost_by_vendor
+    if vendor:
         vendor_key = vendor.capitalize()
         filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
-        click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f}" f" of ${window.total_cost_usd:.2f} total")
+        cost_by_vendor = {vendor_key: filtered_cost}
+        if not as_json:
+            click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f} of ${window.total_cost_usd:.2f} total")
 
-    display_window = window
-    if group_by == "vendor" and not as_json:
-        pass
-    elif group_by == "model" and not as_json:
-        display_window = InsightsWindow(
-            since=window.since,
-            until=window.until,
-            session_count=window.session_count,
-            total_duration_seconds=window.total_duration_seconds,
-            total_cost_usd=window.total_cost_usd,
-            total_atelier_savings_usd=window.total_atelier_savings_usd,
-            cost_by_vendor=window.cost_by_vendor,
-            cost_by_tool=window.cost_by_model,
-            cost_by_model=window.cost_by_model,
-            top_sessions=window.top_sessions,
-            outcomes_summary=window.outcomes_summary,
-            opportunities=window.opportunities,
-        )
-    elif group_by == "session" and not as_json:
-        session_costs = {s.session_id[:8]: s.cost_usd for s in window.top_sessions}
-        display_window = InsightsWindow(
-            since=window.since,
-            until=window.until,
-            session_count=window.session_count,
-            total_duration_seconds=window.total_duration_seconds,
-            total_cost_usd=window.total_cost_usd,
-            total_atelier_savings_usd=window.total_atelier_savings_usd,
-            cost_by_vendor=window.cost_by_vendor,
-            cost_by_tool=session_costs,
-            cost_by_model=window.cost_by_model,
-            top_sessions=window.top_sessions,
-            outcomes_summary=window.outcomes_summary,
-            opportunities=window.opportunities,
-        )
+    if group_by == "model":
+        cost_by_tool = window.cost_by_model
+    elif group_by == "session":
+        cost_by_tool = {s.session_id[:8]: s.cost_usd for s in window.top_sessions}
+    elif group_by == "vendor":
+        cost_by_tool = cost_by_vendor
+    else:
+        cost_by_tool = window.cost_by_tool
+
+    display_window = InsightsWindow(
+        since=window.since,
+        until=window.until,
+        session_count=window.session_count,
+        total_duration_seconds=window.total_duration_seconds,
+        total_cost_usd=window.total_cost_usd,
+        total_atelier_savings_usd=window.total_atelier_savings_usd,
+        cost_by_vendor=cost_by_vendor,
+        cost_by_tool=cost_by_tool,
+        cost_by_model=window.cost_by_model,
+        top_sessions=window.top_sessions,
+        outcomes_summary=window.outcomes_summary,
+        opportunities=window.opportunities,
+    )
 
     if as_json:
-        click.echo(render_json(window))
+        click.echo(render_json(display_window))
     else:
         click.echo(render_text(display_window, no_color=no_color))
 
@@ -1544,7 +1551,6 @@ __all__ = [
     "_project_root",
     "audit_group",
     "deprecate",
-    "detect_loop_cmd",
     "doctor_cmd",
     "env_group",
     "governance_group",
@@ -1552,7 +1558,6 @@ __all__ = [
     "insights_cmd",
     "login_cmd",
     "logout_cmd",
-    "loop_report_cmd",
     "plugin_settings_group",
     "quarantine",
     "reset_cmd",

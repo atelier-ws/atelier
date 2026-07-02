@@ -26,15 +26,15 @@ atelier help background
 These commands cover installation state, local runtime initialization, and the
 optional visualization stack.
 
-| Command                  | Purpose                                                 |
-| ------------------------ | ------------------------------------------------------- |
-| `atelier init`           | Initialize the runtime store under `--root`.            |
-| `atelier uninstall`      | Remove Atelier-managed host integrations and wrappers.  |
-| `atelier status`         | Show local plugin, auth, and subscription status.       |
+| Command                  | Purpose                                                        |
+| ------------------------ | -------------------------------------------------------------- |
+| `atelier init`           | Initialize the runtime store under `--root`.                   |
+| `atelier uninstall`      | Remove Atelier-managed host integrations and wrappers.         |
+| `atelier status`         | Show local plugin, auth, and subscription status.              |
 | `atelier stack ...`      | Start, stop, inspect, or log the optional native UI/API stack. |
-| `atelier service ...`    | Manage the HTTP/API service surface.                    |
-| `atelier background ...` | Manage OS-level background services and auto-updates.   |
-| `atelier worker ...`     | Inspect, enqueue, and run worker jobs.                  |
+| `atelier service ...`    | Manage the HTTP/API service surface.                           |
+| `atelier background ...` | Manage OS-level background services and auto-updates.          |
+| `atelier worker ...`     | Inspect, enqueue, and run worker jobs.                         |
 
 Common examples:
 
@@ -69,15 +69,16 @@ To configure the loop manually (not recommended for general use):
 # Start the internal loop with custom auto-update settings
 atelier servicectl run --auto-update --auto-update-interval-seconds 3600
 ```
+
 ## Traces, Ledgers, and Operational State
 
 Atelier persists observable execution state rather than hidden reasoning.
 
-| Command                    | Purpose                                               |
-| -------------------------- | ----------------------------------------------------- |
-| `atelier runs ...`         | Record, list, and inspect run data.                   |
-| `atelier ledger ...`       | Manage run ledgers and session state.                 |
-| `atelier swarm ...`        | Fan out isolated child attempts into git worktrees.   |
+| Command              | Purpose                                             |
+| -------------------- | --------------------------------------------------- |
+| `atelier runs ...`   | Record, list, and inspect run data.                 |
+| `atelier ledger ...` | Manage run ledgers and session state.               |
+| `atelier swarm ...`  | Fan out isolated child attempts into git worktrees. |
 
 Examples:
 
@@ -105,7 +106,7 @@ What the harness guarantees today:
 
 - one detached git worktree per child under a deterministic `*-swarm-worktrees/<run_id>/` pool
 - one isolated `ATELIER_ROOT` plus `ATELIER_WORKSPACE_ROOT` / `CLAUDE_WORKSPACE_ROOT` per child
-- a copied program spec at `.atelier-swarm/program.md` in each child worktree
+- a copied program spec at `.atelier/swarm/program.md` in each child worktree
 - structured child artifacts with summary, files changed, validations, cost/tokens (when available), final status, and live stdout/stderr previews
 - persisted coordinator state under `--root/swarm/runs/<run_id>/state.json`
 - a dedicated integration worktree whose accepted patches become the base for the next wave
@@ -113,12 +114,12 @@ What the harness guarantees today:
 
 Useful child environment variables:
 
-| Variable | Meaning |
-| --- | --- |
-| `ATELIER_SWARM_SPEC_PATH` | Copied spec path inside the child worktree |
-| `ATELIER_SWARM_RESULT_PATH` | Final structured result artifact written by the wrapper |
-| `ATELIER_SWARM_METADATA_PATH` | Optional child-authored JSON metadata (`summary`, `token_count`, `cost_usd`, `validation_results`) |
-| `ATELIER_SWARM_RUN_ID` / `ATELIER_SWARM_CHILD_ID` | Stable coordinator and child identifiers |
+| Variable                                          | Meaning                                                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `ATELIER_SWARM_SPEC_PATH`                         | Copied spec path inside the child worktree                                                         |
+| `ATELIER_SWARM_RESULT_PATH`                       | Final structured result artifact written by the wrapper                                            |
+| `ATELIER_SWARM_METADATA_PATH`                     | Optional child-authored JSON metadata (`summary`, `token_count`, `cost_usd`, `validation_results`) |
+| `ATELIER_SWARM_RUN_ID` / `ATELIER_SWARM_CHILD_ID` | Stable coordinator and child identifiers                                                           |
 
 Inspection commands:
 
@@ -135,12 +136,12 @@ supplied spec path escapes the project root.
 
 Built-in runner profiles:
 
-| Runner | Command shape |
-| --- | --- |
-| `claude` | `claude --model <model> -p "<prompt>"` |
-| `codex` | `codex exec -m <model> "<prompt>"` |
-| `copilot` | `copilot --model <model> -p "<prompt>" --allow-all` |
-| `opencode` | `opencode run -m <provider/model> "<prompt>"` |
+| Runner          | Command shape                                           |
+| --------------- | ------------------------------------------------------- |
+| `claude`        | `claude --model <model> -p "<prompt>"`                  |
+| `codex`         | `codex exec -m <model> "<prompt>"`                      |
+| `copilot`       | `copilot --model <model> -p "<prompt>" --allow-all`     |
+| `opencode`      | `opencode run -m <provider/model> "<prompt>"`           |
 | `ollama-claude` | `ollama launch claude --model <model> -- -p "<prompt>"` |
 
 You can still bypass profiles entirely and pass any raw child command after `--`
@@ -163,16 +164,15 @@ runner path today.
 ## Retrieval, Search, and Code-Aware Helpers
 
 Code retrieval, file reads, grep/search, and symbol lookup are exposed as
-Atelier **MCP tools** (`read`, `grep`, `search`, `symbols`, `node`, `callers`,
-`callees`, `usages`, `impact`, `explore`, `pattern`) rather than standalone CLI
-commands. Invoke them through your agent host or via `atelier tools call <name>`.
+Atelier **MCP tools** (`read`, `grep`, `search`, `explore`, `codemod`)
+rather than standalone CLI commands. Invoke them through your agent host or via
+`atelier tools call <name>`. (Call-graph and reference relations — callers,
+callees, usages — fold into one `explore` call.)
 
-| Command                  | Purpose                                                 |
-| ------------------------ | ------------------------------------------------------- |
-| `atelier code index`     | Build or refresh the SCIP code index for a repository.  |
-| `atelier tool-mode ...`  | Configure smart tool replacement/shadow/suggest modes.  |
-| `atelier tool-report`    | Report tool usage, savings, and redundancy patterns.    |
-| `atelier optimize`       | Show session cost optimization recommendations.         |
+| Command                 | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `atelier code index` | Build or refresh the code index for a repository. |
+| `atelier optimize`   | Show session cost optimization recommendations.   |
 
 Examples:
 
@@ -187,17 +187,11 @@ These commands manage the reusable knowledge layer and failure review flows.
 
 | Command                      | Purpose                                         |
 | ---------------------------- | ----------------------------------------------- |
-| `atelier lesson ...`         | Review and promote lesson candidates.           |
-| `atelier failure ...`        | Inspect and manage failure clusters.            |
-| `atelier eval ...`           | Manage and run evaluation cases.                |
-| `atelier eval-from-cluster`  | Draft an eval from an accepted failure cluster. |
-| `atelier report`             | Generate an engineering governance report.      |
-| `atelier import-style-guide` | Draft lesson candidates from Markdown guidance. |
-| `atelier deprecate`          | Mark a block as deprecated.                     |
-| `atelier quarantine`         | Quarantine a block from retrieval.              |
-| `atelier consolidate`        | Run manual consolidation.                       |
-| `atelier consolidation ...`  | Review consolidation candidates.                |
-| `atelier proof ...`          | Run cost-quality proof gate workflows.          |
+| `atelier lesson ...`         | Review and promote lesson candidates.            |
+| `atelier eval ...`           | Run eval suites (`mcp`, `retrieval`, `fitness`). |
+| `atelier report`             | Generate an engineering governance report.       |
+| `atelier import-style-guide` | Draft lesson candidates from Markdown guidance.  |
+| `atelier proof ...`          | Run cost-quality proof gate workflows.           |
 
 ## Imports and Host Integrations
 
@@ -205,17 +199,11 @@ Atelier ships import and integration commands for supported agent hosts.
 
 | Command                | Purpose                                               |
 | ---------------------- | ----------------------------------------------------- |
-| `atelier import`       | Import sessions from all supported hosts in one pass. |
-| `atelier claude ...`   | Claude Code import and session workflows.             |
-| `atelier codex ...`    | Codex session workflows.                              |
-| `atelier copilot ...`  | Copilot session workflows.                            |
-| `atelier gemini ...`   | Gemini CLI session workflows.                         |
-| `atelier opencode ...` | OpenCode session workflows.                           |
-| `atelier bash ...`     | Shell interception helpers.                           |
+| `atelier import` | Import sessions from all supported hosts in one pass. |
 
 Supported session import hosts are defined in the runtime registry, not in the
-docs. Use `atelier help import` or the host-specific help output to inspect the
-exact flags and options supported by your installed build.
+docs. Use `atelier help import` to inspect the exact flags and options
+supported by your installed build.
 
 ## Benchmarks, Savings, and External Reports
 
@@ -223,21 +211,34 @@ These commands support performance validation and cost-accounting workflows.
 
 | Command                   | Purpose                                        |
 | ------------------------- | ---------------------------------------------- |
-| `atelier benchmark ...`   | Run benchmark suites and benchmark reports.    |
+| `atelier benchmark ...`   | Run benchmark suites (`mini`, `harbor`, `codebench`, `swe`, `local`). |
+| `atelier benchmark local` | BYO-repo A/B: Atelier vs vanilla on your repo. |
 | `atelier savings`         | Aggregate cost and token savings.              |
-| `atelier savings-detail`  | Show per-operation savings breakdowns.         |
-| `atelier savings-reset`   | Reset persisted savings state.                 |
-| `atelier loop-report`     | Generate a full loop/pathology report.         |
-| `atelier external-status` | Check optional upstream analyzer availability. |
-| `atelier external-report` | Run supported upstream JSON reports.           |
+| `atelier dashboard`       | Show the spend & savings dashboard.            |
 
 Examples:
 
 ```bash
-atelier benchmark full --json
+atelier benchmark mini --dry-run --json
 atelier savings --json
-atelier loop-report --help
 ```
+
+`atelier benchmark local` is the user-facing BYO benchmark, also surfaced as the
+`/benchmark` skill: point it at your own git repo and supply your own coding
+prompts to compare Atelier against a vanilla Claude Code baseline on the same
+model. It prints an up-front cost estimate and asks to confirm before any spend.
+
+```bash
+atelier benchmark local --repo . --prompt "add a docstring to the entry point"
+atelier benchmark local --repo . --prompt "x" --estimate-only
+```
+
+Wire capture is off by default — cost comes from the CLI receipts, so no
+mitmproxy or MITM CA cert is needed. Pass `--capture` to opt into mitmproxy
+wire-level cost verification (requires `mitmproxy` and its CA cert).
+
+The internal/dev suites are `atelier benchmark {codebench,swe}` and
+`atelier eval {mcp,retrieval,fitness}`.
 
 ## Configuration and Account State
 
@@ -259,6 +260,6 @@ is command-specific rather than universal.
 
 ## Related References
 
-- [README.md](https://github.com/atelier-runtime/atelier#readme)
+- [README.md](https://github.com/atelier-ws/atelier#readme)
 - [docs/installation.md](installation.md)
 - [docs/sdk/mcp.md](sdk/mcp.md)

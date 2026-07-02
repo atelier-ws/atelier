@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from atelier.core.foundation.models import ReasonBlock, Rubric, Trace
+from atelier.core.foundation.models import Playbook, Rubric, Trace
 
 
-def _block(**kw: object) -> ReasonBlock:
+def _block(**kw: object) -> Playbook:
     base: dict[str, object] = dict(
         id="b1",
         title="t",
@@ -15,7 +15,7 @@ def _block(**kw: object) -> ReasonBlock:
         procedure=["do thing"],
     )
     base.update(kw)
-    return ReasonBlock(**base)  # type: ignore[arg-type]
+    return Playbook(**base)  # type: ignore[arg-type]
 
 
 def test_procedure_must_be_non_empty() -> None:
@@ -25,7 +25,7 @@ def test_procedure_must_be_non_empty() -> None:
 
 def test_extra_fields_forbidden() -> None:
     with pytest.raises(ValidationError):
-        ReasonBlock(
+        Playbook(
             id="b1",
             title="t",
             domain="coding",
@@ -36,8 +36,8 @@ def test_extra_fields_forbidden() -> None:
 
 
 def test_make_id_is_stable() -> None:
-    a = ReasonBlock.make_id("Hello World", "coding")
-    b = ReasonBlock.make_id("Hello World", "coding")
+    a = Playbook.make_id("Hello World", "coding")
+    b = Playbook.make_id("Hello World", "coding")
     assert a == b
     assert a.startswith("coding-hello-world")
 

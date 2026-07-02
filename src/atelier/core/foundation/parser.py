@@ -1,4 +1,4 @@
-"""Parse ReasonBlocks from human-readable Markdown.
+"""Parse Playbooks from human-readable Markdown.
 
 Complements renderer.py to enable bidirectional sync between the Git-tracked
 lessons directory and the local SQLite index.
@@ -9,16 +9,16 @@ from __future__ import annotations
 import re
 from typing import cast
 
-from atelier.core.foundation.models import BlockStatus, ReasonBlock
+from atelier.core.foundation.models import Playbook, PlaybookStatus
 
 
-def parse_block_markdown(content: str) -> ReasonBlock:
-    """Parse a ReasonBlock from its canonical Markdown representation."""
+def parse_block_markdown(content: str) -> Playbook:
+    """Parse a Playbook from its canonical Markdown representation."""
     lines = content.splitlines()
     title = ""
     block_id = ""
     domain = ""
-    status: BlockStatus = "active"
+    status: PlaybookStatus = "active"
     task_types: list[str] = []
     triggers: list[str] = []
     dead_ends: list[str] = []
@@ -42,7 +42,7 @@ def parse_block_markdown(content: str) -> ReasonBlock:
             raw_status = _extract_code(line)
             if raw_status not in {"active", "deprecated", "quarantined"}:
                 raise ValueError(f"unsupported block status: {raw_status}")
-            status = cast(BlockStatus, raw_status)
+            status = cast(PlaybookStatus, raw_status)
         elif line.startswith("- **task_types:**"):
             task_types = _split_csv(line.split(":", 1)[1])
 
@@ -93,9 +93,9 @@ def parse_block_markdown(content: str) -> ReasonBlock:
         if not value
     ]
     if missing:
-        raise ValueError(f"missing required reasonblock fields: {', '.join(missing)}")
+        raise ValueError(f"missing required playbook fields: {', '.join(missing)}")
 
-    return ReasonBlock(
+    return Playbook(
         id=block_id,
         title=title,
         domain=domain,

@@ -5,12 +5,12 @@ needing to inherit from it.  Both SQLiteStore and PostgresStore implement
 this protocol.
 
 Resources covered:
-  reasonblocks, rubrics, traces            (core runtime)
+  playbooks, rubrics, traces            (core runtime)
   run_ledgers, monitor_events              (observability)
-  failure_clusters, eval_cases             (improvement pipeline)
+  eval_cases                               (improvement pipeline)
   audit_log, savings_events, jobs          (ops / billing)
   projects, environments, trace_events,
-  block_applications, eval_runs            (extended schema)
+  playbook_applications, eval_runs            (extended schema)
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any, Protocol
 
-from atelier.core.foundation.models import BlockStatus, ReasonBlock, Rubric, Trace
+from atelier.core.foundation.models import Playbook, PlaybookStatus, Rubric, Trace
 
 
 class StoreProtocol(Protocol):
@@ -35,13 +35,13 @@ class StoreProtocol(Protocol):
         """Initialise the backing store (create tables / dirs)."""
         ...
 
-    # ----- reasonblocks ---------------------------------------------------- #
+    # ----- playbooks ---------------------------------------------------- #
 
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None:
-        """Insert or update a ReasonBlock."""
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
+        """Insert or update a Playbook."""
         ...
 
-    def get_block(self, block_id: str) -> ReasonBlock | None:
+    def get_block(self, block_id: str) -> Playbook | None:
         """Return a block by id, or None."""
         ...
 
@@ -49,22 +49,22 @@ class StoreProtocol(Protocol):
         self,
         *,
         domain: str | None = None,
-        status: BlockStatus | None = "active",
+        status: PlaybookStatus | None = "active",
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
+    ) -> list[Playbook]:
         """Return blocks, optionally filtered by domain / status."""
         ...
 
-    def search_blocks(self, query: str, *, limit: int = 20) -> list[ReasonBlock]:
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
         """Full-text search over blocks."""
         ...
 
-    def update_block_status(self, block_id: str, status: BlockStatus) -> bool:
+    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
         """Update status field; return True if a row was updated."""
         ...
 
     def delete_block(self, block_id: str) -> bool:
-        """Hard-delete a ReasonBlock; return True if a row was removed."""
+        """Hard-delete a Playbook; return True if a row was removed."""
         ...
 
     def increment_usage(
@@ -112,7 +112,7 @@ class StoreProtocol(Protocol):
 
     # ----- bulk import ----------------------------------------------------- #
 
-    def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
+    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
         """Bulk-upsert blocks; return count inserted/updated."""
         ...
 

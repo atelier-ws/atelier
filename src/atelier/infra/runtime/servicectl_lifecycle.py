@@ -14,23 +14,23 @@ import os
 import signal
 import subprocess
 import sys
-from contextlib import redirect_stderr, redirect_stdout, suppress
+from contextlib import suppress
 from datetime import UTC, datetime
-from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from atelier.core.foundation.store import ContextStore
 from atelier.infra.runtime.daemon_units import (
-    DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     LAUNCHD_USER_DIR,
     STACK_LABEL,
     STACK_UNIT,
-    SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     _is_macos,
 )
 
 logger = logging.getLogger(__name__)
+
+# Prune stale workspace indexes once a day so they cannot silently pile up.
+_WORKSPACE_PRUNE_INTERVAL_SECONDS = 86_400
+_WORKSPACE_PRUNE_MAX_AGE_DAYS = 30
 
 
 def _servicectl_dir(root: Path) -> Path:
@@ -149,8 +149,6 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
         "last_enqueued_jobs": state.get("last_enqueued_jobs", []),
         "last_imported_sessions": state.get("last_imported_sessions", {}),
         "last_session_import_at": state.get("last_session_import_at"),
-        "last_external_analytics_runs": state.get("last_external_analytics_runs", []),
-        "last_external_analytics_at": state.get("last_external_analytics_at"),
         "last_exit_reason": state.get("last_exit_reason"),
         "started_at": state.get("started_at"),
         "job_queue_health": job_queue_health,
@@ -204,135 +202,403 @@ def _servicectl_refresh_host_status(root: Path) -> dict[str, str]:
     return status
 
 
-def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
-    """Import host sessions with importer-level timestamp dedup.
+def _run_tick_subprocess(cmd: list[str], *, timeout: int, what: str) -> subprocess.CompletedProcess[bytes] | None:
+    """``subprocess.run`` guarded against timeout/launch failures.
 
-    Each importer already skips unchanged sessions by comparing source timestamp
-    against the previously imported RawArtifact timestamp.
+    A tick subprocess (import, recall index, workspace prune) can legitimately
+    run long under load. Letting ``TimeoutExpired`` propagate would abort
+    ``_servicectl_tick`` before its periodic-job timestamp and state file are
+    written, so the same subprocess would re-run and re-time-out on every
+    subsequent tick forever, starving recall indexing / pruning / job
+    processing behind it. Return ``None`` instead so callers can record the
+    attempt (advance the periodic key) and let the tick continue.
     """
-    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
-
-    counts: dict[str, int] = {}
-    importers: list[tuple[str, Any]] = [(host, importer_cls(store)) for host, importer_cls in iter_importer_classes()]
-    all_imported_ids = []
-    for host, importer in importers:
-        try:
-            # Keep servicectl output machine-readable (`--json`) by swallowing
-            # importer progress prints.
-            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                imported_ids = importer.import_all(force=False)
-            counts[host] = len(imported_ids)
-            all_imported_ids.extend(imported_ids)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            counts[host] = 0
-
-    # Report aggregated session counts to atelier.beseam.com
     try:
-        from atelier.core.service.sync import sync_usage
+        return subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logging.warning("%s subprocess timed out after %ds", what, timeout)
+        return None
+    except OSError:
+        logging.exception("failed to launch %s subprocess", what)
+        return None
 
-        sync_usage(store.root, session_ids=all_imported_ids)
+
+def _servicectl_import_sessions(root: Path) -> dict[str, int]:
+    """Import host sessions by delegating to the ``atelier import`` CLI subprocess.
+
+    Running import out-of-process keeps JSON parsing, importer-level dedup, and
+    the ``sync_usage`` upload out of the daemon's heap. ``sync_usage`` is called
+    inside the subprocess, so there is no double-upload.
+    """
+    result = _run_tick_subprocess(
+        [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "import", "--json"],
+        timeout=300,
+        what="session import",
+    )
+    if result is None:
+        return {}
+    if result.returncode != 0:
+        logging.warning(
+            "session import subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return {k: int(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except Exception:
+        logging.exception("failed to parse session import JSON output")
+        return {}
+
+
+def _servicectl_index_recall(root: Path) -> dict[str, int]:
+    """Index recent session transcripts via the ``atelier recall index`` CLI subprocess.
+
+    Keeps embedding work and SQLite writes out of the daemon's heap. The subprocess
+    is incremental by default (unchanged sessions are skipped).
+    """
+    result = _run_tick_subprocess(
+        [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "recall", "index", "--json"],
+        timeout=300,
+        what="recall index",
+    )
+    if result is None:
+        return {}
+    if result.returncode != 0:
+        logging.warning(
+            "recall index subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return {k: int(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except Exception:
+        logging.exception("failed to parse recall index JSON output")
+        return {}
+
+
+def _servicectl_prune_workspaces(root: Path, *, max_age_days: int = _WORKSPACE_PRUNE_MAX_AGE_DAYS) -> dict[str, Any]:
+    """Remove orphaned / stale workspace indexes via the ``code prune`` CLI subprocess.
+
+    Runs once a day.  Removes orphaned indexes (no ``session_state.json``),
+    ``/tmp`` benchmark runs, indexes whose source repo is gone, and — via
+    ``--max-age-days`` — indexes inactive for more than ``max_age_days`` days.
+    Runs out-of-process to keep the rmtree/walk work off the daemon heap,
+    matching the import/recall pattern.
+    """
+    result = _run_tick_subprocess(
+        [
+            sys.executable,
+            "-m",
+            "atelier.gateway.cli",
+            "--root",
+            str(root),
+            "code",
+            "prune",
+            "--store-root",
+            str(root),
+            "--max-age-days",
+            str(max_age_days),
+            "--json",
+        ],
+        timeout=600,
+        what="workspace prune",
+    )
+    if result is None:
+        return {}
+    if result.returncode != 0:
+        logging.warning(
+            "workspace prune subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        logging.exception("failed to parse workspace prune JSON output")
+        return {}
+
+
+def _atelier_version() -> str:
+    """Return the installed Atelier version string."""
+    try:
+        from importlib.metadata import version
+
+        return version("atelier")
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at cli.py:534",
-            exc_info=True,
+        return "0.0.0"
+
+
+def _git_project_root() -> Path | None:
+    """Resolve the git project root from install record or file-path traversal."""
+    record_path = Path.home() / ".atelier" / "install_dir"
+    if record_path.exists():
+        candidate = Path(record_path.read_text(encoding="utf-8").strip())
+        if (candidate / ".git").exists():
+            return candidate.resolve()
+    # Fallback: traverse up from this file
+    candidate = Path(__file__).resolve()
+    for parent in candidate.parents:
+        if (parent / ".git").exists() and (parent / "pyproject.toml").exists():
+            try:
+                content = (parent / "pyproject.toml").read_text("utf-8")
+                if 'name = "atelier"' in content:
+                    return parent
+            except OSError:
+                pass
+    return None
+
+
+# Distribution channel -- keep in lockstep with scripts/install.sh and
+# src/atelier/gateway/cli/commands/update.py.
+_GH_REPO = "atelier-ws/atelier"
+_RELEASE_LATEST_URL = f"https://github.com/{_GH_REPO}/releases/latest/download"
+
+
+def _github_latest_version() -> str | None:
+    """Fetch the latest release tag from GitHub Releases (e.g. "0.3.5")."""
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{_GH_REPO}/releases/latest",
+            headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "atelier-update/1.0"},
         )
-
-    return counts
-
-
-def _normalize_external_analytics_periods(
-    periods: tuple[str, ...] | list[str] | None,
-) -> tuple[str, ...]:
-    requested = periods or DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS
-    normalized: list[str] = []
-    for period in requested:
-        if period not in SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS:
-            raise ValueError(
-                "Unsupported external analytics period "
-                f"'{period}'. Choose from: {', '.join(SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS)}"
-            )
-        if period not in normalized:
-            normalized.append(period)
-    return tuple(normalized)
+        resp = urllib.request.urlopen(req, timeout=10)  # nosec - pinned GitHub API URL
+        data = json.loads(resp.read().decode())
+        tag = data.get("tag_name", "")
+        return tag.lstrip("v") or None
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return None
 
 
-def _servicectl_collect_external_analytics(
-    store: Any,
-    *,
-    periods: tuple[str, ...] | list[str],
-) -> list[dict[str, Any]]:
-    from atelier.gateway.integrations.external_analytics import (
-        persist_external_reports,
-        run_external_reports,
+def _detect_auto_update_method() -> tuple[str, str | None]:
+    """Detect the install method for auto-update.
+
+    Returns ("git", project_root) for a source checkout, or ("release", None)
+    for an end-user install, which updates through the GitHub release installer.
+    """
+    git_root = _git_project_root()
+    if git_root is not None:
+        return ("git", str(git_root))
+    return ("release", None)
+
+
+# Auto-update always tracks this remote branch, regardless of which local
+# branch is currently checked out. Hardcoded to origin/main by request.
+_AUTO_UPDATE_REMOTE = "origin"
+_AUTO_UPDATE_BRANCH = "main"
+
+
+def _update_via_git(project_root: str) -> bool:
+    """Update from git: fetch origin/main, fast-forward, sync deps.
+
+    Auto-update always tracks ``origin/main`` regardless of the currently
+    checked-out local branch. Returns True only if an update was applied.
+    """
+    project_root_p = Path(project_root)
+    remote_ref = f"{_AUTO_UPDATE_REMOTE}/{_AUTO_UPDATE_BRANCH}"
+
+    subprocess.run(
+        ["git", "fetch", "--quiet", _AUTO_UPDATE_REMOTE, _AUTO_UPDATE_BRANCH],
+        cwd=project_root_p,
+        check=True,
     )
 
-    persisted: list[dict[str, Any]] = []
-    for period in _normalize_external_analytics_periods(periods):
-        batch = run_external_reports(tool="all", period=period, cwd=Path.cwd(), include_optimize=True)
-        persisted.extend(persist_external_reports(store, batch, source="servicectl"))
-    return persisted
+    # Bail out cleanly if the tracking ref is missing (e.g. the remote has no
+    # ``main``) instead of raising -- keeps the controller quiet on odd setups.
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", remote_ref],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+    )
+    if verify.returncode != 0:
+        logger.info(f"Auto-update: {remote_ref} not found; skipping git update.")
+        return False
+
+    res = subprocess.run(
+        ["git", "rev-list", f"HEAD..{remote_ref}", "--count"],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    behind_count = int(res.stdout.strip())
+    if behind_count == 0:
+        return False
+
+    logger.info(f"Auto-update: detected {behind_count} new commits on {remote_ref}. Updating...")
+
+    # Fast-forward only: never clobber local commits. If the checked-out branch
+    # has diverged from main it cannot fast-forward -- log and skip rather than
+    # raising, so the controller keeps running without error spam.
+    merge = subprocess.run(
+        ["git", "merge", "--ff-only", "--quiet", remote_ref],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+    )
+    if merge.returncode != 0:
+        logger.warning(
+            f"Auto-update: cannot fast-forward to {remote_ref} "
+            f"(local branch has diverged); skipping. {merge.stderr.strip()}"
+        )
+        return False
+
+    if (project_root_p / "uv.lock").exists() or (project_root_p / "pyproject.toml").exists():
+        import shutil
+
+        if shutil.which("uv"):
+            logger.info("Auto-update: syncing dependencies with uv...")
+            subprocess.run(["uv", "sync"], cwd=project_root_p, check=True)
+    return True
+
+
+def _update_via_release() -> bool:
+    """Launch a detached installer to reinstall from the latest GitHub release.
+
+    The daemon cannot reinstall itself inline: ``install.sh`` stops running
+    atelier processes (this daemon included). So download the published
+    ``install.sh`` and run it in a fully detached session -- it outlives this
+    process, reinstalls the uv tool from ``atelier-distribution-*.tar.gz``, and
+    its own ``run_setup`` restarts the stack on the new code.
+
+    Returns True if an installer was launched (a newer release exists and the
+    download succeeded), else False.
+    """
+    import shutil
+    import tempfile
+    import urllib.request
+
+    # SECURITY: the release update path downloads install.sh over the network and
+    # executes it via bash with NO integrity/signature verification, which is
+    # remote code execution if the download is tampered with. It is therefore
+    # OPT-IN and OFF by default. Operators must explicitly set
+    # ATELIER_AUTO_UPDATE_RELEASE=1 to accept the risk.
+    # TODO: re-enable by default only after verifying a published
+    # signature/checksum of install.sh (and the distribution tarball) before
+    # execution.
+    if os.environ.get("ATELIER_AUTO_UPDATE_RELEASE", "").strip().lower() not in ("1", "true", "yes"):
+        logger.info(
+            "Auto-update: release auto-update is disabled (unverified installer). "
+            "Set ATELIER_AUTO_UPDATE_RELEASE=1 to opt in, or run 'atelier update' manually."
+        )
+        return False
+
+    if not shutil.which("bash"):
+        logger.error("Auto-update: bash unavailable; cannot apply release update")
+        return False
+
+    latest = _github_latest_version()
+    if latest is None:
+        logger.error("Auto-update: could not determine latest release version")
+        return False
+    current = _atelier_version()
+    if latest == current:
+        return False
+
+    installer_url = f"{_RELEASE_LATEST_URL}/install.sh"
+    try:
+        fd, tmp_path = tempfile.mkstemp(suffix="-atelier-install.sh")
+        with os.fdopen(fd, "wb") as fh, urllib.request.urlopen(installer_url, timeout=30) as resp:  # nosec
+            shutil.copyfileobj(resp, fh)
+    except Exception as exc:
+        logging.exception("Recovered from broad exception handler")
+        logger.error(f"Auto-update: failed to download installer ({installer_url}): {exc}")
+        return False
+
+    logger.info(f"Auto-update: launching detached installer ({current} -> {latest})")
+    # Fully detached: new session so the installer survives this daemon being
+    # stopped by the installer's own process-cleanup, plus its later restart.
+    # The wrapper deletes the downloaded script once the installer finishes so it
+    # does not accumulate in the temp dir across auto-update cycles.
+    subprocess.Popen(
+        ["bash", "-c", 'bash "$0"; rm -f "$0"', tmp_path],
+        env={**os.environ, "ATELIER_NON_INTERACTIVE": "1"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+    return True
+
+
+def _stack_restart() -> None:
+    """Trigger a restart of managed services (systemd or launchd)."""
+    if os.environ.get("INVOCATION_ID"):
+        logger.info("Auto-update: triggering systemd stack restart...")
+        subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
+    elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
+        logger.info("Auto-update: triggering launchd stack restart...")
+        subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
 
 
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
-    """Check for git updates and apply them if available.
+    """Check for updates and apply them if available.
 
-    Returns True if an update was applied and the process should restart.
+    Two install topologies, two behaviours:
+
+    - **git** -- pull + ``uv sync`` inline, write update-state, restart the stack,
+      and return True so the caller exits for an immediate restart on new code.
+    - **release** -- launch a *detached* installer (see ``_update_via_release``)
+      and return False. The installer owns the reinstall and stack restart, so the
+      caller must NOT exit here; returning False lets the tick record its check
+      timestamp, preventing a relaunch on the next tick before the installer lands.
+
+    Returns True only when the caller should exit for an immediate restart.
     """
+    previous_version = _atelier_version()
+    method, project_root = _detect_auto_update_method()
+    logger.info(f"Auto-update: install method={method}, current version={previous_version}")
+
     try:
-        # 1. Identify project root (where .git is)
-        # We look for the install record or traverse up from this file.
-        record_path = Path.home() / ".atelier" / "install_dir"
-        if record_path.exists():
-            project_root = Path(record_path.read_text(encoding="utf-8").strip())
+        if method == "git" and project_root:
+            if not _update_via_git(project_root):
+                logger.info("Auto-update: already up-to-date.")
+                return False
+
+            # In-process version is unchanged after a git pull; read the new
+            # version from pyproject.toml for the SessionStart notification.
+            try:
+                import re
+
+                from atelier.core.foundation.update_state import write_update_state
+
+                pyproject = Path(project_root) / "pyproject.toml"
+                match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text("utf-8"), re.MULTILINE)
+                new_version = match.group(1) if match else previous_version
+                write_update_state(
+                    previous_version=previous_version,
+                    current_version=new_version,
+                    method=method,
+                    root=root,
+                )
+            except Exception as exc:
+                logging.exception("Recovered from broad exception handler")
+                logger.warning(f"Auto-update: failed to write update state: {exc}")
+
+            _stack_restart()
+            logger.info("Auto-update: update applied successfully. Exiting for restart.")
+            return True
+
+        # release install: the detached installer reinstalls and restarts the
+        # stack itself. Never exit the daemon here -- the installer stops it when
+        # ready, and returning False records the check timestamp so we don't
+        # launch a second installer on the next tick.
+        if _update_via_release():
+            logger.info("Auto-update: detached installer launched; it will restart the stack.")
         else:
-            # Fallback: traverse up from src/atelier/gateway/cli/app.py
-            project_root = Path(__file__).parents[4]
-
-        if not (project_root / ".git").exists():
-            return False
-
-        # 2. git fetch
-        subprocess.run(["git", "fetch", "--quiet"], cwd=project_root, check=True)
-
-        # 3. Check if behind
-        res = subprocess.run(
-            ["git", "rev-list", "HEAD..@{u}", "--count"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        behind_count = int(res.stdout.strip())
-
-        if behind_count == 0:
-            return False
-
-        logger.info(f"Auto-update: detected {behind_count} new commits. Pulling...")
-
-        # 4. Pull
-        subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=project_root, check=True)
-
-        # 5. Check if dependencies changed
-        if (project_root / "uv.lock").exists() or (project_root / "pyproject.toml").exists():
-            import shutil
-
-            if shutil.which("uv"):
-                logger.info("Auto-update: syncing dependencies with uv...")
-                subprocess.run(["uv", "sync"], cwd=project_root, check=True)
-
-        # 6. Check if we should restart systemd/launchd managed services
-        # If we are running under systemd, we can trigger a restart of the whole stack
-        if os.environ.get("INVOCATION_ID"):
-            logger.info("Auto-update: update applied (systemd). Triggering stack restart...")
-            subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
-        elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
-            logger.info("Auto-update: update applied (launchd). Triggering stack restart...")
-            subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
-
-        logger.info("Auto-update: update applied successfully. Exiting for restart.")
-        return True
+            logger.info("Auto-update: already up-to-date.")
+        return False
 
     except Exception as exc:
         logging.exception("Recovered from broad exception handler")
@@ -345,23 +611,17 @@ def _servicectl_tick(
     *,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
-    external_analytics_interval_seconds: int,
-    external_analytics_periods: tuple[str, ...] | list[str],
     auto_update: bool = False,
     auto_update_interval_seconds: int = 3600,
 ) -> dict[str, Any]:
     from atelier.core.capabilities.optimization import load_automation_config
     from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS, JOB_OPTIMIZE
-    from atelier.core.service.worker import Worker
     from atelier.infra.storage.factory import create_store
 
     SESSION_IMPORT_KEY = "import_host_sessions"
-    EXTERNAL_ANALYTICS_KEY = "external_analytics_reports"
 
     store = create_store(root)
     store.init()
-    worker = Worker(store=store)
-    normalized_external_analytics_periods = _normalize_external_analytics_periods(external_analytics_periods)
 
     # Refresh host agent detection status for the Docker service
     with suppress(Exception):
@@ -384,8 +644,10 @@ def _servicectl_tick(
 
         if last_update_at is None or (now - last_update_at).total_seconds() >= auto_update_interval_seconds:
             if _servicectl_check_and_apply_updates(root):
-                # Process will exit if update was applied (Restart=always will pick it up)
-                sys.exit(0)
+                # Exit 3 = restart-needed signal.  When running as a tick subprocess
+                # the parent ``servicectl run`` loop detects code 3 and also exits,
+                # letting systemd restart the whole controller with the new code.
+                sys.exit(3)
             periodic[AUTO_UPDATE_KEY] = now.isoformat()
 
     def _periodic_timestamp(key: str) -> datetime | None:
@@ -408,14 +670,6 @@ def _servicectl_tick(
         except ValueError:
             last_session_import_at = None
 
-    last_external_analytics_raw = periodic.get(EXTERNAL_ANALYTICS_KEY)
-    last_external_analytics_at: datetime | None = None
-    if isinstance(last_external_analytics_raw, str):
-        try:
-            last_external_analytics_at = datetime.fromisoformat(last_external_analytics_raw)
-        except ValueError:
-            last_external_analytics_at = None
-
     if session_import_interval_seconds < 0:
         import_due = False
     elif session_import_interval_seconds == 0 or last_session_import_at is None:
@@ -424,25 +678,31 @@ def _servicectl_tick(
         import_due = (now - last_session_import_at).total_seconds() >= session_import_interval_seconds
     imported_sessions: dict[str, int] = {}
     if import_due:
-        imported_sessions = _servicectl_import_sessions(store)
+        imported_sessions = _servicectl_import_sessions(root)
         periodic[SESSION_IMPORT_KEY] = now.isoformat()
 
-    if external_analytics_interval_seconds < 0:
-        external_analytics_due = False
-    elif external_analytics_interval_seconds == 0 or last_external_analytics_at is None:
-        external_analytics_due = True
+    # Recall indexing (semantic past-session recall) runs on the maintenance cadence.
+    RECALL_INDEX_KEY = "index_recall_sessions"
+    last_recall_index_at = _periodic_timestamp(RECALL_INDEX_KEY)
+    if maintenance_interval_seconds <= 0 or last_recall_index_at is None:
+        recall_index_due = True
     else:
-        external_analytics_due = (
-            now - last_external_analytics_at
-        ).total_seconds() >= external_analytics_interval_seconds
-    external_analytics_runs: list[dict[str, Any]] = []
-    if external_analytics_due:
-        with suppress(Exception):
-            external_analytics_runs = _servicectl_collect_external_analytics(
-                store,
-                periods=normalized_external_analytics_periods,
-            )
-        periodic[EXTERNAL_ANALYTICS_KEY] = now.isoformat()
+        recall_index_due = (now - last_recall_index_at).total_seconds() >= maintenance_interval_seconds
+    indexed_recall: dict[str, int] = {}
+    if recall_index_due:
+        indexed_recall = _servicectl_index_recall(root)
+        periodic[RECALL_INDEX_KEY] = now.isoformat()
+
+    WORKSPACE_PRUNE_KEY = "prune_workspaces"
+    last_workspace_prune_at = _periodic_timestamp(WORKSPACE_PRUNE_KEY)
+    workspace_prune_due = (
+        last_workspace_prune_at is None
+        or (now - last_workspace_prune_at).total_seconds() >= _WORKSPACE_PRUNE_INTERVAL_SECONDS
+    )
+    pruned_workspaces: dict[str, Any] = {}
+    if workspace_prune_due:
+        pruned_workspaces = _servicectl_prune_workspaces(root)
+        periodic[WORKSPACE_PRUNE_KEY] = now.isoformat()
 
     job_queue_health_before = store.job_queue_health()
     enqueued: list[str] = []
@@ -485,12 +745,41 @@ def _servicectl_tick(
                 enqueued.append(job_id)
                 periodic[JOB_OPTIMIZE] = now.isoformat()
 
+    # Process queued jobs in subprocesses so heavy handlers (consolidation,
+    # optimization) keep their LLM heap out of the daemon. Each subprocess
+    # claims one job atomically, does the work, and exits.
     processed: list[str] = []
     while len(processed) < 20:
-        job_id = worker.run_once()
-        if job_id is None:
+        try:
+            job_result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "atelier.gateway.cli",
+                    "--root",
+                    str(root),
+                    "worker",
+                    "run-once",
+                    "--json",
+                ],
+                capture_output=True,
+                timeout=600,
+            )
+            if job_result.returncode != 0:
+                logging.warning(
+                    "worker run-once subprocess failed (rc=%d): %s",
+                    job_result.returncode,
+                    job_result.stderr[-300:].decode("utf-8", errors="replace").strip(),
+                )
+                break
+            data = json.loads(job_result.stdout)
+            job_id = data.get("job_id")
+            if not data.get("processed") or job_id is None:
+                break  # queue empty
+            processed.append(str(job_id))
+        except Exception:
+            logging.exception("worker run-once subprocess error")
             break
-        processed.append(job_id)
 
     payload = {
         "last_tick_at": now.isoformat(),
@@ -498,11 +787,12 @@ def _servicectl_tick(
         "last_enqueued_jobs": enqueued,
         "last_imported_sessions": imported_sessions if import_due else state.get("last_imported_sessions", {}),
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
-        "last_external_analytics_runs": (
-            external_analytics_runs if external_analytics_due else state.get("last_external_analytics_runs", [])
+        "last_indexed_recall": indexed_recall if recall_index_due else state.get("last_indexed_recall", {}),
+        "last_recall_index_at": periodic.get(RECALL_INDEX_KEY),
+        "last_pruned_workspaces": (
+            pruned_workspaces if workspace_prune_due else state.get("last_pruned_workspaces", {})
         ),
-        "last_external_analytics_periods": list(normalized_external_analytics_periods),
-        "last_external_analytics_at": periodic.get(EXTERNAL_ANALYTICS_KEY),
+        "last_workspace_prune_at": periodic.get(WORKSPACE_PRUNE_KEY),
         "last_exit_reason": state.get("last_exit_reason"),
         "periodic_jobs": periodic,
         "started_at": state.get("started_at"),
@@ -515,9 +805,10 @@ def _servicectl_tick(
         "processed_jobs": processed,
         "imported_sessions": imported_sessions,
         "session_import_ran": import_due,
-        "external_analytics_runs": external_analytics_runs,
-        "external_analytics_periods": list(normalized_external_analytics_periods),
-        "external_analytics_ran": external_analytics_due,
+        "indexed_recall": indexed_recall,
+        "recall_index_ran": recall_index_due,
+        "pruned_workspaces": pruned_workspaces,
+        "workspace_prune_ran": workspace_prune_due,
         "job_queue_health_before": job_queue_health_before,
         "job_queue_health": job_queue_health,
         "pending_jobs": job_queue_health["active"],

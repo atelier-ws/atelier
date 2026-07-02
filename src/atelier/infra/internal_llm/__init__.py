@@ -22,6 +22,22 @@ from atelier.infra.internal_llm.exceptions import (
     LiteLLMUnavailable,
     OllamaUnavailable,
 )
+from atelier.infra.internal_llm.logprobs import (
+    chunk_entropy,
+    logprobs,
+    token_surprisals,
+)
+
+__all__ = [
+    "InternalLLMError",
+    "LiteLLMUnavailable",
+    "OllamaUnavailable",
+    "chat",
+    "chunk_entropy",
+    "logprobs",
+    "summarize",
+    "token_surprisals",
+]
 
 
 def _backend() -> str:
@@ -62,31 +78,48 @@ def chat(
 
 
 def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) -> str:
-    """Summarize text using the configured internal LLM."""
+    """Summarize text using the configured internal LLM.
+
+    Identical ``(text, model, max_tokens, backend)`` inputs are memoized in a
+    persistent on-disk cache (shared across processes and sessions) so repeated
+    background summaries don't re-pay provider tokens; disable with
+    ``ATELIER_INTERNAL_LLM_CACHE=0``.
+    """
     backend = _backend()
     if backend == "none":
         raise InternalLLMError(
             "Internal LLM disabled; set ATELIER_LLM_BACKEND=ollama or ATELIER_LLM_BACKEND=openai to enable"
         )
 
-    try:
-        if backend in ("openai", "openai_compatible"):
-            from atelier.infra.internal_llm.openai_client import summarize as _summarize
+    def _compute() -> str:
+        try:
+            if backend in ("openai", "openai_compatible"):
+                from atelier.infra.internal_llm.openai_client import summarize as _summarize
+
+                return _summarize(text, model=model, max_tokens=max_tokens)
+
+            if backend == "litellm":
+                from atelier.infra.internal_llm.litellm_client import summarize as _summarize
+
+                return _summarize(text, model=model, max_tokens=max_tokens)
+
+            from atelier.infra.internal_llm.ollama_client import summarize as _summarize
 
             return _summarize(text, model=model, max_tokens=max_tokens)
+        except Exception as exc:
+            if isinstance(exc, InternalLLMError):
+                raise
+            raise InternalLLMError(f"Internal LLM ({backend}) failed: {exc}") from exc
 
-        if backend == "litellm":
-            from atelier.infra.internal_llm.litellm_client import summarize as _summarize
+    from atelier.infra.internal_llm.cache import cached_summarize
 
-            return _summarize(text, model=model, max_tokens=max_tokens)
-
-        from atelier.infra.internal_llm.ollama_client import summarize as _summarize
-
-        return _summarize(text, model=model, max_tokens=max_tokens)
-    except Exception as exc:
-        if isinstance(exc, InternalLLMError):
-            raise
-        raise InternalLLMError(f"Internal LLM ({backend}) failed: {exc}") from exc
+    return cached_summarize(
+        text,
+        model=model,
+        max_tokens=max_tokens,
+        backend=backend,
+        compute=_compute,
+    )
 
 
 __all__ = ["InternalLLMError", "LiteLLMUnavailable", "OllamaUnavailable", "chat", "summarize"]

@@ -4,12 +4,11 @@ import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
   title: "Atelier",
-  tagline:
-    "Open-Source Runtime Engineering for Agents",
+  tagline: "Open-Source Runtime Engineering for Agents",
   favicon: "img/favicon.svg",
   url: "https://docs.atelier.ws",
   baseUrl: "/",
-  organizationName: "atelier-runtime",
+  organizationName: "atelier-ws",
   projectName: "atelier",
   onBrokenLinks: "warn",
   i18n: {
@@ -21,8 +20,9 @@ const config: Config = {
       "classic",
       {
         docs: {
+          routeBasePath: "/",
           sidebarPath: "./sidebars.ts",
-          editUrl: "https://github.com/atelier-runtime/atelier/edit/main/docs/",
+          editUrl: "https://github.com/atelier-ws/atelier/edit/main/docs/",
         },
         blog: {
           showReadingTime: true,
@@ -40,6 +40,7 @@ const config: Config = {
   themeConfig: {
     image: "img/atelier-logo.svg",
     colorMode: {
+      defaultMode: "light",
       respectPrefersColorScheme: true,
       disableSwitch: false,
     },
@@ -67,7 +68,7 @@ const config: Config = {
           position: "right",
         },
         {
-          href: "https://github.com/atelier-runtime/atelier",
+          href: "https://github.com/atelier-ws/atelier",
           label: "GitHub",
           position: "right",
         },
@@ -79,26 +80,26 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            { label: "Home", to: "/docs" },
-            { label: "Installation", to: "/docs/installation" },
-            { label: "CLI Reference", to: "/docs/cli" },
-            { label: "Troubleshooting", to: "/docs/troubleshooting" },
+            { label: "Home", to: "/" },
+            { label: "Installation", to: "/installation" },
+            { label: "CLI Reference", to: "/cli" },
+            { label: "Troubleshooting", to: "/troubleshooting" },
           ],
         },
         {
           title: "Hosts",
           items: [
-            { label: "All Hosts", to: "/docs/hosts/all-agent-clis" },
-            { label: "Claude Code", to: "/docs/hosts/claude-code-install" },
-            { label: "Codex CLI", to: "/docs/hosts/codex-install" },
-            { label: "Copilot", to: "/docs/hosts/copilot-install" },
+            { label: "All Hosts", to: "/hosts/all-agent-clis" },
+            { label: "Claude Code", to: "/hosts/claude-code-install" },
+            { label: "Codex CLI", to: "/hosts/codex-install" },
+            { label: "Copilot", to: "/hosts/copilot-install" },
           ],
         },
         {
           title: "More",
           items: [
             { label: "Atelier Website", href: "https://atelier.ws" },
-            { label: "GitHub", href: "https://github.com/atelier-runtime/atelier" },
+            { label: "GitHub", href: "https://github.com/atelier-ws/atelier" },
             { label: "Contact", href: "mailto:contact@atelier.ws" },
           ],
         },

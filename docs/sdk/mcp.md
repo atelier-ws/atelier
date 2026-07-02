@@ -8,14 +8,14 @@ rescue, trace recording, rubric gates, memory, and code-aware helper tools.
 ### Installed product
 
 ```bash
-atelier-mcp
+atelier mcp
 ```
 
 ### Source checkout
 
 ```bash
 cd atelier
-uv run atelier-mcp
+uv run atelier mcp
 ```
 
 ### Remote service-backed mode
@@ -51,14 +51,14 @@ names:
 - `search`
 - `compact`
 - `code`
-- `shell`
+- `bash`
 
 ## Structured Tool Operations
 
 - `memory` uses an `op` field such as `block_upsert`, `block_get`, `archive`, and `recall`.
 - `compact` uses `op=output`, `op=session`, or `op=advise`.
 - `route` uses `op=decide` and `op=verify`.
-- `code` uses `op=index`, `op=search`, `op=blame`, `op=hover`, `op=symbol`, `op=outline`, `op=files`, `op=explore`, `op=routes`, `op=status`, `op=context`, `op=impact`, `op=usages`, `op=callers`, `op=callees`, `op=pattern`, `op=rename`, `op=cache_status`, or `op=cache_invalidate`.
+- `code` uses `op=index`, `op=search`, `op=blame`, `op=hover`, `op=symbol`, `op=outline`, `op=files`, `op=explore`, `op=routes`, `op=status`, `op=context`, `op=pattern`, `op=rename`, `op=cache_status`, or `op=cache_invalidate`. (Call-graph and reference relations — callers, callees, usages — are returned folded into `op=explore`.)
 
 ## Remote Mode Coverage
 
@@ -78,7 +78,7 @@ Installed-product config:
 {
   "mcpServers": {
     "atelier": {
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "env": {
         "ATELIER_ROOT": "~/.atelier",
         "ATELIER_WORKSPACE_ROOT": "."
@@ -95,7 +95,7 @@ Source-checkout config:
   "mcpServers": {
     "atelier": {
       "command": "uv",
-      "args": ["run", "atelier-mcp"],
+      "args": ["run", "atelier mcp"],
       "cwd": "/abs/path/to/atelier",
       "env": {
         "ATELIER_ROOT": "~/.atelier",

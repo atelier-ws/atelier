@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -17,7 +18,6 @@ from atelier.core.capabilities import (
     ContextCompressionCapability,
     ContextReuseCapability,
     FailureAnalysisCapability,
-    LoopDetectionCapability,
     ProofGateCapability,
     QualityRouterCapability,
     SemanticFileMemoryCapability,
@@ -36,7 +36,7 @@ from atelier.core.foundation.retriever import (
 )
 from atelier.core.foundation.routing_models import RouteDecision, StepType, TaskType
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import RunLedger, iter_run_files
 
 
 class AtelierRuntimeCore:
@@ -45,7 +45,6 @@ class AtelierRuntimeCore:
     CAPABILITIES: ClassVar[dict[str, str]] = {
         "context_compression": "Compress stale history into actionable runtime context.",
         "failure_analysis": "Cluster repeated failures and propose root-cause fixes.",
-        "loop_detection": "Repeated-failure and dead-end detection with runtime alerts.",
         "proof_gate": "Cost-quality proof gate combining context savings, routing evals, and trace confidence.",
         "quality_router": "Deterministic quality-aware route selection for runtime steps.",
         "context_reuse": "Reuse prior successful procedures and failure signatures.",
@@ -61,11 +60,9 @@ class AtelierRuntimeCore:
 
         self.context_reuse = ContextReuseCapability(self.store, self.root)
         self.semantic_memory = SemanticFileMemoryCapability(self.root)
-        self.loop_detection = LoopDetectionCapability()
         self.quality_router = QualityRouterCapability(
             self.store,
             self.root,
-            loop_detection=self.loop_detection,
         )
         self.tool_supervision = ToolSupervisionCapability(self.root)
         self.context_compression = ContextCompressionCapability()
@@ -99,6 +96,8 @@ class AtelierRuntimeCore:
         include_telemetry: bool = False,
         agent_id: str | None = None,
         recall: bool = True,
+        monitor_composite: float = 0.0,
+        fsm_skip_etraces: bool = False,
     ) -> str | dict[str, Any]:
         scored = self.context_reuse.retrieve(
             task=task,
@@ -109,9 +108,11 @@ class AtelierRuntimeCore:
             limit=max_blocks,
             token_budget=token_budget,
             dedup=dedup,
+            monitor_composite=monitor_composite,
+            fsm_skip_etraces=fsm_skip_etraces,
         )
         should_return_payload = include_telemetry or agent_id is not None
-        reasonblock_context = render_context_for_agent([item.block for item in scored])
+        playbook_context = render_context_for_agent([item.block for item in scored])
         bootstrap_context = ""
         bootstrap_blocks: list[dict[str, Any]] = []
         bootstrap_repo_id: str | None = None
@@ -138,44 +139,50 @@ class AtelierRuntimeCore:
             bootstrap_repo_id = None
 
         if recall:
-            from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
-            from atelier.core.foundation.redaction import redact
-            from atelier.infra.embeddings.factory import get_embedder
-            from atelier.infra.storage.factory import make_memory_store
+            try:
+                from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+                from atelier.core.foundation.redaction import redact
+                from atelier.infra.embeddings.factory import get_embedder
+                from atelier.infra.storage.factory import make_memory_store
 
-            memory_store = make_memory_store(self.root)
-            fact_agent_ids = [agent_id] if agent_id else ["shared"]
-            fact_blocks = []
-            for fact_agent_id in fact_agent_ids:
-                for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
-                    metadata = block.metadata or {}
-                    if metadata.get("kind") != "memory_fact":
-                        continue
-                    fact_blocks.append(block)
-            fact_blocks.sort(
-                key=lambda block: (
-                    -int(((block.metadata or {}).get("votes") or {}).get("upvote", 0) or 0)
-                    + int(((block.metadata or {}).get("votes") or {}).get("downvote", 0) or 0),
-                    -int(block.version),
+                memory_store = make_memory_store(self.root)
+                recall_agent_id = agent_id if agent_id else "shared"
+                fact_agent_ids = [recall_agent_id]
+                fact_blocks = []
+                for fact_agent_id in fact_agent_ids:
+                    for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
+                        metadata = block.metadata or {}
+                        if metadata.get("kind") != "memory_fact":
+                            continue
+                        fact_blocks.append(block)
+                fact_blocks.sort(
+                    key=lambda block: (
+                        -int(((block.metadata or {}).get("votes") or {}).get("upvote", 0) or 0)
+                        + int(((block.metadata or {}).get("votes") or {}).get("downvote", 0) or 0),
+                        -int(block.version),
+                    )
                 )
-            )
-            fact_blocks = fact_blocks[:5]
+                fact_blocks = fact_blocks[:5]
 
-            capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
-            passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
-            scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
-            if not scoped_passages:
-                scoped_passages = filter_scoped_passages(
-                    memory_store.list_passages(agent_id, limit=3),
-                    requested_agent_id=agent_id,
-                )[:3]
-            memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
-            recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
-                scoped_passages, query=task
-            )
+                capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
+                passages, _ = capability.recall(agent_id=recall_agent_id, query=task, top_k=3)
+                scoped_passages = filter_scoped_passages(passages, requested_agent_id=recall_agent_id)[:3]
+                if not scoped_passages:
+                    scoped_passages = filter_scoped_passages(
+                        memory_store.list_passages(recall_agent_id, limit=3),
+                        requested_agent_id=recall_agent_id,
+                    )[:3]
+                memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
+                recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
+                    scoped_passages, query=task
+                )
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                memory_context = ""
+                recalled_passages = []
 
-        context = reasonblock_context + bootstrap_context + memory_context
-        reasonblock_tokens = count_tokens(reasonblock_context)
+        context = playbook_context + bootstrap_context + memory_context
+        playbook_tokens = count_tokens(playbook_context)
         bootstrap_tokens = count_tokens(bootstrap_context) if bootstrap_context else 0
         memory_tokens = count_tokens(memory_context) if memory_context else 0
         if not should_return_payload and not context:
@@ -186,15 +193,21 @@ class AtelierRuntimeCore:
             "context": context,
             "recalled_passages": recalled_passages,
             "tokens_breakdown": {
-                "reasonblocks": reasonblock_tokens,
+                "playbooks": playbook_tokens,
                 "bootstrap": bootstrap_tokens,
                 "memory": memory_tokens,
-                "total": reasonblock_tokens + bootstrap_tokens + memory_tokens,
+                "total": playbook_tokens + bootstrap_tokens + memory_tokens,
             },
             "bootstrap": {
                 "status": "warm" if bootstrap_context else bootstrap_state,
                 "repo_id": bootstrap_repo_id,
-                "blocks": bootstrap_blocks,
+                # Lightweight metadata only. The repo-map markdown is already
+                # inlined into the model-facing `context` string above, so the
+                # structured echo must NOT repeat any rendered block text
+                # (`value`) — that would ship the same markdown twice.
+                "blocks": [
+                    {key: value for key, value in block.items() if key != "value"} for block in bootstrap_blocks
+                ],
             },
         }
         if not include_telemetry:
@@ -491,20 +504,97 @@ class AtelierRuntimeCore:
 
     def summarize_memory(self, session_id: str | None = None) -> dict[str, Any]:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            from atelier.core.foundation.paths import find_session_dir
+
+            session_dir = find_session_dir(self.root, session_id)
+            if session_dir is None:
+                raise FileNotFoundError(f"no run ledger for session {session_id}")
+            ledger_path = session_dir / "run.json"
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]
 
         ledger = RunLedger.load(ledger_path)
-        compressed = self.context_compression.compress(ledger)
-        loops = self.loop_detection.from_ledger(ledger)
-        compressed["loop_alerts"] = loops
+        if self._should_auto_compact(ledger):
+            compressed = self.context_compression.compress(ledger)
+        else:
+            compressed = {"compacted": False}
         compressed["session_id"] = ledger.session_id
         return cast(dict[str, Any], compressed)
+
+    def _should_auto_compact(self, ledger: RunLedger) -> bool:
+        """Decide whether history compaction should run for this ledger.
+
+        DEFAULT-OFF behind ``ATELIER_AUTO_COMPACT``. When the flag is off the
+        method always returns ``True`` so ``summarize_memory`` behaves exactly
+        as it did before (unconditional compress). When the flag is on,
+        compaction only fires once live context fill reaches the policy's
+        ``trigger_at_context_fraction``.
+
+        Fail-open and headless: any error while evaluating the gate falls
+        through to the prior behavior (compress) and never crashes the turn.
+        """
+        if os.environ.get("ATELIER_AUTO_COMPACT", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return True
+        try:
+            from atelier.core.capabilities.optimization.policy import load_current_policy, should_compact
+
+            policy = load_current_policy(self.root)
+            fill = self._live_context_fill(ledger)
+            return should_compact(fill, policy.compaction)
+        except Exception:  # noqa: BLE001 - fail-open: never crash the turn on gating errors
+            logging.getLogger(__name__).debug("auto-compact gate failed; falling back to compress", exc_info=True)
+            return True
+
+    def _live_context_fill(self, ledger: RunLedger) -> float:
+        """Estimate the live context fill fraction for a ledger.
+
+        Mirrors ``optimization/audit.py``'s per-trace fill formula
+        ``(effective_input + always_on) / max(window, 1)``: the audit computes
+        fill from a *single* trace's input occupancy, not a running total. So
+        this estimates the live window occupancy from the MOST-RECENT LLM call
+        for the dominant model rather than summing every historical call -- a
+        cumulative sum monotonically inflates the fraction over a long session
+        and contradicts the "live fill" the gate needs. ``always_on`` defaults
+        to 0 (matching the audit module when no context audit is supplied).
+        """
+        from atelier.core.capabilities.optimization.audit import context_window_for_model
+
+        def _occupancy(payload: dict[str, Any]) -> int:
+            return (
+                int(payload.get("input_tokens", 0) or 0)
+                + int(payload.get("cache_read_tokens", 0) or 0)
+                + int(payload.get("cache_write_tokens", 0) or 0)
+            )
+
+        # Tally per-model totals only to pick the dominant model; the fill
+        # itself comes from that model's most-recent call, not the sum.
+        token_by_model: dict[str, int] = {}
+        for event in ledger.events:
+            payload = event.payload
+            if payload.get("kind") != "llm_call":
+                continue
+            model = str(payload.get("model", "") or "")
+            token_by_model[model] = token_by_model.get(model, 0) + _occupancy(payload)
+
+        if not token_by_model:
+            return 0.0
+        dominant_model = max(token_by_model, key=lambda m: token_by_model[m])
+
+        recent_occupancy = 0
+        for event in reversed(ledger.events):
+            payload = event.payload
+            if payload.get("kind") != "llm_call":
+                continue
+            if str(payload.get("model", "") or "") != dominant_model:
+                continue
+            recent_occupancy = _occupancy(payload)
+            break
+
+        window = context_window_for_model(dominant_model)
+        return recent_occupancy / max(window, 1)
 
     def benchmark_runtime_metrics(self) -> dict[str, Any]:
         supervision = self.tool_supervision.status()
@@ -540,28 +630,6 @@ class AtelierRuntimeCore:
         return cast(list[dict[str, Any]], self.semantic_memory.symbol_search(query, limit=limit))
 
     # ------------------------------------------------------------------ #
-    # Loop detection helpers                                               #
-    # ------------------------------------------------------------------ #
-
-    def detect_loop(self, ledger: RunLedger) -> dict[str, Any]:
-        """Run full loop analysis on a ledger and return the report dict."""
-        report = self.loop_detection.check(ledger)
-        if report.loop_detected:
-            from atelier.core.service.telemetry import emit_product
-
-            emit_product(
-                "frustration_signal_behavioral",
-                signal_type="loop_detected",
-                session_id=getattr(ledger, "session_id", ""),
-            )
-        return cast(dict[str, Any], report.to_dict())
-
-    def loop_report(self, session_id: str | None = None) -> dict[str, Any]:
-        """Load the ledger and return a loop analysis report."""
-        ledger = self._load_ledger(session_id)
-        return self.detect_loop(ledger)
-
-    # ------------------------------------------------------------------ #
     # Tool supervision helpers                                             #
     # ------------------------------------------------------------------ #
 
@@ -589,23 +657,6 @@ class AtelierRuntimeCore:
     # ------------------------------------------------------------------ #
     # Failure analysis helpers                                             #
     # ------------------------------------------------------------------ #
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        lookback: int = 200,
-        min_cluster_size: int = 2,
-    ) -> dict[str, Any]:
-        """Return clustered failure incidents across recent failed traces."""
-        return cast(
-            dict[str, Any],
-            self.failure_analysis.analyze(
-                domain=domain,
-                lookback=lookback,
-                min_cluster_size=min_cluster_size,
-            ),
-        )
 
     def analyze_failure_for_error(
         self,
@@ -686,32 +737,16 @@ class AtelierRuntimeCore:
     ) -> dict[str, Any]:
         """Hook: called before a tool invocation.
 
-        Checks for loop conditions and returns cached result if available.
+        Returns a cached tool result when one is available. ``ledger`` is part of
+        the hook contract but no longer inspected here.
         """
         args_key = f"{tool_name}:{json.dumps(args, sort_keys=True, default=str)[:100]}"
         cached = self.tool_supervision.get(args_key)
-        loop_alert: dict[str, Any] | None = None
-        if ledger is not None:
-            report = self.loop_detection.check(ledger)
-            if report.loop_detected:
-                from atelier.core.service.telemetry import emit_product
-
-                emit_product(
-                    "frustration_signal_behavioral",
-                    signal_type="loop_detected",
-                    session_id=getattr(ledger, "session_id", ""),
-                )
-                loop_alert = {
-                    "severity": report.severity,
-                    "summary": f"Loop detected: {', '.join(report.loop_types)}",
-                    "rescue": report.rescue_strategies[:1],
-                }
         return {
             "hook": "pre_tool",
             "tool": tool_name,
             "cached_result": cached,
             "cache_available": cached is not None,
-            "loop_alert": loop_alert,
         }
 
     def post_tool(
@@ -818,10 +853,14 @@ class AtelierRuntimeCore:
 
     def _load_ledger(self, session_id: str | None = None) -> RunLedger:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            from atelier.core.foundation.paths import find_session_dir
+
+            session_dir = find_session_dir(self.root, session_id)
+            if session_dir is None:
+                raise FileNotFoundError(f"no run ledger for session {session_id}")
+            ledger_path = session_dir / "run.json"
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]
@@ -895,9 +934,17 @@ class AtelierRuntimeCore:
             lines = text.splitlines(keepends=True)
             stripped = [line.strip() for line in lines]
             close = difflib.get_close_matches(target, stripped, n=1, cutoff=0.86)
-            if close:
+            # Only apply the fuzzy fallback when the match is unambiguous; a
+            # close match that appears on several lines could clobber the wrong
+            # one while reporting success.
+            if close and stripped.count(close[0]) == 1:
                 idx = stripped.index(close[0])
-                lines[idx] = replace + ("\n" if lines[idx].endswith("\n") else "")
+                line = lines[idx]
+                newline = "\n" if line.endswith("\n") else ""
+                # Insert `replace` verbatim (it carries its own indentation,
+                # matching the two exact/whitespace-flex branches above);
+                # preserve only the line terminator.
+                lines[idx] = replace + newline
                 return True, "".join(lines)
 
         return False, text

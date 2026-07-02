@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -87,7 +88,7 @@ def evaluate_terminalbench_gate(
     }
 
 
-def evaluate_atelierbench_gate(
+def evaluate_codebench_gate(
     run_dir: Path,
     *,
     baseline_arm: str = "baseline",
@@ -98,7 +99,7 @@ def evaluate_atelierbench_gate(
     results_path = run_dir / "results.jsonl"
     if not results_path.is_file():
         return _failed_gate(
-            suite="atelierbench",
+            suite="codebench",
             reasons=["results.jsonl is missing, so no paired benchmark evidence is available"],
         )
     results = _load_jsonl(results_path)
@@ -110,7 +111,7 @@ def evaluate_atelierbench_gate(
     if not candidate_rows:
         reasons.append(f"candidate arm {candidate_arm!r} is missing from results.jsonl")
     if reasons:
-        return _failed_gate(suite="atelierbench", reasons=reasons)
+        return _failed_gate(suite="codebench", reasons=reasons)
     baseline_judged = sum(1 for row in baseline_rows if row.get("correct") is not None)
     candidate_judged = sum(1 for row in candidate_rows if row.get("correct") is not None)
     if baseline_judged != len(baseline_rows) or candidate_judged != len(candidate_rows):
@@ -129,8 +130,23 @@ def evaluate_atelierbench_gate(
     candidate_cost = sum(float(row.get("cost_usd") or 0.0) for row in candidate_rows)
     if candidate_cost >= baseline_cost:
         reasons.append("candidate did not reduce measured cost versus baseline")
+    pairwise_rows = _load_csv(run_dir / "pairwise_quality.csv")
+    selected_pairwise = [
+        row
+        for row in pairwise_rows
+        if row.get("baseline_arm") == baseline_arm and row.get("candidate_arm") == candidate_arm
+    ]
+    expected_pairs = {(str(row.get("task") or ""), str(row.get("rep") or "")) for row in candidate_rows}
+    judged_pairs = [row for row in selected_pairwise if _truthy(row.get("judged"))]
+    passing_pairs = [row for row in judged_pairs if _truthy(row.get("candidate_at_least_baseline"))]
+    if len(selected_pairwise) < len(expected_pairs):
+        reasons.append("pairwise quality gate requires a baseline-vs-candidate row for every candidate run")
+    if len(judged_pairs) != len(selected_pairwise) or len(judged_pairs) < len(expected_pairs):
+        reasons.append("pairwise quality gate requires judged baseline-vs-candidate comparisons for every pair")
+    if len(passing_pairs) != len(judged_pairs):
+        reasons.append("candidate quality regressed versus baseline in at least one judged pair")
     return {
-        "suite": "atelierbench",
+        "suite": "codebench",
         "evaluated_at": datetime.now(UTC).isoformat(),
         "passed": not reasons,
         "reasons": reasons,
@@ -143,10 +159,10 @@ def evaluate_atelierbench_gate(
             "candidate_arm": candidate_arm,
         },
         "details": {
-            "baseline": _atelierbench_arm_summary(
+            "baseline": _codebench_arm_summary(
                 baseline_rows, correct=baseline_correct, lower=baseline_lower, upper=baseline_upper
             ),
-            "candidate": _atelierbench_arm_summary(
+            "candidate": _codebench_arm_summary(
                 candidate_rows,
                 correct=candidate_correct,
                 lower=candidate_lower,
@@ -162,6 +178,15 @@ def evaluate_atelierbench_gate(
                 "candidate_cost_usd": candidate_cost,
                 "estimated_cost_delta_usd": candidate_cost - baseline_cost,
                 "estimated_cost_savings_usd": baseline_cost - candidate_cost,
+            },
+            "pairwise_quality": {
+                "pairs": len(selected_pairwise),
+                "expected_pairs": len(expected_pairs),
+                "judged_pairs": len(judged_pairs),
+                "candidate_at_least_baseline": len(passing_pairs),
+                "quality_adjusted_savings_usd": sum(
+                    float(row.get("quality_adjusted_saved_usd") or 0.0) for row in selected_pairwise
+                ),
             },
         },
     }
@@ -190,9 +215,18 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _atelierbench_arm_summary(
-    rows: list[dict[str, Any]], *, correct: int, lower: float, upper: float
-) -> dict[str, Any]:
+def _load_csv(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _truthy(value: object) -> bool:
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def _codebench_arm_summary(rows: list[dict[str, Any]], *, correct: int, lower: float, upper: float) -> dict[str, Any]:
     total = len(rows)
     return {
         "total": total,
@@ -207,7 +241,7 @@ def _atelierbench_arm_summary(
 
 
 __all__ = [
-    "evaluate_atelierbench_gate",
+    "evaluate_codebench_gate",
     "evaluate_terminalbench_gate",
     "load_benchmark_gate",
     "require_benchmark_gate_pass",

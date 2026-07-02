@@ -1,0 +1,39 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll search the codebase to see what architecture we're dealing with here.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host communicate with main process IPC protocol"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/core/capabilities/code_context/engine.py","scripts/profile_search_latency.py","src/atelier/core/environment.py","scripts/_provision_linux_kernel.py","benchmarks/codebench/data/bench_pairs_linux.json","src/ate
+[assistant] The search hit nothing related — this is "atelier," a Python coding-agent project, not a VS Code-style codebase. Let me confirm there's no extension-host concept here before answering.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host process IPC RPC main process renderer"}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rEil \"extension host|extensionHost|extHost\" --include=*.py --include=*.ts --include=*.js --include=*.md . | head -20"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/infra/code_intel/zoekt/server.py","benchmarks/codebench/data/bench_pairs_linux.json","src/atelier/core/capabilities/code_context/engine.py","src/atelier/core/capabilities/mcp_integration/loader.py","src/ateli
+[assistant] This codebase — **atelier**, a Python coding-agent project — has no extension-host architecture. The only `extension host` string matches are in bundled `node_modules` (React DOM) and an unrelated worktree README. There's no main-process/renderer/extension-host split anywhere in the source.
+
+So "extension host ↔ main process" is a **VS Code** concept, not something in this repo. Here's how it works in VS Code, in case that's what you're after:
+
+## VS Code: extension host ↔ main process
+
+**Process layout.** VS Code (Electron) has a *main process* (Node.js, owns windows, the menu, the lifecycle) and one *renderer process* per window (the UI/workbench, Chromium). Extensions don't run in either — they run in a separate **extension host** process, forked from the main process, so a slow or crashing extension can't freeze the UI.
+
+**Transport.** Communication is **message-passing RPC over a duplex stream**, never shared memory:
+- The channel is typically a **Node IPC pipe / socket** (`MessagePort` / named pipe / TCP for remote scenarios). For remote/WSL/SSH/web setups the extension host can live on another machine, so everything must be serializable.
+- Messages are length-prefixed and serialized (JSON, with `VSBuffer` for binary). The framing layer is `IMessagePassingProtocol`.
+
+**RPC layer (`RPCProtocol`).** On top of the raw stream sits a proxy system:
+- Each side registers actors and gets typed **proxies** (`getProxy(identifier)`). Calling a proxy method serializes `{ requestId, actorId, method, args }`, sends it, and returns a `Promise`.
+- The other side dispatches to the real implementation and sends back a reply (or error/cancel) keyed by `requestId`.
+- Interfaces are split as `MainThreadXxx` (runs in renderer, the "main thread" side) and `ExtHostXxx` (runs in the extension host). The public `vscode` API objects in an extension are thin wrappers that call `ExtHost*`, which RPCs to `MainThread*` to actually touch the UI/editor.
+
+**Consequences of the boundary:**
+- Every API call crossing it is **async** — that's why so much of the `vscode` API returns `Thenable`/`Promise`.
+- Arguments must be **serializable**; you can't pass live object references (hence handle/ID indirection for things like `TextDocument`).
+- Cancellation, large payloads, and ordering are all handled by the protocol (cancellation tokens map to cancel messages, etc.).
+
+If you actually meant a different project (or there's a specific extension/IPC mechanism in *this* repo you're thinking of), point me at it and I'll trace the real code path.

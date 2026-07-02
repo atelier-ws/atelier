@@ -17,6 +17,11 @@ from typing import Any
 
 import click
 
+# ── Auto-install flag ─────────────────────────────────────────────────────
+# Set True by commands/__init__.py when any command module import fails.
+# app.py checks this at startup and runs ``uv sync`` to install deps.
+_IMPORT_FAILED: bool = False
+
 _REDACTION_PLACEHOLDER_RE = re.compile(r"<redacted[^>]*>")
 
 
@@ -45,6 +50,20 @@ def _emit(data: Any, *, as_json: bool) -> None:
         click.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
     else:
         click.echo(data)
+
+
+def require_pro(feature: str, label: str) -> None:
+    """Gate a Pro-only CLI control surface.
+
+    Raises :class:`click.ClickException` with an upgrade hint unless ``feature``
+    is *active* -- a valid license grants it AND the proprietary ``atelier_pro``
+    overlay is installed. On a Free install both are absent, so the command is
+    blocked with a clear upsell.
+    """
+    from atelier.core.capabilities import licensing
+
+    if not licensing.feature_active(feature):
+        raise click.ClickException(f"{label} is an Atelier Pro feature. Unlock at {licensing.pro_url()}")
 
 
 def _redact_memory_input(text: str, field_name: str) -> str:
@@ -107,20 +126,27 @@ def _parse_duration(value: str) -> timedelta:
 
 
 def _ledger_dir(root: Path) -> Path:
-    return Path(root) / "runs"
+    # Run ledgers live in the canonical sessions/YYYY/MM/DD/<host>/<id>/run.json
+    # tree alongside the trace files -- see atelier.core.foundation.paths.session_dir.
+    return Path(root) / "sessions"
 
 
 def _latest_ledger_path(root: Path) -> Path | None:
     runs = _ledger_dir(root)
     if not runs.is_dir():
         return None
-    paths = sorted(runs.glob("*.json"))
+    paths = sorted(runs.glob("*/*/*/*/*/run.json"))
     return paths[-1] if paths else None
 
 
 def _ledger_path(root: Path, session_id: str | None) -> Path:
     if session_id:
-        return _ledger_dir(root) / f"{session_id}.json"
+        from atelier.core.foundation.paths import find_session_dir
+
+        session_dir = find_session_dir(root, session_id)
+        if session_dir is None:
+            raise click.ClickException(f"no run ledger found for session {session_id}.")
+        return session_dir / "run.json"
     latest = _latest_ledger_path(root)
     if latest is None:
         raise click.ClickException("no run ledger found. Pass --session-id or record one first.")

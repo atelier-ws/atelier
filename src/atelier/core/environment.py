@@ -12,8 +12,6 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from atelier.bench.mode import is_off as _bench_is_off
-
 try:
     import tomllib
 except ImportError:  # pragma: no cover
@@ -27,31 +25,54 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
+        # Single-primary retrieval surface: `explore` (ranked source + call-graph
+        # relations + blast-radius in one call) and `read` are the only advertised
+        # retrieval tools. `grep` and `relations` stay registered and callable
+        # (escape hatch / internal routing / drill-in) but are hidden so the agent
+        # leads with `explore` instead of flailing on regex grep.
+        "grep",
+        "relations",
+        # Skill-only / orchestration tools: named MCP tools not surfaced to agents.
+        "agent",
+        "workflow",
+        # Internal / CLI-only IPC and lifecycle tools.
+        "statusline_segment",
         "rescue",
         "verify",
-        "callees",
-        "impact",
-        "pattern",
-        "route",
         "trace",
-        "workflow",
         "compact",
         "context",
+        # WS4 graph analytics (blast radius / dead code / cycles / coupling /
+        # symbol centrality): registered and callable by name, but kept off the
+        # advertised surface to preserve the lean public tool set.
+        "graph",
+        # WS8 G11 security scan (SAST first iteration): callable by name but kept
+        # off the advertised surface to preserve the lean public tool set.
+        "scan",
+        # WS12 N8 on-demand tool-usage playbook: callable by name so the
+        # orientation guidance lives in one fetch, but kept off the advertised
+        # surface to preserve the lean public tool set.
+        "orient",
+        # Repo/admin code-intel ops: callable by name (tests, CLI, power use)
+        # but not surfaced to agents.
+        "index",
+        "blame",
+        # Code-intel cache admin (status + invalidate) folded into one tool.
+        "cache",
+        # Semantic/embedding search: registered and callable, but hidden until an
+        # embedding backend is wired up. Deterministic search (regex/glob, symbol
+        # locate/relations, repo-map) lives on `grep`; when embeddings land,
+        # remove `search` here to surface it as the 6th visible tool.
+        "search",
+        # Power/admin surfaces kept off the lean agent surface: durable memory
+        # writes, raw SQL, and AST-shape codemod. Callable by name (tests, CLI,
+        # power use) but not advertised to agents.
+        "memory",
+        "sql",
+        "codemod",
     }
 )
-HIDDEN_SKILLS = frozenset(
-    {
-        "analyze-failures",
-        "benchmark",
-        "context",
-        "evals",
-        "rescue",
-        "savings",
-        "settings",
-        "status",
-        "record",
-    }
-)
+HIDDEN_SKILLS: frozenset[str] = frozenset()
 
 
 def bool_env(name: str, default: bool = False, env: Mapping[str, str] | None = None) -> bool:
@@ -66,12 +87,26 @@ def mcp_tool_description(tool_name: str, description: str | None) -> str:
     return str(description or "")
 
 
+def _extra_hidden_tools(env: Mapping[str, str] | None = None) -> frozenset[str]:
+    # Opt-in lean surface: ATELIER_HIDE_TOOLS=node,sql,... hides extra tools from
+    # the LLM surface (smaller per-turn schema, less tool-choice deliberation)
+    # without touching the always-hidden baseline set.
+    values = os.environ if env is None else env
+    raw = values.get("ATELIER_HIDE_TOOLS", "")
+    return frozenset(t.strip() for t in raw.split(",") if t.strip())
+
+
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
     # Bench-off overrides the normal public surface — the baseline arm must not
-    # see Atelier MCP tools.
+    # see Atelier MCP tools. Imported lazily so reading runtime config does not
+    # couple core to the optional bench package at module load time.
+    from atelier.bench.mode import is_off as _bench_is_off
+
     if _bench_is_off():
         return False
-    return tool_name not in HIDDEN_LLM_TOOLS
+    if tool_name in HIDDEN_LLM_TOOLS:
+        return False
+    return tool_name not in _extra_hidden_tools()
 
 
 def mcp_tool_mode(tool_name: str) -> str:

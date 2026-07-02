@@ -4,6 +4,9 @@
 # What it does:
 #   Global mode: installs opencode user config and user agent under ~/.config/opencode.
 #   Workspace mode (--workspace DIR): installs project-local opencode artifacts under DIR.
+#   Config merge includes both:
+#     - MCP server entry (atelier mcp)
+#     - OpenAI-compatible provider entry (Atelier service /v1 endpoint)
 #
 # Options:
 #   --dry-run      Print what would happen, touch nothing
@@ -51,15 +54,30 @@ if $WORKSPACE_SET; then
     INSTALL_SCOPE="workspace"
     OC_FILE="${WORKSPACE}/opencode.json"
     AGENT_DEST_DIR="${WORKSPACE}/.opencode/agents"
-else
+    PLUGIN_DEST_DIR="${WORKSPACE}/.opencode/plugins"
+    else
     INSTALL_SCOPE="global"
     OC_FILE="${OPENCODE_CONFIG_HOME}/opencode.json"
     AGENT_DEST_DIR="${OPENCODE_CONFIG_HOME}/agents"
+    PLUGIN_DEST_DIR="${OPENCODE_CONFIG_HOME}/plugins"
+    fi
+
+ATELIER_SERVICE_BASE="${ATELIER_SERVICE_URL:-http://127.0.0.1:8787}"
+ATELIER_SERVICE_BASE="${ATELIER_SERVICE_BASE%/}"
+if [[ "$ATELIER_SERVICE_BASE" == */v1 ]]; then
+    ATELIER_OPENAI_BASE="$ATELIER_SERVICE_BASE"
+else
+    ATELIER_OPENAI_BASE="${ATELIER_SERVICE_BASE}/v1"
 fi
 
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:opencode] $*" || true; }
 warn()  { echo "[atelier:opencode] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+if command -v uv >/dev/null 2>&1; then
+    PYTHON_CMD=(uv run python)
+else
+    PYTHON_CMD=(python3)
+fi
 backup_file() {
     local f="$1"
     if $WORKSPACE_SET; then
@@ -67,7 +85,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -79,10 +97,20 @@ if $WORKSPACE_SET; then
   "permission": {
     "atelier_*": "allow"
   },
+  "provider": {
+    "atelier": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Atelier",
+      "options": {
+        "baseURL": "${ATELIER_OPENAI_BASE}",
+        "apiKey": "local"
+      }
+    }
+  },
   "mcp": {
       "atelier": {
         "type": "local",
-        "command": ["atelier-mcp", "--host", "opencode"],
+        "command": ["atelier", "mcp", "--host", "opencode"],
         "environment": {
           "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
         }
@@ -98,10 +126,20 @@ else
   "permission": {
     "atelier_*": "allow"
   },
+  "provider": {
+    "atelier": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Atelier",
+      "options": {
+        "baseURL": "${ATELIER_OPENAI_BASE}",
+        "apiKey": "local"
+      }
+    }
+  },
   "mcp": {
     "atelier": {
       "type": "local",
-      "command": ["atelier-mcp", "--host", "opencode"]
+      "command": ["atelier", "mcp", "--host", "opencode"]
     }
   }
 }
@@ -136,14 +174,14 @@ fi
 info "Found opencode: $(opencode --version 2>/dev/null || echo 'version unknown')"
 
 # ---- merge opencode config --------------------------------------------------
-run "mkdir -p '$(dirname "$OC_FILE")'"
+run "mkdir -p $(printf %q "$(dirname "$OC_FILE")")"
 
 if [ -f "$OC_FILE" ]; then
     backup_file "$OC_FILE"
     if $DRY_RUN; then
         echo "  [dry-run] merge atelier into $OC_FILE"
     else
-        python3 - <<PYEOF
+        "${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -154,7 +192,9 @@ stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
 existing = json.loads(stripped) if stripped.strip() else {}
 new_entry = json.loads('''$NEW_ENTRY''')
 existing.setdefault('mcp', {}).update(new_entry['mcp'])
+existing.setdefault('provider', {}).update(new_entry['provider'])
 existing['default_agent'] = new_entry['default_agent']
+existing.pop('model', None)
 existing.setdefault('permission', {}).update(new_entry['permission'])
 path.write_text(json.dumps(existing, indent=2) + '\n', encoding='utf-8')
 print("[atelier:opencode] merged atelier entry into $OC_FILE")
@@ -174,7 +214,7 @@ if $WORKSPACE_SET; then
     if $DRY_RUN; then
         echo "  [dry-run] project workspace-local OpenCode agents into '$AGENT_DEST_DIR'"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "${PYTHON_CMD[@]}" - <<PYEOF
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_workspace_opencode_agents
 
@@ -186,7 +226,7 @@ else
     AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
 
     STAGING_DIR="${HOME}/.atelier/opencode"
-    run "mkdir -p '$STAGING_DIR'"
+    run "mkdir -p $(printf %q "$STAGING_DIR")"
     info "Staging opencode agent instructions"
     atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
     AGENT_SRC="$STAGING_DIR/atelier.md"
@@ -194,8 +234,8 @@ else
     if $DRY_RUN; then
         echo "  [dry-run] copy '$AGENT_SRC' to '$AGENT_DEST_DIR/atelier.md'"
     elif [ -f "$AGENT_SRC" ]; then
-        run "mkdir -p '$AGENT_DEST_DIR'"
-        run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
+        run "mkdir -p $(printf %q "$AGENT_DEST_DIR")"
+        run "cp -f $(printf %q "$AGENT_SRC") $(printf %q "$AGENT_DEST_DIR/atelier.md")"
         info "atelier agent installed -> $AGENT_DEST_DIR/atelier.md"
     else
         warn "agent source missing: $AGENT_SRC"
@@ -209,11 +249,22 @@ else
             if $DRY_RUN; then
                 echo "  [dry-run] copy '$STAGING_DIR/${agent_name}.md' to '$AGENT_DEST_DIR/${agent_name}.md'"
             else
-                run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+                run "cp -f $(printf %q "$STAGING_DIR/${agent_name}.md") $(printf %q "$AGENT_DEST_DIR/${agent_name}.md")"
             fi
             info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
         fi
     done
+fi
+
+# ---- install prompt-time nudge plugin ---------------------------------------
+PLUGIN_SRC_DIR="${ATELIER_REPO}/integrations/opencode/plugins"
+if $DRY_RUN; then
+    echo "  [dry-run] copy Atelier nudge plugin to '$PLUGIN_DEST_DIR'"
+else
+    run "mkdir -p $(printf %q "$PLUGIN_DEST_DIR")"
+    run "cp -f $(printf %q "$PLUGIN_SRC_DIR/atelier-nudge.js") $(printf %q "$PLUGIN_DEST_DIR/atelier-nudge.js")"
+    run "cp -f $(printf %q "$PLUGIN_SRC_DIR/atelier_nudge.py") $(printf %q "$PLUGIN_DEST_DIR/atelier_nudge.py")"
+    info "Atelier nudge plugin installed -> $PLUGIN_DEST_DIR/atelier-nudge.js"
 fi
 
 if $DRY_RUN; then
@@ -228,7 +279,7 @@ vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:opencode] FAIL: $*" >&2; VFAIL=1; }
 
 if [ -f "$OC_FILE" ]; then
-    HAS=$(python3 - <<PYEOF
+    HAS=$("${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -250,7 +301,7 @@ PYEOF
         vfail "opencode config missing atelier entry"
     fi
 
-    DEFAULT_AGENT=$(python3 - <<PYEOF
+    DEFAULT_AGENT=$("${PYTHON_CMD[@]}" - <<PYEOF
 import json
 import re
 from pathlib import Path
@@ -269,21 +320,60 @@ PYEOF
     else
         vfail "opencode default_agent is '$DEFAULT_AGENT' (expected 'atelier')"
     fi
+
+    HAS_PROVIDER=$("${PYTHON_CMD[@]}" - <<PYEOF
+import json
+import re
+from pathlib import Path
+
+content = Path('$OC_FILE').read_text(encoding='utf-8')
+stripped = re.sub(r'^\s*//.*', '', content, flags=re.M)
+try:
+    d = json.loads(stripped)
+    provider = d.get('provider', {}).get('atelier', {})
+    base_url = provider.get('options', {}).get('baseURL')
+    print('yes' if provider and base_url else 'no')
+except Exception:
+    print('parse-error')
+PYEOF
+)
+    if [ "$HAS_PROVIDER" = "yes" ]; then
+        vpass "opencode provider.atelier and model are configured for Atelier OpenAI gateway"
+    elif [ "$HAS_PROVIDER" = "parse-error" ]; then
+        vfail "opencode config parse error while validating provider settings"
+    else
+        vfail "opencode provider/model config for Atelier gateway is missing"
+    fi
 else
     vfail "opencode config not found: $OC_FILE"
 fi
 
-AGENT_FILE="${AGENT_DEST_DIR}/atelier.md"
+PLUGIN_FILE="${PLUGIN_DEST_DIR}/atelier-nudge.js"
+PLUGIN_HELPER="${PLUGIN_DEST_DIR}/atelier_nudge.py"
+if [ -f "$PLUGIN_FILE" ] && [ -f "$PLUGIN_HELPER" ]; then
+    vpass "opencode Atelier prompt nudge plugin installed: $PLUGIN_FILE"
+else
+    vfail "opencode Atelier prompt nudge plugin missing from $PLUGIN_DEST_DIR"
+fi
+
+# Global mode installs a single primary agent as atelier.md; workspace mode
+# projects per-role files (atelier.<role>.md) with atelier.code.md as the
+# primary, so verify the name the writer actually produces for this scope.
+if [ "$INSTALL_SCOPE" = "workspace" ]; then
+    AGENT_FILE="${AGENT_DEST_DIR}/atelier.code.md"
+else
+    AGENT_FILE="${AGENT_DEST_DIR}/atelier.md"
+fi
 if [ -f "$AGENT_FILE" ]; then
     vpass "opencode atelier agent installed: $AGENT_FILE"
 else
     vfail "opencode atelier agent missing: $AGENT_FILE"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if command -v atelier >/dev/null 2>&1 && atelier status --help >/dev/null 2>&1; then

@@ -5,15 +5,6 @@ from typing import Any
 from atelier.gateway.adapters import mcp_server
 
 
-def test_symbols_schema_documents_search_view() -> None:
-    props = mcp_server.SYMBOLS_TOOL_INPUT_SCHEMA["properties"]
-
-    assert props["view"]["enum"] == ["target", "graph", "context", "explain"]
-    assert props["view"]["default"] == "target"
-    assert "primary definition/file matches" in props["view"]["description"]
-    assert "relationships" in props["view"]["description"]
-
-
 def test_code_search_target_view_is_pointer_first() -> None:
     payload = {
         "items": [
@@ -33,10 +24,12 @@ def test_code_search_target_view_is_pointer_first() -> None:
         "provenance": "cached",
     }
 
-    result = mcp_server._code_search_target_view(payload, query="classify_command")
+    result = mcp_server._code_search_target_view(payload)
 
-    assert result["view"] == "target"
-    assert result["has_more_context"] is True
+    # No advisory metadata: no view/has_more_context/suggested_next/role.
+    assert "view" not in result
+    assert "has_more_context" not in result
+    assert "suggested_next" not in result
     assert result["items"] == [
         {
             "kind": "function",
@@ -46,12 +39,7 @@ def test_code_search_target_view_is_pointer_first() -> None:
             "line": 133,
             "end_line": 172,
             "signature": "def classify_command(command: str) -> CommandPolicyDecision:",
-            "role": "definition",
         }
-    ]
-    assert result["suggested_next"] == [
-        {"op": "usages", "query": "classify_command"},
-        {"op": "context", "query": "classify_command"},
     ]
 
 
@@ -97,6 +85,9 @@ def test_code_search_graph_view_keeps_relationships_out_of_items() -> None:
     )
 
     assert "items" not in result
+    assert "view" not in result
+    assert "mode" not in result
+    assert "provenance" not in result
     assert result["target"]["name"] == "classify_command"
     assert result["related"]["imports"] == [{"path": "tests/test_run_tool.py", "line": 9, "edge_kind": "import"}]
     assert result["related"]["usages"] == [{"path": "src/pkg/runner.py", "line": 20, "edge_kind": "call"}]

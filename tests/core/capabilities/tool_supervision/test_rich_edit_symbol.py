@@ -10,7 +10,7 @@ from atelier.gateway.adapters.mcp_server import _memory_get_block
 def _write_symbol_fixture(root: Path) -> None:
     (root / "src").mkdir()
     (root / "src" / "service.py").write_text(
-        "class AuthService:\n" "    def verify(self, token: str) -> bool:\n" "        return token == 'ok'\n",
+        "class AuthService:\n    def verify(self, token: str) -> bool:\n        return token == 'ok'\n",
         encoding="utf-8",
     )
 
@@ -26,6 +26,7 @@ def test_symbol_edit_requires_disambiguation_when_name_is_ambiguous(tmp_path: Pa
         "    return token == 'ok'\n",
         encoding="utf-8",
     )
+    CodeContextEngine(tmp_path).index_repo()
 
     result = apply_rich_edits(
         [
@@ -51,7 +52,7 @@ def test_symbol_edit_stale_symbol_id_fails_without_writing(tmp_path: Path) -> No
     symbol_id = engine.search_symbols("AuthService.verify", limit=1)[0].symbol_id
     target = tmp_path / "src" / "service.py"
     target.write_text(
-        "class AuthService:\n" "    def verify_token(self, token: str) -> bool:\n" "        return token == 'ok'\n",
+        "class AuthService:\n    def verify_token(self, token: str) -> bool:\n        return token == 'ok'\n",
         encoding="utf-8",
     )
 
@@ -74,6 +75,7 @@ def test_symbol_edit_stale_symbol_id_fails_without_writing(tmp_path: Path) -> No
 
 def test_symbol_edit_reindexes_and_tags_memory_on_success(tmp_path: Path) -> None:
     _write_symbol_fixture(tmp_path)
+    CodeContextEngine(tmp_path).index_repo()
 
     result = apply_rich_edits(
         [
@@ -81,7 +83,7 @@ def test_symbol_edit_reindexes_and_tags_memory_on_success(tmp_path: Path) -> Non
                 "kind": "symbol",
                 "name": "AuthService.verify",
                 "mode": "replace",
-                "new_body": ("def verify(self, token: str) -> bool:\n" "    return token.startswith('ok')"),
+                "new_body": ("def verify(self, token: str) -> bool:\n    return token.startswith('ok')"),
             }
         ],
         repo_root=tmp_path,
@@ -100,3 +102,48 @@ def test_symbol_edit_reindexes_and_tags_memory_on_success(tmp_path: Path) -> Non
     assert memory is not None
     assert memory["value"]
     assert memory["metadata"]["symbol_id"] == symbol_id
+
+
+def test_symbol_edit_replaces_large_repetitive_body_with_unique_match(
+    tmp_path: Path,
+) -> None:
+    """Regression: a symbol replace of a long function whose body is dozens of
+    near-identical lines must resolve to the symbol's exact source and replace
+    it in one unique hit -- never a spurious ``fuzzy replace ambiguous
+    candidates`` failure.
+
+    Mirrors the shape of ``generate_codebench_optimization.write_svg`` (~180
+    lines of repetitive ``parts.append(f'<... />')`` calls), which surfaced a
+    fuzzy-ambiguity error when the resolving code-intel index was stale. With a
+    fresh index the resolved ``old_string`` equals the on-disk source, so the
+    whole body is matched and swapped atomically.
+    """
+    (tmp_path / "src").mkdir()
+    repetitive = "\n".join(f'    parts.append(f\'<rect x="{i}" y="{i}" fill="#fff"/>\')' for i in range(48))
+    target = tmp_path / "src" / "chart.py"
+    target.write_text(
+        f"def render(parts: list[str]) -> str:\n{repetitive}\n    return ''.join(parts)\n",
+        encoding="utf-8",
+    )
+    CodeContextEngine(tmp_path).index_repo()
+
+    result = apply_rich_edits(
+        [
+            {
+                "kind": "symbol",
+                "name": "render",
+                "mode": "replace",
+                "new_body": (
+                    "def render(parts: list[str]) -> str:\n    parts.append('<svg/>')\n    return ''.join(parts)"
+                ),
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == [], result["failed"]
+    assert result["rolled_back"] is False
+    updated = target.read_text(encoding="utf-8")
+    assert "parts.append('<svg/>')" in updated
+    # The whole repetitive block is gone -- not a partial / mis-anchored match.
+    assert "<rect" not in updated

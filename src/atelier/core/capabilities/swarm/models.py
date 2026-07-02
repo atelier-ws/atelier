@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from atelier.core.capabilities.swarm.fitness import FitnessSpec
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -36,6 +38,7 @@ SwarmEvaluatorBackend = Literal["auto", "disabled", "ollama", "openai", "litellm
 SwarmDecisionVerdict = Literal["accept", "reject", "defer"]
 SwarmEvaluationStatus = Literal["pending", "completed", "fallback", "failed"]
 SwarmConvergenceVerdict = Literal["continue", "converged", "stagnating", "blocked"]
+SwarmExecMode = Literal["edit", "readonly"]
 
 
 class SwarmValidationCheck(BaseModel):
@@ -104,6 +107,7 @@ class SwarmWaveEvaluation(BaseModel):
     deferred_child_ids: list[str] = Field(default_factory=list)
     decisions: list[SwarmWaveDecision] = Field(default_factory=list)
     next_wave_directives: list[str] = Field(default_factory=list)
+    merged_output: Any = None
     error: str = ""
     artifact: SwarmArtifactRef | None = None
     finished_at: datetime | None = None
@@ -160,6 +164,23 @@ class SwarmWaveState(BaseModel):
         return payload
 
 
+class Finding(BaseModel):
+    """A single readonly-candidate finding (search / audit / verify result).
+
+    ``signature`` is the dedup key used by the ``union`` reducer; when empty the
+    reducer derives one from kind/file/title.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str = ""
+    file: str = ""
+    line: int | None = None
+    title: str = ""
+    detail: str = ""
+    signature: str = ""
+
+
 class SwarmChildState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -197,6 +218,10 @@ class SwarmChildState(BaseModel):
     duration_seconds: float = 0.0
     score: float | None = None
     score_breakdown: list[str] = Field(default_factory=list)
+    metric: float | None = None
+    gate_passed: bool | None = None
+    findings: list[Finding] = Field(default_factory=list)
+    answer: str = ""
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
@@ -225,6 +250,12 @@ class SwarmRunState(BaseModel):
     used_program_md: bool = False
     runner_name: str = "custom"
     runner_model: str = ""
+    job_kind: str = "solve"
+    reducer_name: str = "merge"
+    exec_mode: SwarmExecMode = "edit"
+    search_space: list[str] = Field(default_factory=list)
+    fitness_spec: FitnessSpec | None = None
+    quorum: int = 0
     launch_provider: Literal["cli", "openai", "litellm"] = "cli"
     launch_effort: str = ""
     evaluator_backend: SwarmEvaluatorBackend = "auto"
@@ -295,4 +326,10 @@ class SwarmRunState(BaseModel):
         payload.setdefault("max_evaluator_failures", 3)
         payload.setdefault("max_waves", 0)
         payload.setdefault("dirty_paths", [])
+        payload.setdefault("job_kind", "solve")
+        payload.setdefault("reducer_name", "merge")
+        payload.setdefault("exec_mode", "edit")
+        payload.setdefault("search_space", [])
+        payload.setdefault("fitness_spec", None)
+        payload.setdefault("quorum", 0)
         return payload

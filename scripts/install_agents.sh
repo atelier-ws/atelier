@@ -50,16 +50,13 @@ if [ -z "$WORKSPACE" ]; then
 fi
 WORKSPACE="$(cd "$WORKSPACE" && pwd)"
 
-AGENTS_SOURCE_PRIMARY="${ATELIER_REPO}/AGENTS.md"
-AGENTS_SOURCE_FALLBACK="${ATELIER_REPO}/integrations/AGENTS.atelier.md"
-AGENTS_SOURCE="$AGENTS_SOURCE_PRIMARY"
-if [ ! -f "$AGENTS_SOURCE" ]; then
-    AGENTS_SOURCE="$AGENTS_SOURCE_FALLBACK"
-fi
+# Host-neutral atelier:code persona that ships with the distribution. Never source
+# the repo's own AGENTS.md (that is atelier's dev entrypoint, not a user persona).
+AGENTS_SOURCE="${ATELIER_REPO}/integrations/AGENTS.atelier.md"
 
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:agents] $*" || true; }
 warn()  { echo "[atelier:agents] WARN: $*" >&2; }
-run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+run()   { $DRY_RUN && echo "  [dry-run] $*" || "$@"; }
 
 if $PRINT_ONLY; then
     echo ""

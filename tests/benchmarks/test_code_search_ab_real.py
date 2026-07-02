@@ -56,13 +56,11 @@ def _write_fixture_repo(root: Path) -> None:
     src.mkdir(parents=True, exist_ok=True)
     for idx in range(1, 11):
         (src / f"module_{idx}.py").write_text(
-            f"class Service{idx}:\n" "    def run(self) -> int:\n" f"        return {idx}\n",
+            f"class Service{idx}:\n    def run(self) -> int:\n        return {idx}\n",
             encoding="utf-8",
         )
     (src / "orders.py").write_text(
-        "class OrderService:\n"
-        "    def calculate_total(self, items: list[int]) -> int:\n"
-        "        return sum(items)\n",
+        "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
 
@@ -84,6 +82,7 @@ def _baseline_manual_symbol_search(repo_root: Path, symbol: str) -> str:
 def test_code_search_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "OrderService"
 
     t0 = time.perf_counter()

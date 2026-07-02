@@ -16,18 +16,24 @@ The registry provides:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    import networkx as nx
+from atelier.core.foundation._graph import (
+    DiGraph as _DiGraph,
+)
+from atelier.core.foundation._graph import (
+    NetworkXUnfeasible as _NetworkXUnfeasible,
+)
+from atelier.core.foundation._graph import (
+    ancestors as _ancestors,
+)
+from atelier.core.foundation._graph import (
+    topological_sort as _topological_sort,
+)
 
-    _HAS_NX = True
-except Exception:  # pragma: no cover
-    logging.exception("Recovered from broad exception handler")
-    nx = None
-    _HAS_NX = False
+nx = None  # not used directly; local helpers replace all nx.* calls
+_HAS_NX = True
 
 
 @dataclass
@@ -47,8 +53,7 @@ class CapabilityRegistry:
 
         context_reuse    ──►  context_compression
         semantic_memory  ──►  context_reuse
-        tool_supervision ──►  loop_detection
-        loop_detection   ──►  context_compression
+        tool_supervision ──►  context_compression
 
     Usage::
 
@@ -69,10 +74,7 @@ class CapabilityRegistry:
     def __init__(self) -> None:
         self._nodes: dict[str, CapabilityNode] = {}
         self._adj: dict[str, list[tuple[str, float]]] = {}
-        if _HAS_NX:
-            self._graph: Any = nx.DiGraph()
-        else:
-            self._graph = None  # pragma: no cover
+        self._graph: Any = _DiGraph()
 
     # ------------------------------------------------------------------
     # Registration
@@ -104,12 +106,11 @@ class CapabilityRegistry:
         self._nodes[name] = node
         self._adj[name] = depends_on or []
 
-        if self._graph is not None:
-            self._graph.add_node(name, tags=tags or [])
-            for dep, weight in depends_on or []:
-                if dep not in self._graph:
-                    self._graph.add_node(dep)
-                self._graph.add_edge(dep, name, weight=weight)
+        self._graph.add_node(name, tags=tags or [])
+        for dep, weight in depends_on or []:
+            if dep not in self._graph:
+                self._graph.add_node(dep)
+            self._graph.add_edge(dep, name, weight=weight)
 
     # ------------------------------------------------------------------
     # Activation / fallback
@@ -120,16 +121,14 @@ class CapabilityRegistry:
         The list is in topological order: all dependencies first, ``target``
         last.  If networkx is unavailable, returns ``[target]``.
         """
-        if not _HAS_NX or self._graph is None:  # pragma: no cover
-            return [target]
         if target not in self._graph:
             return [target]
-        ancestors = list(nx.ancestors(self._graph, target))
-        sub = self._graph.subgraph([*ancestors, target])
+        anc = list(_ancestors(self._graph, target))
+        sub = self._graph.subgraph([*anc, target])
         try:
-            return list(nx.topological_sort(sub))
-        except nx.NetworkXUnfeasible:  # cycle (shouldn't happen in a well-formed DAG)
-            return [*ancestors, target]
+            return _topological_sort(sub)
+        except _NetworkXUnfeasible:
+            return [*anc, target]
 
     def fallback_for(self, name: str) -> str | None:
         """Return the registered fallback capability name, or ``None``."""
@@ -153,9 +152,8 @@ class CapabilityRegistry:
                 "tags": node.tags,
                 "depends_on": [dep for dep, _ in self._adj.get(name, [])],
             }
-        if self._graph is not None:
-            for src, dst, data in self._graph.edges(data=True):
-                report["edges"].append({"from": src, "to": dst, "weight": data.get("weight", 1.0)})
+        for src, dst, data in self._graph.edges(data=True):
+            report["edges"].append({"from": src, "to": dst, "weight": data.get("weight", 1.0)})
         return report
 
     # ------------------------------------------------------------------

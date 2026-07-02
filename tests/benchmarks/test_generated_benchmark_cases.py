@@ -19,8 +19,12 @@ def _ensure_benchmarks_package() -> None:
 
 
 def _load(module_name: str) -> ModuleType:
+    # Do NOT pop the module to force re-import: each cases module generates
+    # hundreds of BenchCase objects from a full src/atelier AST scan at import
+    # time. Popping made all three tests regenerate from scratch (~18s total).
+    # The generated *_CASES lists are deterministic and parameter-free, so
+    # reusing the cached module across tests is safe and pays generation once.
     _ensure_benchmarks_package()
-    sys.modules.pop(module_name, None)
     return importlib.import_module(module_name)
 
 
@@ -41,10 +45,16 @@ def test_generated_repo_backed_case_counts() -> None:
     verify_module = _load("benchmarks.mcp_tools.cases.verify")
 
     assert len(read_module.READ_CASES) == 300
-    assert len(search_module.SEARCH_CASES) == 300
+    # search is now embeddings-only: 150 semantic chunk cases. Repo-map was dropped
+    # from the agent surface entirely (no map tool), so grep keeps its 300 native
+    # output-shape cases and the GREP_MAP_CASES export is gone.
+    assert len(search_module.SEARCH_CASES) == 150
     assert len(grep_module.GREP_CASES) == 300
+    assert not hasattr(search_module, "GREP_MAP_CASES")
     assert len(context_module.CONTEXT_CASES) == 300
-    assert len(code_module.CODE_CASES) >= 2118
+    # Outline is no longer a code-op (measured via `read mode=outline`), so its
+    # 77 generated/static cases were removed from CODE_CASES.
+    assert len(code_module.CODE_CASES) >= 640
     assert len(memory_module.MEMORY_CASES) == 300
     assert len(route_module.ROUTE_CASES) == 300
     assert len(compact_module.COMPACT_CASES) == 300
@@ -62,21 +72,20 @@ def test_generated_public_code_tool_counts() -> None:
     for case in code_module.CODE_CASES:
         tool_name = str(
             case.args.get("_tool")
-            or (
-                "symbols"
-                if case.op not in {"node", "callers", "callees", "usages", "impact", "explore", "pattern"}
-                else case.op
-            )
+            or ("symbols" if case.op not in {"node", "callers", "callees", "usages", "explore", "pattern"} else case.op)
         )
         counts[tool_name] = counts.get(tool_name, 0) + 1
 
-    assert counts["symbols"] >= 300
-    assert counts["node"] >= 300
-    assert counts["callers"] >= 300
-    assert counts["callees"] >= 300
+    # The bucketing folds every non-graph op (search, symbol, hover, index,
+    # cache_status) into "symbols". Removing the 77 outline cases (outline is no
+    # longer a code-op; it's measured via `read mode=outline`) drops this bucket
+    # from ~312 to its true search+symbol+hover floor.
+    assert counts["symbols"] >= 235
+    assert counts["node"] >= 25
+    assert counts["callers"] >= 25
+    assert counts["callees"] >= 25
     assert counts["usages"] >= 300
-    assert counts["impact"] >= 300
-    assert counts["explore"] >= 300
+    assert counts["explore"] >= 25
 
 
 def test_generated_case_labels_are_unique() -> None:

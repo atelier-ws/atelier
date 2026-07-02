@@ -125,15 +125,10 @@ def _get_engine(repo_root: pathlib.Path) -> Any:
     atelier_root = pathlib.Path(os.environ.get("ATELIER_ROOT") or pathlib.Path.home() / ".atelier")
     db_path = atelier_root / "repos" / repo_id / "code.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    previous_autosync = os.environ.get("ATELIER_CODE_AUTOSYNC")
-    os.environ["ATELIER_CODE_AUTOSYNC"] = "0"
     try:
-        return CodeContextEngine(repo_root=repo_root, db_path=db_path)
+        return CodeContextEngine(repo_root=repo_root, db_path=db_path, autosync_enabled=False)
     finally:
-        if previous_autosync is None:
-            os.environ.pop("ATELIER_CODE_AUTOSYNC", None)
-        else:
-            os.environ["ATELIER_CODE_AUTOSYNC"] = previous_autosync
+        pass
 
 
 def run_benchmark(repo_root: pathlib.Path | None = None) -> dict[str, Any]:
@@ -250,9 +245,9 @@ def test_m1_commit_chunks_populated() -> None:
         chunk_count = int(count_row["n"]) if count_row else 0
     if chunk_count == 0:
         pytest.skip("commit_chunks empty — run bootstrap: code op=search on this repo first")
-    assert chunk_count >= 100, (
-        f"Only {chunk_count} commit chunks found. " f"Bootstrap may be incomplete (target: ~425 for the atelier repo)."
-    )
+    assert (
+        chunk_count >= 100
+    ), f"Only {chunk_count} commit chunks found. Bootstrap may be incomplete (target: ~425 for the atelier repo)."
     print(f"commit_chunks populated: {chunk_count} rows")
 
 

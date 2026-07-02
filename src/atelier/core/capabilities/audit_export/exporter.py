@@ -172,13 +172,11 @@ def _read_jsonl(
 
 
 def _read_runs(root: Path, *, since: datetime | None, policy: Any) -> list[dict[str, Any]]:
-    runs_dir = root / "runs"
-    if not runs_dir.exists():
+    sessions_dir = root / "sessions"
+    if not sessions_dir.exists():
         return []
     sessions: list[dict[str, Any]] = []
-    for path in sorted(runs_dir.glob("*.json")):
-        if path.name.endswith("_outcomes.json"):
-            continue
+    for path in sorted(sessions_dir.glob("**/run.json")):
         snapshot = json.loads(path.read_text(encoding="utf-8"))
         if not record_within_retention(snapshot, record_type="runs", policy=policy):
             continue
@@ -200,4 +198,7 @@ def _record_timestamp(record: dict[str, Any]) -> datetime | None:
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
+    ts = record.get("ts")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        return datetime.fromtimestamp(float(ts), tz=UTC)
     return None

@@ -69,7 +69,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -100,8 +100,8 @@ if $WORKSPACE_SET; then
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "antigravity"],
+      "command": "atelier",
+      "args": ["mcp", "--host", "antigravity"],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
       }
@@ -116,8 +116,8 @@ else
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "antigravity"]
+      "command": "atelier",
+      "args": ["mcp", "--host", "antigravity"]
     }
   }
 }
@@ -126,7 +126,7 @@ JSON
 fi
 
 ADD_MCP_JSON=$(cat <<'JSON'
-{"name":"atelier","command":"atelier-mcp","args":["--host","antigravity"]}
+{"name":"atelier","command":"atelier","args":["mcp","--host","antigravity"]}
 JSON
 )
 
@@ -151,23 +151,24 @@ if $PRINT_ONLY; then
     exit 0
 fi
 
-run "mkdir -p '$(dirname "$MCP_JSON")'"
+run "mkdir -p $(printf %q "$(dirname "$MCP_JSON")")"
 if [ -f "$MCP_JSON" ]; then
     backup_file "$MCP_JSON"
     if $DRY_RUN; then
         echo "  [dry-run] merge atelier into $MCP_JSON"
     else
-        python3 - <<PYEOF
+        MCP_JSON="$MCP_JSON" NEW_ENTRY="$NEW_ENTRY" python3 - <<'PYEOF'
 import json
+import os
 from pathlib import Path
 
-path = Path("$MCP_JSON")
+path = Path(os.environ["MCP_JSON"])
 existing = json.loads(path.read_text(encoding="utf-8") or "{}")
-new_entry = json.loads('''$NEW_ENTRY''')
+new_entry = json.loads(os.environ["NEW_ENTRY"])
 server_key = "servers" if "servers" in existing or "mcpServers" not in existing else "mcpServers"
 existing.setdefault(server_key, {}).update(new_entry["servers"])
 path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
-print("[atelier:antigravity] merged atelier into $MCP_JSON")
+print(f"[atelier:antigravity] merged atelier into {path}")
 PYEOF
     fi
 else
@@ -194,7 +195,7 @@ VFAIL=0
 vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:antigravity] FAIL: $*" >&2; VFAIL=1; }
 
-if [ -f "$MCP_JSON" ] && grep -q "atelier-mcp" "$MCP_JSON" 2>/dev/null; then
+if [ -f "$MCP_JSON" ] && grep -q '"atelier"' "$MCP_JSON" 2>/dev/null; then
     vpass "MCP config present: $MCP_JSON"
 else
     vfail "missing Atelier MCP config: $MCP_JSON"
@@ -206,8 +207,8 @@ if ! $WORKSPACE_SET && [[ -d "$PLUGIN_SRC" ]]; then
     if $DRY_RUN; then
         echo "  [dry-run] install plugin -> $AGY_PLUGIN_DIR"
     else
-        run "mkdir -p '$AGY_PLUGIN_DIR'"
-        run "cp -r '${PLUGIN_SRC}/.' '$AGY_PLUGIN_DIR/'"
+        run "mkdir -p $(printf %q "$AGY_PLUGIN_DIR")"
+        run "cp -r $(printf %q "${PLUGIN_SRC}/.") $(printf %q "$AGY_PLUGIN_DIR/")"
         info "installed plugin -> $AGY_PLUGIN_DIR"
     fi
 fi
@@ -220,22 +221,22 @@ if ! $WORKSPACE_SET; then
         if $DRY_RUN; then
             echo "  [dry-run] install skills -> $AGY_SKILLS_DIR"
         else
-            run "mkdir -p '$AGY_SKILLS_DIR'"
+            run "mkdir -p $(printf %q "$AGY_SKILLS_DIR")"
             for skill_dir in "${SKILLS_STAGING}"/*/; do
                 [[ -f "${skill_dir}SKILL.md" ]] || continue
                 skill_name="$(basename "$skill_dir")"
-                run "mkdir -p '${AGY_SKILLS_DIR}/${skill_name}'"
-                run "cp '${skill_dir}SKILL.md' '${AGY_SKILLS_DIR}/${skill_name}/SKILL.md'"
+                run "mkdir -p $(printf %q "${AGY_SKILLS_DIR}/${skill_name}")"
+                run "cp $(printf %q "${skill_dir}SKILL.md") $(printf %q "${AGY_SKILLS_DIR}/${skill_name}/SKILL.md")"
             done
             info "installed skills -> $AGY_SKILLS_DIR"
         fi
     fi
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if [[ -n "$ANTIGRAVITY_BIN" || -n "$AGY_BIN" ]]; then

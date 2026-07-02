@@ -27,12 +27,10 @@ from atelier.gateway.integrations.openmemory_lifecycle import (
 from atelier.gateway.integrations.openmemory_lifecycle import run_compose as _run_compose
 from atelier.infra.runtime.daemon_units import (
     CONTROLLER_UNIT,
-    DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     LETTA_UNIT,
     MCP_UNIT,
     OPENMEMORY_UNIT,
     STACK_UNIT,
-    SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     SYSTEMD_USER_DIR,
     ZOEKT_UNIT,
     _is_linux,
@@ -40,7 +38,6 @@ from atelier.infra.runtime.daemon_units import (
 from atelier.infra.runtime.servicectl_lifecycle import (
     _clear_servicectl_pid,
     _kill_orphan_servicectl_processes,
-    _normalize_external_analytics_periods,
     _pid_is_running,
     _read_servicectl_pid,
     _read_servicectl_state,
@@ -56,6 +53,14 @@ from atelier.infra.runtime.stack_lifecycle import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The tick subprocess's own work can legitimately run long: its budgets
+# (import <=300s + recall index <=300s + occasional workspace prune <=600s +
+# up to 20 queued jobs at <=600s each) can exceed a short fixed ceiling under
+# normal load. 30 minutes is generous enough that only a genuinely stuck tick
+# trips it; a timeout is now recoverable (logged, loop continues) rather than
+# fatal, so this is a "give up and retry" ceiling, not a completion guarantee.
+_TICK_SUBPROCESS_TIMEOUT_SECONDS = 1800
 
 
 @click.group("service")
@@ -74,7 +79,7 @@ def service_start(host: str | None, port: int | None, reload: bool) -> None:
     except ImportError as exc:
         if "cannot import name 'main'" in str(exc):
             raise click.ClickException(
-                "The service API 'main' entrypoint is missing. " "Ensure your 'atelier' installation is up to date."
+                "The service API 'main' entrypoint is missing. Ensure your 'atelier' installation is up to date."
             ) from exc
         raise click.ClickException(
             "Could not start the service API. Ensure all dependencies are installed: uv sync --extra api"
@@ -208,23 +213,16 @@ def servicectl_group() -> None:
 @servicectl_group.command("tick")
 @click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
-@click.option(
-    "--external-analytics-period",
-    "external_analytics_periods",
-    type=click.Choice(SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS),
-    default=DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
-    multiple=True,
-    show_default=True,
-)
+@click.option("--auto-update", is_flag=True, help="Apply git auto-update if available (exits 3 when applied).")
+@click.option("--auto-update-interval-seconds", default=3600, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def servicectl_tick(
     ctx: click.Context,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
-    external_analytics_interval_seconds: int,
-    external_analytics_periods: tuple[str, ...],
+    auto_update: bool,
+    auto_update_interval_seconds: int,
     as_json: bool,
 ) -> None:
     """Run one maintenance tick: enqueue due jobs and process pending work."""
@@ -232,8 +230,8 @@ def servicectl_tick(
         ctx.obj["root"],
         maintenance_interval_seconds=maintenance_interval_seconds,
         session_import_interval_seconds=session_import_interval_seconds,
-        external_analytics_interval_seconds=external_analytics_interval_seconds,
-        external_analytics_periods=external_analytics_periods,
+        auto_update=auto_update,
+        auto_update_interval_seconds=auto_update_interval_seconds,
     )
     _emit(payload, as_json=as_json) if as_json else click.echo(json.dumps(payload, indent=2))
 
@@ -242,15 +240,6 @@ def servicectl_tick(
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
 @click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
-@click.option(
-    "--external-analytics-period",
-    "external_analytics_periods",
-    type=click.Choice(SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS),
-    default=DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
-    multiple=True,
-    show_default=True,
-)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def servicectl_start(
@@ -258,8 +247,6 @@ def servicectl_start(
     interval_seconds: int,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
-    external_analytics_interval_seconds: int,
-    external_analytics_periods: tuple[str, ...],
     as_json: bool,
 ) -> None:
     """Start the detached background controller."""
@@ -296,11 +283,7 @@ def servicectl_start(
         str(maintenance_interval_seconds),
         "--session-import-interval-seconds",
         str(session_import_interval_seconds),
-        "--external-analytics-interval-seconds",
-        str(external_analytics_interval_seconds),
     ]
-    for period in _normalize_external_analytics_periods(external_analytics_periods):
-        command.extend(["--external-analytics-period", period])
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(root)
     with _servicectl_log_path(root).open("a", encoding="utf-8") as log_file:
@@ -421,15 +404,6 @@ def servicectl_status(ctx: click.Context, as_json: bool) -> None:
 @click.option("--interval-seconds", default=60, show_default=True, type=int)
 @click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
-@click.option("--external-analytics-interval-seconds", default=300, show_default=True, type=int)
-@click.option(
-    "--external-analytics-period",
-    "external_analytics_periods",
-    type=click.Choice(SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS),
-    default=DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
-    multiple=True,
-    show_default=True,
-)
 @click.option("--auto-update", is_flag=True, help="Check for git updates periodically.")
 @click.option("--auto-update-interval-seconds", default=3600, show_default=True, type=int)
 @click.pass_context
@@ -438,24 +412,54 @@ def servicectl_run(
     interval_seconds: int,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
-    external_analytics_interval_seconds: int,
-    external_analytics_periods: tuple[str, ...],
     auto_update: bool,
     auto_update_interval_seconds: int,
 ) -> None:
-    """Internal long-running background loop."""
+    """Internal long-running background loop (thin process-manager).
+
+    Each tick runs as a child subprocess so all Python heap allocated during
+    the tick is freed on subprocess exit.  This keeps the long-lived run loop
+    itself under ~100 MB regardless of how many sessions have been imported or
+    jobs processed.
+    """
     root = ctx.obj["root"]
     try:
         while True:
-            _servicectl_tick(
-                root,
-                maintenance_interval_seconds=maintenance_interval_seconds,
-                session_import_interval_seconds=session_import_interval_seconds,
-                external_analytics_interval_seconds=external_analytics_interval_seconds,
-                external_analytics_periods=external_analytics_periods,
-                auto_update=auto_update,
-                auto_update_interval_seconds=auto_update_interval_seconds,
-            )
+            cmd = [
+                sys.executable,
+                "-m",
+                "atelier.gateway.cli",
+                "--root",
+                str(root),
+                "servicectl",
+                "tick",
+                "--maintenance-interval-seconds",
+                str(maintenance_interval_seconds),
+                "--session-import-interval-seconds",
+                str(session_import_interval_seconds),
+            ]
+            if auto_update:
+                cmd += [
+                    "--auto-update",
+                    "--auto-update-interval-seconds",
+                    str(auto_update_interval_seconds),
+                ]
+            try:
+                result = subprocess.run(cmd, timeout=_TICK_SUBPROCESS_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "servicectl tick subprocess exceeded %ds; continuing to next interval",
+                    _TICK_SUBPROCESS_TIMEOUT_SECONDS,
+                )
+                time.sleep(max(1, interval_seconds))
+                continue
+            if result.returncode == 3:
+                # Tick subprocess applied an auto-update (exit code 3 = restart needed).
+                # Exit here so systemd / the parent restarts this process with new code.
+                state = _read_servicectl_state(root)
+                state["last_exit_reason"] = "auto_update"
+                _write_servicectl_state(root, state)
+                raise SystemExit(0)
             time.sleep(max(1, interval_seconds))
     except KeyboardInterrupt:
         state = _read_servicectl_state(root)

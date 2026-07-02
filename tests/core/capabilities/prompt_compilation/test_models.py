@@ -47,7 +47,7 @@ class TestDefaultStabilityPerKind:
     def test_known_mappings(self) -> None:
         assert DEFAULT_STABILITY[BlockKind.TOOL_SCHEMA] == Stability.STATIC
         assert DEFAULT_STABILITY[BlockKind.REPO_SUMMARY] == Stability.SESSION
-        assert DEFAULT_STABILITY[BlockKind.REASONBLOCK] == Stability.BRANCH
+        assert DEFAULT_STABILITY[BlockKind.PLAYBOOK] == Stability.BRANCH
         assert DEFAULT_STABILITY[BlockKind.USER_TASK] == Stability.TURN
         assert DEFAULT_STABILITY[BlockKind.SCRATCHPAD] == Stability.VOLATILE
 

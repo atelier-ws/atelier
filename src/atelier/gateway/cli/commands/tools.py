@@ -63,9 +63,16 @@ def _mcp_cli_args(raw: str) -> dict[str, Any]:
 def _prepare_mcp_cli(ctx: click.Context, *, dev: bool, workspace: Path | None = None) -> Callable[[], None]:
     old_root = os.environ.get("ATELIER_ROOT")
     old_workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
+    old_service_url = os.environ.get("ATELIER_SERVICE_URL")
     os.environ["ATELIER_ROOT"] = str(ctx.obj["root"])
     if workspace is not None:
         os.environ["CLAUDE_WORKSPACE_ROOT"] = str(workspace)
+    if dev:
+        # --dev runs MCP tools against the LOCAL handlers. Drop any configured
+        # remote service URL for the duration of the call so a configured-but-
+        # unreachable ATELIER_SERVICE_URL can't turn remote-routed tools
+        # (verify/rescue/context/memory/trace) into a 'service unavailable' error.
+        os.environ.pop("ATELIER_SERVICE_URL", None)
 
     def restore() -> None:
         if old_root is None:
@@ -76,6 +83,10 @@ def _prepare_mcp_cli(ctx: click.Context, *, dev: bool, workspace: Path | None = 
             os.environ.pop("CLAUDE_WORKSPACE_ROOT", None)
         else:
             os.environ["CLAUDE_WORKSPACE_ROOT"] = old_workspace
+        if old_service_url is None:
+            os.environ.pop("ATELIER_SERVICE_URL", None)
+        else:
+            os.environ["ATELIER_SERVICE_URL"] = old_service_url
 
     return restore
 
@@ -120,7 +131,13 @@ def tools_list_cmd(ctx: click.Context, as_json: bool) -> None:
 @tools_group.command("call")
 @click.argument("name")
 @click.option("--args", "args_json", default="{}", show_default=True, help="JSON object or @path.")
-@click.option("--dev", is_flag=True, hidden=True, expose_value=False)
+@click.option(
+    "--dev",
+    "dev",
+    is_flag=True,
+    hidden=True,
+    help="Run against local handlers, bypassing any configured remote ATELIER_SERVICE_URL.",
+)
 @click.option(
     "--workspace",
     type=click.Path(file_okay=False, path_type=Path),
@@ -129,9 +146,11 @@ def tools_list_cmd(ctx: click.Context, as_json: bool) -> None:
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the decoded MCP payload as JSON.")
 @click.pass_context
-def tools_call_cmd(ctx: click.Context, name: str, args_json: str, workspace: Path | None, as_json: bool) -> None:
+def tools_call_cmd(
+    ctx: click.Context, name: str, args_json: str, dev: bool, workspace: Path | None, as_json: bool
+) -> None:
     """Call one MCP tool by name."""
-    restore = _prepare_mcp_cli(ctx, dev=False, workspace=workspace)
+    restore = _prepare_mcp_cli(ctx, dev=dev, workspace=workspace)
     try:
         args = _mcp_cli_args(args_json)
         if name == "memory" and isinstance(args, dict):
@@ -144,7 +163,7 @@ def tools_call_cmd(ctx: click.Context, name: str, args_json: str, workspace: Pat
                     args["description"] = redact(str(args.get("description") or ""))
             elif op == "archive" and "text" in args:
                 args["text"] = redact(str(args.get("text") or ""))
-        from atelier.gateway.adapters.mcp_server import _handle
+        from atelier.gateway.adapters.mcp_server import _Deferred, _handle
 
         response = _handle(
             {
@@ -156,6 +175,11 @@ def tools_call_cmd(ctx: click.Context, name: str, args_json: str, workspace: Pat
         )
         if response is None:
             raise click.ClickException("tool call returned no response")
+        if isinstance(response, _Deferred):
+            # Deferral is only armed on the stdio server worker path
+            # (_handle_and_write); the in-process CLI never sets that context, so a
+            # deferred marker is unreachable here. Guard for type safety.
+            raise click.ClickException("tool call returned a deferred result outside the server")
         if "error" in response:
             raise click.ClickException(str(response["error"].get("message") or response["error"]))
         result_payload = response.get("result", {})
@@ -169,6 +193,16 @@ def tools_call_cmd(ctx: click.Context, name: str, args_json: str, workspace: Pat
                 payload = json.loads(text)
             except json.JSONDecodeError:
                 payload = text
+        if as_json and not isinstance(payload, (dict, list)):
+            # Tools whose host-facing content is rendered text (read, grep, search,
+            # shell, ...) leave only a string here. For --json, recover the full
+            # structured result the dispatcher stashed in-process so the caller gets
+            # the real dict. CLI-side only -- the MCP host's main model never receives it.
+            from atelier.gateway.adapters.mcp_server import _tool_call_raw_result
+
+            raw = getattr(_tool_call_raw_result, "value", None)
+            if isinstance(raw, (dict, list)):
+                payload = raw
         if as_json:
             _emit(payload, as_json=True)
             return

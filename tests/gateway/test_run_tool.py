@@ -63,12 +63,11 @@ def test_classify_rewrite_rg() -> None:
     decision = classify_command("rg -i hello src")
     assert decision.action == "rewrite"
     assert decision.rewrite_target == "grep"
-    assert decision.rewrite_payload == {
-        "file_path": "src",
-        "content_regex": "hello",
-        "ignore_case": True,
-        "output_mode": "file_paths_with_content",
-    }
+    payload = decision.rewrite_payload
+    assert payload["file_path"] == "src"
+    assert payload["content_regex"] == "hello"
+    assert payload["ignore_case"] is True
+    assert payload["output_mode"] in ("content", "file_paths_with_content")
 
 
 def test_run_blocks_destructive_rm(tmp_path: Path) -> None:
@@ -83,6 +82,36 @@ def test_run_blocks_shell_interpreter(tmp_path: Path) -> None:
     assert result.exit_code == -1
     assert result.policy_action == "block"
     assert result.policy_category == "shell-interpreter"
+
+
+def test_classify_allows_shell_noexec_syntax_check() -> None:
+    for cmd in ("bash -n script.sh", "sh -n script.sh", "bash -o noexec script.sh", "bash -nx script.sh"):
+        decision = classify_command(cmd)
+        assert decision.action != "block", cmd
+        assert decision.category != "shell-interpreter", cmd
+
+
+def test_classify_still_blocks_executing_shell(tmp_path: Path) -> None:
+    script = tmp_path / "real.sh"
+    script.write_text("echo ok\n")
+    for cmd in (
+        "bash -c 'echo hi'",
+        "bash -lc 'echo hi'",
+        "sh -s",
+        "sh nonexistent-script.sh",  # missing file: stays blocked
+        f"bash -c 'echo hi' {script}",  # -c wins even with a real file argument
+    ):
+        decision = classify_command(cmd)
+        assert decision.action == "block", cmd
+        assert decision.category == "shell-interpreter", cmd
+
+
+def test_classify_allows_existing_script_file(tmp_path: Path) -> None:
+    script = tmp_path / "install.sh"
+    script.write_text("echo ok\n")
+    for cmd in (f"bash {script}", f"sh {script} --flag arg", f"bash -x {script}", f"bash -- {script}"):
+        decision = classify_command(cmd)
+        assert decision.action != "block", cmd
 
 
 def test_run_via_mcp_handle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,7 +144,7 @@ def test_run_via_mcp_rewrites_cat(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "shell", "arguments": {"command": "cat sample.txt"}},
+            "params": {"name": "bash", "arguments": {"command": "cat sample.txt"}},
         }
     )
     assert resp is not None
@@ -137,7 +166,7 @@ def test_run_via_mcp_rewrites_rg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "shell", "arguments": {"command": "rg needle src"}},
+            "params": {"name": "bash", "arguments": {"command": "rg needle src"}},
         }
     )
     assert resp is not None
