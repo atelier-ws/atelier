@@ -486,18 +486,21 @@ def _markdown_body(path: Path) -> str:
 
 def _render_codex_mode_body(body: str, repo_root: Path) -> str:
     shared = {
-        "{{CORE_DISCIPLINE}}": ("Core discipline", repo_root / "integrations" / "shared" / "core-discipline.md"),
+        "{{CORE_DISCIPLINE}}": (
+            "Core discipline",
+            repo_root / "integrations" / "agents" / "shared" / "core-discipline.md",
+        ),
         "{{CHANGE_DISCIPLINE}}": (
             "Change discipline",
-            repo_root / "integrations" / "shared" / "change-discipline.md",
+            repo_root / "integrations" / "agents" / "shared" / "change-discipline.md",
         ),
         "{{CODING_GUIDELINES}}": (
             "Coding Guidelines",
-            repo_root / "integrations" / "shared" / "coding-guidelines.md",
+            repo_root / "integrations" / "agents" / "shared" / "coding-guidelines.md",
         ),
         "{{TOOL_DISCIPLINE}}": (
             "Tool discipline",
-            repo_root / "integrations" / "shared" / "tool-discipline.md",
+            repo_root / "integrations" / "agents" / "shared" / "tool-discipline.md",
         ),
     }
     rendered = body.rstrip()
