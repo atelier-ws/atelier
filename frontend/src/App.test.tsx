@@ -70,7 +70,7 @@ describe("App router smoke test", () => {
   it.each([
     "/overview",
     "/sessions",
-    "/runs",
+    "/swarms",
     "/costs",
     "/costs/spend",
     "/costs/savings",
@@ -104,7 +104,7 @@ describe("App router smoke test", () => {
       await screen.findByRole("link", { name: /overview/i })
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /sessions/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /runs/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /swarms/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /costs/i })).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /knowledge/i })
