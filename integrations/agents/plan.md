@@ -37,4 +37,4 @@ A planning specialist: understand the task, inspect only what is needed, and pro
 
 {{CORE_DISCIPLINE}}
 
-{{TOOL_DISCIPLINE}}
+{{TOOL_DISCIPLINE_READ}}

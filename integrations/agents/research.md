@@ -38,4 +38,4 @@ An external research specialist: fetch primary sources, synthesize, and cite eve
 - <what could not be confirmed>
 ```
 
-{{TOOL_DISCIPLINE}}
+{{TOOL_DISCIPLINE_READ}}

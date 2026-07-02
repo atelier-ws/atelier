@@ -647,12 +647,88 @@ def _maybe_emit_compaction_advice(
         return None
 
 
-def _emit_ui_messages(ui_messages: list[str]) -> None:
-    """Emit display-only UserPromptSubmit messages without model context."""
-    if not ui_messages:
+def _emit_ui_messages(ui_messages: list[str], additional_context: str | None = None) -> None:
+    """Emit UserPromptSubmit output: UI-only messages and/or injected model context."""
+    out: dict[str, Any] = {}
+    if ui_messages:
+        out["systemMessage"] = "\n".join(ui_messages)
+    if additional_context:
+        out["hookSpecificOutput"] = {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": additional_context,
+        }
+    if not out:
         return
-    sys.stdout.write(json.dumps({"systemMessage": "\n".join(ui_messages)}) + "\n")
+    sys.stdout.write(json.dumps(out) + "\n")
     sys.stdout.flush()
+
+
+# ---------------------------------------------------------------------------
+# Prompt front-loading (opt-in via ATELIER_FRONTLOAD=1)
+#
+# For a structural prompt ("how does X work", "trace the flow", "what calls Y")
+# run one indexed code_search server-side and inject the result BEFORE the
+# agent's first move, so turn 1 starts grounded instead of re-deriving context
+# with reflex reads. Modeled on codegraph's validated UserPromptSubmit lever.
+#
+# LOAD-BEARING: this must NEVER break or stall the user's prompt. Every failure
+# path — flag off, non-structural prompt, unindexed workspace, engine error,
+# timeout — returns None with no output.
+# ---------------------------------------------------------------------------
+
+_FRONTLOAD_RE = re.compile(
+    r"\b(how (does|do|is|are)|where (is|are|does|do)|what (calls|happens|uses|depends)"
+    r"|who calls|why (does|is)|trace|call ?(path|graph|ers)|data flow|control flow"
+    r"|architecture|blast radius|impact of|depends on|implemented)\b",
+    re.IGNORECASE,
+)
+_FRONTLOAD_MAX_CHARS = 16_000
+_FRONTLOAD_TIMEOUT_S = 8
+
+
+def _frontload_context(prompt: str, payload: dict[str, Any]) -> str | None:
+    """Return injected indexed context for a structural prompt, else None."""
+    if os.environ.get("ATELIER_FRONTLOAD") != "1":
+        return None
+    if prompt.lstrip().startswith("/") or _NOOP_PROMPT in prompt:
+        return None
+    if not _FRONTLOAD_RE.search(prompt):
+        return None
+    workspace = str(payload.get("cwd") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd())
+    import signal
+
+    def _timeout(_signum: int, _frame: Any) -> None:
+        raise TimeoutError
+
+    old_handler = signal.signal(signal.SIGALRM, _timeout)
+    signal.alarm(_FRONTLOAD_TIMEOUT_S)
+    try:
+        from atelier.core.capabilities.code_context.engine import (
+            CodeContextEngine,
+            _default_db_path,
+        )
+
+        # Only an already-indexed workspace qualifies — indexing is not the
+        # hook's job, and an empty store must not be created as a side effect.
+        if not _default_db_path(Path(workspace).resolve()).exists():
+            return None
+        engine = CodeContextEngine(workspace, autosync_enabled=False)
+        result = engine.tool_explore(prompt, max_files=4, auto_index=False)
+        if not (result.get("files") or result.get("related_symbols")):
+            return None
+        body = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+        if len(body) > _FRONTLOAD_MAX_CHARS:
+            body = body[:_FRONTLOAD_MAX_CHARS] + "…(truncated; call code_search for the rest)"
+        return (
+            '<atelier_context note="Indexed context front-loaded for this prompt '
+            '— treat this source as already read; call code_search for more.">\n'
+            f"{body}\n</atelier_context>"
+        )
+    except BaseException:
+        return None  # fail-open — the prompt must go through untouched
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 # ---------------------------------------------------------------------------
@@ -733,15 +809,18 @@ def main() -> int:
     compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path, stored_prompt, session_id)
     if compact_msg:
         ui_messages.append(compact_msg)
-    _emit_ui_messages(ui_messages)
+    frontload_ctx = _frontload_context(prompt, payload)
+    _emit_ui_messages(ui_messages, frontload_ctx)
 
-    try:
-        if not session_id:
-            return 0
-        _append_prompt_event(session_id, stored_prompt)
-    except (OSError, TypeError, ValueError):
-        pass  # fail-open
+    with contextlib.suppress(OSError, TypeError, ValueError):
+        if session_id:
+            _append_prompt_event(session_id, stored_prompt)
 
+    if frontload_ctx is not None:
+        # The engine may hold non-daemon worker threads; don't let them stall
+        # hook exit past the harness timeout — output is already flushed.
+        sys.stdout.flush()
+        os._exit(0)
     return 0
 
 

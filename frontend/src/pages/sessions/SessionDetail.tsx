@@ -529,7 +529,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                     href={`/api/raw-artifacts/${report.raw_artifact_ids[0]}/content`}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-white transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest flex items-center gap-2"
+                    className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-100 transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest flex items-center gap-2"
                   >
                     <ExternalLink size={10} />
                     Raw Link
@@ -537,7 +537,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                 )}
               <button
                 onClick={() => setAllExpanded(!allExpanded)}
-                className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-white transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest"
+                className="px-3 py-1.5 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-100 transition-all text-[10px] font-mono text-neutral-400 uppercase tracking-widest"
               >
                 {allExpanded ? "Collapse View" : "Expand All"}
               </button>
@@ -547,7 +547,7 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
                   "w-8 h-8 flex items-center justify-center border transition-all text-sm font-mono",
                   rightPanelOpen
                     ? "bg-brand-600 border-brand-500 text-white"
-                    : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-white"
+                    : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-100"
                 )}
                 title="Toggle Detailed Metrics"
               >

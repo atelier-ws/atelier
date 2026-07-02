@@ -77,25 +77,27 @@ atelier_cost, save_pct, baseline_rep_costs_corrected` (JSON list of the 5
 corrected per-rep costs).
 
 **Why "corrected":** tbench.ai's displayed cost treats cache tokens as **$0**
-(see Known gaps below) while Atelier's `pricing.yaml` correctly bills
-cache reads ($0.50/M) and cache writes ($6.25–$10/M). To compare like for
-like, baseline costs here are recomputed as
+(see Known gaps below) while Atelier's runs pay the real bill — cache reads
+($0.50/M) and **1h ephemeral cache writes ($10/M, 2x input)**. To compare like
+for like, baseline costs here are recomputed as
 `(input − cache) × $5/M + output × $25/M + cache × blended_cache_rate`,
-where the blended cache rate uses a **~5.1% write / 94.9% read** split — the
-actual ratio measured from one real Atelier trial's raw Claude usage report
-(`cache_creation_input_tokens` vs `cache_read_input_tokens` in
-`agent/claude-run.json`). tbench.ai doesn't expose a per-trial read/write
-split, so this ratio is an estimate applied uniformly, not a measured value
-per baseline trial.
+where the blended cache rate prices a **4.31% write share at the 1h write
+rate** and the remainder as reads (≈ **$0.91/M**). The write share is the
+token-weighted `cache_creation_input_tokens` vs `cache_read_input_tokens`
+ratio measured across all 86 Atelier Harbor trials' `agent/claude-run.json`
+usage reports. tbench.ai doesn't expose a per-trial read/write split, so this
+ratio is an estimate applied uniformly, not a measured value per baseline
+trial. Regenerate both derived CSVs with
+`uv run python benchmarks/harbor/normalize_baseline_cost.py`.
 
 **Result:** matched on 82 tasks, Atelier totals **$128.03** vs. baseline's
-corrected **$87.67** (**1.46x**). The overhead is not uniform:
+corrected **$92.75** (**1.38x**). The overhead is not uniform:
 
 | Baseline task cost | n tasks | avg baseline | avg atelier | avg delta |
 |---|---|---|---|---|
-| < $0.50 | 35 | $0.29 | $0.63 | +$0.34 (2.2x) |
-| $0.50–$1.50 | 31 | $0.92 | $1.13 | +$0.21 (1.2x) |
-| ≥ $1.50 | 16 | $3.05 | $4.45 | +$1.40 (1.5x) |
+| < $0.50 | 34 | $0.30 | $0.63 | +$0.33 (2.1x) |
+| $0.50–$1.50 | 30 | $0.92 | $1.09 | +$0.17 (1.2x) |
+| ≥ $1.50 | 18 | $3.05 | $4.10 | +$1.05 (1.3x) |
 
 Cheap tasks take the worst relative hit (a handful show 400–800% overshoot,
 e.g. `code-from-image`, `fix-code-vulnerability`) — consistent with a
@@ -103,7 +105,7 @@ fixed per-run overhead paid regardless of task size. Unlike the SWE-bench
 comparison (see top-level README), that overhead does **not** fully wash out
 on bigger tasks here — only the priciest tasks (baseline ≥ ~$2.40, e.g.
 `train-fasttext`, `regex-chess`, `caffe-cifar-10`) consistently come out
-cheaper on Atelier. 51/82 matched tasks cost more, 31/82 cost less. 5 tasks
+cheaper on Atelier. 47/82 matched tasks cost more, 35/82 cost less. 5 tasks
 (`gpt2-codegolf`, `hf-model-inference`, `kv-store-grpc`,
 `mcmc-sampling-stan`, `pytorch-model-recovery`) have a pass/fail result but
 no cost telemetry — the agent process crashed/timed out before Claude Code
@@ -111,6 +113,9 @@ wrote a final usage report, so the true Atelier total is higher than $128.03.
 
 ## Regenerating the rollups
 
-Both derived files are computed purely from the per-trial CSV — if that CSV
-is updated/replaced, regenerate the other two from it (group by `task`,
-average/sum the numeric columns, skip blank cells).
+`summary.txt`/`per_task.csv`/`aggregate.csv` are computed purely from the
+per-trial CSV — if that CSV is updated/replaced, regenerate them from it
+(group by `task`, average/sum the numeric columns, skip blank cells).
+`normalized_cost.csv` and `atelier_vs_baseline_per_task.csv` are regenerated
+by `uv run python benchmarks/harbor/normalize_baseline_cost.py` (see
+`normalized_cost.README.txt` for the cost model).

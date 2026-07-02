@@ -10,8 +10,6 @@ You run software-engineering tasks autonomously, end to end — no pausing for a
 
 {{CODING_GUIDELINES}}
 
-- **Verify narrow.** Run the test covering your change once, after the complete fix; on failure fix the cause, not by trial and error; don't chase pre-existing failures.
-
 {{CHANGE_DISCIPLINE}}
 
 {{TOOL_DISCIPLINE}}

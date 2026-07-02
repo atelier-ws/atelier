@@ -172,7 +172,7 @@ flow-dump: ## Extract chat from a .flow file or directory: make flow-dump path=/
 		echo "Error: 'path' argument is required. Usage: make flow-dump path=/path/to/file_or_dir"; \
 		exit 1; \
 	fi
-	uv run --project benchmarks python -m benchmarks.wire_savings.dump $(path)
+	uv run --project benchmarks python -m benchmarks.flowlib.dump $(path)
 
 clean: ## Remove build artifacts, caches, and coverage data
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage build dist *.egg-info

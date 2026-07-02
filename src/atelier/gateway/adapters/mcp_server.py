@@ -294,6 +294,7 @@ def mcp_tool(
     input_schema: dict[str, Any] | None = None,
     hidden_params: tuple[str, ...] = (),
     param_aliases: dict[str, str] | None = None,
+    recover_args: Callable[[dict[str, Any], frozenset[str]], dict[str, Any]] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
     """Decorator to register a tool and auto-derive its MCP schema.
 
@@ -301,6 +302,12 @@ def mcp_tool(
     parameter name. The advertised schema only shows the current name, but the
     handler accepts either: incoming args carrying an old name are remapped
     before validation (the current name wins if both are present).
+
+    ``recover_args`` is a structural self-heal hook: called with
+    ``(args, known_params)`` after alias remapping and before the unknown-args
+    check, it may rewrite a malformed-but-unambiguous call shape (e.g. a
+    flattened single-edit call) into a valid one. Fail-open: an exception in
+    the hook leaves the original args untouched.
     """
     aliases = dict(param_aliases or {})
 
@@ -360,6 +367,17 @@ def mcp_tool(
                             remapped[new_name] = remapped.pop(old_name)
                     if remapped is not None:
                         args = remapped
+                # Structural self-heal (e.g. a flattened single-edit call).
+                # Runs after alias remap so it sees canonical top-level names,
+                # and before the unknown-args check so a recovered call does
+                # not error. A rejection here throws away the entire tool_use
+                # the model just emitted (often several KB of file content)
+                # and forces a full re-emission on the retry.
+                if recover_args is not None and isinstance(args, dict):
+                    try:
+                        args = recover_args(args, known_params)
+                    except Exception:
+                        logging.exception("Recovered from broad exception handler")
                 # Pydantic's default config silently drops unknown keys, so a
                 # typo'd argument (e.g. codemod `dryrun` for `dry_run`) would be
                 # discarded and the wrong default used while the call still
@@ -6230,6 +6248,32 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def _lift_flattened_edit_args(args: dict[str, Any], known_params: frozenset[str]) -> dict[str, Any]:
+    """Recover a flattened single-edit call into the canonical ``edits=[...]`` shape.
+
+    LLMs (especially in a cold session that reads only the short tool
+    description) regularly emit the edit descriptor at top level --
+    ``edit(path=..., new=..., replace=True)`` -- instead of wrapping it in
+    ``edits=[{...}]``. The intent is unambiguous: when ``edits`` is absent and
+    the stray keys form an edit descriptor (a target path plus new content),
+    wrap them into a single-entry ``edits`` list instead of rejecting the call.
+    Anything else (a genuine typo, a path with no content) still surfaces the
+    unknown-argument error.
+    """
+    if "edits" in args:
+        return args
+    stray = {key: value for key, value in args.items() if key not in known_params}
+    if not stray:
+        return args
+    has_path = any(key in stray for key in ("path", "file_path"))
+    has_content = any(key in stray for key in ("new_string", "new_body", *_NEW_ALIASES))
+    if not (has_path and has_content):
+        return args
+    lifted = {key: value for key, value in args.items() if key in known_params}
+    lifted["edits"] = [stray]
+    return lifted
+
+
 def _applied_entry_path(entry: str | dict[str, Any]) -> str | None:
     """Extract the file path from a raw applied entry, tolerating both shapes.
 
@@ -6415,12 +6459,13 @@ def _reindex_edited_files(repo_root: Path, touched_paths: list[str]) -> None:
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
     description=(
-        "Apply exact file edits in one batch. "
-        "Replace with {path, old, new}; use path:Lx-Ly for exact lines. "
+        "Apply exact file edits in one batch: edits=[{path, old, new}, ...]. "
+        "Each edit replaces old with new; use path:Lx-Ly for exact lines. "
         "Create or replace a file with {path, new, replace:true}. "
-        "Include all planned edits in one call. Do not re-read after exact success."
+        "Include all planned edits in one call's edits array. Do not re-read after exact success."
     ),
     param_aliases={"post_edit_hooks": "hooks"},
+    recover_args=_lift_flattened_edit_args,
 )
 def tool_smart_edit(
     edits: list[dict[str, Any]],

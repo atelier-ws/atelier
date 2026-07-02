@@ -628,7 +628,7 @@ export function FileDetail({
           onClick={() => setInternalExpanded(!internalExpanded)}
           className="flex-1 flex items-center gap-4 min-w-0 text-left"
         >
-          <span className="text-xs font-mono text-neutral-400 group-hover/file:text-white transition-colors tracking-wide truncate">
+          <span className="text-xs font-mono text-neutral-400 group-hover/file:text-neutral-100 transition-colors tracking-wide truncate">
             {path}
           </span>
           {diff && (addCount > 0 || delCount > 0) && (
