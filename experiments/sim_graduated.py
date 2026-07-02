@@ -108,9 +108,8 @@ def analyze(run_dir, only=None):
     reps = 0
     sav_outline = 0.0  # source stripped from 2nd+ searches
     top2_read_saved = 0.0
-    top2_src_added = 0.0
     pos1_src_samples = []
-    for (task, arm, rep), r in meta.items():
+    for (task, arm, _rep), r in meta.items():
         if arm != "atelier" or not r.get("ok"):
             continue
         if only and task not in only:
@@ -122,7 +121,7 @@ def analyze(run_dir, only=None):
         s = seq(largest(Path(fp)))
         since = 0
         last_pos1 = None  # base name of pos-1 file from the most recent search, + whether 1st-pos
-        for i, (tool, inp, res) in enumerate(s):
+        for _i, (tool, inp, res) in enumerate(s):
             if tool in EDIT:
                 since = 0
                 last_pos1 = None
@@ -160,12 +159,12 @@ def report(label, run_dir, only):
     if not reps:
         return
     print(f"\n=== {label} ({reps} atelier reps) ===")
-    print(f"  A) OUTLINE-ON-REPEAT: strip source from 2nd+ searches")
+    print("  A) OUTLINE-ON-REPEAT: strip source from 2nd+ searches")
     print(f"     saves ~{outline / reps:.0f} chars/rep  (clean reduction, agent reads anyway)")
-    print(f"  B) TOP-2: eliminate pos-1 reads")
+    print("  B) TOP-2: eliminate pos-1 reads")
     print(f"     pos-1 reads eliminated: {n_pos1} total, ~{rd_saved / reps:.0f} chars/rep saved")
     print(f"     (cost: pos-1 source ~{avg_pos1:.0f}c added per first-search that has a 2nd file;")
-    print(f"      net positive only when that source is actually read)")
+    print("      net positive only when that source is actually read)")
     print(f"  COMBINED clean lower-bound: ~{(outline + rd_saved) / reps:.0f} chars/rep retrieval payload removed")
 
 

@@ -62,6 +62,12 @@ ATTRIBUTION_EMAIL = "293447754+atelier-agent[bot]@users.noreply.github.com"
 ATTRIBUTION_TRAILER = f"Co-Authored-By: {ATTRIBUTION_NAME} <{ATTRIBUTION_EMAIL}>"
 AUTH_REFRESH_GRACE_SECONDS = 300
 UPDATE_CHECK_THROTTLE_SECONDS = 30 * 60
+# Billing meter: trailing window (days) used to sum realized spend/savings, and
+# the fraction of the monthly limit at which the soft warning turns on. The
+# meter is non-blocking — nothing enforces the cap; it only surfaces spend and a
+# warning on the statusline (see refresh_subscription_meter / _resolve_status_text).
+BILLING_WINDOW_DAYS = 30
+SUBSCRIPTION_WARN_FRACTION = 0.8
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -287,7 +293,14 @@ def write_auth_state(root: str | Path, auth: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def claim_anonymous_trial(root: str | Path, *, monthly_limit_usd: float = 5.0) -> dict[str, Any]:
+def claim_anonymous_trial(root: str | Path, *, monthly_limit_usd: float = 0.0) -> dict[str, Any]:
+    """Seed local free-mode auth state (auth.json) when none exists.
+
+    Default is no local limit (``monthly_limit_usd=0.0``): the source-available
+    free core never stamps a spending cap. A positive limit is only set by
+    hosted/licensed flows, and the meter (:func:`compute_usage_meter`) treats
+    ``<= 0`` as report-only — it surfaces spend/savings but never warns.
+    """
     existing = _read_json(auth_state_path(root), None)
     if isinstance(existing, dict) and existing.get("authenticated"):
         return normalize_auth_credentials(existing, anonymous=bool(existing.get("isAnonymous")))
@@ -298,7 +311,7 @@ def claim_anonymous_trial(root: str | Path, *, monthly_limit_usd: float = 5.0) -
         "plan": "LOCAL",
         "monthlySavingsInUsd": 0.0,
         "monthlyLimitInUsd": monthly_limit_usd,
-        "message": "Local anonymous trial active.",
+        "message": "Local free mode active.",
     }
     auth = normalize_auth_credentials(
         {
@@ -331,6 +344,7 @@ def auth_status(root: str | Path) -> dict[str, Any]:
         return {"authenticated": False, "isAnonymous": False, "root": str(Path(root))}
     normalized = normalize_auth_credentials(auth, anonymous=bool(auth.get("isAnonymous") or auth.get("is_anonymous")))
     subscription = normalized.get("subscriptionStatus") or _read_json(subscription_state_path(root), {})
+    subscription = compute_usage_meter(root, subscription=subscription)
     return {
         "authenticated": bool(normalized.get("authenticated")),
         "isAnonymous": bool(normalized.get("isAnonymous")),
@@ -341,6 +355,76 @@ def auth_status(root: str | Path) -> dict[str, Any]:
         "referralCode": normalized.get("referralCode"),
         "root": str(Path(root)),
     }
+
+
+def compute_usage_meter(root: str | Path, *, subscription: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Price trailing-window usage against the plan's monthly limit.
+
+    Realized spend and savings come from :func:`aggregate_window_savings` (the
+    same per-session ledger that drives the statusline and ``atelier savings``),
+    so the meter always reconciles with those surfaces. Returns the subscription
+    dict enriched with live billing fields (``monthlySpendInUsd``,
+    ``monthlySavingsInUsd``, ``remainingUsd``, ``usageFraction``, ``warning``,
+    ``overLimit``). Purely additive and non-blocking — callers decide what, if
+    anything, to do with ``warning``/``overLimit``; nothing here enforces a cap.
+
+    ``monthlyLimitInUsd <= 0`` (or absent) means "no local limit": spend and
+    savings are still reported, but ``warning``/``overLimit`` stay False.
+    """
+    root_path = Path(root)
+    if subscription is None:
+        # The canonical plan blob lives in auth.json under subscriptionStatus;
+        # fall back to a standalone subscription.json when auth has none.
+        auth = _read_json(auth_state_path(root_path), {})
+        raw_sub = auth.get("subscriptionStatus") if isinstance(auth, dict) else None
+        subscription = raw_sub or _read_json(subscription_state_path(root_path), {})
+    subscription = dict(subscription) if isinstance(subscription, dict) else {}
+
+    spend_usd = 0.0
+    savings_usd = 0.0
+    try:
+        from atelier.core.capabilities.savings_summary import aggregate_window_savings
+
+        window = aggregate_window_savings(root_path, days=BILLING_WINDOW_DAYS)
+        spend_usd = round(max(0.0, float(window.spend_usd)), 4)
+        savings_usd = round(max(0.0, float(window.saved_usd)), 4)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+
+    limit_usd = float(subscription.get("monthlyLimitInUsd") or 0.0)
+    has_limit = limit_usd > 0.0
+    fraction = round(spend_usd / limit_usd, 4) if has_limit else 0.0
+    warning = bool(has_limit and spend_usd >= SUBSCRIPTION_WARN_FRACTION * limit_usd)
+    over_limit = bool(has_limit and spend_usd >= limit_usd)
+
+    subscription["monthlySpendInUsd"] = spend_usd
+    subscription["monthlySavingsInUsd"] = savings_usd
+    subscription["remainingUsd"] = round(max(0.0, limit_usd - spend_usd), 4) if has_limit else None
+    subscription["usageFraction"] = fraction
+    subscription["windowDays"] = BILLING_WINDOW_DAYS
+    subscription["warning"] = warning
+    subscription["overLimit"] = over_limit
+    if over_limit:
+        subscription["message"] = f"Monthly limit reached — ${spend_usd:.2f} of ${limit_usd:.2f} used"
+    elif warning:
+        subscription["message"] = f"Approaching monthly limit — ${spend_usd:.2f} of ${limit_usd:.2f} used"
+    return subscription
+
+
+def refresh_subscription_meter(root: str | Path) -> dict[str, Any]:
+    """Recompute the usage meter and persist it to ``subscription.json``.
+
+    ``subscription.json`` is the file the statusline (:func:`_resolve_status_text`
+    in ``savings_summary``) reads to surface the plan warning, so persisting the
+    metered blob here is what lights up that surface. Called from session
+    lifecycle seams (SessionStart bootstrap, Stop). Best-effort — never raises
+    into a hook.
+    """
+    root_path = Path(root)
+    metered = compute_usage_meter(root_path)
+    with suppress(OSError, ValueError):
+        _write_json(subscription_state_path(root_path), metered)
+    return metered
 
 
 def begin_browser_login(
@@ -826,6 +910,7 @@ def session_start_bootstrap(
     if mcp_result["changed"]:
         actions.append("always_load_updated")
     auth = claim_anonymous_trial(root)
+    refresh_subscription_meter(root)
     update = update_notification(current_version, _read_json(update_flag_path(root), None))
     if payload:
         update_session_stats(root, {"hook_event_name": "SessionStart", **payload})
@@ -1907,12 +1992,12 @@ def _codex_append_compaction_savings_row(
         }
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
-        # Invalidate the in-memory historical savings cache so the next
-        # statusline_segment call picks up the compaction row immediately.
+        # Fold the compaction row into the in-memory historical window totals
+        # (O(1)) instead of invalidating them — see _bump_historical_savings_cache.
         try:
-            from atelier.core.capabilities.savings_summary import _invalidate_historical_savings_cache as _inval_cache
+            from atelier.core.capabilities.savings_summary import _bump_historical_savings_cache as _bump_cache
 
-            _inval_cache()
+            _bump_cache(row)
         except ImportError:
             pass
     except (OSError, TypeError, ValueError):
@@ -3138,6 +3223,9 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         state["completed"] = True
     elif event == "Stop":
         state["completed"] = True
+        # Session ended: refresh the month-to-date usage meter so the plan
+        # spend/savings and the statusline warning reflect this session's cost.
+        refresh_subscription_meter(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     _append_session_event(root, session_id, payload)
@@ -3513,6 +3601,7 @@ def build_savings_report(
     subscription = _read_json(subscription_state_path(root_path), auth.get("subscription") or {})
     if not isinstance(subscription, dict):
         subscription = {}
+    subscription = compute_usage_meter(root_path, subscription=subscription)
     ab_calibration = _summarize_ab_calibration(root_path)
     # Comparative "vs vanilla Claude Code" replay number. This is a SEPARATE,
     # counterfactual estimate (roundtrips vanilla CC would have spent that

@@ -93,8 +93,10 @@ def main(run_dir):
                             acted.append((i, _base(v)))
                 for f in inp.get("files") or []:
                     acted.append((i, _base(f if isinstance(f, str) else f.get("path", ""))))
-        edited_after = lambda i, base: any(j > i and bb == base for j, bb in acted)
-        any_after = lambda i, base: any(j >= i and bb == base for j, bb in acted)
+        def edited_after(i, base):
+            return any(j > i and bb == base for j, bb in acted)
+        def any_after(i, base):
+            return any(j >= i and bb == base for j, bb in acted)
         for i, (tool, inp, res) in enumerate(seq):
             if tool == "code_search":
                 cs_calls += 1
@@ -135,7 +137,7 @@ def main(run_dir):
         print(f"  avg candidate_files:  {cs_cand / cs_calls:.0f}c  ({cs_cand / cs_total * 100:.0f}% of payload)")
         print(f"  avg source(files):    {cs_src / cs_calls:.0f}c  ({cs_src / cs_total * 100:.0f}% of payload)")
         print(f"  line-number prefixes: ~{cs_linenums} occurrences (~{cs_linenums * 4} chars of \\nNNN\\t overhead)")
-    print(f"\n=== usage (what the agent acts on) ===")
+    print("\n=== usage (what the agent acts on) ===")
     if cand_total:
         print(
             f"  candidate_files offered: {cand_total};  later read/edited: {cand_used} ({cand_used / cand_total * 100:.0f}%)"

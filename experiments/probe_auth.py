@@ -17,7 +17,7 @@ DATA = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 repos = DATA["repos"]
 pairs = DATA["pairs"]
 by_prefix = collections.defaultdict(list)
-for q, tid, prefix in pairs:
+for q, _tid, prefix in pairs:
     by_prefix[prefix].append(q)
 
 PATHS = collections.Counter()

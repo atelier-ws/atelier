@@ -96,7 +96,7 @@ def main(run_dir):
     for fp in sorted(d.glob("*_atelier_rep*.flow"))[:40]:
         s = seq(largest(fp))
         since = 0
-        for i, (tool, inp, res) in enumerate(s):
+        for i, (tool, _inp, res) in enumerate(s):
             if tool in EDIT:
                 since = 0
                 continue
@@ -116,8 +116,9 @@ def main(run_dir):
     for p in sorted(pos_n):
         n = pos_n[p]
         nx = pos_next[p]
-        share = lambda k: f"{nx.get(k, 0) / n * 100:.0f}%"
-        e = next(iter(EDIT))
+        def share(k):
+            return f"{nx.get(k, 0) / n * 100:.0f}%"
+        next(iter(EDIT))
         ed = sum(nx.get(k, 0) for k in EDIT)
         print(
             f"{lbl[p]:>4}{n:>7}{pos_src[p] / n:>12.0f}{pos_edit3[p] / n * 100:>9.0f}%   "

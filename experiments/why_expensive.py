@@ -96,7 +96,7 @@ def main(run_dir):
             meta[(r["task"], r["arm"], r["rep"])] = r
     agg = defaultdict(lambda: defaultdict(float))
     cnt = defaultdict(int)
-    for (task, arm, rep), m in meta.items():
+    for (task, arm, _rep), m in meta.items():
         if not m.get("ok"):
             continue
         fp = m.get("flow_path") or ""

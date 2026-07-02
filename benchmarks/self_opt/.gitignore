@@ -1,6 +1,0 @@
-# autoresearch run artifacts (kept local, like the reference repos)
-results.tsv
-run.log
-last.json
-runs/
-__pycache__/

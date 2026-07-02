@@ -104,7 +104,7 @@ def report(label, run_dir, only):
             r = json.loads(line)
             meta[(r["task"], r["arm"], r["rep"])] = r
     reps = save = added_read = added_turns = pure_save = 0
-    for (task, arm, rep), r in meta.items():
+    for (task, arm, _rep), r in meta.items():
         if arm != "atelier" or not r.get("ok"):
             continue
         if only and task not in only:

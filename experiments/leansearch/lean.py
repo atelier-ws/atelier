@@ -52,7 +52,7 @@ def project(result, max_files=8, seed_files=None, budget=SOURCE_BUDGET):
     files = result.get("files") or []
     exact = bool(result.get("exact_match"))
     top = _score_of(eps[0]) if eps else 0.0
-    floor = top * REL_FLOOR
+    top * REL_FLOOR
 
     epscore_by_path = {}
     for e in eps:

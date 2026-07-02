@@ -111,7 +111,7 @@ def main():
     ap.add_argument("--repo", default="", help="only this repo substring")
     a = ap.parse_args()
     repos = json.load(open(a.repos_from))["repos"]
-    pairs, tmap, out_repos = {}, {}, {}
+    _pairs, tmap, out_repos = {}, {}, {}
     P = []
     for pfx, m in repos.items():
         if a.repo and a.repo not in pfx:

@@ -46,7 +46,6 @@ def _decode_response(flow):
     except (json.JSONDecodeError, ValueError):
         pass
     # SSE stream
-    cur = None
     cur_name = "?"
     for line in raw.decode("utf-8", "ignore").splitlines():
         if not line.startswith("data: "):
@@ -58,7 +57,7 @@ def _decode_response(flow):
         tp = ch.get("type")
         if tp == "content_block_start":
             cb = ch.get("content_block", {})
-            cur = cb.get("type")
+            cb.get("type")
             cur_name = str(cb.get("name", "?")).split("__")[-1].lower()
         elif tp == "content_block_delta":
             dl = ch.get("delta", {})

@@ -210,10 +210,10 @@ def main() -> int:
         f"\n=== atelier DEFINITION-GOLD eval (scorable={scorable}/{len(pairs)}, avg gold files={sum(gsize) / max(len(gsize), 1):.1f}) ==="
     )
     print("  arm      MRR     vs SWE-edit-gold(lex 0.668)")
-    print("  lex     %.4f" % m(agg["lex"]))
-    print("  sem     %.4f" % m(agg["sem"]))
-    print("  fused   %.4f   (lift %+.4f)" % (m(agg["fused"]), m(agg["fused"]) - m(agg["lex"])))
-    print("  oracle  %.4f   (ceiling %+.4f)" % (m(agg["oracle"]), m(agg["oracle"]) - m(agg["lex"])))
+    print("  lex     {:.4f}".format(m(agg["lex"])))
+    print("  sem     {:.4f}".format(m(agg["sem"])))
+    print("  fused   {:.4f}   (lift {:+.4f})".format(m(agg["fused"]), m(agg["fused"]) - m(agg["lex"])))
+    print("  oracle  {:.4f}   (ceiling {:+.4f})".format(m(agg["oracle"]), m(agg["oracle"]) - m(agg["lex"])))
     print("\n  by shape:        n     lex     sem   fused")
     for bk, bb in sorted(byb.items(), key=lambda kv: -kv[1]["lex"][1]):
         print("    %-12s %4d  %.3f  %.3f  %.3f" % (bk, bb["lex"][1], m(bb["lex"]), m(bb["sem"]), m(bb["fused"])))

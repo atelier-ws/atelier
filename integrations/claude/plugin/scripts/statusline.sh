@@ -150,10 +150,32 @@ export ATELIER_STATUSLINE_LIVE_OUT_TOK="${OUT_TOK:-0}"
 _ATELIER_BIN="$(dirname "${ATELIER_PY}")/atelier"
 
 # Dynamic segment: MCP sidecar (primary) → per-session subprocess cache (fallback).
-# The MCP server writes sessions/<id>/statusline_segment after every savings event
-# using its window-anchored resolved session id — no subprocess, no session-id drift.
+# The MCP server writes sessions/<id>/statusline_frames (all frames, one per
+# line) after every savings event using its window-anchored resolved session id
+# — no subprocess, no session-id drift. Rotation is a wall-clock line pick, so
+# frames keep rotating between writes. statusline_segment (single frame) is
+# kept as the legacy fallback.
 _NOW_S=$(date +%s)
-_MCP_SIDECAR="${ATELIER_STATUS_ROOT}/sessions/${SESSION_ID:-}/statusline_segment"
+# The canonical session dir is date+host partitioned
+# (sessions/YYYY/MM/DD/<host>/<id>/ — see paths.session_dir); glob for it and
+# keep the legacy flat path as a fallback for older stores. Newest mtime wins
+# so a stale duplicate can never shadow the live segment; on equal mtimes the
+# multi-frame file (listed first) wins.
+_MCP_SIDECAR=""
+_MCP_SIDECAR_MT=0
+if [ -n "${SESSION_ID:-}" ]; then
+  for _SC in "${ATELIER_STATUS_ROOT}/sessions/"*/*/*/*/"${SESSION_ID}/statusline_frames" \
+             "${ATELIER_STATUS_ROOT}/sessions/${SESSION_ID}/statusline_frames" \
+             "${ATELIER_STATUS_ROOT}/sessions/"*/*/*/*/"${SESSION_ID}/statusline_segment" \
+             "${ATELIER_STATUS_ROOT}/sessions/${SESSION_ID}/statusline_segment"; do
+    [ -f "${_SC}" ] || continue
+    _SC_MT=$(stat -c '%Y' "${_SC}" 2>/dev/null || stat -f '%m' "${_SC}" 2>/dev/null || echo 0)
+    if [ "${_SC_MT:-0}" -gt "${_MCP_SIDECAR_MT}" ]; then
+      _MCP_SIDECAR="${_SC}"
+      _MCP_SIDECAR_MT="${_SC_MT}"
+    fi
+  done
+fi
 # Per-session cache for the subprocess fallback path. Keyed strictly by the
 # real SESSION_ID with NO "default" fallback: an empty id would collapse the
 # key to one shared slot that every unbound window reads/writes, leaking one
@@ -163,12 +185,24 @@ _SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache_${SESSION_ID}"
 _SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts_${SESSION_ID}"
 DYNAMIC_SEG=""
 
-# 1. MCP sidecar — fresh if written within 10s
-if [ -n "${SESSION_ID:-}" ] && [ -f "${_MCP_SIDECAR}" ]; then
-  _SIDECAR_MTIME=$(stat -c '%Y' "${_MCP_SIDECAR}" 2>/dev/null || stat -f '%m' "${_MCP_SIDECAR}" 2>/dev/null || echo 0)
-  _SIDECAR_AGE=$(( _NOW_S - ${_SIDECAR_MTIME:-0} ))
+# 1. MCP sidecar — fresh if written within 10s. The multi-frame file rotates
+#    by wall clock (one frame per line, 5s per frame) so the display keeps
+#    cycling even while the sidecar itself is not being rewritten.
+if [ -n "${_MCP_SIDECAR}" ]; then
+  _SIDECAR_AGE=$(( _NOW_S - ${_MCP_SIDECAR_MT:-0} ))
   if [ "${_SIDECAR_AGE}" -le 10 ]; then
-    DYNAMIC_SEG=$(cat "${_MCP_SIDECAR}" 2>/dev/null || true)
+    case "${_MCP_SIDECAR}" in
+      *statusline_frames)
+        _N_FRAMES=$(wc -l < "${_MCP_SIDECAR}" 2>/dev/null || echo 0)
+        if [ "${_N_FRAMES:-0}" -gt 0 ] 2>/dev/null; then
+          _FRAME_IDX=$(( (_NOW_S / 5) % _N_FRAMES + 1 ))
+          DYNAMIC_SEG=$(sed -n "${_FRAME_IDX}p" "${_MCP_SIDECAR}" 2>/dev/null || true)
+        fi
+        ;;
+      *)
+        DYNAMIC_SEG=$(cat "${_MCP_SIDECAR}" 2>/dev/null || true)
+        ;;
+    esac
   fi
 fi
 

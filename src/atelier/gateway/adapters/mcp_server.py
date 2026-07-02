@@ -107,6 +107,26 @@ logger = logging.getLogger(__name__)
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "atelier"
 SERVER_VERSION = atelier_version
+# Injected into the host's system prompt via the MCP initialize response — the
+# one steering surface every MCP client reads automatically, even hosts and
+# subagents that never receive Atelier's persona files. Tool descriptions alone
+# demonstrably do not change behavior: agents default to bash grep/cat and use
+# the indexed tools ~5% of the time. Keep this compact; it rides in every
+# session's prompt.
+SERVER_INSTRUCTIONS = (
+    "Atelier replaces the grep→read→re-read exploration loop. Reach for "
+    "`code_search` BEFORE and while writing or editing code: one call returns "
+    "the relevant symbols' verbatim source grouped by file PLUS callers/callees/"
+    "usages and a blast-radius summary — more accurate context in far fewer "
+    "tokens and round-trips than finding and reading files yourself. Do not "
+    "grep or read files to find or understand indexed code, and do not "
+    "re-verify `code_search` results with shell grep — they come from a full "
+    "index; re-checking is slower and wastes context. With a known path use "
+    "`read` (batch files=[...], exact :Lx-Ly ranges, head=/tail=) — never "
+    "cat/sed/head/tail. `bash` is for execution (tests, git, builds), not for "
+    "file content or code search; grep-style shell commands over workspace "
+    "code are coached once, then blocked."
+)
 CONTEXT_WINDOW_TOKENS = 200_000
 COMPACT_ADVISORY_THRESHOLD = 60.0
 AUTO_COMPACT_THRESHOLD = 80.0
@@ -2812,12 +2832,14 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             entry["rid"] = rid
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
-        # Invalidate the in-memory historical savings cache so the next
-        # statusline_segment call picks up the new savings row immediately.
+        # Fold the new row into the in-memory historical window totals (O(1)).
+        # Invalidating instead would force a full sessions/** re-scan on the
+        # next statusline render for every append; the cache's normal TTL
+        # still refreshes the totals to pick up other processes' writes.
         try:
-            from atelier.core.capabilities.savings_summary import _invalidate_historical_savings_cache as _inval_cache
+            from atelier.core.capabilities.savings_summary import _bump_historical_savings_cache as _bump_cache
 
-            _inval_cache()
+            _bump_cache(entry)
         except ImportError:
             pass
     except Exception:
@@ -2865,13 +2887,19 @@ def _write_statusline_sidecar() -> None:
     try:
         from atelier.core.foundation.paths import session_dir
 
-        seg_path = session_dir(_atelier_root(), _detect_agent(), sid) / "statusline_segment"
-        from atelier.core.capabilities.savings_summary import savings_segment
+        seg_dir = session_dir(_atelier_root(), _detect_agent(), sid)
+        from atelier.core.capabilities.savings_summary import savings_frames
 
-        seg = savings_segment(session_id=sid)
-        if seg:
-            seg_path.parent.mkdir(parents=True, exist_ok=True)
-            seg_path.write_text(seg, encoding="utf-8")
+        frames = savings_frames(session_id=sid)
+        if frames:
+            seg_dir.mkdir(parents=True, exist_ok=True)
+            # All frames, one per line: statusline.sh picks by wall clock so
+            # rotation continues BETWEEN sidecar writes instead of freezing on
+            # whichever single frame was current at write time.
+            (seg_dir / "statusline_frames").write_text("\n".join(frames) + "\n", encoding="utf-8")
+            # Legacy single-frame sidecar for older installed statusline.sh.
+            idx = int(_time.time() // 5) % len(frames)
+            (seg_dir / "statusline_segment").write_text(frames[idx], encoding="utf-8")
     except Exception:  # noqa: BLE001 - infrastructure path, must never raise
         _log.debug("statusline sidecar write failed", exc_info=True)
 
@@ -7466,20 +7494,54 @@ _CODE_BATCH_KEYS: tuple[str, ...] = (
 )
 
 
+# Vanilla Read dumps up to 2000 lines per file (~40 chars/line of typical
+# source). Counterfactual reads of surfaced files are capped here per file so
+# a giant file can never inflate the credit past what vanilla would inline.
+_VANILLA_READ_FILE_CAP_CHARS = 80_000
+
+
 def _finish_code_result(result: dict[str, Any]) -> dict[str, Any]:
     # Infer calls_saved for batched ops. One code-intel call replaces a locating
     # grep plus a read per DISTINCT file surfaced -- not one call per returned
     # item (20 symbols across 3 files is ~3 avoided reads, not 19 avoided
     # calls). Credit distinct files: (1 grep + N reads) - the 1 call made = N.
     # Items without file info credit only the single locate scan they replaced.
-    if isinstance(result, dict) and "calls_saved" not in result:
+    surfaced_paths: set[str] = set()
+    if isinstance(result, dict):
         for key in _CODE_BATCH_KEYS:
             items = result.get(key)
             if isinstance(items, list) and len(items) > 1:
                 paths = {str(item.get("path") or item.get("file") or "") for item in items if isinstance(item, dict)}
                 paths.discard("")
-                result["calls_saved"] = len(paths) if paths else 1
+                surfaced_paths = paths
+                if "calls_saved" not in result:
+                    result["calls_saved"] = len(paths) if paths else 1
                 break
+    # Counterfactual token credit: vanilla explores by grepping and then
+    # Reading each surfaced file; what it would have inlined (capped per file)
+    # minus what this one call actually returned is context we kept out.
+    # The engine may already stamp a packing credit (projected vs full symbol
+    # source) -- both measure the same avoidance against different baselines,
+    # so take the LARGER of the two, never the sum.
+    if surfaced_paths and isinstance(result, dict):
+        vanilla_chars = 0
+        for p in surfaced_paths:
+            try:
+                vanilla_chars += min(os.stat(p).st_size, _VANILLA_READ_FILE_CAP_CHARS)
+            except OSError:
+                continue  # non-file / unreadable path: no counterfactual read
+        if vanilla_chars > 0:
+            try:
+                returned_chars = len(json.dumps(result, default=str))
+            except (TypeError, ValueError):
+                returned_chars = 0
+            counterfactual = max(0, vanilla_chars - returned_chars) // 4
+            existing = max(
+                _coerce_saved_tokens(result.get("tokens_saved")),
+                int(getattr(_tool_call_tokens_saved, "value", 0) or 0),
+            )
+            if counterfactual > existing:
+                result["tokens_saved"] = counterfactual
     engine = getattr(_code_engine_for_current_call, "value", None)
     if engine is not None and isinstance(result, dict) and "index_status" not in result:
         try:
@@ -10540,6 +10602,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 "protocolVersion": PROTOCOL_VERSION,
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                 "capabilities": {"tools": {}},
+                # Read automatically by MCP clients and folded into the host
+                # system prompt — the steering surface that reaches every host
+                # and subagent, installed personas or not.
+                "instructions": SERVER_INSTRUCTIONS,
             },
         )
     if method == "notifications/initialized":
@@ -12129,6 +12195,14 @@ def _warm_stdio_code_index() -> None:
         warm_stdio_workspace(_workspace_root())
     except Exception:
         logging.exception("Recovered from broad exception handler")
+    # Warm the query path of the cached serving engine (page cache, centrality,
+    # ANN matrix) so the first tool call never pays a cold-DB spike. Runs on
+    # this daemon thread; fail-open.
+    try:
+        engine = _code_context_engine(str(_workspace_root()))
+        _log.info("code query path warmed: %s", engine.warm_query_path())
+    except Exception:  # noqa: BLE001
+        _log.debug("query-path warm failed", exc_info=True)
 
 
 def _warm_stdio_embedder() -> None:

@@ -123,7 +123,7 @@ def main() -> int:
 
     # one query embed batch, reused for both corpora
     uq = sorted({q for q, _ in pairs})
-    qvecs = {q: v for q, v in zip(uq, np.asarray(model.embed_queries(uq), np.float32))}
+    qvecs = {q: v for q, v in zip(uq, np.asarray(model.embed_queries(uq), np.float32), strict=False)}
 
     def sem_files(qv, mat):
         order = np.argsort(-(mat @ qv))

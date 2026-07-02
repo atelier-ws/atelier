@@ -10,7 +10,7 @@ from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 ROOT = "/home/pankaj/Projects/leanchain/atelier"
 d = json.load(open(f"{ROOT}/benchmarks/codebench/data/bench_pairs_multi.json"))
 repos, pairs, true_map = d["repos"], d["pairs"], d["true_map"]
-PFX = [x for x in repos if "astropy" in x][0]
+PFX = next(x for x in repos if "astropy" in x)
 WS = Path(repos[PFX]["ws"])
 DB = Path(repos[PFX]["db"]) if repos[PFX].get("db") else None
 

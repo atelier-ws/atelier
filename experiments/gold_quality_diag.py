@@ -96,7 +96,7 @@ def main() -> int:
     cats = {"non-symbolic": 0, "gold-defines": 0, "gold-elsewhere": 0}
     test_gold = 0
     # MRR accumulators per category, plus overall
-    mrr = {k: [0.0, 0] for k in list(cats) + ["ALL", "fair(gold-defines)"]}
+    mrr = {k: [0.0, 0] for k in [*list(cats), "ALL", "fair(gold-defines)"]}
     miss_cats = {k: 0 for k in cats}
     examples = []
     for q, tid in pairs:

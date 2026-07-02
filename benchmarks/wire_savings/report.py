@@ -5,7 +5,7 @@ model response (Bedrock or Anthropic-direct), aggregates per capture, and
 prints a comparison table with a token->USD translation.
 
 No Anthropic API key needed -- capture works with a Bedrock key or a Claude
-Pro/Max subscription. See ``README.md`` for the full setup.
+Pro/Max subscription.
 
     # terminal A -- start the proxy, one capture file per run:
     mitmdump -w atelier_off.flow

@@ -79,7 +79,7 @@ def main(run_dir):
             meta[(r["task"], r["arm"], r["rep"])] = r
     agg = defaultdict(lambda: defaultdict(float))
     n = defaultdict(int)
-    for (task, arm, rep), r in meta.items():
+    for (task, arm, _rep), r in meta.items():
         if task not in LOSS or not r.get("ok"):
             continue
         fp = r.get("flow_path") or ""

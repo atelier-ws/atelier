@@ -1,4 +1,0 @@
-Corpus: 4975  Queries: 2000
-Embedding corpus with BGE ...
-  16/4975
-  2000/4975

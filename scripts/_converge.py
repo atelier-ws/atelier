@@ -26,7 +26,7 @@ xs = [r[2] for r in rows]
 
 def corr(a, b):
     ma, mb = statistics.mean(a), statistics.mean(b)
-    num = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    num = sum((x - ma) * (y - mb) for x, y in zip(a, b, strict=False))
     den = (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** 0.5
     return num / den if den else 0
 

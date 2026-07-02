@@ -97,7 +97,7 @@ def main():
     print(f"\nbaseline 50 total:        ${base_tot:7.2f}")
     print(f"atelier 50 (final_5rep):  ${old_tot:7.2f}   ({pct(old_tot, base_tot):+.1f}% vs baseline)")
     print(f"atelier 50 (w/ re-runs):  ${new_tot:7.2f}   ({pct(new_tot, base_tot):+.1f}% vs baseline)")
-    print(f"\nper-task swaps (task: old_atelier -> new_atelier | baseline):")
+    print("\nper-task swaps (task: old_atelier -> new_atelier | baseline):")
     swapped.sort(key=lambda x: x[1] - x[2], reverse=True)
     for t, o, nw, b in swapped:
         print(f"  {t[:34]:34} ${o:6.3f} -> ${nw:6.3f}  (saved ${o - nw:+6.3f}) | base ${b:6.3f}")

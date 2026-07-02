@@ -106,7 +106,10 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     click.echo(f"Results: {run_dir}")
 
 
-_ATELIER_CHANNELS = ["lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic"]
+# Atelier channels are env-toggled variants of the SAME shipped stdio surface
+# (--provider atelier): no in-process shortcuts, no pure-zoekt diagnostic (it
+# bypassed the shipped pipeline and died with fitness_explore_mrr.py).
+_ATELIER_CHANNELS = ["lexical", "lexical+zoekt", "lexical+zoekt+semantic"]
 _EXTERNAL_CHANNELS = ["cg", "ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "rg", "cmm"]
 _RETRIEVAL_CHANNELS = _ATELIER_CHANNELS + _EXTERNAL_CHANNELS
 _ALL_CHANNEL = "all"
@@ -136,10 +139,11 @@ def _channel_cmd_env(
     full: bool,
     sample: int,
     repo: str,
-    workers: int,
     pairs: Path | None,
-    reindex: bool,
 ) -> tuple[list[str], dict[str, str], list[Path]]:
+    """Every channel -- Atelier included -- runs through the same provider
+    harness over the shipped stdio surface. Atelier channel variants are env
+    toggles the server honours (the provider forwards its environment)."""
     import os
     import sys
 
@@ -148,44 +152,30 @@ def _channel_cmd_env(
     env["FITNESS_PAIRS"] = ",".join(str(g) for g in golds)
     env["EVAL_PAIRS"] = str(golds[0])
 
-    if channel in _EXTERNAL_CHANNELS:
-        # External provider (incl. cmm): delegate to eval_external_provider_mrr.py
-        cmd: list[str] = [
-            sys.executable,
-            "benchmarks/codebench/eval_external_provider_mrr.py",
-            "--provider",
-            channel,
-        ]
-        if full:
-            cmd.append("--full")
-        elif sample:
-            cmd += ["--sample", str(sample)]
-        if repo:
-            cmd += ["--repo", repo]
-    else:
-        env["FITNESS_WORKERS"] = str(workers)
-        if channel == "zoekt":
-            env.setdefault("ATELIER_ZOEKT_MODE", "installed")
-            env["ATELIER_ZOEKT_LOC_THRESHOLD"] = "1"
-            env["FITNESS_CHANNEL"] = "zoekt"
-        elif channel == "lexical+zoekt":
-            env["FITNESS_CHANNEL"] = "lexical+zoekt"
-        elif channel == "lexical+zoekt+semantic":
-            env["FITNESS_CHANNEL"] = "lexical+zoekt+semantic"
-            # Use the embedder pinned by ATELIER_CODE_EMBEDDER in the caller's
-            # env, or fall back to the configured best (nomic by default).
-            env.setdefault("ATELIER_CODE_EMBEDDER", os.environ.get("ATELIER_CODE_EMBEDDER", "nomic"))
-        else:
-            env["FITNESS_CHANNEL"] = "lexical"
-        cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
-        if full:
-            cmd.append("--full")
-        elif sample:
-            cmd += ["--sample", str(sample)]
-        if repo:
-            cmd += ["--repo", repo]
-        if reindex:
-            cmd.append("--reindex")
+    provider = "atelier" if channel in _ATELIER_CHANNELS else channel
+    env["EVAL_CHANNEL_LABEL"] = channel
+    if channel == "lexical":
+        env["ATELIER_ZOEKT_MODE"] = "off"
+        env["ATELIER_EXPLORE_SEMANTIC"] = "0"
+    elif channel == "lexical+zoekt":
+        env["ATELIER_EXPLORE_SEMANTIC"] = "0"
+    elif channel == "lexical+zoekt+semantic":
+        # Use the embedder pinned by ATELIER_CODE_EMBEDDER in the caller's
+        # env, or fall back to the configured best (nomic by default).
+        env.setdefault("ATELIER_CODE_EMBEDDER", os.environ.get("ATELIER_CODE_EMBEDDER", "nomic"))
+
+    cmd: list[str] = [
+        sys.executable,
+        "benchmarks/codebench/eval_external_provider_mrr.py",
+        "--provider",
+        provider,
+    ]
+    if full:
+        cmd.append("--full")
+    elif sample:
+        cmd += ["--sample", str(sample)]
+    if repo:
+        cmd += ["--repo", repo]
 
     return cmd, env, golds
 
@@ -267,20 +257,21 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
         if repo == "OVERALL":
             mrr = gdata.get("mrr")
             hit1 = gdata.get("hit1")
+            hit2 = gdata.get("hit2")
             hit3 = gdata.get("hit3")
             n = gdata.get("n")
             lat = r.get("latency_ms", {})
-            p100 = lat.get("max") if isinstance(lat, dict) else None
         else:
             byr = gdata.get("by_repo", {}).get(repo) or {}
-            mrr, hit1, hit3, n = byr.get("mrr"), byr.get("hit1"), byr.get("hit3"), byr.get("n")
+            mrr, hit1, hit2, hit3, n = byr.get("mrr"), byr.get("hit1"), byr.get("hit2"), byr.get("hit3"), byr.get("n")
             lat = byr.get("latency_ms") or {}
-            p100 = lat.get("max") if isinstance(lat, dict) else None
-        return mrr, hit1, hit3, n, p100
+        p95 = lat.get("p95") if isinstance(lat, dict) else None
+        p100 = lat.get("max") if isinstance(lat, dict) else None
+        return mrr, hit1, hit2, hit3, n, p95, p100
 
     fieldnames = ["repo", "gold_kind"]
     for ch in channels:
-        fieldnames += [f"{ch}_MRR", f"{ch}_hit1", f"{ch}_hit3", f"{ch}_n", f"{ch}_p100ms"]
+        fieldnames += [f"{ch}_MRR", f"{ch}_hit1", f"{ch}_hit2", f"{ch}_hit3", f"{ch}_n", f"{ch}_p95ms", f"{ch}_p100ms"]
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="") as fh:
@@ -291,11 +282,13 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
             for gk in gold_kinds:
                 row_d: dict[str, object] = {"repo": short, "gold_kind": gk}
                 for ch in channels:
-                    mrr, hit1, hit3, n, p100 = get_full(ch, gk, repo)
+                    mrr, hit1, hit2, hit3, n, p95, p100 = get_full(ch, gk, repo)
                     row_d[f"{ch}_MRR"] = f"{mrr:.4f}" if mrr is not None else ""
                     row_d[f"{ch}_hit1"] = f"{hit1:.4f}" if hit1 is not None else ""
+                    row_d[f"{ch}_hit2"] = f"{hit2:.4f}" if hit2 is not None else ""
                     row_d[f"{ch}_hit3"] = f"{hit3:.4f}" if hit3 is not None else ""
                     row_d[f"{ch}_n"] = n if n is not None else ""
+                    row_d[f"{ch}_p95ms"] = f"{int(p95)}" if p95 is not None else ""
                     row_d[f"{ch}_p100ms"] = f"{int(p100)}" if p100 is not None else ""
                 writer.writerow(row_d)
     click.echo(f"[eval] CSV written -> {csv_path}", err=True)
@@ -312,32 +305,19 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
     help="Channel(s) to benchmark. Repeatable for side-by-side comparison: "
     "--channel lexical --channel lexical+zoekt. "
     "Use 'all' to run every channel. "
-    "Atelier: lexical, zoekt, lexical+zoekt, lexical+zoekt+semantic. "
+    "Atelier (env-toggled variants of the shipped MCP surface): lexical, "
+    "lexical+zoekt, lexical+zoekt+semantic. "
     "External: cg, ctags, ast-grep, serena, code-index-mcp, jcodemunch, rg, cmm.",
 )
 @click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
 @click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
 @click.option("--repo", default="", metavar="PREFIX", help="Substring filter on repo prefix.")
 @click.option(
-    "-j",
-    "--workers",
-    type=int,
-    default=1,
-    show_default=True,
-    help="Parallel workers. Keep 1 for trustworthy latency numbers.",
-)
-@click.option(
     "--pairs",
     type=click.Path(path_type=Path),
     default=None,
     help="Explicit (query, gold-file) pairs JSON. Default scores BOTH golds "
     "(definition = FTS-symbol's task, content = Zoekt's task) in one run.",
-)
-@click.option(
-    "--reindex",
-    is_flag=True,
-    default=False,
-    help="Re-index all repos via 'atelier code index --reindex --db-path' before benchmarking.",
 )
 @click.option(
     "--csv",
@@ -353,21 +333,28 @@ def _render_comparison(channel_results: dict[str, dict], csv_path: Path | None =
     default=True,
     help="--parallel runs channels concurrently (faster but shared CPU skews latency). Default: serial.",
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    default=False,
+    help="Reuse per-channel results already cached beside --csv (in <csv-stem>_channels/): "
+    "skip channels that finished, run only the missing ones, then re-render the CSV. "
+    "Lets a long multi-channel/all-gold sweep continue after an interruption without redoing finished channels.",
+)
 def eval_retrieval(
     channels: tuple[str, ...],
     full: bool,
     sample: int,
     repo: str,
-    workers: int,
     pairs: Path | None,
-    reindex: bool,
     csv_path: Path | None,
     serial: bool,
+    resume: bool,
 ) -> None:
     """Retrieval MRR + latency over definition + content golds.
 
     Scores BOTH golds (definition = which file defines the symbol, content =
-    which files contain the pattern) in one run. See RETRIEVAL_EVAL.md.
+    which files contain the pattern) in one run.
 
     Pass --channel multiple times for a side-by-side comparison table::
 
@@ -391,15 +378,40 @@ def eval_retrieval(
                     expanded.append(t)
         channels = tuple(expanded)
 
+    # Per-channel result cache: each channel's JSON is persisted the moment it
+    # finishes, so a --resume run can skip completed channels and re-run only the
+    # missing ones — essential for long all-gold sweeps across many channels that
+    # may be interrupted. Location derives from --csv so the cache sits beside the
+    # output; without --csv, --resume falls back to a repo-local cache dir.
+    results_dir: Path | None = None
+    if csv_path is not None:
+        results_dir = csv_path.parent / f"{csv_path.stem}_channels"
+    elif resume:
+        results_dir = repo_root / ".eval_retrieval_channels"
+    if results_dir is not None:
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+    def _cache_path(ch: str) -> Path | None:
+        if results_dir is None:
+            return None
+        safe = ch.replace("+", "_").replace("/", "_")
+        return results_dir / f"{safe}.json"
+
     def _run_channel(ch: str) -> tuple[str, dict | None]:
+        cache = _cache_path(ch)
+        if resume and cache is not None and cache.exists():
+            try:
+                cached = json.loads(cache.read_text())
+                click.echo(f"[eval] resume channel={ch} (cached {cache})", err=True)
+                return ch, cached
+            except Exception:  # noqa: BLE001 — corrupt cache: fall through and re-run
+                click.echo(f"[eval] cache for channel={ch} unreadable — re-running", err=True)
         cmd, env, _ = _channel_cmd_env(
             ch,
             full=full,
             sample=sample,
             repo=repo,
-            workers=workers,
             pairs=pairs,
-            reindex=reindex,
         )
         click.echo(f"[eval] start channel={ch} :: {' '.join(cmd)}", err=True)
         proc = subprocess.run(cmd, cwd=repo_root, env=env, check=False, stdout=subprocess.PIPE)
@@ -412,23 +424,26 @@ def eval_retrieval(
             if line.startswith("{"):
                 try:
                     result = json.loads(line)
-                    click.echo(f"[eval] done  channel={ch}", err=True)
-                    return ch, result
                 except json.JSONDecodeError:
-                    pass
+                    continue
+                if cache is not None:
+                    try:
+                        cache.write_text(json.dumps(result))
+                    except Exception:  # noqa: BLE001 — caching is best-effort
+                        pass
+                click.echo(f"[eval] done  channel={ch}", err=True)
+                return ch, result
         click.echo(f"[eval] channel={ch}: no JSON in stdout — check stderr above", err=True)
         return ch, None
 
-    if len(channels) == 1 and csv_path is None:
+    if len(channels) == 1 and csv_path is None and not resume:
         # Fast path: single channel with no CSV — stream directly.
         cmd, env, golds = _channel_cmd_env(
             channels[0],
             full=full,
             sample=sample,
             repo=repo,
-            workers=workers,
             pairs=pairs,
-            reindex=reindex,
         )
         click.echo(f"[eval] channel={channels[0]} golds={len(golds)} :: {' '.join(cmd)}", err=True)
         raise SystemExit(subprocess.run(cmd, cwd=repo_root, env=env, check=False).returncode)
@@ -552,7 +567,7 @@ def eval_fitness(
         _pd = _json.loads(out.read_text())
         _session_count = len(_pd.get("pairs", []))
         _session_prefix = next(iter(_pd.get("repos", {})), "")
-    except Exception:
+    except (_json.JSONDecodeError, KeyError, TypeError):
         pass
     syn_cmd = [
         *_bm._python_cmd(bench_root),
@@ -589,7 +604,7 @@ def eval_fitness(
         _pd = _json.loads(out.read_text())
         _session_count = len(_pd.get("pairs", []))
         _session_prefix = next(iter(_pd.get("repos", {})), "")
-    except Exception:
+    except (_json.JSONDecodeError, KeyError, TypeError):
         pass
     sem_cmd = [
         *_bm._python_cmd(bench_root),

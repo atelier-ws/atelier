@@ -19,7 +19,7 @@ pairs = DATA["pairs"]
 
 # group queries by repo prefix
 by_prefix = collections.defaultdict(list)
-for q, tid, prefix in pairs:
+for q, _tid, prefix in pairs:
     by_prefix[prefix].append(q)
 
 SAMPLE_PER_REPO = int(os.environ.get("SAMPLE_PER_REPO", "12"))

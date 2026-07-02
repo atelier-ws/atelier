@@ -241,21 +241,27 @@ def main() -> int:
             # long-lived MCP server recovers the live id across /clear without
             # racing a shared workspace slot. Best-effort; uses the same
             # workspace key the MCP server resolves with.
-            with suppress(Exception):
-                from atelier.core.foundation.session_window import (
-                    register_window_session,
-                    workspace_hash,
-                )
+            # Skipped for source=="clear": Claude Code fires SessionStart(clear)
+            # with the PRE-clear session id — anchoring it would point the MCP
+            # server's savings attribution at a dead session. The
+            # UserPromptSubmit hook re-anchors with the live post-clear id on
+            # the first prompt instead.
+            if source != "clear":
+                with suppress(Exception):
+                    from atelier.core.foundation.session_window import (
+                        register_window_session,
+                        workspace_hash,
+                    )
 
-                _ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
-                register_window_session(
-                    _atelier_root(),
-                    workspace_hash(_ws),
-                    session_id=session_id_raw,
-                    source=source,
-                    transcript_path=transcript_path,
-                    model=model,
-                )
+                    _ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+                    register_window_session(
+                        _atelier_root(),
+                        workspace_hash(_ws),
+                        session_id=session_id_raw,
+                        source=source,
+                        transcript_path=transcript_path,
+                        model=model,
+                    )
 
         # On /clear, drop a marker so the statusline snapshots the current
         # cumulative live cost as a baseline and shows only post-clear spend.

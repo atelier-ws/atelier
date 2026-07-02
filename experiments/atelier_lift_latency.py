@@ -178,8 +178,7 @@ def main() -> int:
         v = lat[k]
         print("  %-7s mean=%.2f p50=%.2f p95=%.2f" % (k, sum(v) / len(v), pct(v, 50), pct(v, 95)))
     print(
-        "  -> semantic channel adds ~%.1f ms p50 (embed+cosine) for %+.4f MRR (fused vs lexical)"
-        % (pct(lat["sem"], 50), mrr("fused") - mrr("lex"))
+        "  -> semantic channel adds ~{:.1f} ms p50 (embed+cosine) for {:+.4f} MRR (fused vs lexical)".format(pct(lat["sem"], 50), mrr("fused") - mrr("lex"))
     )
     return 0
 

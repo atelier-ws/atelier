@@ -17,11 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
-import sys
-from datetime import UTC, datetime
 from pathlib import Path
-from shutil import which
 from typing import Any
 
 import click
@@ -119,109 +115,6 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool) ->
                     click.echo(f"  {k2}: {v2}")
             else:
                 click.echo(f"{k}: {v}")
-
-
-@savings_cmd.command("wire")
-@click.argument("captures", nargs=-1, required=False)
-@click.option(
-    "--input-price",
-    type=float,
-    default=3.0,
-    show_default=True,
-    help="Input token price per 1M tokens.",
-)
-@click.option(
-    "--output-price",
-    type=float,
-    default=15.0,
-    show_default=True,
-    help="Output token price per 1M tokens.",
-)
-@click.option(
-    "--cache-read",
-    type=float,
-    default=0.30,
-    show_default=True,
-    help="Cache-read token price per 1M tokens.",
-)
-@click.option(
-    "--cache-write",
-    type=float,
-    default=3.75,
-    show_default=True,
-    help="Cache-write token price per 1M tokens.",
-)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-def savings_wire_cmd(
-    captures: tuple[str, ...],
-    input_price: float,
-    output_price: float,
-    cache_read: float,
-    cache_write: float,
-    out: Path | None,
-) -> None:
-    """Compare provider-billed usage from mitmproxy .flow captures."""
-    if not captures:
-        raise click.ClickException(
-            "Provide captures as LABEL=PATH. Example: atelier savings wire baseline=off.flow atelier=on.flow"
-        )
-    repo_root = Path.cwd().resolve()
-    run_dir = _wire_report_dir(out)
-    report_path = run_dir / "report.txt"
-    report = _run_capture(
-        [
-            *_python_cmd(repo_root),
-            "-m",
-            "benchmarks.wire_savings.report",
-            *captures,
-            "--in",
-            str(input_price),
-            "--out",
-            str(output_price),
-            "--cache-read",
-            str(cache_read),
-            "--cache-write",
-            str(cache_write),
-        ],
-        cwd=repo_root,
-        label="wire savings report",
-    )
-    report_path.write_text(report, encoding="utf-8")
-    click.echo(f"Report: {report_path}")
-
-
-def _wire_report_dir(out: Path | None) -> Path:
-    if out is not None:
-        path = out.resolve()
-    else:
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        path = Path.cwd().resolve() / "reports" / "savings" / "wire" / timestamp
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _python_cmd(repo_root: Path) -> list[str]:
-    if which("uv") and (repo_root / "pyproject.toml").is_file():
-        return ["uv", "run", "--project", str(repo_root), "python"]
-    return [sys.executable]
-
-
-def _run_capture(cmd: list[str], *, cwd: Path, label: str) -> str:
-    click.echo("Running: " + " ".join(cmd))
-    completed = subprocess.run(
-        cmd,
-        check=False,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if completed.stdout:
-        click.echo(completed.stdout.rstrip())
-    if completed.stderr:
-        click.echo(completed.stderr.rstrip(), err=True)
-    if completed.returncode != 0:
-        raise click.ClickException(f"{label} failed with exit {completed.returncode}")
-    return completed.stdout
 
 
 def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:

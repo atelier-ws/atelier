@@ -117,6 +117,24 @@ def test_review_verdict_consumed_ignored(atelier_root: Path) -> None:
     assert _read_review_verdict(sid, atelier_root) == ""
 
 
+def test_savings_frames_weighted_and_segment_consistent(atelier_root: Path) -> None:
+    """savings_frames returns the full weighted list (frame 0 x3) and
+    savings_segment always returns one of its entries — the MCP sidecar and
+    the subprocess path can never disagree on frame content."""
+    from atelier.core.capabilities.savings_summary import savings_frames, savings_segment
+
+    kw = {"live_cost_usd": 1.234, "live_in_tok": 10_000, "live_cache_tok": 50_000, "live_out_tok": 2_000}
+    frames = savings_frames("", atelier_root=atelier_root, no_color=True, **kw)  # type: ignore[arg-type]
+    assert len(frames) >= 3
+    assert frames[0] == frames[1] == frames[2]  # frame 0 holds 3 slots
+    assert "1.234" in frames[0]
+
+    for i in range(len(frames) + 1):
+        _set_frame(atelier_root, i)
+        seg = savings_segment("", atelier_root=atelier_root, no_color=True, **kw)  # type: ignore[arg-type]
+        assert seg in frames, f"counter={i}: {seg!r} not in frames"
+
+
 def test_segment_pins_review_needs_fix(atelier_root: Path) -> None:
     """NEEDS_FIX verdict must appear on every frame."""
     sid = "pinned-session"

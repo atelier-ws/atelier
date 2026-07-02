@@ -1,22 +1,0 @@
-Corpus: 4975  Queries: 2000
-Loaded saved corpus embeddings: (4975, 4096)
-query 1/2000query 100/2000query 200/2000query 300/2000query 400/2000query 500/2000query 600/2000query 700/2000query 800/2000query 900/2000query 1000/2000query 1100/2000query 1200/2000query 1300/2000query 1400/2000query 1500/2000query 1600/2000query 1700/2000query 1800/2000query 1900/2000query 2000/2000
-
-============================================================
-Metric                     Qwen3-Embedding-8B (4975×2000)
-============================================================
-  hit@1                     0.5820  (58.20%)
-  hit@5                     0.7865  (78.65%)
-  hit@10                    0.8280  (82.80%)
-  hit@20                    0.8660  (86.60%)
-  recall@1                  0.5820  (58.20%)
-  recall@5                  0.7865  (78.65%)
-  recall@10                 0.8280  (82.80%)
-  recall@20                 0.8660  (86.60%)
-  mrr@10                    0.6697  (66.97%)
-  ndcg@10                   0.7084  (70.84%)
-  latency_p50_ms            87.0
-  latency_p95_ms            104.8
-  dimensions                4096
-  index_size_mb             77.7
-

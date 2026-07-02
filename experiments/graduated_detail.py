@@ -180,7 +180,7 @@ def main(run_dir):
             f"  => 2x size is from {'BATCHING multiple files' if rd_files / rd_calls > 1.3 else 'wider single reads'}"
         )
     print(f"\n=== CODE_SEARCH parse recovery: {dict(parse_status)} ===")
-    print(f"\n=== CODE_SEARCH: edit-rate & source size by file POSITION ===")
+    print("\n=== CODE_SEARCH: edit-rate & source size by file POSITION ===")
     print(f"  {'pos':>4}{'appeared':>10}{'edited':>8}{'edit%':>7}{'avg src chars':>15}")
     tot_src = tot_savable = 0
     for pos in sorted(pos_count):

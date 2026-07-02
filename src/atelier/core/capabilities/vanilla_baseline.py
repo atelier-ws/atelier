@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -173,7 +174,8 @@ _DETECTORS: tuple[tuple[str, Any], ...] = (
 # Mtime-keyed cache for replay_session: the result only changes when the
 # transcript file changes (a new Claude turn is appended). Avoids re-running
 # all detectors on every statusline poll when the transcript is stable.
-_replay_session_cache: dict[str, tuple[float, dict[str, Any]]] = {}  # path_str → (mtime, result)
+_REPLAY_MIN_INTERVAL_S = 120.0  # floor between full-transcript replays per path
+_replay_session_cache: dict[str, tuple[float, dict[str, Any], float]] = {}  # path → (mtime, result, computed_at)
 
 
 def replay_session(transcript_path: str | Path) -> dict[str, Any]:
@@ -195,8 +197,14 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
         _mtime = 0.0
     _key = str(_path)
     _cached = _replay_session_cache.get(_key)
-    if _cached is not None and _cached[0] == _mtime:
-        return _cached[1]
+    if _cached is not None:
+        _c_mtime, _c_result, _c_at = _cached
+        # mtime-unchanged means the transcript didn't grow. The TTL floor
+        # additionally rate-limits recompute while a session actively streams
+        # turns: the replay re-reads the whole transcript, and the "vs vanilla"
+        # counterfactual doesn't need per-turn precision.
+        if _c_mtime == _mtime or time.time() - _c_at < _REPLAY_MIN_INTERVAL_S:
+            return _c_result
     turns = build_turns(transcript_path)
     consumed: set[str] = set()
 
@@ -221,7 +229,7 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
         "cost_saved_usd": round(calls_saved * per_call_cost, 6),
         "by_detector": by_detector,
     }
-    _replay_session_cache[_key] = (_mtime, _result)
+    _replay_session_cache[_key] = (_mtime, _result, time.time())
     return _result
 
 

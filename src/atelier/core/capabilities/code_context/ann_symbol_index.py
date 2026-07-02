@@ -39,13 +39,40 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import struct
+import sys
 import threading
 from dataclasses import dataclass
 from typing import Any
 
-from atelier.infra.storage.vector import cosine_similarity
+
+def _cap_native_thread_pools() -> None:
+    """Cap native BLAS/OMP pools BEFORE numpy first loads (engine-owned).
+
+    numpy is imported lazily inside this module's methods; without a cap each
+    process spawns ~ncpu OpenBLAS threads for ``matrix @ query``. Under
+    concurrent engines (several repo servers, benchmark workers) that
+    oversubscribes the cores into a context-switch storm: measured 100-250
+    runnable threads on 32 cores with near-zero parallel speedup. A small cap
+    keeps useful matmul parallelism while bounding the fan-out. ``setdefault``
+    means explicit environment settings always win; tune via
+    ATELIER_BLAS_THREADS. No-op when numpy is already loaded.
+    """
+    if "numpy" in sys.modules:
+        return
+    cap = os.environ.get("ATELIER_BLAS_THREADS", "4")
+    for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ.setdefault(var, cap)
+
+
+# Must run before any module that imports numpy at import time (the
+# atelier.infra.storage.vector import below does) -- once numpy is loaded the
+# env vars are inert.
+_cap_native_thread_pools()
+
+from atelier.infra.storage.vector import cosine_similarity  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +131,7 @@ def ensure_symbol_vector_schema(conn: sqlite3.Connection) -> None:
     # The vector table always lives in the connection's main schema. An unqualified
     # name resolves to main first, so writes/reads land there even when the engine
     # has an (empty) vectors.sqlite attached as alias ``vectors``.
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS symbol_vectors (
             repo_id        TEXT NOT NULL,
             symbol_id      TEXT NOT NULL,
@@ -116,8 +142,7 @@ def ensure_symbol_vector_schema(conn: sqlite3.Connection) -> None:
             vector_blob    BLOB NOT NULL,
             PRIMARY KEY (repo_id, symbol_id)
         )
-        """
-    )
+        """)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance "
         "ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version)"

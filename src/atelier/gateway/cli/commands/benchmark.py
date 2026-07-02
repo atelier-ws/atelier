@@ -1241,7 +1241,12 @@ def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> 
 
 
 def _workspace_dir(suite: str, *, repo_root: Path, run_id: str) -> Path:
-    path = repo_root.resolve().parent / "benchmarks" / repo_root.name / suite / run_id
+    # mcp-only helper (eval_mcp is the sole caller): scratch per-shard
+    # artifacts and logs live inside the repo under benchmarks/mcp_tools/results/
+    # (gitignored), not a sibling directory outside the checkout. The
+    # committed results.csv/summary.csv stay at reports/benchmark/<suite>/ --
+    # the documented convention every other suite uses (see _codebench_run_dir).
+    path = repo_root.resolve() / "benchmarks" / "mcp_tools" / "results" / run_id / "workspace"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

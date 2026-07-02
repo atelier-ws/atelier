@@ -73,7 +73,7 @@ def main(run_dir):
             else:
                 full += 1
     print(f"atelier reads scanned: {total}")
-    print(f"\nby projection view:")
+    print("\nby projection view:")
     for v, n in proj.most_common():
         tag = "  <- spilled (large file)" if v in SPILLED else ""
         print(f"  {v:12} {n:>5}  ({n / max(total, 1) * 100:.0f}%){tag}")

@@ -43,8 +43,30 @@ def _scrub(text: str) -> str:
     return _KV_RE.sub(r"\1\2<redacted>", text)
 
 
+def _usage_from_bedrock_stream(raw: bytes) -> dict | None:
+    """Per-request token usage from Bedrock's binary event-stream framing.
+
+    Same base64 "bytes"-field frames `_iter_text_from_bedrock_stream` reads
+    for text, folded the same way `_usage_from_response`'s SSE loop folds
+    message_start/message_delta usage.
+    """
+    usage: dict | None = None
+    for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
+        try:
+            chunk = json.loads(base64.b64decode(b64))
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+            continue
+        if chunk.get("type") == "message_start":
+            usage = chunk.get("message", {}).get("usage") or usage
+        elif chunk.get("type") == "message_delta" and isinstance(chunk.get("usage"), dict):
+            if usage is None:
+                usage = {}
+            usage.update(chunk["usage"])
+    return usage
+
+
 def _usage_from_response(resp_raw: bytes) -> dict | None:
-    """Per-request token usage: JSON body `usage`, or SSE message_start/delta."""
+    """Per-request token usage: JSON body `usage`, SSE message_start/delta, or Bedrock event-stream."""
     try:
         return json.loads(resp_raw.decode("utf-8", errors="ignore")).get("usage")
     except (json.JSONDecodeError, ValueError, AttributeError):
@@ -63,6 +85,8 @@ def _usage_from_response(resp_raw: bytes) -> dict | None:
             if usage is None:
                 usage = {}
             usage.update(chunk["usage"])
+    if usage is None:
+        usage = _usage_from_bedrock_stream(resp_raw)
     return usage
 
 

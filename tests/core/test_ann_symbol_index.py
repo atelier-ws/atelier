@@ -265,7 +265,7 @@ def test_legacy_json_store_migrates_to_blob_only() -> None:
     idx = SymbolAnnIndex("repo")
     stored = idx.load_current_vectors(conn, embedder_name="m1", embedding_dim=4)
     assert {sv.symbol_id for sv in stored} == {"s0", "s1"}
-    assert dict(zip((sv.symbol_id for sv in stored), (sv.vector for sv in stored)))["s0"] == pytest.approx(vecs["s0"])
+    assert dict(zip((sv.symbol_id for sv in stored), (sv.vector for sv in stored), strict=False))["s0"] == pytest.approx(vecs["s0"])
 
 
 def test_load_current_matrix_matches_load_current_vectors() -> None:

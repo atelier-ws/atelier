@@ -6,7 +6,7 @@ import pathlib
 import subprocess
 
 ENGINE = pathlib.Path("src/atelier/core/capabilities/code_context/engine.py")
-FITNESS = "benchmarks/codebench/fitness_explore_mrr.py"
+FITNESS = "benchmarks/codebench/eval_external_provider_mrr.py"
 
 # ── exact strings that exist in current HEAD ─────────────────────────────────
 
@@ -150,10 +150,10 @@ def restore():
 
 def run_fitness() -> dict | None:
     r = subprocess.run(
-        ["uv", "run", "python", FITNESS],
+        ["uv", "run", "python", FITNESS, "--provider", "atelier"],
         capture_output=True,
         text=True,
-        env={**os.environ, "FITNESS_WORKERS": "4"},
+        env=dict(os.environ),
     )
     lines = [ln for ln in r.stdout.strip().splitlines() if ln.startswith("{")]
     return json.loads(lines[-1]) if lines else None

@@ -1,11 +1,13 @@
-"""External provider MRR benchmark.
+"""Retrieval provider MRR benchmark -- every provider, Atelier included, over
+the same stdio/CLI surface. No provider gets in-process shortcuts.
 
-Channels: ctags / ast-grep / serena / code-index-mcp / jcodemunch
-Same gold set and output JSON format as fitness_explore_mrr.py.
+Providers: atelier / ctags / ast-grep / serena / code-index-mcp / jcodemunch /
+cg / rg / cmm. Same gold set and output JSON format as the retired
+fitness_explore_mrr.py; history + delta reporting live here now.
 
 Run via:
-    atelier eval retrieval --channel ctags
-    atelier eval retrieval --channel ctags --channel lexical  # comparison table
+    uv run python benchmarks/codebench/eval_external_provider_mrr.py --provider atelier
+    uv run python benchmarks/codebench/eval_external_provider_mrr.py --provider ctags
 """
 
 from __future__ import annotations
@@ -125,7 +127,7 @@ _parser = argparse.ArgumentParser(description="External provider MRR benchmark")
 _parser.add_argument(
     "--provider",
     required=True,
-    choices=["ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "cg", "rg", "cmm"],
+    choices=["atelier", "ctags", "ast-grep", "serena", "code-index-mcp", "jcodemunch", "cg", "rg", "cmm"],
 )
 _parser.add_argument("--full", action="store_true")
 _parser.add_argument("--sample", type=int, default=None)
@@ -133,7 +135,11 @@ _parser.add_argument("--repo", default=os.environ.get("FITNESS_REPO", ""))
 _args, _ = _parser.parse_known_args()
 
 PROVIDER = _args.provider
-_TAG = f"[ext:{PROVIDER}]"  # per-provider tag so parallel runs don't interleave identically
+# Channel label: the CLI runs Atelier channel variants (lexical / lexical+zoekt /
+# lexical+zoekt+semantic) as env toggles on the same provider; the label keeps
+# their history and tags distinguishable.
+_LABEL = os.environ.get("EVAL_CHANNEL_LABEL", PROVIDER)
+_TAG = f"[ext:{_LABEL}]"  # per-channel tag so parallel runs don't interleave identically
 FULL = _args.full
 SAMPLE = _args.sample
 REPO_FILTER = _args.repo
@@ -542,65 +548,245 @@ class AstGrepProvider(Provider):
 # ---------------------------------------------------------------------------
 
 
-class SerenaProvider(Provider):
-    name = "serena"
+class _SerenaMCPClient:
+    """Non-destructive MCP stdio client for Serena.
 
-    def __init__(self) -> None:
-        self._runner: Any = None
-        self._home: Path | None = None
+    Unlike ``_JsonRpcLineClient`` this client **never kills** the subprocess on
+    timeout — it simply raises ``TimeoutError`` so the caller can decide whether
+    to retry or skip.  This is essential because Serena's first ``find_symbol``
+    call on a cold project can take 60-120s to start the LSP server.
+    """
 
-    def start(self, ws: Path) -> None:
-        import shutil
+    def __init__(self, command: list[str], *, env: dict[str, str] | None = None) -> None:
+        self.command = command
+        self.env = env
+        self.proc: subprocess.Popen[str] | None = None
+        self._next_id = 1
+        self._lock = threading.Lock()
 
-        from benchmarks.mcp_tools.bench_external_indexers import SerenaRunner
-
-        # Remove any stale .serena dir left by prior runs so bootstrap doesn't
-        # fail with "Project already exists".
-        stale = ws / ".serena"
-        if stale.exists():
-            shutil.rmtree(stale, ignore_errors=True)
-
-        self._home = Path(tempfile.mkdtemp(prefix="serena-home-"))
-        self._runner = SerenaRunner(
-            project_root=ws,
-            home_dir=self._home,
-            project_name="mrr-bench",
-            language=_SERENA_LANG_MAP.get(_dominant_lang(ws), _dominant_lang(ws)),
+    def start(self) -> None:
+        self.proc = subprocess.Popen(
+            self.command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            env=self.env,
         )
-        self._runner.bootstrap()
-        self._runner.start()
+        # MCP handshake
+        self._send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "clientInfo": {"name": "atelier-bench", "version": "1"},
+                    "capabilities": {},
+                },
+            }
+        )
+        self._recv(timeout=30)  # initialize response
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
+
+    def _send(self, msg: dict) -> None:
+        assert self.proc is not None and self.proc.stdin is not None
+        self.proc.stdin.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        self.proc.stdin.flush()
+
+    def _recv(self, *, timeout: float) -> dict:
+        """Read one JSON-RPC line from stdout with a wall-clock timeout.
+
+        Does **not** kill the subprocess if the timeout fires — only raises.
+        """
+        assert self.proc is not None and self.proc.stdout is not None
+        # Use select/poll on Unix to avoid killing the process
+        import select
+
+        ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
+        if not ready:
+            raise TimeoutError(f"no response from serena MCP server after {timeout:.0f}s")
+        line = self.proc.stdout.readline()
+        if not line:
+            raise BrokenPipeError("serena MCP server closed stdout")
+        msg = json.loads(line)
+        assert isinstance(msg, dict)
+        return msg
+
+    def call(self, method: str, params: dict, *, timeout: float = 300) -> dict:
+        """Send a JSON-RPC request and wait for the matching response."""
+        with self._lock:
+            req_id = self._next_id
+            self._next_id += 1
+            self._send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"serena MCP call '{method}' timed out after {timeout:.0f}s")
+                try:
+                    msg = self._recv(timeout=remaining)
+                except TimeoutError:
+                    raise
+                if isinstance(msg, dict) and msg.get("id") == req_id:
+                    return msg
+                # Skip other messages (notifications, responses to other requests)
 
     def stop(self) -> None:
-        if self._runner:
-            self._runner.stop()
-            self._runner = None
-        if self._home and self._home.exists():
+        if self.proc is None:
+            return
+        try:
+            self.proc.terminate()
+            self.proc.wait(timeout=6)
+        except Exception:
+            self.proc.kill()
+        self.proc = None
+
+
+class SerenaProvider(Provider):
+    """Persistent MCP-server-based provider for Serena.
+
+    Class-level state shares a single ``serena start-mcp-server --transport stdio``
+    process across all repos in a benchmark run, avoiding the per-repo
+    ``serena init`` + ``project create`` + server start/stop overhead.
+
+    Projects that already have a ``.serena/`` directory are reused as-is; only
+    missing projects are created on the fly.
+    """
+
+    name = "serena"
+
+    # -- Class-level persistent state (shared across all repos) ---------------
+    _mcp: _SerenaMCPClient | None = None
+    _serena_home: Path | None = None
+    _setup_done: bool = False
+
+    # -- Per-instance state ---------------------------------------------------
+    def __init__(self) -> None:
+        self._lang: str = "python"
+
+    # -- Global setup (once per script invocation) ----------------------------
+
+    @classmethod
+    def _global_init(cls) -> None:
+        if cls._setup_done:
+            return
+        cls._serena_home = Path(tempfile.mkdtemp(prefix="serena-bench-"))
+        env = {**os.environ, "HOME": str(cls._serena_home)}
+        proc = subprocess.run(
+            ["serena", "init", "-b", "LSP"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"serena global init failed: {(proc.stderr or proc.stdout)[:800]}")
+        cls._setup_done = True
+
+    @classmethod
+    def _ensure_mcp(cls) -> _SerenaMCPClient:
+        if cls._mcp is not None:
+            return cls._mcp
+        cls._global_init()
+        env = {**os.environ, "HOME": str(cls._serena_home)}
+        mcp = _SerenaMCPClient(
+            ["serena", "start-mcp-server", "--transport", "stdio"],
+            env=env,
+        )
+        mcp.start()
+        cls._mcp = mcp
+        import atexit
+
+        atexit.register(cls._global_cleanup)
+        return mcp
+
+    @classmethod
+    def _global_cleanup(cls) -> None:
+        if cls._mcp is not None:
+            with contextlib.suppress(Exception):
+                cls._mcp.stop()
+            cls._mcp = None
+        if cls._serena_home is not None and cls._serena_home.exists():
             import shutil
 
-            shutil.rmtree(self._home, ignore_errors=True)
+            shutil.rmtree(cls._serena_home, ignore_errors=True)
+            cls._serena_home = None
 
-    def _query(self, tool_name: str, params: dict) -> str:
-        assert self._runner
+    # -- Per-repo lifecycle ---------------------------------------------------
+
+    def start(self, ws: Path) -> None:
+        """Activate the serena project for *ws* via the shared MCP server.
+
+        Creates the project first if no ``.serena/`` directory exists yet.
+        """
+        self._lang = _SERENA_LANG_MAP.get(_dominant_lang(ws), _dominant_lang(ws))
+        mcp = self._ensure_mcp()
+
+        # Lazily create the project when the workspace has no .serena/ dir.
+        if not (ws / ".serena" / "project.yml").exists():
+            env = {**os.environ, "HOME": str(self._serena_home)}
+            subprocess.run(
+                [
+                    "serena",
+                    "project",
+                    "create",
+                    str(ws),
+                    "--name",
+                    f"bench-{ws.name}",
+                    "--language",
+                    self._lang,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=env,
+            )
+
+        # Activate the project through the MCP server so subsequent tool
+        # calls (find_symbol / search_for_pattern) target this repo.
+        result = mcp.call(
+            "tools/call",
+            {"name": "activate_project", "arguments": {"project": str(ws)}},
+            timeout=180,
+        )
+        if result.get("result", {}).get("isError"):
+            err_text = result.get("result", {}).get("content", [{}])[0].get("text", repr(result))
+            raise RuntimeError(f"serena activate_project failed: {err_text}")
+
+    def stop(self) -> None:
+        """No per-repo teardown — the shared MCP server stays alive."""
+        pass
+
+    # -- Tool calls via MCP ---------------------------------------------------
+
+    def _call_tool(self, name: str, args: dict[str, object]) -> str:
+        mcp = self._ensure_mcp()
         try:
-            return self._runner.query(tool_name, params)
+            result = mcp.call("tools/call", {"name": name, "arguments": args}, timeout=300)
         except Exception:
             return ""
+        content = result.get("result", {}).get("content", [])
+        if result.get("result", {}).get("isError"):
+            return ""
+        texts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+        return "\n".join(texts)
 
     def search_symbol(self, query: str, ws: Path) -> list[str]:
-        resp = self._query(
+        resp = self._call_tool(
             "find_symbol",
             {
                 "name_path_pattern": _sym(query),
                 "substring_matching": True,
                 "max_matches": 20,
                 "include_body": False,
-                "depth": 0,
             },
         )
         return _extract_paths_text(resp, ws)
 
     def search_text(self, query: str, ws: Path) -> list[str]:
-        resp = self._query(
+        resp = self._call_tool(
             "search_for_pattern",
             {"substring_pattern": query, "restrict_search_to_code_files": True},
         )
@@ -645,6 +831,9 @@ class CodeIndexProvider(Provider):
         self._runner.start(python_bin=python_bin)
 
     def stop(self) -> None:
+        if self._runner is not None:
+            with contextlib.suppress(Exception):
+                self._runner.stop()
         self._runner = None
 
     def _paths_from_result(self, result: dict, ws: Path) -> list[str]:
@@ -771,38 +960,6 @@ class JCodeMunchProvider(Provider):
 
 
 # ---------------------------------------------------------------------------
-# cg (codegraph)
-# ---------------------------------------------------------------------------
-
-
-def _cg_parse_results(stdout: str) -> list[str]:
-    try:
-        results = json.loads(stdout)
-        if isinstance(results, dict) and "results" in results:
-            results = results["results"]
-        if isinstance(results, dict):
-            results = list(results.values()) if results else []
-        if not isinstance(results, list):
-            return []
-    except json.JSONDecodeError:
-        return []
-    files: list[str] = []
-    seen: set[str] = set()
-    for r in results:
-        if isinstance(r, dict):
-            node = r.get("node", r)
-            path = node.get("filePath", "") or node.get("path", "") or ""
-        elif isinstance(r, str):
-            path = r
-        else:
-            continue
-        if path and path not in seen:
-            seen.add(path)
-            files.append(path)
-    return files
-
-
-# ---------------------------------------------------------------------------
 # rg — bare ripgrep, no ranking (baseline for text search)
 # ---------------------------------------------------------------------------
 
@@ -863,7 +1020,39 @@ class RgProvider(Provider):
 
 
 class CgProvider(Provider):
+    """Persistent ``codegraph serve --mcp`` shared across all repos.
+
+    The one-shot ``codegraph query`` CLI pays ~110ms of node startup + db
+    open per call vs ~2ms for the same search over MCP, and
+    ``codegraph_search`` takes ``projectPath`` per call, so a single server
+    covers every gold repo (same pattern as SerenaProvider).
+    """
+
     name = "cg"
+
+    _mcp: _JsonRpcLineClient | None = None
+
+    # One `path:line` line per search result in the markdown response.
+    _RESULT_LINE = re.compile(r"^(\S+\.[A-Za-z0-9]{1,5}):\d+$", re.MULTILINE)
+
+    @classmethod
+    def _ensure_mcp(cls) -> _JsonRpcLineClient:
+        if cls._mcp is not None:
+            return cls._mcp
+        client = _JsonRpcLineClient(["codegraph", "serve", "--mcp"])
+        client.start()
+        cls._mcp = client
+        import atexit
+
+        atexit.register(cls._teardown)
+        return client
+
+    @classmethod
+    def _teardown(cls) -> None:
+        if cls._mcp is not None:
+            with contextlib.suppress(Exception):
+                cls._mcp.stop()
+            cls._mcp = None
 
     def start(self, ws: Path) -> None:
         cg_db = ws / ".codegraph" / "codegraph.db"
@@ -880,20 +1069,41 @@ class CgProvider(Provider):
                 raise RuntimeError(f"codegraph init failed: {r.stderr[:400]}")
             print(f"{_TAG} cg init done in {time.perf_counter() - t1:.1f}s", file=sys.stderr)
         self._ws = ws
+        # Warm-up query: the server lazily opens/syncs a project on first
+        # touch (seconds on a cold repo) — pay that here, not in query stats.
+        self.search_symbol(ws.name, ws)
 
     def stop(self) -> None:
-        pass
+        pass  # shared MCP server stays alive; torn down atexit
 
     def search_symbol(self, query: str, ws: Path) -> list[str]:
-        r = subprocess.run(
-            ["codegraph", "query", "-p", str(ws), "-l", "20", "-j", _sym(query)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if r.returncode != 0:
+        cls = type(self)
+        try:
+            response = cls._ensure_mcp().call(
+                "tools/call",
+                {
+                    "name": "codegraph_search",
+                    "arguments": {"query": _sym(query), "limit": 20, "projectPath": str(ws)},
+                },
+                timeout=120,
+            )
+        except Exception:
+            cls._teardown()  # dead/hung server: restart lazily on the next call
             return []
-        return _cg_parse_results(r.stdout)
+        result = response.get("result", {})
+        if result.get("isError"):
+            return []
+        text = "\n".join(
+            c.get("text", "") for c in result.get("content", []) if isinstance(c, dict) and c.get("type") == "text"
+        )
+        seen: set[str] = set()
+        files: list[str] = []
+        for m in self._RESULT_LINE.finditer(text):
+            p = _rel(m.group(1), ws)
+            if p not in seen:
+                seen.add(p)
+                files.append(p)
+        return files
 
     def search_text(self, query: str, ws: Path) -> list[str]:
         return []  # codegraph has no content/text search
@@ -1009,10 +1219,162 @@ class CmmProvider(Provider):
 
 
 # ---------------------------------------------------------------------------
+# atelier — the shipped Atelier MCP server, treated as just another provider
+# ---------------------------------------------------------------------------
+
+
+class AtelierProvider(Provider):
+    """Atelier's stock MCP server over stdio, no special treatment.
+
+    Launches ``atelier mcp`` per workspace and calls the shipped ``code_search``
+    tool with the RAW query (the surface agents actually use -- no ``_sym()``
+    shaping, or MRR loses continuity with the retired fitness_explore_mrr
+    history). Measures engine + serialization + transport end-to-end.
+
+    DB routing without touching the server: the provisioned index (and its
+    sibling intel/fts/vectors DBs) is symlinked into a bench ATELIER_ROOT at
+    the engine's default ``workspaces/<key>/`` location, so the server
+    resolves it exactly as production would. The server's own startup warm
+    path (page cache, centrality, ANN matrix, zoekt webserver) covers cold
+    costs; one untimed warm-up query in start() absorbs any residual
+    first-query wait (zoekt readiness) so timed queries measure steady state.
+
+    ``search_symbol``/``search_text`` share one memoized explore per query:
+    explore is Atelier's single retrieval surface for both, exactly as the
+    fitness benchmark measured it (latency is gold-independent).
+    """
+
+    name = "atelier"
+
+    _STORE_ROOT = Path(os.environ.get("ATELIER_BENCH_STORE", "/tmp/atelier-bench-store"))
+
+    def __init__(self) -> None:
+        self._client: _JsonRpcLineClient | None = None
+        self._memo: dict[str, list[str]] = {}
+
+    def _route_db(self, ws: Path) -> None:
+        """Symlink the provisioned per-repo DBs into the engine-default layout."""
+        from atelier.core.foundation.paths import workspace_key  # src/ is on sys.path
+
+        meta = next((m for m in _all_repos.values() if Path(m.get("ws", "")) == ws), {})
+        db = Path(meta["db"]) if meta.get("db") else None
+        if db is None or not db.exists():
+            return  # no prebuilt index: the server will build one on demand
+        ws_dir = self._STORE_ROOT / "workspaces" / workspace_key(ws.resolve())
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        links = {"code_context.sqlite": db}
+        for sibling in ("intel.sqlite", "fts.sqlite", "vectors.sqlite"):
+            src = db.parent / sibling
+            if src.exists():
+                links[sibling] = src
+        for link_name, target in links.items():
+            link = ws_dir / link_name
+            if not link.exists():
+                link.symlink_to(target)
+
+    def start(self, ws: Path) -> None:
+        self._memo = {}
+        self._route_db(ws)
+        env = {
+            **os.environ,
+            "ATELIER_ROOT": str(self._STORE_ROOT),
+            "ATELIER_WORKSPACE_ROOT": str(ws),
+            # the candidate/working-tree code, not an installed wheel
+            "PYTHONPATH": "src" + os.pathsep + os.environ.get("PYTHONPATH", ""),
+            # let the untimed warm-up absorb the one-time zoekt shard load
+            "ATELIER_ZOEKT_READY_TIMEOUT_S": os.environ.get("ATELIER_ZOEKT_READY_TIMEOUT_S", "30"),
+        }
+        # Host workspace vars outrank ATELIER_WORKSPACE_ROOT in the server's
+        # resolution; a bench run inside Claude Code/Cursor would otherwise
+        # inherit them and silently search the WRONG repo.
+        for host_var in ("CLAUDE_WORKSPACE_ROOT", "CURSOR_WORKSPACE_ROOT", "VSCODE_CWD", "CLAUDE_PROJECT_DIR"):
+            env.pop(host_var, None)
+        client = _JsonRpcLineClient(
+            [sys.executable, "-c", "from atelier.gateway.adapters.mcp_server import main; main()"],
+            cwd=Path.cwd(),
+            env=env,
+        )
+        client.start()
+        self._client = client
+        # Untimed warm-up (same pattern as CgProvider): pays engine init +
+        # readiness waits here, not in the timed query stats.
+        with contextlib.suppress(Exception):
+            self._search(f"warmup {ws.name}", ws, timeout=240)
+        self._memo = {}
+
+    def stop(self) -> None:
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                self._client.stop()
+        self._client = None
+        self._memo = {}
+
+    def _paths_from_payload(self, payload: dict, ws: Path) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+
+        def _add(raw: object) -> None:
+            if raw:
+                p = _rel(str(raw), ws)
+                if p and p not in seen:
+                    seen.add(p)
+                    out.append(p)
+
+        # `files` are the ranked top matches; `candidate_files` extend the
+        # ranked tail. Same order tool_explore returned them.
+        for f in payload.get("files", []) or []:
+            if isinstance(f, dict):
+                _add(f.get("path") or f.get("file_path"))
+        for c in payload.get("candidate_files", []) or []:
+            _add(c)
+        return out
+
+    def _search(self, query: str, ws: Path, *, timeout: float = 120) -> list[str]:
+        if query in self._memo:
+            return self._memo[query]
+        if self._client is None:
+            return []
+        response = self._client.call(
+            "tools/call",
+            {"name": "code_search", "arguments": {"query": query, "max_files": 10}},
+            timeout=timeout,
+        )
+        result = response.get("result", {})
+        if result.get("isError"):
+            self._memo[query] = []
+            return []
+        payload: dict = result.get("structuredContent") or {}
+        if not payload:
+            for chunk in result.get("content", []) or []:
+                if isinstance(chunk, dict) and chunk.get("type") == "text":
+                    with contextlib.suppress(json.JSONDecodeError):
+                        payload = json.loads(chunk.get("text", ""))
+                        break
+        files = self._paths_from_payload(payload, ws) if payload else []
+        if not files:  # last resort: scrape paths from raw text
+            files = _extract_paths_text(json.dumps(result), ws)
+        self._memo[query] = files
+        return files
+
+    def search_symbol(self, query: str, ws: Path) -> list[str]:
+        try:
+            return self._search(query, ws)
+        except Exception:
+            return []
+
+    def search_text(self, query: str, ws: Path) -> list[str]:
+        try:
+            return self._search(query, ws)
+        except Exception:
+            return []
+
+
+# ---------------------------------------------------------------------------
 # Provider factory
 # ---------------------------------------------------------------------------
 
 _PROVIDERS: dict[str, type[Provider]] = {
+    "atelier": AtelierProvider,
     "ctags": CtagsProvider,
     "ast-grep": AstGrepProvider,
     "serena": SerenaProvider,
@@ -1033,7 +1395,7 @@ def _score_gold(kind: str, tm: dict, results: dict[tuple[str, str], list[str]]) 
 
     results: {(query, prefix): ranked_file_list}
     """
-    agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
+    agg = {"rr": 0.0, "h1": 0, "h2": 0, "h3": 0, "n": 0}
     by_repo: dict[str, dict] = {}
     lats_by_repo: dict[str, list[float]] = defaultdict(list)
 
@@ -1046,25 +1408,29 @@ def _score_gold(kind: str, tm: dict, results: dict[tuple[str, str], list[str]]) 
         if not trues:
             continue
         r = _rank(files, trues)
-        br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h3": 0, "n": 0})
+        br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h2": 0, "h3": 0, "n": 0})
         for d in (agg, br):
             d["n"] += 1
             if r:
                 d["rr"] += 1.0 / r
                 if r == 1:
                     d["h1"] += 1
+                if r <= 2:
+                    d["h2"] += 1
                 if r <= 3:
                     d["h3"] += 1
 
     return {
         "mrr": round(agg["rr"] / max(agg["n"], 1), 4),
         "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
+        "hit2": round(agg["h2"] / max(agg["n"], 1), 4),
         "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
         "n": agg["n"],
         "by_repo": {
             p: {
                 "mrr": round(d["rr"] / max(d["n"], 1), 4),
                 "hit1": round(d["h1"] / max(d["n"], 1), 4),
+                "hit2": round(d["h2"] / max(d["n"], 1), 4),
                 "hit3": round(d["h3"] / max(d["n"], 1), 4),
                 "n": d["n"],
                 "latency_ms": _lat_summary(lats_by_repo.get(p, [])),
@@ -1170,21 +1536,64 @@ for _gk, gdata in _gold_scores.items():
 
 # Primary metrics (first gold kind)
 _primary = _gold_scores[_golds[0][0]]
+_base_mode = "full" if FULL else (f"sample={SAMPLE}" if SAMPLE else "default")
+_mode = f"{_base_mode}[{_LABEL}]"
+if REPO_FILTER:
+    _mode += f" repo={REPO_FILTER}"
 out = {
     **_primary,
     "latency_ms": _lat_summary(all_latencies),
     "golds": _gold_scores,
     "provider": PROVIDER,
-    "mode": f"ext[{PROVIDER}]",
+    "mode": _mode,
 }
 
 print(json.dumps(out, ensure_ascii=False))
 
+# ── History: persist this run so trends and deltas survive across runs ────────
+_HISTORY = Path("reports/benchmark/mrr_history.jsonl")
+_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+try:
+    _sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+    _dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], text=True).strip())
+    _sha_label = _sha + ("+" if _dirty else "")
+except Exception:
+    _sha_label = "unknown"
+
+from datetime import UTC  # noqa: E402
+from datetime import datetime as _datetime  # noqa: E402
+
+_record = {
+    "ts": _datetime.now(UTC).isoformat(timespec="seconds"),
+    "sha": _sha_label,
+    "mode": _mode,
+    "mrr": out["mrr"],
+    "hit1": out["hit1"],
+    "hit3": out["hit3"],
+    "n": out["n"],
+    "latency_ms": out["latency_ms"],
+    "by_repo": out.get("by_repo", {}),
+    "golds": out["golds"],
+}
+with _HISTORY.open("a") as _fh:
+    _fh.write(json.dumps(_record) + "\n")
+
+try:
+    _runs = [json.loads(line) for line in _HISTORY.read_text().splitlines() if line.strip()]
+except Exception:
+    _runs = [_record]
+# Only compare against a previous run of the same mode — cross-mode comparisons
+# (different sample sizes / channels) skew the MRR baseline.
+_prev = next((r for r in reversed(_runs[:-1]) if r.get("mode") == _mode), None)
+
 # Summary — match fitness_explore_mrr.py format with per-repo breakdown
 print("\n" + "─" * 60, file=sys.stderr)
-print(f"  provider={PROVIDER}", file=sys.stderr)
+print(f"  {_record['ts'][:16]}  {_sha_label}  [{_mode}]  provider={PROVIDER}", file=sys.stderr)
 for gk, gd in _gold_scores.items():
-    print(f"  gold={gk:<18} MRR {gd['mrr']:.4f}  hit@1 {gd['hit1']:.4f}  n={gd['n']}", file=sys.stderr)
+    print(
+        f"  gold={gk:<18} MRR {gd['mrr']:.4f}  hit@1 {gd['hit1']:.4f}  hit@3 {gd['hit3']:.4f}  n={gd['n']}",
+        file=sys.stderr,
+    )
 lat = out["latency_ms"]
 print(f"  lat  mean={lat['mean']:.0f}ms  p95={lat['p95']:.0f}ms  max={lat['max']:.0f}ms", file=sys.stderr)
 # Per-repo rows sorted by primary-gold MRR ascending (worst first)
@@ -1212,4 +1621,28 @@ for _rprefix, _rd in _by_repo_sorted:
         f"  {_icon}  {_short:<22} n={_rn:<4} MRR={_mrr_str}  p95={_rp95:.0f}ms  p100={_rp100:.0f}ms",
         file=sys.stderr,
     )
+
+# ── Delta vs previous same-mode run ──────────────────────────────────────────
+if _prev:
+    print("", file=sys.stderr)
+    _pmrr = _prev["mrr"]
+    _dmrr = out["mrr"] - _pmrr
+    _sign = "+" if _dmrr >= 0 else ""
+    print(
+        f"  vs {_prev['ts'][:16]} [{_prev['mode']}]  MRR {_pmrr:.4f} → {out['mrr']:.4f}  ({_sign}{_dmrr:.4f})",
+        file=sys.stderr,
+    )
+    # per-repo deltas — only show movers
+    _by_now = out.get("by_repo", {}) or {}
+    _by_prev = _prev.get("by_repo", {}) or {}
+    _movers = []
+    for _rname in set(_by_now) | set(_by_prev):
+        _cm = (_by_now.get(_rname) or {}).get("mrr", 0)
+        _pm = (_by_prev.get(_rname) or {}).get("mrr", 0)
+        if _cm != _pm:
+            _movers.append((_rname.split("__")[-1], _pm, _cm, _cm - _pm))
+    _movers.sort(key=lambda x: x[3])
+    for _rn2, _pm, _cm, _dd in _movers:
+        _sign2 = "+" if _dd >= 0 else ""
+        print(f"    {_rn2:<22}  {_pm:.3f} → {_cm:.3f}  ({_sign2}{_dd:.3f})", file=sys.stderr)
 print("─" * 60 + "\n", file=sys.stderr)

@@ -6,13 +6,13 @@ both Claude Code and Codex CLI sessions:
 * **Claude Code** — ``~/.claude/projects/<repo-dir-name>/*.jsonl``
 * **Codex CLI** — ``~/.codex/sessions/**/*.jsonl``
 
-Extracts all Atelier MCP search tool calls (grep, explore, ToolSearch), groups
+Extracts all Atelier MCP search tool calls (grep, code_search, ToolSearch), groups
 them into "search episodes" between user messages, and produces:
 
-1. **Savings report** — how many individual grep calls each explore replaced,
+1. **Savings report** — how many individual grep calls each code_search replaced,
    and how many turns were saved per session.
 2. **Benchmark pairs** — ``(query, gold_file)`` pairs mined from grep results,
-   compatible with ``fitness_explore_mrr.py`` / ``eval_cg_mrr.py`` MRR eval.
+   compatible with ``eval_external_provider_mrr.py`` / ``eval_cg_mrr.py`` MRR eval.
 
 Usage::
 
@@ -262,12 +262,12 @@ def _resolve_codex_search_call(
 
     # Check all name forms against SEARCH_TOOLS
     effective = name if name in SEARCH_TOOLS else (dotted if dotted in SEARCH_TOOLS else None)
-    # Codex also has native grep/explore tools under mcp__atelier namespace
+    # Codex also has native grep/explore/code_search tools under mcp__atelier namespace
     # (not dotted — separate namespace and name fields)
     if effective is None:
-        if namespace == "mcp__atelier" and name in ("grep", "explore", "search"):
+        if namespace == "mcp__atelier" and name in ("grep", "explore", "code_search", "search"):
             effective = f"{namespace}/{name}"
-        elif name in ("grep", "explore", "search", "Grep"):
+        elif name in ("grep", "explore", "code_search", "search", "Grep"):
             effective = name
 
     if effective is None or not call_id:
@@ -768,7 +768,7 @@ def generate_pairs(
 
     for episode in episodes:
         grep_calls = [e for e in episode if "grep" in e["tool"].lower()]
-        explore_calls = [e for e in episode if "explore" in e["tool"].lower()]
+        code_search_calls = [e for e in episode if "explore" in e["tool"].lower() or "code_search" in e["tool"].lower()]
         toolsearch_calls = [e for e in episode if e["tool"] == "ToolSearch"]
 
         _ws = Path.cwd().resolve()
@@ -788,7 +788,7 @@ def generate_pairs(
                 continue
             # Gold validation: only keep files that actually exist in this
             # workspace. Stale absolute paths from old or remote sessions
-            # can never be matched by explore, so they drag MRR to zero.
+            # can never be matched by code_search, so they drag MRR to zero.
             valid_files = [f for f in files[:10] if (_ws / f).exists() or (f.startswith("/") and Path(f).exists())]
             if not valid_files:
                 continue
@@ -804,11 +804,11 @@ def generate_pairs(
             savings.append(
                 {
                     "episode_greps": len(grep_calls),
-                    "episode_explores": len(explore_calls),
+                    "episode_code_searches": len(code_search_calls),
                     "episode_toolsearches": len(toolsearch_calls),
                     "unique_grep_patterns": len(unique_queries),
-                    "grep_savings": max(0, len(grep_calls) - len(explore_calls) * 2),
-                    # ^^ each explore replaces ~3-5 greps, so saving is greps - 2*explores
+                    "grep_savings": max(0, len(grep_calls) - len(code_search_calls) * 2),
+                    # ^^ each code_search replaces ~3-5 greps, so saving is greps - 2*code_searches
                 }
             )
 
@@ -821,17 +821,17 @@ def generate_savings_report(savings: list[dict]) -> dict:
         return {"message": "No search tool calls found in session data."}
 
     total_greps = sum(s["episode_greps"] for s in savings)
-    total_explores = sum(s["episode_explores"] for s in savings)
+    total_code_searches = sum(s["episode_code_searches"] for s in savings)
     total_toolsearches = sum(s["episode_toolsearches"] for s in savings)
     total_episodes = len(savings)
 
     # Each ToolSearch call is ~1 turn (few hundred tokens)
     # Each grep call is ~1 turn (grep results can be many tokens)
-    # Each explore call replaces ~3-5 grep calls
+    # Each code_search call replaces ~3-5 grep calls
 
-    # Estimated savings from replacing greps with explores
+    # Estimated savings from replacing greps with code_search
     estimated_grep_turns_saved = sum(
-        max(0, s["episode_greps"] - s["episode_explores"] * 3) for s in savings if s["episode_explores"] > 0
+        max(0, s["episode_greps"] - s["episode_code_searches"] * 3) for s in savings if s["episode_code_searches"] > 0
     )
     # Each saved grep turn avoids: 1 tool_call + result processing + thinking ≈ 2K tokens
     # Claude Sonnet 4.6: ~$3/M input, ~$15/M output
@@ -847,11 +847,11 @@ def generate_savings_report(savings: list[dict]) -> dict:
     return {
         "total_episodes": total_episodes,
         "total_grep_calls": total_greps,
-        "total_explore_calls": total_explores,
+        "total_code_search_calls": total_code_searches,
         "total_toolsearch_calls": total_toolsearches,
-        "total_search_calls": total_greps + total_explores + total_toolsearches,
-        "episodes_with_explore": sum(1 for s in savings if s["episode_explores"] > 0),
-        "episodes_without_explore": sum(1 for s in savings if s["episode_explores"] == 0),
+        "total_search_calls": total_greps + total_code_searches + total_toolsearches,
+        "episodes_with_code_search": sum(1 for s in savings if s["episode_code_searches"] > 0),
+        "episodes_without_code_search": sum(1 for s in savings if s["episode_code_searches"] == 0),
         "avg_greps_per_episode": round(total_greps / max(total_episodes, 1), 1),
         "estimated_grep_turns_saved": estimated_grep_turns_saved,
         "estimated_cost_saved_usd": round(estimated_cost_saved_usd, 4),
@@ -895,7 +895,7 @@ def main():
         "--channel",
         choices=["lexical", "zoekt", "cg", "lexical+zoekt"],
         default="lexical",
-        help="Which retrieval eval to run (default: lexical/explore without Zoekt)",
+        help="Which retrieval eval to run (default: lexical/code_search without Zoekt)",
     )
     parser.add_argument(
         "--full",
@@ -952,7 +952,6 @@ def main():
     codex_events: list[dict] = []
     scanned_codex_files = 0
     scanned_codex_sessions = 0
-    skipped_codex_sessions = 0
     repo_path = Path.cwd().resolve()
 
     codex_files = _find_codex_session_files()
@@ -982,7 +981,6 @@ def main():
     # 3. Merge and generate pairs
     # -----------------------------------------------------------------------
     all_events = claude_events + codex_events
-    total_sessions = len(scanned_claude_dirs) + scanned_codex_sessions
 
     if not all_events:
         print("[session] No search tool calls found in any session.", file=sys.stderr)
@@ -1001,11 +999,11 @@ def main():
     print(f"  Codex sessions with calls:      {scanned_codex_sessions}", file=sys.stderr)
     print(f"  Total search tool calls: {report['total_search_calls']}", file=sys.stderr)
     print(f"    - grep calls:  {report['total_grep_calls']}", file=sys.stderr)
-    print(f"    - explore calls: {report['total_explore_calls']}", file=sys.stderr)
+    print(f"    - code_search calls: {report['total_code_search_calls']}", file=sys.stderr)
     print(f"    - ToolSearch calls: {report['total_toolsearch_calls']}", file=sys.stderr)
     print(f"  Search episodes: {report['total_episodes']}", file=sys.stderr)
-    print(f"  Episodes WITH explore: {report['episodes_with_explore']}", file=sys.stderr)
-    print(f"  Episodes WITHOUT explore (grep-only): {report['episodes_without_explore']}", file=sys.stderr)
+    print(f"  Episodes WITH code_search: {report['episodes_with_code_search']}", file=sys.stderr)
+    print(f"  Episodes WITHOUT code_search (grep-only): {report['episodes_without_code_search']}", file=sys.stderr)
     print(f"  Avg greps per episode: {report['avg_greps_per_episode']}", file=sys.stderr)
     print(f"  Estimated grep turns saved: {report['estimated_grep_turns_saved']}", file=sys.stderr)
     print(f"  Estimated cost saved: ${report['estimated_cost_saved_usd']:.4f}", file=sys.stderr)
@@ -1084,8 +1082,20 @@ def main():
         if args.channel == "cg":
             cmd = [sys.executable, "benchmarks/codebench/eval_cg_mrr.py"]
         else:
-            env["FITNESS_CHANNEL"] = args.channel
-            cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
+            # Atelier runs through the shipped MCP surface like any provider;
+            # channel variants are env toggles the server honours.
+            env["EVAL_CHANNEL_LABEL"] = args.channel
+            if args.channel == "lexical":
+                env["ATELIER_ZOEKT_MODE"] = "off"
+                env["ATELIER_EXPLORE_SEMANTIC"] = "0"
+            elif args.channel == "lexical+zoekt":
+                env["ATELIER_EXPLORE_SEMANTIC"] = "0"
+            cmd = [
+                sys.executable,
+                "benchmarks/codebench/eval_external_provider_mrr.py",
+                "--provider",
+                "atelier",
+            ]
             if args.full:
                 cmd.append("--full")
             else:
