@@ -123,6 +123,9 @@ test-fast: | _ensure_hooks ## Run fast tests: stop on first failure, skip slow/P
 test-pro: ## E2E dev-mode Pro purchase loop: signed webhook -> D1 -> /api/auth/me -> CLI entitlement (all local)
 	bash scripts/test_pro.sh
 
+test-pro-live: ## Same loop but YOU drive it for real on Stripe TEST mode (browser sign-in + 4242 checkout)
+	bash scripts/test_pro.sh live
+
 test-cov: ## Run tests with terminal and HTML coverage reports
 	uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 
