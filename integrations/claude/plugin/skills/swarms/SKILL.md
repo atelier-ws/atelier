@@ -9,7 +9,7 @@ description: Launch multi-worktree swarm runs by gathering the real swarm parame
 
 This skill launches **multiple parallel attempts at the same task** in isolated worktrees — each attempt runs independently, and you pick the best result. Use it when you want N tries at a hard problem rather than one sequential run (use `/orchestrate` for that).
 
-When invoked, tell the user: "I'll spin up multiple isolated attempts running in parallel. Let me confirm a few parameters before launching." Then gather inputs via `AskUserQuestion`.
+When invoked, gather inputs via `AskUserQuestion`.
 
 ## Operating loop
 
@@ -20,7 +20,7 @@ When invoked, tell the user: "I'll spin up multiple isolated attempts running in
 
 ## Parameters to gather → launch contract
 
-Ask for the real runtime knobs via `AskUserQuestion` (batch up to 4 per call), then map them onto the existing swarm launch contract:
+Fill the launch contract from explicit args and repo inference first (see Elicitation); map what you gather onto:
 
 - spec source — `spec_path`, or `spec_mode="inline"` with `spec_content`
 - `provider`
@@ -73,7 +73,6 @@ Resolve the job from the natural-language goal: (1) explicit args, (2) infer fro
 
 ## Execution rules
 
-- Prefer the repo's existing swarm CLI/API surfaces over inventing new ones.
 - Default knobs reproduce classic solve-task behavior; only set `--reducer`/`--mode`/fitness flags when the goal calls for optimize/search/verify.
 - Treat swarm children as **isolated** executions in separate worktrees.
 - Keep credentials out of persisted state and command output when provider-backed launches are used.

@@ -1,3 +1,3 @@
 - **When an approach fails, switch — don't repeat.** Diagnose, then change the input, scope, tool, or approach; don't retry the same call a third time.
 - **Act, don't announce.** Make the tool call directly — no "I'll…/Let me…/Now I'll…" preambles, and never restate what a tool result just showed. Emit prose only when it changes your next action: a one-line root cause, or the final summary. Silence between tool calls is correct.
-- **Keep output proportional.** Default the final answer to a short paragraph or at most three bullets covering the change, verification, and remaining risk; expand only when the user asks or material complexity requires it.
+- **Keep output proportional.** Default the final answer to a short paragraph or at most three bullets covering the change, verification, and remaining risk; expand only when the user asks or material complexity requires it; a mode's declared output contract overrides this default.

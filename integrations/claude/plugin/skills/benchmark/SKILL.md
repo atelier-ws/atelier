@@ -23,8 +23,8 @@ Reads your Claude Code session files from `~/.claude/projects/`, extracts every
 `mcp__atelier__grep`, `mcp__atelier__code_search`, and `ToolSearch` call, groups
 them into "search episodes" between your prompts, and shows:
 
-- How many individual `grep` calls per episode (avg = **3.8** in atelier sessions)
-- How often `code_search` was used instead (in our data: 11 of 772 episodes)
+- How many individual `grep` calls per episode
+- How often `code_search` was used instead
 - Estimated turn savings if more episodes used `code_search`
 - Generates query pairs from the grep patterns and optionally runs the retrieval
   MRR benchmark against Atelier's `code_search` or CodeGraph
@@ -40,28 +40,6 @@ uv run atelier eval sessions --repo-filter atelier --run-eval --channel lexical
 uv run atelier eval sessions --run-eval --channel cg --full
 ```
 
-### What it shows
-
-```
-OFFLINE SESSION ANALYSIS
-  Total search tool calls: 3400
-    - mcp__atelier__grep calls:  2953
-    - mcp__atelier__code_search calls: 14
-    - ToolSearch calls:           433
-  Search episodes: 772
-  Episodes WITH code_search: 11
-  Episodes WITHOUT code_search (grep-only): 761
-  Avg greps per episode: 3.8
-  Generated 5783 query pairs from grep result files
-```
-
-The takeaway: **761 of 772 search episodes used only grep**. If those switched
-to `code_search`, the agent would save ~3 grep calls per episode = ~2,200 fewer
-turns across these sessions alone.
-
-With `--run-eval`, it also generates a pairs JSON from your real grep patterns
-and runs the MRR benchmark so you can compare retrieval accuracy.
-
 ---
 
 ## Online mode — side-by-side A/B (BYO repo, vs vanilla Claude Code)
@@ -69,8 +47,7 @@ and runs the MRR benchmark so you can compare retrieval accuracy.
 Run a side-by-side A/B comparison of Atelier vs a no-Atelier baseline on the
 user's **own repository** with the user's **own coding prompts**, on the same
 model and driver for both arms so the delta is attributable to Atelier (its
-tools, agents, and routing), not noise. The command prints a cost estimate and
-asks to confirm before spending anything.
+tools, agents, and routing), not noise.
 
 ### 1. Gather inputs
 
@@ -154,13 +131,6 @@ ATELIER_ZOEKT_MODE=installed uv run atelier eval retrieval --channel zoekt
 uv run atelier eval retrieval --channel semantic
 ```
 
-Latest results (n=2306, 10 repos):
-
-| Channel                         | MRR   | hit@1 | Latency |
-| ------------------------------- | ----- | ----- | ------- |
-| Atelier lexical (sampled n=537) | 0.690 | 0.678 | 364 ms  |
-| CodeGraph                       | 0.600 | 0.547 | 129 ms  |
-
 ---
 
 ## Notes
@@ -170,8 +140,6 @@ Latest results (n=2306, 10 repos):
   wire-level verification.
 - Both arms share the same model and `--cli-driver` (default `claude`) for a
   fair comparison; the only A/B difference is Atelier's toolset and agents.
-- A multi-prompt or high-`--reps` run can be slow and costly — the estimate +
-  confirmation gate exists for exactly this.
 - For **internal/dev** benchmarking of Atelier itself, use the suite commands:
   `atelier benchmark {codebench,atelierbench,mcp,providers}`.
 - For where savings came from on the user's **recent sessions** (not a fresh

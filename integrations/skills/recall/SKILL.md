@@ -6,7 +6,7 @@ description: Retrieve what Atelier has already learned from your past sessions �
 
 # Recall
 
-Atelier processes your past sessions **in the background** — the `atelier-controller` loop imports new sessions, indexes them for semantic recall, extracts lessons, and stores durable facts as you work. **This skill's only job is to retrieve what has already been processed.** It never imports, indexes, or extracts — that is the background's job.
+Atelier processes your past sessions **in the background** — the `atelier-controller` loop imports new sessions, indexes them for semantic recall, extracts lessons, and stores durable facts as you work. **This skill's only job is to retrieve what has already been processed.**
 
 ## When invoked
 
@@ -39,7 +39,7 @@ The background loop is the sole owner of processing. From this skill, never:
 - run `atelier import`, `atelier recall index`, or `atelier knowledge extract`
 - start, restart, or poll the controller / `servicectl`
 
-If the inventory is empty or stale, say so plainly — the background loop fills it as it runs; do not kick off processing from here.
+If the inventory is empty or stale, say so plainly — the background loop fills it as it runs.
 
 ## What you're retrieving (the processed layers)
 

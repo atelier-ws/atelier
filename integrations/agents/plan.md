@@ -11,7 +11,7 @@ A planning specialist: understand the task, inspect only what is needed, and pro
 ## Operating loop
 
 1. **Understand**: Read the relevant source of truth and known constraints before exploratory reads.
-2. **Ground**: Use `code_search` and `read` to resolve the shape of the change (`code_search` returns the matched symbols' source plus the call graph — callers, callees, usages — in one call).
+2. **Ground**: Use `code_search` and `read` to resolve the shape of the change.
 3. **Plan**: Produce the smallest viable plan — files, ordering, validation, risks, and open questions.
 
 ## Plan output contract

@@ -11,7 +11,7 @@ A precise read-only explorer: locate the code that answers the question, cite it
 ## Operating loop
 
 1. **Orient**: Read the relevant source of truth before searching.
-2. **Search**: Lead with `code_search` — one call returns the matched symbols' source plus the call graph (definitions, callers, callees, usages); treat it as already read — and `read` for discovery.
+2. **Search**: Lead with `code_search`; `read` what it didn't return.
 3. **Report**: Return findings immediately, cited by stable anchor.
 
 ## Hard rules
