@@ -1159,40 +1159,66 @@ def share_cmd(ctx: click.Context, as_json: bool) -> None:
 
 @click.group("settings")
 def plugin_settings_group() -> None:
-    """Manage local plugin settings."""
+    """Manage local Atelier settings — every ATELIER_* env-var-backed knob plus the plugin toggles.
+
+    Settings persist to ``<root>/plugin_settings.json`` and are applied to the
+    process environment (via ``setdefault``) the next time Atelier starts, so
+    an explicitly-exported env var always wins over a stored setting. Use
+    ``show --category <name>`` to browse one area (service, retrieval,
+    embeddings, code_context, tool_supervision, mcp, statusline, telemetry,
+    memory, swarm, zoekt, bench, routing, llm, licensing, lessons, cli, core,
+    plugin, internal).
+    """
+
+
+def _format_setting_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 @plugin_settings_group.command("show")
+@click.option("--category", "category", default=None, help="Filter to one category (e.g. service, retrieval, mcp).")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def plugin_settings_show(ctx: click.Context, as_json: bool) -> None:
-    from atelier.core.capabilities.plugin_runtime import load_plugin_settings
+def plugin_settings_show(ctx: click.Context, category: str | None, as_json: bool) -> None:
+    from atelier.core.settings import CATEGORIES, all_settings, load_settings
 
-    payload = load_plugin_settings(ctx.obj["root"])
+    if category is not None and category not in CATEGORIES:
+        raise click.ClickException(f"unknown category: {category} (choices: {', '.join(CATEGORIES)})")
+    payload = load_settings(ctx.obj["root"], category=category)
     if as_json:
         _emit(payload, as_json=True)
         return
-    for key, value in payload.items():
-        click.echo(f"{key}: {str(value).lower()}")
+    by_category: dict[str, list[str]] = {}
+    for spec in all_settings():
+        if spec.key not in payload:
+            continue
+        by_category.setdefault(spec.category, []).append(spec.key)
+    for cat in sorted(by_category):
+        click.echo(f"# {cat}")
+        for key in sorted(by_category[cat]):
+            click.echo(f"{key}: {_format_setting_value(payload[key])}")
 
 
 @plugin_settings_group.command("set")
 @click.argument("key")
-@click.argument("value", type=click.Choice(["true", "false", "on", "off", "1", "0"]))
+@click.argument("value")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def plugin_settings_set(ctx: click.Context, key: str, value: str, as_json: bool) -> None:
-    from atelier.core.capabilities.plugin_runtime import write_plugin_setting
+    from atelier.core.settings import load_settings, write_setting
 
-    enabled = value in {"true", "on", "1"}
     try:
-        payload = write_plugin_setting(ctx.obj["root"], key, enabled)
+        coerced = write_setting(ctx.obj["root"], key, value)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     if as_json:
-        _emit(payload, as_json=True)
+        _emit(load_settings(ctx.obj["root"]), as_json=True)
         return
-    click.echo(f"set {key}={str(enabled).lower()}")
+    click.echo(f"set {key}={_format_setting_value(coerced)}")
 
 
 @click.command("tool-report")

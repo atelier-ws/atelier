@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -2370,6 +2371,81 @@ def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: 
     assert completed["status"] == "timed_out"
     assert completed["exit_code"] == -1
     assert "timed out after 0.5s" in completed["stderr"]
+
+
+def test_shell_status_action_is_nonblocking_and_reports_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        'python3 -c "import sys, time; [print(i, flush=True) for i in range(20)]; time.sleep(5)"',
+        timeout=10,
+        background=True,
+    )
+    try:
+        time.sleep(0.5)  # let the printed lines land before peeking
+
+        before = time.monotonic()
+        status = _run_bash_tool(session_id=started["session_id"], action="status")
+        elapsed = time.monotonic() - before
+
+        assert elapsed < 2.0, "status must not block until the command finishes"
+        assert status["status"] == "running"
+        assert status["session_id"] == started["session_id"]
+        assert status["tail_lines"] == 10
+        assert status["stdout"].splitlines() == [str(i) for i in range(10, 20)]
+
+        # A status peek must not reap the session -- poll/cancel still work after.
+        cancelled = _run_bash_tool(session_id=started["session_id"], action="cancel")
+        assert cancelled["status"] == "cancelled"
+    finally:
+        with contextlib.suppress(Exception):
+            _run_bash_tool(session_id=started["session_id"], action="cancel")
+
+
+def test_shell_status_action_reports_finished_session_without_reaping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    started = _run_bash_tool(
+        "python3 -c \"print('done')\"",
+        timeout=10,
+        background=True,
+    )
+    time.sleep(0.3)  # let the process finish
+
+    status = _run_bash_tool(session_id=started["session_id"], action="status")
+    assert status["status"] == "completed"
+    assert status["exit_code"] == 0
+    assert "done" in status["stdout"]
+
+    # The finished session is still reap-able by an explicit poll afterward.
+    polled = _run_bash_tool(session_id=started["session_id"], action="poll")
+    assert polled["status"] == "completed"
+    assert polled["stdout"] == "done"
+
+
+def test_render_shell_text_status_action_notes_tail_window() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
+
+    text = _render_bash_text(
+        {
+            "status": "running",
+            "session_id": "abc123",
+            "pid": 42,
+            "duration_ms": 1_000,
+            "timeout_remaining_ms": 9_000,
+            "stdout": "line1\nline2",
+            "stderr": "",
+            "tail_lines": 10,
+        }
+    )
+    assert "[tail: last 10 line(s) of stdout/stderr]" in text
+    assert "line1\nline2" in text
 
 
 def test_shell_mcp_call_returns_managed_session_for_background_command(

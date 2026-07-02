@@ -79,15 +79,17 @@ def _enforce_retention(directory: Path) -> None:
     """Evict old spill artifacts by age then count so the dir stays bounded.
 
     Best-effort and never raises into the caller: retention is hygiene, not
-    correctness. Sweeps ``*.txt`` (tool-output spills) and ``*.json``
-    (native-search spills) in the shared spill dir.
+    Sweeps ``*.txt`` (tool-output spills), ``*.json`` (native-search spills), and
+    the raw binary spills ``web_fetch`` produces for PDFs (``*.pdf``) and their
+    embedded images (``*.png``, ``*.jpg``, ``*.jpeg``, ``*.bmp``, ``*.tiff``,
+    ``*.gif``, ``*.bin``) in the shared spill dir.
     """
     max_files, max_age = _retention_limits()
     if max_files <= 0 and max_age <= 0:
         return
     try:
         entries: list[tuple[float, Path]] = []
-        for pattern in ("*.txt", "*.json"):
+        for pattern in ("*.txt", "*.json", "*.pdf", "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tiff", "*.gif", "*.bin"):
             for p in directory.glob(pattern):
                 try:
                     entries.append((p.stat().st_mtime, p))
@@ -155,6 +157,39 @@ def spill(
                     tmp_path.unlink()
         _enforce_retention(directory)
         return SpillRecord(path=spill_path, original_bytes=original_bytes)
+    except OSError:
+        return None
+
+
+def spill_bytes(
+    data: bytes,
+    *,
+    tool_name: str,
+    kind: str = "original",
+    suffix: str = ".bin",
+) -> SpillRecord | None:
+    """Persist raw binary content and return a referenceable record.
+
+    Mirrors :func:`spill` but writes bytes verbatim instead of UTF-8 text, for
+    content that can't be represented as text at all -- e.g. the original PDF
+    behind a ``web_fetch`` text extraction, so the agent can point a human (or
+    a vision-capable step) at the real file when extraction loses charts/tables.
+    Returns ``None`` on any write failure (best-effort).
+    """
+    try:
+        directory = _spill_dir()
+        file_name = f"{kind}-{tool_name}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}{suffix}"
+        spill_path = directory / file_name
+        tmp_path = directory / f".{file_name}.{uuid.uuid4().hex[:8]}.tmp"
+        try:
+            tmp_path.write_bytes(data)
+            os.replace(tmp_path, spill_path)
+        finally:
+            with contextlib.suppress(OSError):
+                if tmp_path.exists():
+                    tmp_path.unlink()
+        _enforce_retention(directory)
+        return SpillRecord(path=spill_path, original_bytes=len(data))
     except OSError:
         return None
 

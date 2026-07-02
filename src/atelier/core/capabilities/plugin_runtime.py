@@ -379,6 +379,11 @@ def compute_usage_meter(root: str | Path, *, subscription: dict[str, Any] | None
         raw_sub = auth.get("subscriptionStatus") if isinstance(auth, dict) else None
         subscription = raw_sub or _read_json(subscription_state_path(root_path), {})
     subscription = dict(subscription) if isinstance(subscription, dict) else {}
+    # Legacy builds stamped the LOCAL trial with a $5 monthlyLimitInUsd; the
+    # free core is uncapped, and positive limits come only from licensed/hosted
+    # plans, so force the local plan onto the report-only (no-limit) path.
+    if subscription.get("plan") == "LOCAL":
+        subscription["monthlyLimitInUsd"] = 0.0
 
     spend_usd = 0.0
     savings_usd = 0.0
@@ -3331,10 +3336,8 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     for file_path in files:
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            continue
-        if not isinstance(data, dict):
+        except Exception:  # noqa: BLE001 - best-effort skip of unreadable session-stats file
+            logging.getLogger(__name__).debug("skipping unreadable session-stats file: %s", file_path, exc_info=True)
             continue
         aggregate["session_count"] += 1
         aggregate["total_tool_calls"] += int(data.get("total_tool_calls", 0) or 0)

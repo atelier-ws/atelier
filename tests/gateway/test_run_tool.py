@@ -91,11 +91,27 @@ def test_classify_allows_shell_noexec_syntax_check() -> None:
         assert decision.category != "shell-interpreter", cmd
 
 
-def test_classify_still_blocks_executing_shell() -> None:
-    for cmd in ("bash -c 'echo hi'", "sh script.sh", "bash script.sh -n"):
+def test_classify_still_blocks_executing_shell(tmp_path: Path) -> None:
+    script = tmp_path / "real.sh"
+    script.write_text("echo ok\n")
+    for cmd in (
+        "bash -c 'echo hi'",
+        "bash -lc 'echo hi'",
+        "sh -s",
+        "sh nonexistent-script.sh",  # missing file: stays blocked
+        f"bash -c 'echo hi' {script}",  # -c wins even with a real file argument
+    ):
         decision = classify_command(cmd)
         assert decision.action == "block", cmd
         assert decision.category == "shell-interpreter", cmd
+
+
+def test_classify_allows_existing_script_file(tmp_path: Path) -> None:
+    script = tmp_path / "install.sh"
+    script.write_text("echo ok\n")
+    for cmd in (f"bash {script}", f"sh {script} --flag arg", f"bash -x {script}", f"bash -- {script}"):
+        decision = classify_command(cmd)
+        assert decision.action != "block", cmd
 
 
 def test_run_via_mcp_handle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

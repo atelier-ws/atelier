@@ -1148,22 +1148,24 @@ def compute_savings_summary(
     return result
 
 
+# Rotating statusline feature tips. Grounded in what the installed plugin
+# actually ships (the agents/ and skills/ staged by install_claude.sh) — when
+# a mode or skill is added or removed there, update its tip here.
 _STATUS_TIPS: tuple[str, ...] = (
-    "`/atelier:explore` — investigate code read-only with a cheaper sub-model",
-    "`/atelier:plan` — produce a concrete plan before coding; skip wrong-direction work",
-    "`/atelier:review` — adversarial code review; finds what is wrong, not just what was done",
-    "`/atelier:research` — fetch and synthesize web sources with full citations",
-    "`/atelier:solve` — own a concrete task end-to-end autonomously",
+    "`/atelier:code` — main coding mode: indexed search, batched edits, owned completion",
+    "`/atelier:explore` — read-only explorer: files, symbols, patterns; never edits",
+    "`/atelier:plan` — turn grounded context into a concrete, reviewable plan first",
     "`/atelier:execute` — apply an accepted plan with surgical, minimal edits",
-    "`/atelier:auto` — autonomous runs; no plan gates, no prompts",
-    "`/atelier:bare` — strips `Workflow` + `ScheduleWakeup`; saves ~6k tokens vs auto",
-    "`/atelier:recall` — recall what Atelier learned from your past sessions",
-    "`/atelier:settings` — change plugin settings in plain English",
-    "`/atelier:ux-review` — verify implemented UI against design gates in a real browser",
-    "`/atelier:perf-review` — verify a change's runtime perf against measured gates",
-    "`/atelier:orchestrate` — choose subagent vs isolated execution for a single run",
-    "`/atelier:swarms` — launch multi-worktree swarm runs",
-    "`/atelier:benchmark` — benchmark Atelier vs vanilla Claude on your own repo",
+    "`/atelier:review` — adversarial review: verified findings, ranked by severity",
+    "`/atelier:research` — fetch web pages, repos, and docs into a cited memo",
+    "`/atelier:solve` — own a task end-to-end; ship early, iterate against the real check",
+    "`/atelier:recall` — what Atelier learned from your past sessions, on demand",
+    "`/atelier:ux-review` — WCAG + design-token gates, verified in a real browser",
+    "`/atelier:perf-review` — latency/memory/scaling gates measured by running it",
+    "`/atelier:orchestrate` — one structured run: subagent vs isolated worktree",
+    "`/atelier:swarms` — parallel multi-worktree swarm runs on your repo",
+    "`/atelier:benchmark` — Atelier vs vanilla Claude Code on your repo: cost, turns, time",
+    "`atelier savings` — realized savings: this session, 1d, 7d, 30d",
 )
 
 
@@ -1295,6 +1297,82 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     }
 
 
+def render_savings_summary(payload: dict[str, Any]) -> str:
+    """Render the default ``atelier savings`` view as a compact human summary.
+
+    Surfaces the headline numbers, the 1/7/30-day window table, the comparative
+    "vs vanilla" estimate, and the plan line from the ``build_savings_report``
+    payload. The full raw structure stays available via ``atelier savings --json``.
+    """
+
+    def _usd(v: Any) -> str:
+        return f"${float(v or 0):,.2f}"
+
+    def _int(v: Any) -> str:
+        return f"{int(v or 0):,}"
+
+    def _tok(v: Any) -> str:
+        n = int(v or 0)
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}k"
+        return str(n)
+
+    saved = float(payload.get("saved_usd") or 0.0)
+    calls = int(payload.get("calls_avoided") or 0)
+    tokens = int(payload.get("tokens_saved") or 0)
+    breakdown = payload.get("summary_breakdown") or {}
+    d30 = breakdown.get("30D") or {}
+    spend30 = float(d30.get("spend") or 0.0)
+
+    lines: list[str] = ["Atelier savings", "─" * 56]
+
+    if spend30 > 0:
+        pct = saved / spend30 * 100
+        lines.append(f"  Saved            {_usd(saved)}   ({pct:.0f}% of {_usd(spend30)} spend · 30d)")
+    else:
+        lines.append(f"  Saved            {_usd(saved)}")
+    lines.append(f"  Calls avoided    {_int(calls)}")
+    lines.append(f"  Tokens kept out  {_tok(tokens)}")
+
+    if breakdown:
+        lines.append("")
+        lines.append(f"  {'By window':<12}{'calls':>8}{'saved':>11}{'tokens':>10}")
+        for key, label in (("1D", "1 day"), ("7D", "7 days"), ("30D", "30 days")):
+            w = breakdown.get(key) or {}
+            lines.append(f"    {label:<10}{_int(w.get('calls')):>8}{_usd(w.get('usd')):>11}{_tok(w.get('tokens')):>10}")
+
+    vv = payload.get("vs_vanilla") or {}
+    if float(vv.get("cost_saved_usd") or 0) > 0:
+        window_days = int(vv.get("window_days") or 30)
+        lines.append("")
+        lines.append(f"  vs vanilla Claude Code  (estimate · {window_days}d)")
+        lines.append(
+            f"    {_usd(vv.get('cost_saved_usd'))} saved · {_int(vv.get('calls_saved'))} calls · "
+            f"{_tok(vv.get('tokens_saved'))} tokens · {_int(vv.get('sessions'))} sessions"
+        )
+        detectors = vv.get("by_detector") or {}
+        if detectors:
+            parts = " · ".join(f"{name} {count}" for name, count in sorted(detectors.items(), key=lambda kv: -kv[1]))
+            lines.append(f"    {parts}")
+
+    sub = payload.get("subscription") or {}
+    plan = str(sub.get("plan") or "").strip()
+    if plan:
+        status = str(sub.get("status") or "").strip().lower()
+        lines.append("")
+        lines.append(f"  Plan  {plan}" + (f" ({status})" if status else ""))
+
+    note = str(payload.get("local_note") or "").strip()
+    if note:
+        lines.append(f"  {note}")
+
+    lines.append("")
+    lines.append("  detail: atelier savings detail      json: atelier savings --json")
+    return "\n".join(lines)
+
+
 def savings_line(
     session_id: str = "",
     *,
@@ -1420,30 +1498,68 @@ def _transcript_turn_costs(transcript_path: str | Path) -> list[tuple[float, flo
     return out
 
 
-def _session_windowed_spend(session_id: str, root: Path, cutoff: float) -> float | None:
-    """Actual spend for *session_id*'s turns at/after *cutoff*, from the transcript.
+def _claude_transcript_index() -> dict[str, Path]:
+    """Map ``session_id -> newest main transcript`` from ONE projects/ listing.
 
-    Windows spend the same per-turn way savings rows are windowed, so a session
-    that ran across several days contributes only its in-window turns to each
-    window (fixing the "7d spend == 1d spend" artifact of end-of-session
-    attribution). Per-turn ``(ts, cost)`` pairs are cached in
+    :func:`claude_transcript_candidates` globs the whole projects tree per
+    session; resolving hundreds of sessions that way is O(sessions x projects).
+    One listing serves them all.
+    """
+    claude_root = os.environ.get("CLAUDE_CONFIG_DIR") or os.environ.get("CLAUDE_HOME") or ""
+    projects = Path(claude_root) / "projects" if claude_root else Path.home() / ".claude" / "projects"
+    index: dict[str, Path] = {}
+    if not projects.is_dir():
+        return index
+    try:
+        mtimes: dict[str, float] = {}
+        for p in projects.glob("*/*.jsonl"):
+            try:
+                mt = p.stat().st_mtime
+            except OSError:
+                continue
+            if p.stem not in index or mt > mtimes[p.stem]:
+                index[p.stem] = p
+                mtimes[p.stem] = mt
+    except OSError:
+        pass
+    return index
+
+
+def _session_turn_costs(
+    session_id: str,
+    root: Path,
+    *,
+    sidecar: Path | None = None,
+    transcript: Path | None = None,
+) -> list[tuple[float, float]] | None:
+    """Per-turn ``(epoch_ts, cost)`` for *session_id*, from the transcript.
+
+    Lets callers window spend the same per-turn way savings rows are windowed,
+    so a session that ran across several days contributes only its in-window
+    turns to each window (fixing the "7d spend == 1d spend" artifact of
+    end-of-session attribution). Pairs are cached in
     ``sessions/<id>/spend_cache.json`` keyed on transcript mtime (short TTL for
-    the still-growing active session) so the statusline does not re-parse the
-    transcript every render. Returns ``None`` when no transcript exists so the
-    caller can fall back to ``session_end`` rows.
+    the still-growing active session) so no render path re-parses the
+    transcript. Returns ``None`` when no transcript exists so the caller can
+    fall back to ``session_end`` rows.
+
+    ``sidecar``/``transcript`` let a bulk caller that already resolved the
+    session's paths skip the per-session directory globs.
     """
     if not session_id:
         return None
-    candidates = claude_transcript_candidates(session_id)
-    if not candidates:
-        return None
-    transcript = candidates[0]
+    if transcript is None:
+        candidates = claude_transcript_candidates(session_id)
+        if not candidates:
+            return None
+        transcript = candidates[0]
     try:
         mtime = transcript.stat().st_mtime
     except OSError:
         return None
     now = time.time()
-    cache_path = _find_savings_sidecar(session_id, root).with_name("spend_cache.json")
+    base = sidecar if sidecar is not None else _find_savings_sidecar(session_id, root)
+    cache_path = base.with_name("spend_cache.json")
     turns: list[Any] | None = None
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -1462,21 +1578,23 @@ def _session_windowed_spend(session_id: str, root: Path, cutoff: float) -> float
         turns = [[ts, cost] for ts, cost in _transcript_turn_costs(transcript)]
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(
+            # Atomic rename: concurrent writers (statusline render + stop hook)
+            # then always leave a complete JSON snapshot, never a torn file.
+            tmp_path = cache_path.with_name(f"{cache_path.name}.{os.getpid()}.tmp")
+            tmp_path.write_text(
                 json.dumps({"transcript_mtime": mtime, "computed_at": now, "turns": turns}),
                 encoding="utf-8",
             )
+            os.replace(tmp_path, cache_path)
         except OSError:
             pass
-    total = 0.0
+    out: list[tuple[float, float]] = []
     for item in turns:
         try:
-            ts, cost = float(item[0]), float(item[1])
+            out.append((float(item[0]), float(item[1])))
         except (TypeError, ValueError, IndexError):
             continue
-        if ts >= cutoff:
-            total += cost
-    return total
+    return out
 
 
 def _invalidate_historical_savings_cache() -> None:
@@ -1518,35 +1636,54 @@ def _read_historical_savings(
     Savings are summed per row (priced via :func:`_price_savings_row`, filtered
     by row ts). Spend is the session's actual cost: a ``kind=="session_end"`` row
     when the stop hook recorded one (finished sessions), otherwise back-filled
-    from the Claude transcript's est_cost (cached, see :func:`_session_windowed_spend`)
-    so a window still reflects the spend of sessions that ran before session_end
-    tracking existed — keeping 7d/30d spend from collapsing to the stop hook's
-    ~1 day of coverage.
+    from the Claude transcript's per-turn costs (cached, see
+    :func:`_session_turn_costs`) so a window still reflects the spend of
+    sessions that ran before session_end tracking existed — keeping 7d/30d
+    spend from collapsing to the stop hook's ~1 day of coverage.
 
     Uses file mtime as a cheap pre-filter so we skip files entirely outside the
     window before reading a byte. Results are cached in-process for
-    ``_HISTORICAL_SAVINGS_CACHE_TTL_S`` seconds; invalidated on every savings write.
+    ``_HISTORICAL_SAVINGS_CACHE_TTL_S`` seconds; new rows fold in O(1) on write.
 
     Returns (savings_usd, tokens_saved, calls_saved, turns_saved, spend_usd, carry_usd).
     """
+    return _read_historical_savings_many((int(days),), root)[int(days)]
+
+
+def _read_historical_savings_many(
+    days_list: tuple[int, ...], root: Path
+) -> dict[int, tuple[float, int, int, int, float, float]]:
+    """Windowed savings for SEVERAL trailing windows in ONE sessions/** pass.
+
+    A row inside the 1d cutoff also lands in 7d/30d, so one scan (mtime
+    pre-filtered against the widest uncached window) fills every requested
+    window instead of one full scan per window. Per-window results share the
+    in-process TTL cache with :func:`_read_historical_savings`; new rows are
+    folded into cached entries in O(1) on every savings write.
+    """
+    _now = time.time()
+    results: dict[int, tuple[float, int, int, int, float, float]] = {}
+    missing: list[int] = []
+    for days in days_list:
+        _cached = _historical_savings_cache.get((days, str(root)))
+        if _cached is not None and _now - _cached[0] < _HISTORICAL_SAVINGS_CACHE_TTL_S:
+            results[days] = _cached[1]
+        else:
+            missing.append(days)
+    if not missing:
+        return results
     sessions_dir = root / "sessions"
     if not sessions_dir.exists():
-        return 0.0, 0, 0, 0, 0.0, 0.0
-    # In-memory TTL cache: skip the full scan when the statusline polls frequently.
-    _cache_key = (days, str(root))
-    _now = time.time()
-    _cached = _historical_savings_cache.get(_cache_key)
-    if _cached is not None:
-        _cached_ts, _cached_val = _cached
-        if _now - _cached_ts < _HISTORICAL_SAVINGS_CACHE_TTL_S:
-            return _cached_val
-    cutoff = _now - days * 86_400
-    total_usd = 0.0
-    total_tok = 0
-    total_calls = 0
-    total_turns = 0
-    total_spend = 0.0
-    total_carry = 0.0
+        for days in missing:
+            results[days] = (0.0, 0, 0, 0, 0.0, 0.0)
+        return results
+    cutoffs = {days: _now - days * 86_400 for days in missing}
+    min_cutoff = min(cutoffs.values())
+    # Per window: [usd, tok, calls, turns, spend, carry]
+    totals: dict[int, list[float]] = {days: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for days in missing}
+    # session_id -> transcript, built lazily on the first session that needs a
+    # transcript spend fallback (one listing instead of one glob per session).
+    transcript_index: dict[str, Path] | None = None
     try:
         from datetime import datetime
 
@@ -1559,14 +1696,18 @@ def _read_historical_savings(
                 return None
 
         for p in sessions_dir.glob("**/savings.jsonl"):
-            # Fast path: skip files not touched since before the window.
+            # Fast path: skip files not touched since before the widest window.
+            # One hour of slack tolerates clock skew and coarse network-FS
+            # mtimes without re-reading the whole store.
             try:
-                if p.stat().st_mtime < cutoff:
+                if p.stat().st_mtime < min_cutoff - 3600:
                     continue
             except OSError:
                 continue
-            session_end_window = 0.0
-            session_carry_window = 0.0
+            end_spend = dict.fromkeys(missing, 0.0)
+            end_carry = dict.fromkeys(missing, 0.0)
+            last_end_ts = 0.0
+            last_row_ts = 0.0
             try:
                 with p.open(encoding="utf-8") as fh:
                     for raw in fh:
@@ -1582,41 +1723,75 @@ def _read_historical_savings(
                             continue
                         # session_end carries the whole-session cost at end time;
                         # used only as a fallback when the transcript is gone.
+                        # The stop hook appends one cumulative snapshot per Stop
+                        # fire, so only the last in-window row is the session's
+                        # total to date — summing them would multiply the spend.
                         if row.get("kind") == "session_end":
-                            if ts >= cutoff:
-                                session_end_window += float(row.get("est_cost_usd") or 0)
-                                session_carry_window += float(row.get("carry_usd") or 0)
+                            last_end_ts = max(last_end_ts, ts)
+                            for days, cutoff in cutoffs.items():
+                                if ts >= cutoff:
+                                    end_spend[days] = float(row.get("est_cost_usd") or 0)
+                                    end_carry[days] = float(row.get("carry_usd") or 0)
                             continue
-                        if ts < cutoff:
+                        if ts < min_cutoff:
                             continue
+                        last_row_ts = max(last_row_ts, ts)
                         # Price every row through the shared rule so the windowed
                         # 7d/30d totals reconcile exactly with the live
                         # per-session statusline/stop-hook figure.
                         pt, row_usd, row_calls, row_calls_usd, up = _price_savings_row(row)
                         row_usd += row_calls_usd
                         row_tok = pt + up
-                        total_usd += row_usd
-                        total_tok += row_tok
-                        total_calls += row_calls
-                        if row_usd > 0 or row_tok > 0:
-                            total_turns += 1
+                        for days, cutoff in cutoffs.items():
+                            if ts < cutoff:
+                                continue
+                            t = totals[days]
+                            t[0] += row_usd
+                            t[1] += row_tok
+                            t[2] += row_calls
+                            if row_usd > 0 or row_tok > 0:
+                                t[3] += 1
             except OSError:
                 continue
-            # Skip the transcript glob for finished sessions: session_end carries the
-            # accurate whole-session cost; _session_windowed_spend's transcript scan
-            # is only needed for still-active sessions (no session_end row yet).
-            if session_end_window > 0:
-                total_spend += session_end_window
-                total_carry += session_carry_window
-            else:
-                windowed_spend = _session_windowed_spend(p.parent.name, root, cutoff)
-                total_spend += windowed_spend if windowed_spend is not None else 0.0
-                total_carry += session_carry_window
+            # Spend: the last in-window session_end snapshot when one exists
+            # (finished sessions); otherwise the transcript's in-window turns.
+            # A savings row NEWER than the last snapshot means the session
+            # resumed after Stop — the snapshot undercounts, so prefer the
+            # transcript when it still exists (snapshot stays the fallback).
+            resumed = last_row_ts > last_end_ts > 0.0
+            session_turns: list[tuple[float, float]] | None = None
+            turns_fetched = False
+            for days in missing:
+                totals[days][5] += end_carry[days]
+                if end_spend[days] > 0 and not resumed:
+                    totals[days][4] += end_spend[days]
+                    continue
+                if not turns_fetched:
+                    if transcript_index is None:
+                        transcript_index = _claude_transcript_index()
+                    # Index miss (other-host session, subagent-keyed sidecar,
+                    # transcript layout drift) falls back to the per-session
+                    # candidates() glob inside _session_turn_costs, so a layout
+                    # the index cannot see degrades to the slow path instead of
+                    # silently dropping the session's spend.
+                    session_turns = _session_turn_costs(
+                        p.parent.name, root, sidecar=p, transcript=transcript_index.get(p.parent.name)
+                    )
+                    turns_fetched = True
+                if session_turns is not None:
+                    totals[days][4] += sum(cost for turn_ts, cost in session_turns if turn_ts >= cutoffs[days])
+                elif end_spend[days] > 0:
+                    # Resumed but the transcript is gone: the stale snapshot
+                    # still beats reporting zero.
+                    totals[days][4] += end_spend[days]
     except Exception:
         logging.exception("Recovered reading historical savings")
-    _result = (total_usd, total_tok, total_calls, total_turns, total_spend, total_carry)
-    _historical_savings_cache[_cache_key] = (_now, _result)
-    return _result
+    for days in missing:
+        t = totals[days]
+        result = (t[0], int(t[1]), int(t[2]), int(t[3]), t[4], t[5])
+        _historical_savings_cache[(days, str(root))] = (_now, result)
+        results[days] = result
+    return results
 
 
 @dataclass
@@ -1804,10 +1979,11 @@ def savings_frames(
     # already baseline-subtracted by statusline.sh but can lag on the first render.
     display_cost = summary.est_cost_usd if summary.est_cost_usd > 0 else live_cost_usd
 
-    # Historical savings (scanned once per segment call — fast file scan).
-    usd_1d, tok_1d, calls_1d, _turns_1d, spend_1d, carry_1d = _read_historical_savings(1, root)
-    usd_7d, tok_7d, calls_7d, _turns_7d, spend_7d, carry_7d = _read_historical_savings(7, root)
-    usd_30d, tok_30d, calls_30d, _turns_30d, spend_30d, carry_30d = _read_historical_savings(30, root)
+    # Historical savings — one sessions/** pass fills all three windows.
+    hist = _read_historical_savings_many((1, 7, 30), root)
+    usd_1d, tok_1d, calls_1d, _turns_1d, spend_1d, carry_1d = hist[1]
+    usd_7d, tok_7d, calls_7d, _turns_7d, spend_7d, carry_7d = hist[7]
+    usd_30d, tok_30d, calls_30d, _turns_30d, spend_30d, carry_30d = hist[30]
     first_ts = _first_savings_ts(root)
     days_active = (time.time() - first_ts) / 86_400 if first_ts > 0 else 0.0
 

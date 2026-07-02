@@ -8541,12 +8541,13 @@ def _run_bash_tool(
     max_output_tokens: int | None = None,
     background: bool = False,
     session_id: str | None = None,
-    action: Literal["run", "poll", "cancel"] = "run",
+    action: Literal["run", "poll", "cancel", "status"] = "run",
 ) -> dict[str, Any] | _DeferredResult:
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import (
         classify_command,
         execute_inline_op,
+        peek_managed_command,
         poll_managed_command,
         start_managed_command,
     )
@@ -8582,11 +8583,15 @@ def _run_bash_tool(
         workspace = os.getcwd()
     effective_cwd = cwd or workspace
 
-    if action in {"poll", "cancel"}:
+    if action in {"poll", "cancel", "status"}:
         if not session_id:
             raise ValueError(f"session_id is required for shell action={action}")
         if action == "cancel":
             return poll_managed_command(session_id, cancel=True)
+        if action == "status":
+            # Single non-blocking check -- unlike `poll`, never waits for the
+            # command to finish and never reaps the session.
+            return peek_managed_command(session_id)
         # Block until the backgrounded command finishes (or its own timeout
         # kills it). No artificial window -- the command's timeout is the bound.
         delay = 0.02
@@ -8912,6 +8917,9 @@ def _render_bash_text(result: dict[str, Any]) -> str:
             parts.append(" ".join(meta))
     elif status:
         parts.append(f"status={status} session_id={session_id}")
+    tail_lines = result.get("tail_lines")
+    if isinstance(tail_lines, int) and tail_lines > 0:
+        parts.append(f"[tail: last {tail_lines} line(s) of stdout/stderr]")
     if blocked:
         if status != "blocked":
             header = "blocked"
@@ -9729,13 +9737,18 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["run", "poll", "cancel"],
+            "enum": ["run", "poll", "cancel", "status"],
             "default": "run",
-            "description": "run (default): execute `command`. poll/cancel: act on a background `session_id`.",
+            "description": (
+                "run (default): execute `command`. status: non-blocking check of a "
+                "background `session_id` (state + last 10 lines, doesn't end the "
+                "session). poll: block until a background `session_id` finishes. "
+                "cancel: kill a background `session_id`."
+            ),
         },
         "command": {
             "type": "string",
-            "description": "Shell command to execute (action=run). Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
+            "description": "Shell command to execute (action=run). Blocked: inline shell (bash -c / sh -c), rm -rf, git reset --hard, git clean -fd; running an existing script (bash script.sh) is allowed. Rewritten transparently: cat→read, rg/grep→grep tool.",
         },
         "timeout": {
             "type": "integer",
@@ -9766,7 +9779,7 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     description=(
         "Run a command via the system shell and return compact text. Prefer Atelier "
         "read/grep/search where possible; use bash for git, make, uv, npm, etc. "
-        "No bash -c / sh -c — blocked."
+        "Inline shell (bash -c / sh -c) is blocked; running an existing script (bash script.sh) is allowed."
     ),
     hidden_params=("max_lines",),
 )
@@ -9778,12 +9791,18 @@ def tool_bash(
     max_output_tokens: int | None = None,
     background: bool = False,
     session_id: str | None = None,
-    action: Literal["run", "poll", "cancel"] = "run",
+    action: Literal["run", "poll", "cancel", "status"] = "run",
 ) -> str | _DeferredResult:
     """Execute a shell command and return compact text output.
 
     Prefer Atelier read/grep/search tools directly — they are faster and cheaper.
     Use bash only for commands that have no Atelier equivalent (git, make, uv, npm, etc.).
+
+    action="status" checks a background `session_id` without blocking or
+    reaping it: current state, pid, elapsed/remaining time, and the last 10
+    lines of stdout/stderr collected so far. Unlike action="poll", it never
+    waits for the command to finish, so it's safe to call repeatedly while a
+    long-running command is still in flight.
     """
     result = _run_bash_tool(
         command,
@@ -10804,6 +10823,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                                 "ts": time.time(),
                             }
                         )
+                    # Refresh the statusline frames sidecar on EVERY dispatch
+                    # (not only savings-bearing calls) so the shell render's
+                    # 10s freshness gate keeps passing during active work and
+                    # the slow `atelier savings --segment` subprocess fallback
+                    # never fires. Rate-limited internally to one write per 5s.
+                    with contextlib.suppress(Exception):
+                        _write_statusline_sidecar()
 
                 response_text: str
                 if rendered_text:

@@ -19,7 +19,7 @@ import logging
 import os
 import re
 import typing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +124,90 @@ def _rule(label: str = "") -> None:
         click.echo(f"{_DIM}─{_RESET}{line}{_DIM}{'─' * fill}{_RESET}")
     else:
         click.echo(f"{_DIM}{'─' * _W}{_RESET}")
+
+
+def render_overview(root: Path, *, days: int = 7, n_runs: int = 8) -> str:
+    """Render the terminal dashboard: a windowed spend/savings rollup + recent runs.
+
+    Composes the same ``build_insights`` aggregation the ``insights`` CLI and the
+    web Savings page read, so every surface agrees on the numbers. Plain text by
+    design — the legacy ``_render_dashboard`` ANSI plumbing is intentionally not
+    reused (that was the surface asking for a beauty treatment).
+    """
+    from atelier.infra.runtime.insights import _bar, build_insights
+    from atelier.infra.runtime.session_report import build_report, list_run_files
+
+    until = datetime.now(UTC)
+    since = until - timedelta(days=days)
+    window = build_insights(root, since=since, until=until)
+
+    width = 60
+    lines: list[str] = [f"Atelier · last {days} days", "─" * width]
+
+    # At-a-glance
+    if window.session_count:
+        avg_min = int(window.total_duration_seconds / window.session_count / 60)
+        total_h, rem = divmod(int(window.total_duration_seconds), 3600)
+        lines.append(f"  Sessions   {window.session_count}   (avg {avg_min} min · total {total_h}h {rem // 60}m)")
+    else:
+        lines.append("  Sessions   0")
+    lines.append(f"  AI spend   ${window.total_cost_usd:.2f}")
+    if window.total_cost_usd > 0:
+        frac = window.total_atelier_savings_usd / window.total_cost_usd
+        lines.append(
+            f"  Saved      ${window.total_atelier_savings_usd:.2f}   ({frac * 100:.0f}% of spend)   {_bar(frac)}"
+        )
+    else:
+        lines.append(f"  Saved      ${window.total_atelier_savings_usd:.2f}")
+
+    # Cost by model
+    if window.cost_by_model:
+        lines.append("")
+        lines.append("  Cost by model")
+        for model, cost in list(window.cost_by_model.items())[:4]:
+            frac = cost / window.total_cost_usd if window.total_cost_usd > 0 else 0.0
+            lines.append(f"    {model:<20}${cost:>7.2f}  {frac * 100:>3.0f}%  {_bar(frac, 14)}")
+
+    # Top tools
+    if window.cost_by_tool:
+        lines.append("")
+        lines.append("  Top tools")
+        for tool, cost in list(window.cost_by_tool.items())[:4]:
+            lines.append(f"    {tool:<20}${cost:>7.2f}")
+
+    # Recent runs
+    rows_added = False
+    for run_file in list_run_files(root)[:n_runs]:
+        try:
+            snap: dict[str, Any] = json.loads(run_file.read_text(encoding="utf-8"))
+            report = build_report(snap, root)
+        except Exception:  # noqa: BLE001 - best-effort per-run row; skip unreadable files
+            continue
+        if not rows_added:
+            lines.append("")
+            lines.append("  Recent runs")
+            rows_added = True
+        sid = (report.session_id or str(snap.get("run_id") or snap.get("id") or ""))[:6] or "?"
+        agent = str(snap.get("agent") or "-")[:10]
+        task_line = (str(snap.get("task") or "").strip().splitlines() or [""])[0]
+        task = (task_line[:26] + "…") if len(task_line) > 26 else (task_line or "-")
+        status = str(snap.get("status") or "?")
+        mark = {"success": "✓", "complete": "✓", "failed": "✗", "error": "✗"}.get(status, "•")
+        age = _age(str(snap.get("updated_at") or snap.get("created_at") or ""))
+        lines.append(
+            f"    {sid:<7}{agent:<11}{task:<28}{mark} ${report.total_cost_usd:>6.2f}  "
+            f"saved ${report.total_atelier_savings_usd:>5.2f}  {age}"
+        )
+
+    if window.session_count or rows_added:
+        lines.append("")
+        lines.append("  → drill into a run:  atelier session report <id>")
+        lines.append("    open in browser:   atelier dashboard open")
+    else:
+        lines.append("")
+        lines.append("  No sessions yet — run any AI command, then check back.")
+
+    return "\n".join(lines)
 
 
 def _render_dashboard(root: Path, *, line_mode: bool, n_runs: int, session_id: str | None) -> None:

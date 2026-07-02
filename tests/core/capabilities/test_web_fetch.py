@@ -4,7 +4,7 @@ import concurrent.futures
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 
@@ -60,6 +60,46 @@ class _FakeBinaryResponse:
 
     def __init__(self) -> None:
         self._body = b"\x00\x01\x02"
+
+    def stream(self, amt: int = 65536, decode_content: bool = True) -> Iterator[bytes]:
+        yield self._body
+
+    def release_conn(self) -> None:
+        return None
+
+
+def _build_minimal_pdf(text: str = "Hello PDF") -> bytes:
+    """Build a minimal single-page PDF containing *text*, using only pypdf."""
+    import io
+
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=200, height=200)
+    content = DecodedStreamObject()
+    content.set_data(f"BT /F1 24 Tf 20 100 Td ({text}) Tj ET".encode())
+    page[NameObject("/Contents")] = writer._add_object(content)
+    font = DictionaryObject()
+    font[NameObject("/Type")] = NameObject("/Font")
+    font[NameObject("/Subtype")] = NameObject("/Type1")
+    font[NameObject("/BaseFont")] = NameObject("/Helvetica")
+    resources = DictionaryObject()
+    font_dict = DictionaryObject()
+    font_dict[NameObject("/F1")] = writer._add_object(font)
+    resources[NameObject("/Font")] = font_dict
+    page[NameObject("/Resources")] = resources
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+class _FakePdfResponse:
+    status = 200
+    headers: ClassVar[dict[str, str]] = {"content-type": "application/pdf"}
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
 
     def stream(self, amt: int = 65536, decode_content: bool = True) -> Iterator[bytes]:
         yield self._body
@@ -242,6 +282,191 @@ def test_rejects_binary_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="unsupported content type"):
         web_fetch._fetch_uncached("https://example.com/file", accept="*/*", timeout_s=5.0)
+
+
+# --------------------------------------------------------------------------- #
+# PDF extraction                                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_accepts_pdf_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_http = _FakeHTTP()
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(_build_minimal_pdf())
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    raw = web_fetch._fetch_uncached("https://example.com/doc.pdf", accept="*/*", timeout_s=5.0)
+    assert raw.content_type == "application/pdf"
+
+
+def test_pdf_to_text_extracts_text() -> None:
+    text = web_fetch._pdf_to_text(_build_minimal_pdf("Hello PDF"))
+    assert text == "Hello PDF"
+
+
+def test_pdf_to_text_raises_on_corrupt_pdf() -> None:
+    with pytest.raises(ValueError, match="failed to extract PDF text"):
+        web_fetch._pdf_to_text(b"this is not a pdf")
+
+
+def test_table_to_markdown_renders_header_and_rows() -> None:
+    table = [["Model", "Score"], ["Opus 4.8", "88.6"], [None, "87.6"]]
+    md = web_fetch._table_to_markdown(table)
+    lines = md.splitlines()
+    assert lines[0] == "| Model | Score |"
+    assert lines[1] == "| --- | --- |"
+    assert "| Opus 4.8 | 88.6 |" in md
+    assert "|  | 87.6 |" in md  # None cell renders as empty, not "None"
+
+
+def test_table_to_markdown_empty_table_returns_empty_string() -> None:
+    assert web_fetch._table_to_markdown([]) == ""
+    assert web_fetch._table_to_markdown([[]]) == ""
+
+
+class _FakePlumberPage:
+    def __init__(self, text: str, tables: list[list[list[Any]]], page_number: int) -> None:
+        self._text = text
+        self._tables = tables
+        self.page_number = page_number
+
+    def extract_text(self) -> str:
+        return self._text
+
+    def extract_tables(self) -> list[list[list[Any]]]:
+        return self._tables
+
+
+class _FakePlumberPdf:
+    def __init__(self, pages: list[_FakePlumberPage]) -> None:
+        self.pages = pages
+
+    def __enter__(self) -> _FakePlumberPdf:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+class _FakePypdfImage:
+    def __init__(self, name: str, data: bytes) -> None:
+        self.name = name
+        self.data = data
+
+
+class _FakePypdfPage:
+    def __init__(self, images: list[_FakePypdfImage]) -> None:
+        self.images = images
+
+
+def test_pdf_to_text_assembles_prose_tables_and_image_notes(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Prose, detected tables (as Markdown), and per-image spill pointers must
+    all survive into the extracted text -- not just the prose, which was the
+    old (pypdf-text-only) behavior that silently dropped tables and images."""
+    import pdfplumber
+    import pypdf
+
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+
+    fake_plumber_pages = [
+        _FakePlumberPage("Intro prose.", [[["A", "B"], ["1", "2"]]], 1),
+        _FakePlumberPage("", [], 2),
+    ]
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **kw: _FakePlumberPdf(fake_plumber_pages))
+
+    fake_pypdf_pages = [
+        _FakePypdfPage([]),
+        _FakePypdfPage([_FakePypdfImage("Im0.png", b"fake-png-bytes"), _FakePypdfImage("Im1.jpg", b"fake-jpg-bytes")]),
+    ]
+
+    class _FakeReader:
+        def __init__(self, *a: object, **kw: object) -> None:
+            self.pages = fake_pypdf_pages
+
+    monkeypatch.setattr(pypdf, "PdfReader", _FakeReader)
+
+    text = web_fetch._pdf_to_text(b"irrelevant-bytes-since-both-parsers-are-mocked")
+
+    assert "Intro prose." in text
+    assert "| A | B |" in text
+    assert "[image on page 2:" in text
+    saved_images = sorted(tmp_path.glob("pdf-image-web_fetch-*"))
+    assert len(saved_images) == 2
+    assert {p.suffix for p in saved_images} == {".png", ".jpg"}
+    assert saved_images[0].read_bytes() in (b"fake-png-bytes", b"fake-jpg-bytes")
+
+
+def test_pdf_to_text_notes_images_past_the_extraction_cap(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Past _MAX_PDF_IMAGES_EXTRACTED, remaining images are counted, not spilled."""
+    import pdfplumber
+    import pypdf
+
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+    monkeypatch.setattr(web_fetch, "_MAX_PDF_IMAGES_EXTRACTED", 1)
+
+    fake_plumber_pages = [_FakePlumberPage("Prose.", [], 1)]
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **kw: _FakePlumberPdf(fake_plumber_pages))
+
+    fake_pypdf_pages = [
+        _FakePypdfPage([_FakePypdfImage("Im0.png", b"one"), _FakePypdfImage("Im1.png", b"two")]),
+    ]
+
+    class _FakeReader:
+        def __init__(self, *a: object, **kw: object) -> None:
+            self.pages = fake_pypdf_pages
+
+    monkeypatch.setattr(pypdf, "PdfReader", _FakeReader)
+
+    text = web_fetch._pdf_to_text(b"irrelevant-bytes")
+
+    assert "[image on page 1:" in text
+    assert "1 additional embedded image(s) not extracted" in text
+    assert len(list(tmp_path.glob("pdf-image-web_fetch-*"))) == 1
+
+
+def test_render_content_raises_clearly_on_truncated_pdf() -> None:
+    """A PDF that exceeded the fetch cap must fail with an actionable message,
+    not a cryptic pypdf parse error on the corrupted (truncated) bytes."""
+    raw = web_fetch._RawFetchResult(
+        url="https://x",
+        final_url="https://x",
+        status=200,
+        content_type="application/pdf",
+        headers={},
+        body=_build_minimal_pdf("Hello PDF")[:10],  # truncated mid-file
+        truncated_body=True,
+    )
+    with pytest.raises(ValueError, match=r"exceeds the .*MB fetch cap"):
+        web_fetch._render_content(raw, requested_format="text")
+
+
+def test_fetch_url_renders_pdf_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_http = _FakeHTTP()
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(_build_minimal_pdf("Hello PDF"))
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    result = web_fetch.fetch_url("https://example.com/doc.pdf", output_format="text")
+    assert result["content"].startswith("Hello PDF")
+    assert result["format"] == "text"
+
+
+def test_fetch_url_pdf_points_at_the_downloaded_original(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """The raw PDF is spilled to disk and the returned text names its path,
+    so an agent can open the real file when extraction loses charts/tables."""
+    monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(tmp_path))
+    fake_http = _FakeHTTP()
+    pdf_bytes = _build_minimal_pdf("Hello PDF")
+    fake_http.request = lambda *a, **kw: _FakePdfResponse(pdf_bytes)
+    monkeypatch.setattr(web_fetch, "_HTTP", fake_http)
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "1.2.3.4")
+
+    result = web_fetch.fetch_url("https://example.com/doc.pdf", output_format="text")
+    assert "downloaded PDF:" in result["content"]
+
+    saved = list(tmp_path.glob("original-web_fetch-*.pdf"))
+    assert len(saved) == 1
+    assert saved[0].read_bytes() == pdf_bytes
 
 
 # --------------------------------------------------------------------------- #

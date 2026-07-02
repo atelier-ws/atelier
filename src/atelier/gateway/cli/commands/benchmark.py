@@ -319,7 +319,9 @@ def benchmark_mini_cmd(
     help="Rebuild bundle from current source before a fresh run (default: on).",
 )
 @click.option("--resume", "resume_dir", default=None, help="Resume an existing job dir instead of starting fresh.")
-@click.option("--output", "-o", default=None, help="Output directory for results (default: benchmarks/jobs/harbor/).")
+@click.option(
+    "--output", "-o", default=None, help="Output directory for results (default: benchmarks/harbor/results/<arm>/)."
+)
 @click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
 @click.pass_context
 def benchmark_harbor_cmd(
@@ -352,8 +354,8 @@ def benchmark_harbor_cmd(
       # Baseline arm (no Atelier plugin):
       atelier benchmark harbor --baseline -y
 
-      # Resume a rate-limited job:
-      atelier benchmark harbor --resume benchmarks/jobs/harbor/2026-07-01__12-00-00 -y
+      # Resume a rate-limited job (must point at the dated job dir, not its parent):
+      atelier benchmark harbor --resume benchmarks/harbor/results/atelier/2026-07-01__12-00-00 -y
 
       # Quick smoke test (3 tasks, 1 attempt):
       atelier benchmark harbor --limit 3 --attempts 1 -y
@@ -453,20 +455,20 @@ def benchmark_harbor_cmd(
             click.echo(f"Rebuilding bundle from current source -> {bundle_path} ...")
             rebuild_script = repo_root / "benchmarks" / "harbor" / "rebuild_bundle.sh"
             bundle_path.parent.mkdir(parents=True, exist_ok=True)
-            ret = _subprocess.call(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    f"{repo_root_str}:/atelier:ro",
-                    "-v",
-                    f"{bundle_path.parent}:/out",
-                    "debian:bullseye-slim",
-                    "bash",
-                    f"/atelier/{rebuild_script.relative_to(repo_root)}",
-                ],
-            )
+            rebuild_cmd = [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                f"{repo_root_str}:/atelier:ro",
+                "-v",
+                f"{bundle_path.parent}:/out",
+                "debian:bullseye-slim",
+                "bash",
+                f"/atelier/{rebuild_script.relative_to(repo_root)}",
+            ]
+            click.echo(f"Command: {' '.join(rebuild_cmd)}\n")
+            ret = _subprocess.call(rebuild_cmd)
             if ret != 0:
                 raise click.ClickException("Bundle rebuild failed.")
             new_bundle = bundle_path.parent / "atelier-bundle-new.tar.gz"

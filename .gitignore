@@ -298,7 +298,6 @@ exports/
 /reports/*.md
 /reports/benchmark/*
 !/reports/benchmark/.gitignore
-!/reports/benchmark/mrr_history.jsonl
 /reports/**/*.flow
 .eval
 /installer/
@@ -319,5 +318,5 @@ benchmarks/codebench/data/*.jsonl
 .astro
 .codegraph/
 .planning
-reports/
+/reports/
 

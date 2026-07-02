@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+import os
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     import click
 
 
-def _h(cmd: object) -> object:
-    """Mark a click command/group hidden (used for internal commands)."""
-    # if cmd is not None and hasattr(cmd, "hidden"):
-    # cmd.hidden = True  # type: ignore[union-attr]
+# Set ATELIER_SHOW_ALL=1 to reveal internal/hidden commands in ``atelier --help``.
+_SHOW_ALL = os.environ.get("ATELIER_SHOW_ALL") == "1"
+
+
+def _h(cmd: Any) -> Any:
+    """Mark a click command/group hidden (used for internal commands).
+
+    Hidden commands stay fully runnable and ``atelier <cmd> --help`` still
+    prints their help; they are only dropped from the top-level ``--help``
+    listing. Set ``ATELIER_SHOW_ALL=1`` to reveal them all.
+    """
+    if not _SHOW_ALL and cmd is not None:
+        cmd.hidden = True
     return cmd
 
 
@@ -37,10 +47,13 @@ def register(cli: click.Group) -> None:
             cli.add_command(cast("click.Command", doctor_cmd))
         reset_cmd = getattr(admin_commands, "reset_cmd", None)
         if reset_cmd is not None:
+            _h(cast("click.Command", reset_cmd))
             cli.add_command(cast("click.Command", reset_cmd))
+        _h(admin_commands.team_group)
         cli.add_command(admin_commands.team_group)
         _h(admin_commands.governance_group)
         cli.add_command(admin_commands.governance_group)
+        _h(admin_commands.audit_group)
         cli.add_command(admin_commands.audit_group)
         _h(admin_commands.insights_cmd)
         cli.add_command(admin_commands.insights_cmd)
@@ -121,6 +134,7 @@ def register(cli: click.Group) -> None:
 
         tools_group.add_command(tool_mode, name="mode")
         tools_group.add_command(admin_commands.tool_report_cmd, name="report")
+        _h(tools_group)
         cli.add_command(tools_group)
 
         # 'atelier mcp' starts the stdio MCP server (replaces the legacy standalone binary)
@@ -139,8 +153,9 @@ def register(cli: click.Group) -> None:
             savings_cmd,
         )
 
-        _h(savings_cmd)
+        # savings is the headline metric — kept visible in --help.
         cli.add_command(savings_cmd)
+        _h(optimize_group)  # advanced tuning advisor — internal
         cli.add_command(optimize_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -162,6 +177,7 @@ def register(cli: click.Group) -> None:
     try:
         from .knowledge import knowledge_group
 
+        _h(knowledge_group)
         cli.add_command(knowledge_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -169,6 +185,7 @@ def register(cli: click.Group) -> None:
     try:
         from .router import router_daemon_group
 
+        _h(router_daemon_group)
         cli.add_command(router_daemon_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -183,6 +200,7 @@ def register(cli: click.Group) -> None:
     try:
         from .db import db_group
 
+        _h(db_group)
         cli.add_command(db_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -198,7 +216,9 @@ def register(cli: click.Group) -> None:
     try:
         from .code import code_group, zoekt_group
 
+        _h(code_group.commands.get("train"))  # [EXPERIMENTAL] embedder finetune — internal
         cli.add_command(code_group)
+        _h(zoekt_group)  # search-backend infra used transparently by code_search
         cli.add_command(zoekt_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -206,6 +226,7 @@ def register(cli: click.Group) -> None:
     try:
         from .perf import perf_group
 
+        _h(perf_group)
         cli.add_command(perf_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -213,7 +234,9 @@ def register(cli: click.Group) -> None:
     try:
         from .route import proof_group, route_public_group
 
+        _h(route_public_group)
         cli.add_command(route_public_group)
+        _h(proof_group)
         cli.add_command(proof_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -221,6 +244,7 @@ def register(cli: click.Group) -> None:
     try:
         from .hosts import global_import
 
+        _h(global_import)
         cli.add_command(global_import)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -235,9 +259,11 @@ def register(cli: click.Group) -> None:
 
         _h(ledger)
         cli.add_command(ledger)
+        _h(checkpoint)
         cli.add_command(checkpoint)
         _h(lesson)
         cli.add_command(lesson)
+        _h(eval_)
         cli.add_command(eval_)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -245,8 +271,8 @@ def register(cli: click.Group) -> None:
     try:
         from .sessions import runs_group, session_group
 
+        _h(runs_group)
         cli.add_command(runs_group)
-        _h(session_group)
         cli.add_command(session_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -261,6 +287,7 @@ def register(cli: click.Group) -> None:
     try:
         from .run import run_group
 
+        _h(run_group)  # owned coding sessions — undocumented; hidden until launched
         cli.add_command(run_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -268,6 +295,7 @@ def register(cli: click.Group) -> None:
     try:
         from .memory import memory_group_cli
 
+        _h(memory_group_cli)
         cli.add_command(memory_group_cli)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -275,6 +303,7 @@ def register(cli: click.Group) -> None:
     try:
         from .letta import letta_group
 
+        _h(letta_group)
         cli.add_command(letta_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
@@ -287,38 +316,43 @@ def register(cli: click.Group) -> None:
         @_click.group("dashboard", invoke_without_command=True)
         @_click.pass_context
         def dashboard_group(ctx: _click.Context) -> None:
-            """Show Atelier runs dashboard, costs, and service status.
+            """Show the Atelier spend & savings dashboard.
 
-            Run with no arguments for the terminal overview.
-            Use ``atelier dashboard open`` to open the browser analytics UI.
+            Run with no arguments for the terminal rollup (last 7 days + recent
+            runs). Use ``atelier dashboard open`` for the browser analytics UI.
             """
             if ctx.invoked_subcommand is None:
-                # Forward to the underlying status_cmd
-                ctx.invoke(admin_commands.status_cmd)
+                from atelier.core.capabilities.reporting.dashboard import render_overview
+
+                _click.echo(render_overview(ctx.obj["root"]))
 
         @dashboard_group.command("open")
-        @_click.option("--port", default=8787, show_default=True, help="Atelier service port")
-        @_click.option("--dev", is_flag=True, default=False, help="Open Vite dev server (port 3125)")
-        def dashboard_open_cmd(port: int, dev: bool) -> None:
-            """Open the Atelier analytics dashboard in your browser."""
+        @_click.option("--port", default=3125, show_default=True, help="Atelier web UI (frontend) port")
+        def dashboard_open_cmd(port: int) -> None:
+            """Open the Atelier analytics web UI in your browser.
+
+            Targets the frontend (Vite) on port 3125 — the backend service on
+            8787 only serves the JSON API, not the dashboard.
+            """
             import urllib.request
             import webbrowser
 
-            target_port = 3125 if dev else port
-            url = f"http://localhost:{target_port}/analytics"
+            # Frontend root ('/') redirects to the dashboard home ('/overview').
+            url = f"http://localhost:{port}/"
             try:
-                urllib.request.urlopen(f"http://localhost:{target_port}/health", timeout=2)
-                _click.echo(f"  ◆ Opening Atelier dashboard: {url}")
-                webbrowser.open(url)
+                urllib.request.urlopen(url, timeout=2)
             except Exception:  # noqa: BLE001
                 _click.echo(
-                    f"  Atelier service not running on port {target_port}.\n\n"
-                    f"  Start it with:\n"
-                    f"    atelierd start\n"
-                    f"  Or as background service:\n"
-                    f"    atelierd install && atelierd restart\n\n"
+                    f"  Atelier web UI not running on port {port}.\n\n"
+                    f"  Start the full stack (backend + web UI):\n"
+                    f"    atelier stack start\n"
+                    f"  Or just the frontend:\n"
+                    f"    atelierd frontend-start\n\n"
                     f"  Then run: atelier dashboard open"
                 )
+                return
+            _click.echo(f"  ◆ Opening Atelier dashboard: {url}")
+            webbrowser.open(url)
 
         cli.add_command(dashboard_group)
         # Keep 'status' as a hidden alias for backward compatibility
@@ -402,6 +436,7 @@ def register(cli: click.Group) -> None:
     try:
         from .project import project_cmd
 
+        _h(project_cmd)
         cli.add_command(project_cmd, name="project")
     except ImportError:
         pass
@@ -412,18 +447,19 @@ _ZSH_COMPLETION = """
 _atelier() {
     local -a commands
     commands=(
-        'tui:Start interactive workspace'
-        'workspace:Start interactive workspace (alias)'
-        'chat:Start interactive REPL'
-        'run:Run one-shot owned coding session'
-        'mcp:Start MCP server'
-        'completions:Print shell completion script'
+        'init:Initialize the runtime store'
+        'update:Check for and apply updates'
+        'mcp:Start the MCP server'
+        'benchmark:Run Atelier benchmark suites'
         'savings:Show cost/savings summary'
-        'sessions:Session management'
-        'context:Context operations'
-        'route:Routing operations'
+        'recall:Recall across past sessions'
+        'swarm:Coordinate isolated child attempts'
+        'dashboard:Show runs dashboard and costs'
+        'doctor:Run installation diagnostics'
+        'code:Code index and retrieval'
         'service:Service management'
-        'worker:Worker management'
+        'completions:Print shell completion script'
+        'uninstall:Remove Atelier'
     )
     _describe 'atelier commands' commands
 }
@@ -433,7 +469,7 @@ compdef _atelier atelier
 _BASH_COMPLETION = """
 _atelier_completions() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local commands="tui workspace chat run mcp completions savings sessions context route service worker --help --version"
+    local commands="init update mcp benchmark savings recall swarm dashboard doctor code service completions uninstall --help --version"
     COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
 }
 complete -F _atelier_completions atelier
@@ -441,11 +477,17 @@ complete -F _atelier_completions atelier
 
 _FISH_COMPLETION = """
 complete -c atelier -f
-complete -c atelier -n '__fish_use_subcommand' -a tui -d 'Start interactive workspace'
-complete -c atelier -n '__fish_use_subcommand' -a workspace -d 'Start interactive workspace (alias)'
-complete -c atelier -n '__fish_use_subcommand' -a chat -d 'Start interactive REPL'
-complete -c atelier -n '__fish_use_subcommand' -a run -d 'Run one-shot owned coding session'
-complete -c atelier -n '__fish_use_subcommand' -a mcp -d 'Start MCP server'
-complete -c atelier -n '__fish_use_subcommand' -a completions -d 'Print shell completion script'
+complete -c atelier -n '__fish_use_subcommand' -a init -d 'Initialize the runtime store'
+complete -c atelier -n '__fish_use_subcommand' -a update -d 'Check for and apply updates'
+complete -c atelier -n '__fish_use_subcommand' -a mcp -d 'Start the MCP server'
+complete -c atelier -n '__fish_use_subcommand' -a benchmark -d 'Run Atelier benchmark suites'
 complete -c atelier -n '__fish_use_subcommand' -a savings -d 'Show cost/savings summary'
+complete -c atelier -n '__fish_use_subcommand' -a recall -d 'Recall across past sessions'
+complete -c atelier -n '__fish_use_subcommand' -a swarm -d 'Coordinate isolated child attempts'
+complete -c atelier -n '__fish_use_subcommand' -a dashboard -d 'Show runs dashboard and costs'
+complete -c atelier -n '__fish_use_subcommand' -a doctor -d 'Run installation diagnostics'
+complete -c atelier -n '__fish_use_subcommand' -a code -d 'Code index and retrieval'
+complete -c atelier -n '__fish_use_subcommand' -a service -d 'Service management'
+complete -c atelier -n '__fish_use_subcommand' -a completions -d 'Print shell completion script'
+complete -c atelier -n '__fish_use_subcommand' -a uninstall -d 'Remove Atelier'
 """

@@ -145,15 +145,18 @@ export default function Sessions() {
         .traces(50, offset, "all", hostFilter, workspaceFilter, query)
         .then((res) => {
           if (requestSeq !== tracesRequestSeq.current) return;
-          setAvailableHosts(res.metrics.hosts);
-          setAvailableWorkspaces(res.metrics.workspaces);
+          // Defensive: older/mismatched backends may omit metrics facets —
+          // never let a missing wire field crash the render.
+          setAvailableHosts(res.metrics?.hosts ?? []);
+          setAvailableWorkspaces(res.metrics?.workspaces ?? []);
+          const items = res.items ?? [];
           if (offset === 0) {
-            setTraces(res.items);
-            setHasMore(res.items.length >= 50);
+            setTraces(items);
+            setHasMore(items.length >= 50);
             setPage(0);
           } else {
-            setTraces((prev) => (prev ? [...prev, ...res.items] : res.items));
-            setHasMore(res.items.length >= 50);
+            setTraces((prev) => (prev ? [...prev, ...items] : items));
+            setHasMore(items.length >= 50);
             setPage(offset / 50);
           }
           setLoadingTraces(false);
@@ -215,10 +218,11 @@ export default function Sessions() {
       .traces(loadedCount, 0, "all", hostFilter, workspaceFilter, query)
       .then((res) => {
         if (requestSeq !== tracesRequestSeq.current) return;
-        setAvailableHosts(res.metrics.hosts);
-        setAvailableWorkspaces(res.metrics.workspaces);
-        setTraces(res.items);
-        setHasMore(res.items.length >= loadedCount);
+        setAvailableHosts(res.metrics?.hosts ?? []);
+        setAvailableWorkspaces(res.metrics?.workspaces ?? []);
+        const items = res.items ?? [];
+        setTraces(items);
+        setHasMore(items.length >= loadedCount);
       })
       .catch((e) => {
         if (requestSeq !== tracesRequestSeq.current) return;
