@@ -1146,7 +1146,11 @@ export interface HostAdapter {
   status: string;
   active_domains: string[];
   mcp_tools: string[];
-  last_seen?: string | null;
+  // Real per-host last-import time + count (RawArtifact.created_at --
+  // wall-clock import time -- not Trace.created_at, which is the session's
+  // own start time). See _host_import_stats() in api.py.
+  last_import_at?: string | null;
+  imported_session_count?: number;
   atelier_version?: string | null;
   description?: string | null;
   install_command?: string | null;
@@ -1645,6 +1649,7 @@ export interface TraceListResponse {
     };
     hosts: string[];
     domains: string[];
+    workspaces: string[];
   };
 }
 
@@ -1706,6 +1711,7 @@ export const api = {
     offset = 0,
     domain?: string,
     host?: string,
+    workspace?: string,
     query?: string,
     days?: number
   ) => {
@@ -1714,6 +1720,7 @@ export const api = {
     params.set("offset", String(offset));
     if (domain && domain !== "all") params.set("domain", domain);
     if (host && host !== "all") params.set("host", host);
+    if (workspace && workspace !== "all") params.set("workspace", workspace);
     if (query) params.set("query", query);
     if (days) params.set("days", String(days));
     return get<TraceListResponse>(`/traces?${params.toString()}`);

@@ -112,6 +112,188 @@ _HOST_ORDER: tuple[str, ...] = (
     "hermes",
 )
 
+
+def _host_import_stats(store: ContextStore) -> dict[str, dict[str, Any]]:
+    """Per-host last-import time and imported-session count for /hosts.
+
+    ``Trace.created_at`` (the ``traces.created_at`` column) is seeded from
+    the *session's own* first-message timestamp at import time (see e.g.
+    session_parsers/claude.py's ``created_at`` walk over the transcript, or
+    ``_common.py``'s ``source_mtime`` for the other host importers) -- i.e.
+    it reflects when the session *started*, not when Atelier imported it.
+    ``RawArtifact.created_at`` is the only field stamped with wall-clock
+    ``utcnow()`` at the moment an importer actually processed the file (see
+    ``session_parsers/claude.py`` and the shared ``record_normalized_session``
+    helper), so it is the most honest signal available for "when did we last
+    import from this host" without adding a new store.py column.
+
+    Two plain aggregate queries -- not ContextStore.list_traces()'s per-row
+    pydantic parse, and not RawArtifact.model_validate per artifact -- so
+    this stays cheap regardless of history size.
+    """
+    with sqlite3.connect(store.db_path) as conn:
+        session_counts = dict(
+            conn.execute(
+                "SELECT host, COUNT(*) FROM traces "
+                "WHERE task != 'session-auto-record' AND host IS NOT NULL "
+                "GROUP BY host"
+            ).fetchall()
+        )
+        last_imports = dict(
+            conn.execute("SELECT source, MAX(created_at) FROM raw_artifacts GROUP BY source").fetchall()
+        )
+    hosts = set(session_counts) | set(last_imports)
+    return {
+        host: {
+            "imported_session_count": int(session_counts.get(host, 0)),
+            "last_import_at": last_imports.get(host),
+        }
+        for host in hosts
+    }
+
+
+def _build_trace_fts_query(query: str) -> str:
+    """Build an FTS5 MATCH expression from free-text search input.
+
+    Mirrors ContextStore._build_trace_search_query() -- small, self-contained
+    regex logic duplicated here rather than reaching into a "private" store
+    method, since store.py is off-limits for this change.
+    """
+    clauses: list[str] = []
+    for phrase, token in re.findall(r'"([^"]+)"|(\S+)', query):
+        term = (phrase or token).strip().lower()
+        if not term:
+            continue
+        if phrase:
+            escaped_term = term.replace('"', '""')
+            clauses.append(f'"{escaped_term}"')
+            continue
+        pieces = [piece for piece in re.split(r"[^0-9a-z_]+", term) if piece]
+        clauses.extend(f"{piece}*" for piece in pieces)
+    if clauses:
+        return " AND ".join(clauses)
+    escaped = query.strip().replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _list_traces_filtered(
+    store: ContextStore,
+    *,
+    domain: str | None,
+    status: str | None,
+    agent: str | None,
+    host: str | None,
+    workspace: str | None,
+    query: str | None,
+    since: datetime | None,
+    limit: int,
+    offset: int,
+) -> list[Trace]:
+    """Like ContextStore.list_traces(), plus a workspace_path filter.
+
+    ContextStore.list_traces() has no workspace parameter and store.py can't
+    be touched here, so when a workspace filter is requested this selects
+    matching ids directly (mirroring list_traces()'s own SQL, plus the extra
+    predicate) and hydrates each through the public get_trace() -- reusing
+    the store's own Trace-parsing/fallback logic instead of duplicating it.
+    """
+    if not workspace:
+        return store.list_traces(
+            domain=domain,
+            status=status,
+            agent=agent,
+            host=host,
+            query=query,
+            since=since,
+            limit=limit,
+            offset=offset,
+        )
+
+    sql = "SELECT id FROM traces WHERE task != 'session-auto-record' AND workspace_path = ?"
+    params: list[Any] = [workspace]
+    if domain:
+        sql += " AND domain = ?"
+        params.append(domain)
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+    if agent:
+        sql += " AND agent = ?"
+        params.append(agent)
+    if host:
+        sql += " AND host = ?"
+        params.append(host)
+    if since:
+        sql += " AND created_at >= ?"
+        params.append(since.isoformat())
+    if query and query.strip():
+        sql += " AND id IN (SELECT id FROM traces_fts WHERE traces_fts MATCH ?)"
+        params.append(_build_trace_fts_query(query))
+    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.append(limit)
+    params.append(offset)
+
+    with sqlite3.connect(store.db_path) as conn:
+        ids = [row[0] for row in conn.execute(sql, params).fetchall()]
+    traces = [store.get_trace(trace_id) for trace_id in ids]
+    return [trace for trace in traces if trace is not None]
+
+
+def _distinct_workspaces(
+    store: ContextStore,
+    *,
+    domain: str | None,
+    agent: str | None,
+    host: str | None,
+    since: datetime | None,
+) -> list[str]:
+    """Distinct workspace_path values for the /traces facets.
+
+    Full history, not just the loaded page -- mirrors get_traces_metrics()'s
+    existing "hosts" facet.
+    """
+    sql = (
+        "SELECT DISTINCT workspace_path FROM traces "
+        "WHERE task != 'session-auto-record' AND workspace_path IS NOT NULL AND workspace_path != ''"
+    )
+    params: list[Any] = []
+    if domain:
+        sql += " AND domain = ?"
+        params.append(domain)
+    if agent:
+        sql += " AND agent = ?"
+        params.append(agent)
+    if host:
+        sql += " AND host = ?"
+        params.append(host)
+    if since:
+        sql += " AND created_at >= ?"
+        params.append(since.isoformat())
+    with sqlite3.connect(store.db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return sorted({row[0] for row in rows if row[0]})
+
+
+def _bulk_raw_artifact_fingerprints(store: ContextStore, artifact_ids: set[str]) -> dict[str, tuple[str, int]]:
+    """(source_file_mtime_iso, byte_count_original) for many artifacts in one query.
+
+    ContextStore.get_raw_artifact() opens a fresh sqlite3 connection per call
+    outside of batch_mode(), so calling it once per raw-artifact id (as the
+    imported-session cache fingerprint used to) means N_sessions x
+    N_artifacts fresh connections on every /v1/sessions poll. One bulk
+    lookup replaces that with a single query regardless of history size.
+    """
+    if not artifact_ids:
+        return {}
+    placeholders = ",".join("?" for _ in artifact_ids)
+    with sqlite3.connect(store.db_path) as conn:
+        rows = conn.execute(
+            f"SELECT id, source_file_mtime, byte_count_original FROM raw_artifacts WHERE id IN ({placeholders})",
+            list(artifact_ids),
+        ).fetchall()
+    return {row[0]: (row[1] or "", int(row[2] or -1)) for row in rows}
+
+
 _SWARM_FILE_SKIP_DIRS = {
     ".git",
     ".hg",
@@ -3020,6 +3202,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         status: str | None = Query(None),
         agent: str | None = Query(None),
         host: str | None = Query(None),
+        workspace: str | None = Query(None, description="Filter by exact workspace_path"),
         query: str | None = Query(None),
         days: int | None = Query(None),
         limit: int = Query(50, ge=1, le=1000),
@@ -3027,11 +3210,13 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     ) -> dict[str, Any]:
         store = get_store()
         since = datetime.now(UTC) - timedelta(days=days) if days else None
-        traces = store.list_traces(
+        traces = _list_traces_filtered(
+            store,
             domain=domain,
             status=status,
             agent=agent,
             host=host,
+            workspace=workspace,
             query=query,
             since=since,
             limit=limit,
@@ -3039,6 +3224,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         )
         # Fetch global metrics for the current domain/agent/host filters
         metrics = store.get_traces_metrics(domain=domain, agent=agent, host=host, since=since)
+        # Distinct workspace values across full history (not just this page)
+        # so the frontend's workspace filter dropdown is complete.
+        metrics["workspaces"] = _distinct_workspaces(store, domain=domain, agent=agent, host=host, since=since)
 
         return {"items": [to_jsonable(t) for t in traces], "metrics": metrics}
 
@@ -4916,6 +5104,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         store = get_store()
         seen_hosts = set(store.get_traces_metrics()["hosts"])
+        import_stats = _host_import_stats(store)
         root = Path(__file__).parent.parent.parent.parent.parent
         configs_dir = root / "src" / "atelier" / "gateway" / "hosts" / "configs"
 
@@ -4933,6 +5122,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             description = _HOST_DESCRIPTION_OVERRIDES.get(host_id) or str(payload.get("description") or "")
             if host_id == "hermes":
                 label = "Hermes Agent (global-only)"
+            stats = import_stats.get(host_id, {})
             hosts.append(
                 {
                     "host_id": host_id,
@@ -4940,7 +5130,12 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     "status": "active" if host_id in seen_hosts else "not_detected",
                     "active_domains": [],
                     "mcp_tools": [],
-                    "last_seen": None,
+                    # Real per-host last-import time + count, not host
+                    # detection -- see _host_import_stats()'s docstring for
+                    # why RawArtifact.created_at (not Trace.created_at) is
+                    # the honest field here.
+                    "last_import_at": stats.get("last_import_at"),
+                    "imported_session_count": int(stats.get("imported_session_count") or 0),
                     "atelier_version": None,
                     "description": description or None,
                     "install_command": (f"bash scripts/{install_script.name}" if install_script.exists() else None),
@@ -5393,7 +5588,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return conversations, source_files, artifacts, raw_usage_summary
 
     def _imported_session_fingerprint(
-        session_id: str, trace: Trace, store_inst: Any, root: Path | None
+        session_id: str,
+        trace: Trace,
+        store_inst: Any,
+        root: Path | None,
+        artifact_fp_lookup: dict[str, tuple[str, int]] | None = None,
     ) -> tuple[Any, ...]:
         """Cheap staleness signal for the cache below.
 
@@ -5402,9 +5601,18 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         artifact id without a new id being appended — no need to read/parse
         the transcript to detect a stale entry. The savings sidecars feeding
         total_atelier_savings_usd are stat()'d too so that number stays live.
+
+        ``artifact_fp_lookup``, when given, is a pre-batched
+        (mtime, size)-by-artifact-id map (see _bulk_raw_artifact_fingerprints)
+        so callers iterating many sessions can fetch every artifact's
+        fingerprint in one query instead of one store.get_raw_artifact() call
+        — and hence one fresh sqlite3 connection — per artifact.
         """
         artifact_fp: list[tuple[str, int]] = []
         for art_id in trace.raw_artifact_ids:
+            if artifact_fp_lookup is not None:
+                artifact_fp.append(artifact_fp_lookup.get(art_id, ("", -1)))
+                continue
             artifact = store_inst.get_raw_artifact(art_id)
             if artifact is None:
                 artifact_fp.append(("", -1))
@@ -5442,6 +5650,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         trace: Trace,
         store_inst: Any | None = None,
         root: Path | None = None,
+        artifact_fp_lookup: dict[str, tuple[str, int]] | None = None,
     ) -> dict[str, Any]:
         from atelier.infra.runtime.session_report import (
             _derive_vendor,
@@ -5459,7 +5668,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         # Unchanged sessions cost zero parsing on re-poll: list_sessions is
         # hit by the frontend every ~30s, and re-parsing the full raw
         # transcript each time is the dominant cost of that endpoint.
-        fingerprint = _imported_session_fingerprint(session_id, trace, store_inst, root)
+        fingerprint = _imported_session_fingerprint(session_id, trace, store_inst, root, artifact_fp_lookup)
         with _imported_session_payload_cache_lock:
             cached = _imported_session_payload_cache.get(session_id)
         if cached is not None and cached[0] == fingerprint:
@@ -5913,6 +6122,36 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "top_tools_by_cost": top_tools_by_cost,
         }
 
+    # Caches for GET /v1/sessions — the frontend polls this every ~30s and the
+    # dataset is dominated by sessions that already finished, so most polls
+    # should cost almost nothing:
+    #  - run-file payload cache: keyed on the run.json file's own
+    #    (mtime, size). A completed session's run.json never changes again,
+    #    so a repeat poll skips build_report() entirely for it — profiling
+    #    showed build_report() -> _read_compact_savings() re-reading and
+    #    re-parsing the *entire* live_savings_events.jsonl file once PER RUN
+    #    FILE was the dominant warm-path cost (proportional to run-file count
+    #    x savings-log size, on every single request).
+    #  - run-files listing cache: short TTL so a burst of requests (multiple
+    #    tabs/components loading at once) shares one glob+stat walk of
+    #    sessions/**/run.json instead of re-globbing per request.
+    _run_file_session_payload_cache: dict[str, tuple[tuple[float, int], dict[str, Any]]] = {}
+    _run_file_session_payload_cache_lock = threading.Lock()
+    _run_files_list_cache: dict[tuple[str, int], tuple[float, list[Any]]] = {}
+    _RUN_FILES_LIST_CACHE_TTL_SECONDS = 10.0
+
+    def _cached_list_run_files(root: Path, *, days: int, cutoff: datetime) -> list[Any]:
+        from atelier.infra.runtime.session_report import list_run_files
+
+        cache_key = (str(root), days)
+        now_monotonic = time.monotonic()
+        cached_listing = _run_files_list_cache.get(cache_key)
+        if cached_listing is not None and now_monotonic - cached_listing[0] < _RUN_FILES_LIST_CACHE_TTL_SECONDS:
+            return cached_listing[1]
+        files = list_run_files(root, since=cutoff)
+        _run_files_list_cache[cache_key] = (now_monotonic, files)
+        return files
+
     @app.get("/v1/sessions", tags=["sessions"], dependencies=[Depends(verify_api_key)])
     def list_sessions(
         since: str = Query("7d", description="Time window, e.g. '7d', '30d'"),
@@ -5921,10 +6160,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """List recent sessions with headline cost/savings fields."""
         from datetime import timedelta
 
-        from atelier.infra.runtime.session_report import (
-            build_report,
-            list_run_files,
-        )
+        from atelier.infra.runtime.session_report import build_report
 
         root = Path(cfg.atelier_root)
 
@@ -5935,38 +6171,60 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 days = int(since[:-1])
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
-        files = list_run_files(root, since=cutoff)
+        files = _cached_list_run_files(root, days=days, cutoff=cutoff)
         results: list[dict[str, Any]] = []
         seen_session_ids: set[str] = set()
         for f in files[:limit]:
             try:
-                snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
-                report = build_report(snap, root)
-                # build_report()'s started_at prefers the oldest *surviving*
-                # ledger event, but RunLedger.events is a bounded/evicted list
-                # (see run_ledger.py _MAX_RETAINED_EVENTS) — for a long
-                # session the true first event can be evicted, drifting
-                # started_at forward until it looks like processing time. The
-                # ledger's own created_at is written once at session start
-                # and is never evicted, so it's always <= the true first
-                # event and is the authoritative floor.
-                snap_created_at = _parse_session_datetime(snap.get("created_at"))
-                if snap_created_at is not None and snap_created_at < report.started_at:
-                    report.started_at = snap_created_at
-                payload = _build_session_payload(report)
-                payload["updated_at"] = datetime.fromtimestamp(f.stat().st_mtime, tz=UTC).isoformat()
+                stat_result = f.stat()
+                run_file_fingerprint = (stat_result.st_mtime, stat_result.st_size)
+                cache_key = str(f)
+                with _run_file_session_payload_cache_lock:
+                    cached_entry = _run_file_session_payload_cache.get(cache_key)
+                if cached_entry is not None and cached_entry[0] == run_file_fingerprint:
+                    payload = dict(cached_entry[1])
+                else:
+                    snap: dict[str, Any] = json.loads(f.read_text(encoding="utf-8"))
+                    report = build_report(snap, root)
+                    # build_report()'s started_at prefers the oldest *surviving*
+                    # ledger event, but RunLedger.events is a bounded/evicted list
+                    # (see run_ledger.py _MAX_RETAINED_EVENTS) — for a long
+                    # session the true first event can be evicted, drifting
+                    # started_at forward until it looks like processing time. The
+                    # ledger's own created_at is written once at session start
+                    # and is never evicted, so it's always <= the true first
+                    # event and is the authoritative floor.
+                    snap_created_at = _parse_session_datetime(snap.get("created_at"))
+                    if snap_created_at is not None and snap_created_at < report.started_at:
+                        report.started_at = snap_created_at
+                    payload = _build_session_payload(report)
+                    payload["updated_at"] = datetime.fromtimestamp(stat_result.st_mtime, tz=UTC).isoformat()
+                    with _run_file_session_payload_cache_lock:
+                        if len(_run_file_session_payload_cache) > 4000:
+                            _run_file_session_payload_cache.clear()
+                        _run_file_session_payload_cache[cache_key] = (run_file_fingerprint, dict(payload))
                 results.append(payload)
                 seen_session_ids.add(payload["session_id"])
             except Exception:
                 logging.exception("Recovered from broad exception handler")
                 continue
         store_inst = get_store()
-        for trace in store_inst.list_traces(since=cutoff, limit=max(limit * 5, limit)):
+        imported_traces = store_inst.list_traces(since=cutoff, limit=max(limit * 5, limit))
+        # Batch every imported session's raw-artifact staleness fingerprints
+        # in one query up front instead of one store.get_raw_artifact() call
+        # (and hence one fresh sqlite3 connection) per artifact per session.
+        artifact_fp_lookup = _bulk_raw_artifact_fingerprints(
+            store_inst,
+            {art_id for trace in imported_traces for art_id in trace.raw_artifact_ids},
+        )
+        for trace in imported_traces:
             sid = trace.session_id or trace.id
             if sid in seen_session_ids:
                 continue
             try:
-                payload = _build_imported_session_payload(sid, trace, store_inst, root=root)
+                payload = _build_imported_session_payload(
+                    sid, trace, store_inst, root=root, artifact_fp_lookup=artifact_fp_lookup
+                )
                 # trace.created_at is when this trace record was ingested
                 # (import time), not the session's real last activity — use
                 # the payload's own ended_at (the real last turn timestamp,

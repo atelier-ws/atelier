@@ -19,7 +19,10 @@ describe("Memory page", () => {
       (input: RequestInfo | URL) => {
         const url = String(input);
         // New cross-vendor memory facts endpoint
-        if (url.includes("/v1/memory/facts") && !url.includes("/v1/memory/facts/")) {
+        if (
+          url.includes("/v1/memory/facts") &&
+          !url.includes("/v1/memory/facts/")
+        ) {
           return Promise.resolve(jsonResponse([]));
         }
         if (url.includes("/api/traces")) {
@@ -93,9 +96,9 @@ describe("Memory page", () => {
 
     render(<Memory />);
 
-    // Default tab is "Cross-vendor" — switch to Knowledge Blocks tab
+    // Default tab is "Cross-vendor" — switch to the Lessons (knowledge blocks) tab
     const knowledgeTab = await screen.findByRole("button", {
-      name: /Knowledge Blocks/i,
+      name: /Lessons/i,
     });
     await userEvent.click(knowledgeTab);
 

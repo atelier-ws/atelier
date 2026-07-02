@@ -17,6 +17,7 @@ const emptyTraces: TraceListResponse = {
     stats: { total: 0, success: 0, failed: 0, partial: 0 },
     hosts: [],
     domains: [],
+    workspaces: [],
   },
 };
 
@@ -44,6 +45,7 @@ const sampleTraces: TraceListResponse = {
     stats: { total: 1, success: 1, failed: 0, partial: 0 },
     hosts: [],
     domains: [],
+    workspaces: [],
   },
 };
 
@@ -97,6 +99,7 @@ function tracesPageResponse(start: number, count: number): Response {
       stats: { total: count, success: count, failed: 0, partial: 0 },
       hosts: [],
       domains: [],
+      workspaces: [],
     },
   });
 }
@@ -333,6 +336,7 @@ describe("Sessions page", () => {
           stats: { total: 2, success: 2, failed: 0, partial: 0 },
           hosts: [],
           domains: [],
+          workspaces: [],
         },
       }),
       "/api/v1/sessions": jsonResponse([

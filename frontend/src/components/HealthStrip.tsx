@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type HealthResponse, type HostAdapter } from "../api";
-import { fmtDate } from "../lib/format";
+import { fmtDate, fmtRelativeTime } from "../lib/format";
 
 /**
  * Daemon + per-host adapter freshness. Used both as a compact strip on
@@ -72,9 +72,11 @@ export function HealthStrip({ compact = false }: { compact?: boolean }) {
           </span>
           <span
             className="text-[10px] text-neutral-400"
-            title={host.last_seen ?? undefined}
+            title={host.last_import_at ?? undefined}
           >
-            {host.last_seen ? fmtDate(host.last_seen) : "no activity yet"}
+            {host.last_import_at
+              ? `last import: ${fmtRelativeTime(host.last_import_at)} · ${host.imported_session_count ?? 0} sessions`
+              : "no imports yet"}
           </span>
         </div>
       ))}

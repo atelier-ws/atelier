@@ -824,9 +824,9 @@ function HealthSection() {
         Health
       </h2>
       <p className="text-xs text-neutral-400">
-        Daemon liveness plus per-host adapter status. Last-import time per host
-        is not tracked yet — `last_seen` reflects host detection, not the most
-        recent import.
+        Daemon liveness plus per-host adapter status. "Detected" reflects
+        whether Atelier has ever seen a session from that host; last import
+        below is the real per-host import time, not detection.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <MetricCard
@@ -856,9 +856,9 @@ function HealthSection() {
                 </Chip>
               </div>
               <div className="mt-1 text-[10px] text-neutral-400">
-                {host.last_seen
-                  ? `Last seen ${fmtDate(host.last_seen)}`
-                  : "No activity recorded yet."}
+                {host.last_import_at
+                  ? `Last import: ${fmtDate(host.last_import_at)} · ${host.imported_session_count ?? 0} sessions`
+                  : "No imports recorded yet."}
               </div>
             </Card>
           ))}
