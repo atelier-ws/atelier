@@ -23,6 +23,7 @@ import re
 import sqlite3
 import sys
 import textwrap
+import urllib.request as _u
 
 _SYSTEM = textwrap.dedent("""\
     You are building a CODE RETRIEVAL benchmark. Given a code snippet, write ONE
@@ -33,8 +34,6 @@ _SYSTEM = textwrap.dedent("""\
     - Describe the BEHAVIOR/PURPOSE in plain English, 8-18 words.
     - Output ONLY the question, nothing else.
 """).strip()
-
-import urllib.request as _u
 
 _OLLAMA_MODEL = os.environ.get("HAIKU_OLLAMA_MODEL", "qwen2.5-coder:7b")
 
@@ -86,7 +85,8 @@ def mine_repo(db, ws, cap):
         if per_file.get(fp, 0) >= per_file_cap:
             continue
         try:
-            code = (open(os.path.join(ws, fp), encoding="utf-8", errors="replace").read())[sb:eb]
+            with open(os.path.join(ws, fp), encoding="utf-8", errors="replace") as fh:
+                code = fh.read()[sb:eb]
         except Exception:
             continue
         if len(code) < 150:
@@ -110,7 +110,8 @@ def main():
     ap.add_argument("--per-repo", type=int, default=12)
     ap.add_argument("--repo", default="", help="only this repo substring")
     a = ap.parse_args()
-    repos = json.load(open(a.repos_from))["repos"]
+    with open(a.repos_from) as fh:
+        repos = json.load(fh)["repos"]
     _pairs, tmap, out_repos = {}, {}, {}
     P = []
     for pfx, m in repos.items():
@@ -131,11 +132,12 @@ def main():
         print(f"[haiku] {pfx} mined {len(got)}", file=sys.stderr, flush=True)
         # Write incrementally after every repo so a long (~40min) mine can't lose
         # everything to an interrupt -- the partial gold is always valid on disk.
-        json.dump(
-            {"gold_kind": "qwen_semantic", "pairs": P, "true_map": tmap, "repos": out_repos},
-            open(a.out, "w"),
-            indent=1,
-        )
+        with open(a.out, "w") as fh:
+            json.dump(
+                {"gold_kind": "qwen_semantic", "pairs": P, "true_map": tmap, "repos": out_repos},
+                fh,
+                indent=1,
+            )
     print(f"[haiku] wrote {len(P)} pairs across {len(out_repos)} repos -> {a.out}", file=sys.stderr)
 
 

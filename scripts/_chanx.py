@@ -31,13 +31,13 @@ def ripgrep(query):
     # count flood: files + total lines matching (regex)
     try:
         out = subprocess.run(["rg", "-c", "-e", query, str(DJ / "django")], capture_output=True, text=True, timeout=30)
-        lines = [l for l in out.stdout.splitlines() if l.strip()]
+        lines = [line for line in out.stdout.splitlines() if line.strip()]
         files = len(lines)
-        total = sum(int(l.rsplit(":", 1)[1]) for l in lines if ":" in l)
+        total = sum(int(line.rsplit(":", 1)[1]) for line in lines if ":" in line)
         # rank: position of expressions.py in file-sorted output (ripgrep = no relevance rank)
-        hit = any(TARGET_FILE in l for l in lines)
+        hit = any(TARGET_FILE in line for line in lines)
         return files, total, hit
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort script
         return 0, 0, f"err:{e}"
 
 
@@ -72,14 +72,14 @@ for q, label in QUERIES:
             syms, lambda s: s.file_path, lambda s: getattr(s, "symbol_name", "") or getattr(s, "qualified_name", "")
         )
         sym_s = f"{sr if sr else 'MISS'}/{len(syms)}"
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         sym_s = "err"
     # zoekt text
     try:
         zt = eng._zoekt_text_matches(q, limit=30)
         zr = rank_of(zt, lambda m: m.file_path, lambda m: "")
         zk_s = f"{zr if zr else 'MISS'}/{len(zt)}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort script
         zk_s = f"err:{str(e)[:8]}"
     # fused
     try:
@@ -91,6 +91,6 @@ for q, label in QUERIES:
             lambda it: it.get("symbol_name", "") or it.get("name", ""),
         )
         fu_s = f"{fr if fr else 'MISS'}/{len(items)}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort script
         fu_s = f"err:{str(e)[:10]}"
     print(f"{q[:36]:36} {rg_s:26} {sym_s:14} {zk_s:13} {fu_s:13}  [{label}]")

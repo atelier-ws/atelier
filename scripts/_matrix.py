@@ -53,9 +53,9 @@ def dedup(files):
 def ch_ripgrep(q):
     try:
         out = subprocess.run(["rg", "-l", "-e", q, str(DJ / "django")], capture_output=True, text=True, timeout=30)
-        files = [str(Path(l).resolve().relative_to(DJ)) for l in out.stdout.splitlines() if l.strip()]
+        files = [str(Path(line).resolve().relative_to(DJ)) for line in out.stdout.splitlines() if line.strip()]
         return dedup(files)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -63,7 +63,7 @@ def ch_symbol(q):
     try:
         syms = eng.search_symbols(q, limit=30, mode="lexical", auto_index=False)
         return dedup([s.file_path for s in syms])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -71,7 +71,7 @@ def ch_zoekt(q):
     try:
         r = sup.search(query=q, search_path=DJ, max_files=30, max_chars_per_file=200, include_outline=False)
         return dedup([m.path for m in r.matches])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -92,6 +92,8 @@ def centrality(channel_lists):
 # ---------------- WIRING strategies: query -> final ranked files ----------------
 def IDENT(q):
     return q.replace("_", "").isalnum() and " " not in q
+
+
 def REGEX(q):
     return any(c in q for c in "|()[]\\.*+?^$")
 

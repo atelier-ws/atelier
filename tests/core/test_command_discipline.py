@@ -90,38 +90,33 @@ def test_db_shell_is_redirected_to_sql_tool() -> None:
     assert "`sql`" in decision.reason
 
 
-def test_search_redirect_warns_then_blocks_repeat_in_class() -> None:
-    assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"
-    # Repeat in the same class after coaching -> blocked with the replacement named.
-    blocked = command_discipline.pre_run_gate("rg bar src/")
-    assert blocked.action == "block"
-    assert "`code_search`" in blocked.reason
-    # Other classes get their own single coaching warn.
-    assert command_discipline.pre_run_gate("find . -name '*.py'").action == "warn"
-    assert command_discipline.pre_run_gate("cat a.py").action == "warn"
+def test_search_redirect_never_blocks_but_keeps_coaching_repeats() -> None:
+    first = command_discipline.pre_run_gate("grep foo a.py")
+    assert first.action == "warn"
+    # Repeats still EXECUTE (blocking would waste the turn — the bash rewrite
+    # layer serves the servable cases) but carry a compact reminder every time.
+    repeat = command_discipline.pre_run_gate("rg bar src/")
+    assert repeat.action == "warn"
+    assert "`code_search`" in repeat.reason
+    assert len(repeat.reason) < len(first.reason)  # compact, not the full coaching
+    assert command_discipline.pre_run_gate("grep baz c.py").action == "warn"
 
 
-def test_find_and_sql_never_block() -> None:
+def test_find_and_sql_warn_once_then_stay_silent() -> None:
     assert command_discipline.pre_run_gate("find . -name '*.py'").action == "warn"
     assert command_discipline.pre_run_gate("find src -type f").action == "allow"
     assert command_discipline.pre_run_gate("psql -c 'select 1'").action == "warn"
     assert command_discipline.pre_run_gate("psql -c 'select 2'").action == "allow"
 
 
-def test_read_redirect_blocks_repeat_but_exempts_writes_and_follows() -> None:
+def test_read_redirect_coaches_repeats_but_exempts_writes_and_follows() -> None:
     assert command_discipline.pre_run_gate("cat a.py").action == "warn"
-    blocked = command_discipline.pre_run_gate("head -50 b.py")
-    assert blocked.action == "block"
-    assert "`read`" in blocked.reason
+    repeat = command_discipline.pre_run_gate("head -50 b.py")
+    assert repeat.action == "warn"
+    assert "`read`" in repeat.reason
     # Heredocs/redirects are writes; tail -f is a follow — read can't replace them.
     assert command_discipline.pre_run_gate("cat > out.txt").action == "allow"
     assert command_discipline.pre_run_gate("tail -f server.log").action == "allow"
-
-
-def test_redirect_block_kill_switch(monkeypatch) -> None:
-    monkeypatch.setenv("ATELIER_SHELL_REDIRECT_BLOCK", "0")
-    assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"
-    assert command_discipline.pre_run_gate("grep bar b.py").action == "allow"
 
 
 def test_piped_grep_is_not_redirected() -> None:

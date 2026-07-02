@@ -49,7 +49,7 @@ def ch_ripgrep(q):
     try:
         out = subprocess.run(["rg", "-l", "-e", q, str(DJ / "django")], capture_output=True, text=True, timeout=30)
         return dedup([str(Path(x).resolve().relative_to(DJ)) for x in out.stdout.splitlines() if x.strip()])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -67,7 +67,7 @@ def ch_ripgrep_kw(q):
 def ch_symbol(q):
     try:
         return dedup([s.file_path for s in eng.search_symbols(q, limit=30, mode="lexical", auto_index=False)])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -75,7 +75,7 @@ def ch_zoekt(q):
     try:
         r = sup.search(query=q, search_path=DJ, max_files=30, max_chars_per_file=200, include_outline=False)
         return dedup([m.path for m in r.matches])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -104,14 +104,19 @@ def _cg_file(r):
         return node.get("filePath") or node.get("file") or ""
     return r.get("filePath") or r.get("file") or r.get("path") or ""
 
+
 def cg_query(q):
     try:
-        out = subprocess.run(["node", str(CGBIN), "query", q, "-p", str(DJ), "-j", "-l", "20"],
-                             capture_output=True, text=True, timeout=60)
+        out = subprocess.run(
+            ["node", str(CGBIN), "query", q, "-p", str(DJ), "-j", "-l", "20"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         data = json.loads(out.stdout)
         rows = data if isinstance(data, list) else data.get("results") or data.get("symbols") or []
         return dedup([_cg_file(r) for r in rows])
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -126,11 +131,26 @@ def cg_explore(q):
         # parse file paths in order of appearance in the text output
         files = re.findall(r"([A-Za-z0-9_./-]+\.py)", out.stdout)
         return dedup(files)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
-STOP = {"with", "when", "that", "this", "description", "value", "used", "into", "from", "crashes", "settings", "using", "following"}
+STOP = {
+    "with",
+    "when",
+    "that",
+    "this",
+    "description",
+    "value",
+    "used",
+    "into",
+    "from",
+    "crashes",
+    "settings",
+    "using",
+    "following",
+}
+
 
 def keywords(stmt):
     """Deterministic salient terms: CamelCase, snake_case, ALLCAPS, quoted."""
@@ -145,6 +165,7 @@ def keywords(stmt):
                 toks.append(m)
     return toks[:5]
 
+
 # (name, fn, query_form): nl=sentence, kw=space-joined keywords, rx=regex alternation
 SYSTEMS = [
     ("atelier_ripgrep", ch_ripgrep, "rx"),
@@ -155,6 +176,7 @@ SYSTEMS = [
     ("codegraph_explore", cg_explore, "nl"),
 ]
 
+
 def rank_true(files, trues):
     tn = [norm(t) for t in trues]
     for i, f in enumerate(files, 1):
@@ -162,10 +184,12 @@ def rank_true(files, trues):
             return i
     return None
 
+
 score = {name: [0, 0, 0.0] for name, _, _ in SYSTEMS}
 per_task = []
 for t in TASKS:
-    nl = t["query"]; trues = t["true_files"]
+    nl = t["query"]
+    trues = t["true_files"]
     kw_toks = keywords(t["query"]) or keywords(nl)
     kw = " ".join(kw_toks) or nl
     rx = "|".join(re.escape(x) for x in kw_toks) or re.escape(nl.split()[0])
@@ -176,8 +200,10 @@ for t in TASKS:
         row[name] = r or "-"
         if r:
             score[name][2] += 1.0 / r
-            if r == 1: score[name][0] += 1
-            if r <= 3: score[name][1] += 1
+            if r == 1:
+                score[name][0] += 1
+            if r <= 3:
+                score[name][1] += 1
     per_task.append(row)
 
 n = len(TASKS)
@@ -186,8 +212,8 @@ print("-" * 52)
 qform = {s[0]: s[2] for s in SYSTEMS}
 for name, _, qf in sorted(SYSTEMS, key=lambda s: -score[s[0]][2]):
     h1, h3, rr = score[name]
-    print(f"{name:22} {qf:>6} {h1}/{n:<4} {h3}/{n:<4} {rr/n:6.3f}")
+    print(f"{name:22} {qf:>6} {h1}/{n:<4} {h3}/{n:<4} {rr / n:6.3f}")
 print("\n=== per-task rank of true file ===")
-print("task".ljust(15) + "".join(s[0].split('_')[-1][:8].rjust(9) for s in SYSTEMS) + "  keywords")
+print("task".ljust(15) + "".join(s[0].split("_")[-1][:8].rjust(9) for s in SYSTEMS) + "  keywords")
 for row in per_task:
     print(row["task"].ljust(15) + "".join(str(row[s[0]]).rjust(9) for s in SYSTEMS) + "  " + row["kw"])
