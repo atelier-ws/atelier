@@ -118,6 +118,7 @@ def _write_imported_trace(
     cached_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
     raw_artifact_ids: list[str] | None = None,
+    workspace_path: str | None = None,
 ) -> None:
     store = ContextStore(root)
     store.init()
@@ -135,6 +136,7 @@ def _write_imported_trace(
         cached_input_tokens=cached_input_tokens,
         cache_creation_input_tokens=cache_creation_input_tokens,
         raw_artifact_ids=raw_artifact_ids or [],
+        workspace_path=workspace_path,
     )
     store.record_trace(trace, write_json=False)
 
@@ -147,6 +149,7 @@ def _write_raw_artifact(
     content: str,
     source: str = "cursor",
     relative_path: str | None = None,
+    created_at: datetime | None = None,
 ) -> None:
     store = ContextStore(root)
     store.init()
@@ -161,6 +164,7 @@ def _write_raw_artifact(
         sha256_redacted="redacted",
         byte_count_original=len(content.encode("utf-8")),
         byte_count_redacted=len(content.encode("utf-8")),
+        **({"created_at": created_at} if created_at is not None else {}),
     )
     store.record_raw_artifact(artifact, content)
 
@@ -479,6 +483,227 @@ def test_reasoning_context_accepts_runtime_bootstrap_payload(tmp_path: Path, mon
     payload = resp.json()
     assert payload["context"] == "Use the bootstrap map first."
     assert payload["bootstrap"] == {"status": "cold", "repo_hash": "abc123", "blocks": []}
+
+
+class TestListHosts:
+    """GET /hosts — per-host last_import_at + imported_session_count (task 1)."""
+
+    def test_host_with_no_data_has_null_import_fields(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/hosts")
+        assert resp.status_code == 200
+        hosts = {h["host_id"]: h for h in resp.json()}
+        assert "claude" in hosts
+        assert hosts["claude"]["status"] == "not_detected"
+        assert hosts["claude"]["last_import_at"] is None
+        assert hosts["claude"]["imported_session_count"] == 0
+
+    def test_last_import_at_is_max_raw_artifact_created_at_not_session_start(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """last_import_at must reflect RawArtifact.created_at (the real
+        wall-clock import time) rather than Trace.created_at (seeded from the
+        session's own first-message timestamp, i.e. session start) — use two
+        artifacts with an older and a newer import time and a session-start
+        timestamp that sits *between* them, so the two fields can't agree by
+        coincidence.
+        """
+        older_import = datetime(2020, 1, 1, tzinfo=UTC)
+        newer_import = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+        session_started_at = datetime(2023, 1, 1, tzinfo=UTC)
+
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id="claude-sess-a-art",
+            session_id="sess-a",
+            source="claude",
+            content="content-a",
+            created_at=older_import,
+        )
+        _write_raw_artifact(
+            tmp_path,
+            artifact_id="claude-sess-b-art",
+            session_id="sess-b",
+            source="claude",
+            content="content-b",
+            created_at=newer_import,
+        )
+        precheck_store = ContextStore(tmp_path)
+        precheck_store.init()
+        for session_id in ("sess-a", "sess-b"):
+            assert precheck_store.get_trace(f"claude-{session_id}") is None  # not yet written below
+        _write_imported_trace(
+            tmp_path,
+            "sess-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            raw_artifact_ids=["claude-sess-a-art"],
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-b",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            raw_artifact_ids=["claude-sess-b-art"],
+        )
+        # Force both traces' created_at (session start) to a value strictly
+        # between the two artifact import times, so if the endpoint were
+        # using Trace.created_at instead of RawArtifact.created_at the
+        # returned last_import_at would land at session_started_at (wrong)
+        # rather than newer_import (right).
+        store = ContextStore(tmp_path)
+        store.init()
+        for session_id in ("sess-a", "sess-b"):
+            trace = store.get_trace(f"claude-{session_id}")
+            assert trace is not None
+            trace.created_at = session_started_at
+            store.record_trace(trace, write_json=False)
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+        resp = client.get("/hosts")
+        assert resp.status_code == 200
+        hosts = {h["host_id"]: h for h in resp.json()}
+        claude = hosts["claude"]
+        assert claude["status"] == "active"
+        assert claude["imported_session_count"] == 2
+        assert claude["last_import_at"] is not None
+        returned = datetime.fromisoformat(str(claude["last_import_at"]).replace("Z", "+00:00"))
+        assert returned == newer_import
+        assert returned != session_started_at
+
+
+class TestListTracesWorkspaceFilter:
+    """GET /traces?workspace=... — server-side workspace filter (task 2)."""
+
+    def test_workspace_filter_matches_only_that_workspace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-a",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-b",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-b",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        resp = client.get("/traces", params={"workspace": "/home/user/project-a"})
+        assert resp.status_code == 200
+        body = resp.json()
+        session_ids = {item["session_id"] for item in body["items"]}
+        assert session_ids == {"sess-ws-a"}
+
+    def test_workspace_facet_lists_full_history_not_just_loaded_page(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-a",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-a",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-b",
+            host="codex",
+            model="gpt-5-mini",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/project-b",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        # limit=1 caps the *items* page but the workspaces facet must still
+        # reflect every distinct workspace_path in the store, not just the
+        # one session that made it into this page.
+        resp = client.get("/traces", params={"limit": 1})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["items"]) == 1
+        assert set(body["metrics"]["workspaces"]) == {
+            "/home/user/project-a",
+            "/home/user/project-b",
+        }
+
+    def test_workspace_filter_composes_with_host_filter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # host=claude alone would return both claude sessions below; and
+        # workspace=/home/user/shared alone would return the claude AND
+        # codex sessions sharing that workspace -- only the combination of
+        # both filters narrows to exactly sess-ws-claude-shared.
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-claude-shared",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/shared",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-claude-other",
+            host="claude",
+            model="claude-sonnet-4-6",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/other",
+        )
+        _write_imported_trace(
+            tmp_path,
+            "sess-ws-codex-shared",
+            host="codex",
+            model="gpt-5-mini",
+            input_tokens=10,
+            output_tokens=5,
+            workspace_path="/home/user/shared",
+        )
+
+        monkeypatch.setenv("ATELIER_ROOT", str(tmp_path))
+        monkeypatch.setenv("ATELIER_REQUIRE_AUTH", "0")
+        from atelier.core.service.api import create_app
+
+        client = TestClient(create_app(store_root=str(tmp_path)))
+
+        resp = client.get("/traces", params={"workspace": "/home/user/shared", "host": "claude"})
+        assert resp.status_code == 200
+        session_ids = {item["session_id"] for item in resp.json()["items"]}
+        assert session_ids == {"sess-ws-claude-shared"}
 
 
 class TestListSessions:

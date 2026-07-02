@@ -109,6 +109,7 @@ export default function Sessions() {
   const [hostFilter, setHostFilter] = useState("all");
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
   const [availableHosts, setAvailableHosts] = useState<string[]>([]);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState<string[]>([]);
 
   // Pre-compute a summary lookup map to eliminate repeated .find() calls
   // in the sort comparator and inside each map callback — O(m + n) instead of
@@ -120,30 +121,19 @@ export default function Sessions() {
     return m;
   }, [summaries]);
 
-  // Deduplicate traces by session_id — one entry per real session.
+  // Deduplicate traces by session_id — one entry per real session. The
+  // workspace filter is now applied server-side (api.traces()'s workspace
+  // param), covering full history instead of just this loaded page.
   // Prefer traces that have a task description when multiple share the same session_id.
   const displayTraces = useMemo(() => {
     if (!traces) return null;
     const seen = new Map<string, Trace>();
     for (const t of traces) {
-      if (workspaceFilter !== "all" && t.workspace_path !== workspaceFilter)
-        continue;
       const sid = t.session_id || t.id;
       const existing = seen.get(sid);
       if (!existing || (!existing.task && t.task)) seen.set(sid, t);
     }
     return Array.from(seen.values());
-  }, [traces, workspaceFilter]);
-
-  const availableWorkspaces = useMemo(() => {
-    if (!traces) return [];
-    return [
-      ...new Set(
-        traces
-          .map((t) => t.workspace_path)
-          .filter((w): w is string => Boolean(w))
-      ),
-    ].sort();
   }, [traces]);
 
   const fetchTracesPage = useCallback(
@@ -152,10 +142,11 @@ export default function Sessions() {
       setLoadingTraces(true);
       setErr(null);
       api
-        .traces(50, offset, "all", hostFilter, query)
+        .traces(50, offset, "all", hostFilter, workspaceFilter, query)
         .then((res) => {
           if (requestSeq !== tracesRequestSeq.current) return;
           setAvailableHosts(res.metrics.hosts);
+          setAvailableWorkspaces(res.metrics.workspaces);
           if (offset === 0) {
             setTraces(res.items);
             setHasMore(res.items.length >= 50);
@@ -173,7 +164,7 @@ export default function Sessions() {
           setLoadingTraces(false);
         });
     },
-    [query, hostFilter]
+    [query, hostFilter, workspaceFilter]
   );
 
   const fetchSummaries = useCallback(() => {
@@ -196,10 +187,10 @@ export default function Sessions() {
     return () => clearTimeout(timer);
   }, [searchInput, setSearchParams, searchParams]);
 
-  // Fetch traces on query/host filter change — no date filter; history is unbounded.
+  // Fetch traces on query/host/workspace filter change — no date filter; history is unbounded.
   useEffect(() => {
     fetchTracesPage(0);
-  }, [query, hostFilter, fetchTracesPage]);
+  }, [query, hostFilter, workspaceFilter, fetchTracesPage]);
 
   // Fetch session summaries for cost/token stats in sidebar cards.
   // Use a very large window so the History list is independent of the
@@ -221,10 +212,11 @@ export default function Sessions() {
     const loadedCount = (page + 1) * 50;
     setErr(null);
     api
-      .traces(loadedCount, 0, "all", hostFilter, query)
+      .traces(loadedCount, 0, "all", hostFilter, workspaceFilter, query)
       .then((res) => {
         if (requestSeq !== tracesRequestSeq.current) return;
         setAvailableHosts(res.metrics.hosts);
+        setAvailableWorkspaces(res.metrics.workspaces);
         setTraces(res.items);
         setHasMore(res.items.length >= loadedCount);
       })
@@ -232,7 +224,7 @@ export default function Sessions() {
         if (requestSeq !== tracesRequestSeq.current) return;
         setErr(String(e));
       });
-  }, [query, page, hostFilter]);
+  }, [query, page, hostFilter, workspaceFilter]);
 
   const refresh = useCallback(() => {
     refreshTraces();

@@ -98,7 +98,9 @@ export default function Savings() {
   const maxLever = sortedLevers[0]?.value ?? 0;
   const topSources = data.top_sources ?? [];
   const trackedToolCalls = data.tracked_tool_calls ?? 0;
-  const headlineLabel = "Cost Reduction";
+  const headlineLabel = verification?.headline_kind
+    ? toTitle(verification.headline_kind)
+    : "Cost Reduction";
   const loadLedger = (runId: string) => {
     const nextExpanded = !expandedRuns[runId];
     setExpandedRuns((prev) => ({ ...prev, [runId]: nextExpanded }));
