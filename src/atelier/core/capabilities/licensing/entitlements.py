@@ -1,9 +1,9 @@
 """The entitlement contract every Pro gate calls.
 
-Single source of truth for "is this feature unlocked?". Loads the active token,
-verifies it locally, enforces expiry, refreshes device leases when due, and
-answers ``is_pro`` / ``has_feature`` / ``require``. Results are cached until the
-next time-sensitive lease boundary.
+Single source of truth for "is this feature unlocked?". The only entitlement
+source is the OAuth session created by ``atelier login``: the auth server
+reports the account's plan via ``/api/auth/me``, cached on disk for 24 h.
+Results are cached in-process until the next cache boundary.
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ from atelier.core.capabilities.licensing.models import (
     PRO_PLANS,
     FeatureLocked,
     License,
-    LicenseError,
     LicenseStatus,
 )
-from atelier.core.capabilities.licensing.verify import public_key_configured, verify_token
+
+_OFFLINE_RETRY_SECONDS = 3600
 
 
 @dataclass
@@ -39,7 +39,7 @@ _cache: _Resolved | None = None
 
 
 def reload() -> None:
-    """Drop the cached entitlement state (call after activate/deactivate)."""
+    """Drop the cached entitlement state (call after login/logout)."""
     global _cache
     _cache = None
 
@@ -48,113 +48,64 @@ def _now() -> int:
     return int(time.time())
 
 
-def _resolve_oauth(now: int) -> _Resolved | None:
-    """Best-effort OAuth session token check.
+def _fetch_auth_user(auth_token: str) -> dict[str, object] | None:
+    """Fetch ``/api/auth/me`` (also renews the server-side CLI token) and cache it.
 
-    Loads the full /api/auth/me response from the 24 h disk cache if fresh;
-    otherwise fetches live (which also renews the server-side CLI token),
-    persists the response, and updates the cache.
-    Returns None on any failure (fail-open for offline users).
+    Returns ``None`` on any failure -- the caller decides how to degrade.
     """
     import json
     import urllib.request
 
-    auth_token = store.load_auth_token()
-    if not auth_token:
+    try:
+        req = urllib.request.Request(
+            f"{store.load_auth_base()}/api/auth/me",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read())
+    except Exception:  # noqa: BLE001
         return None
-
-    # 1. Try disk cache first (avoids a network call on every process)
-    data: dict[str, object] | None = store.load_auth_user()
-
-    if data is None:
-        # 2. Cache miss or stale — fetch live and persist
-        try:
-            req = urllib.request.Request(
-                "https://atelier.ws/api/auth/me",
-                headers={"Authorization": f"Bearer {auth_token}"},
-            )
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read())
-            store.save_auth_user(data)  # type: ignore[arg-type]
-        except Exception:  # noqa: BLE001
-            return None  # offline — fail open
-
-    plan = str(data.get("plan") or "")  # type: ignore[union-attr]
-    email = str(data.get("email") or "")
-
-    if plan not in PRO_PLANS:
-        # Valid session but free plan — not a pro license
+    if not isinstance(data, dict):
         return None
-
-    lic = License(
-        license_id=str(data.get("user_id") or ""),
-        email=email,
-        plan=plan,
-        issued_at=now,
-        expires_at=None,
-        features=(),
-        kind="oauth",
-    )
-    return _Resolved(
-        token=auth_token,
-        license=lic,
-        reason="oauth",
-        next_check_at=now + store.AUTH_USER_CACHE_TTL,  # 24 h
-    )
+    store.save_auth_user(data)
+    return data
 
 
 def _resolve() -> _Resolved:
     global _cache
-    token = store.load_token()
+    token = store.load_auth_token()
     now = _now()
     if _cache is not None and _cache.token == token and (_cache.next_check_at is None or now < _cache.next_check_at):
         return _cache
     if token is None:
-        # Check OAuth auth token as fallback
-        auth_result = _resolve_oauth(now)
-        if auth_result is not None:
-            _cache = auth_result
-            return _cache
-        _cache = _Resolved(token=None, license=None, reason="no license activated")
+        _cache = _Resolved(token=None, license=None, reason="not signed in")
         return _cache
-    try:
-        lic = verify_token(token)
-    except LicenseError as exc:
-        _cache = _Resolved(token=token, license=None, reason=str(exc))
+    data = store.load_auth_user()
+    if data is None:
+        data = _fetch_auth_user(token)
+    if data is None:
+        _cache = _Resolved(
+            token=token,
+            license=None,
+            reason="could not verify the subscription (offline?)",
+            next_check_at=now + _OFFLINE_RETRY_SECONDS,
+        )
         return _cache
-    if lic.kind == "purchase":
-        _cache = _Resolved(token=token, license=None, reason="purchase key must be activated on this device")
+    plan = str(data.get("plan") or "free")
+    if plan not in PRO_PLANS:
+        _cache = _Resolved(
+            token=token,
+            license=None,
+            reason="signed in on the free plan",
+            next_check_at=now + store.AUTH_USER_CACHE_TTL,
+        )
         return _cache
-    refresh_retry_at: int | None = None
-    if lic.kind == "device":
-        from atelier.core.capabilities.licensing.device import matches_device, refresh_device
-
-        if not matches_device(lic.device_public_key):
-            _cache = _Resolved(token=token, license=None, reason="license belongs to another device")
-            return _cache
-        if (
-            lic.refresh_at is not None
-            and now >= lic.refresh_at
-            and not os.environ.get(store.LICENSE_ENV_VAR, "").strip()
-        ):
-            try:
-                token = refresh_device(token)
-                store.save_token(token)
-                lic = verify_token(token)
-            except LicenseError:
-                refresh_retry_at = now + 3600
-    if lic.is_expired(now=now):
-        _cache = _Resolved(token=token, license=None, reason="license expired")
-        return _cache
-    boundaries = [value for value in (lic.expires_at, refresh_retry_at) if value is not None]
-    if lic.refresh_at is not None and lic.refresh_at > now:
-        boundaries.append(lic.refresh_at)
-    _cache = _Resolved(
-        token=token,
-        license=lic,
-        reason="active",
-        next_check_at=min(boundaries) if boundaries else None,
+    lic = License(
+        license_id=str(data.get("user_id") or ""),
+        email=str(data.get("email") or ""),
+        plan=plan,
     )
+    _cache = _Resolved(token=token, license=lic, reason="active", next_check_at=now + store.AUTH_USER_CACHE_TTL)
     return _cache
 
 
@@ -217,7 +168,7 @@ def require(feature: str) -> None:
 def feature_active(feature: str) -> bool:
     """True only when ``feature`` is BOTH licensed and physically installed.
 
-    A Pro feature requires a valid license that grants it *and* the proprietary
+    A Pro feature requires a plan that grants it *and* the proprietary
     ``atelier_pro`` overlay (the code that actually runs it). If either is
     missing the caller falls back to Free behavior -- silently. Free features are
     always active.
@@ -240,7 +191,7 @@ def pro_impl(feature: str) -> ModuleType | None:
 
     ``None`` means the Pro overlay is not installed (or does not provide this
     feature) -- the caller must fall back to Free behavior. Pair with
-    :func:`require` (license) so a leaked overlay can't run without a key.
+    :func:`require` (plan) so a leaked overlay can't run without a Pro account.
     """
     if feature not in PRO_FEATURES:
         return None
@@ -260,13 +211,12 @@ def pro_available() -> bool:
 
 def status() -> LicenseStatus:
     resolved = _resolve()
-    if os.environ.get(store.LICENSE_ENV_VAR, "").strip():
+    if os.environ.get(store.AUTH_TOKEN_ENV_VAR, "").strip():
         source = "env"
-    elif store.license_path().exists():
+    elif store.auth_token_path().exists():
         source = "file"
     else:
         source = "none"
-
     lic = resolved.license
     if lic is not None:
         return LicenseStatus(
@@ -274,22 +224,16 @@ def status() -> LicenseStatus:
             valid=True,
             plan=lic.plan,
             email=lic.email,
-            expires_at=lic.expires_at,
             features=lic.features or tuple(PRO_FEATURES),
             reason="active",
             source=source,
         )
-
-    reason = resolved.reason
-    if resolved.token is not None and not public_key_configured():
-        reason = "this build has no license public key configured"
     return LicenseStatus(
         licensed=resolved.token is not None,
         valid=False,
         plan=None,
         email=None,
-        expires_at=None,
         features=(),
-        reason=reason,
+        reason=resolved.reason,
         source=source,
     )

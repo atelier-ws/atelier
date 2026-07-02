@@ -70,8 +70,8 @@ Everything in Free, **plus:**
 | Monthly | **$19 / mo**    | Stripe subscription; cancel anytime |
 | Annual  | **$190 / yr**   | ~2 months free vs monthly           |
 
-One person, up to three active devices. Replacing a device is immediate: remove
-an existing device when prompted, then activate the new one with no cooldown.
+One person, up to three active CLI devices. Replacing a device is immediate:
+remove an existing device from the account page, then sign in on the new one.
 
 ## Enterprise — contact us
 
@@ -91,52 +91,43 @@ top of the full Pro set.
 
 ## Billing terms
 
-Pro is a Stripe subscription. The issuer derives a license's expiry from the
-purchase ([`termToExpiry`](../services/license-issuer/src/index.ts)):
-
-| Term        | Stripe mode  | Expiry baked into the key |
-| ----------- | ------------ | ------------------------- |
-| **Annual**  | subscription | now + ~13 months (grace)  |
-| **Monthly** | subscription | now + ~35 days (grace)    |
-
-Subscriptions **auto-renew**: each successful renewal re-issues the same license
-with a fresh expiry and re-emails the key. On cancellation or refund the issuer
-revokes the license; the key lapses at its current expiry and the install
-gracefully falls back to **Free**.
+Pro is a Stripe subscription attached to your account. A successful payment
+sets the account's plan to `pro`; the CLI picks it up on the next plan check.
+On cancellation or refund the webhook drops the plan and the install gracefully
+falls back to **Free**.
 
 ## How to buy & activate
 
-1. **Buy** — open the Pro purchase link (`atelier license` upsells point at it;
-   override with `ATELIER_PRO_URL`). Pay through the Stripe Payment Link.
-2. **Receive** — the Cloudflare Worker issuer signs an Ed25519 license and emails
-   you the key. (See the issuer [README](../services/license-issuer/README.md).)
-3. **Activate** —
+1. **Buy** — open the Pro purchase link (upsells point at it; override with
+   `ATELIER_PRO_URL`). Pay through the Stripe Payment Link with the email you
+   sign in with.
+2. **Sign in** —
 
    ```bash
-   atelier login --token <credentials>   # enroll this device and store its lease
-   atelier status                        # show plan, auth, and subscription status
-   atelier logout                        # revert to Free (local anonymous trial)
+   atelier login          # browser OAuth; the account's plan unlocks Pro
+   atelier status --auth  # show email, plan, and device slots
+   atelier logout         # revert to Free (local anonymous trial)
    ```
 
-   In CI or containers, set `ATELIER_LICENSE=<key>` instead.
+   In CI or containers, set `ATELIER_AUTH_TOKEN=<session token>` instead.
 
 ## FAQ
 
-**Does activation require internet?** Yes. Initial activation enrolls the device
-with the license issuer. The signed lease is then checked locally and refreshes
-automatically every 30 days, with a 7-day offline grace period.
+**Does Pro require internet?** Only for sign-in and the periodic plan check:
+the plan from `/api/auth/me` is cached locally for 24 hours, so normal
+operation makes at most one auth call a day.
 
-**What happens when my license expires?** Nothing breaks: the gated surfaces
-re-lock and the install behaves like Free again. Your code, memory, and config
-are untouched.
+**What happens when my subscription lapses?** Nothing breaks: the gated
+surfaces re-lock and the install behaves like Free again. Your code, memory,
+and config are untouched.
 
-**Can I use one key on multiple machines?** Yes, on up to three active devices
-for Pro. A fourth activation lists the existing devices and asks you to remove
-one first; the replacement activates immediately.
+**Can I use one account on multiple machines?** Yes, on up to three active CLI
+devices for Pro. When all slots are in use, remove one from the account page
+and sign in on the new machine.
 
-**Refunds?** A Stripe refund triggers automatic revocation on the next webhook.
+**Refunds?** A Stripe refund drops the plan on the next webhook.
 
-**Why is Free so capable?** The honest moat is the closed issuer + the private
-`pro/` overlay (Free installs don't have the paid code) + being the maintainer —
-not DRM on local code. Free should be good enough to trust. See
+**Why is Free so capable?** The honest moat is the closed auth/payments backend
++ the private `pro/` overlay (Free installs don't have the paid code) + being
+the maintainer — not DRM on local code. Free should be good enough to trust. See
 [`docs/licensing.md`](./licensing.md) for the technical design.

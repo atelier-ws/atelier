@@ -1,50 +1,27 @@
 """Pro entitlement gates on CLI control surfaces (recall, router, zoekt).
 
-Free installs (no `atelier_pro` overlay, no license) must block these commands
-with an upsell; a Pro install (overlay + valid license) opens the gate.
+Free installs (no `atelier_pro` overlay, not signed in) must block these
+commands with an upsell; a Pro install (overlay + Pro plan) opens the gate.
 """
 
 from __future__ import annotations
 
-import base64
-import json
 import sys
-import time
 import types
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner, Result
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from atelier.core.capabilities import pro_bridge
 from atelier.core.capabilities.licensing import entitlements
 from atelier.gateway.cli import cli
-from tests.helpers import init_store_at
+from tests.helpers import deny_oauth, grant_oauth_pro, init_store_at
 
 
 def _invoke(root: Path, *args: str) -> Result:
     return CliRunner().invoke(cli, ["--root", str(root), *args])
-
-
-def _b64u(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _make_token(priv: Ed25519PrivateKey) -> str:
-    payload = {
-        "v": 1,
-        "id": "lic_test",
-        "email": "dev@example.com",
-        "plan": "pro",
-        "iat": int(time.time()) - 10,
-        "exp": None,
-        "features": [],
-    }
-    seg = _b64u(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-    return f"{seg}.{_b64u(priv.sign(seg.encode('ascii')))}"
 
 
 def _install_overlay() -> None:
@@ -62,10 +39,9 @@ def _remove_overlay() -> None:
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     _remove_overlay()
-    # Isolate the license store away from any real ~/.atelier and clear env.
+    # Isolate the auth store away from any real ~/.atelier and force signed-out.
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "lic"))
-    monkeypatch.delenv("ATELIER_LICENSE", raising=False)
-    entitlements.reload()
+    deny_oauth(monkeypatch)
     yield
     _remove_overlay()
     entitlements.reload()
@@ -91,13 +67,7 @@ def test_free_install_blocks_pro_cli(tmp_path: Path, args: tuple[str, ...]) -> N
 
 
 def test_pro_install_opens_recall_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    priv = Ed25519PrivateKey.generate()
-    raw_pub = priv.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-    monkeypatch.setenv("ATELIER_LICENSE_PUBLIC_KEY", base64.b64encode(raw_pub).decode("ascii"))
-    monkeypatch.setenv("ATELIER_LICENSE", _make_token(priv))
+    grant_oauth_pro(monkeypatch)
     _install_overlay()
     entitlements.reload()
 

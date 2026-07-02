@@ -1,4 +1,4 @@
-"""Persistence for the activated license token (``~/.atelier/license.key``)."""
+"""Persistence for the OAuth session (auth token, cached ``/api/auth/me`` user, base URL)."""
 
 from __future__ import annotations
 
@@ -6,55 +6,6 @@ import os
 from pathlib import Path
 
 from atelier.core.foundation.paths import default_store_root
-
-_LICENSE_FILENAME = "license.key"
-
-# Env var that, when set, overrides the on-disk token (useful for CI, the
-# project's own benchmarks, and ephemeral containers).
-LICENSE_ENV_VAR = "ATELIER_LICENSE"
-
-
-def license_path() -> Path:
-    return default_store_root() / _LICENSE_FILENAME
-
-
-def load_token() -> str | None:
-    """Return the active token: ``ATELIER_LICENSE`` env wins, then the file."""
-    env_token = os.environ.get(LICENSE_ENV_VAR, "").strip()
-    if env_token:
-        return env_token
-    path = license_path()
-    if not path.exists():
-        return None
-    token = path.read_text(encoding="utf-8").strip()
-    return token or None
-
-
-def save_token(token: str) -> Path:
-    """Persist ``token`` with owner-only permissions and return its path."""
-    path = license_path()
-    parent = path.parent
-    parent_existed = parent.exists()
-    parent.mkdir(parents=True, exist_ok=True)
-    if not parent_existed:
-        os.chmod(parent, 0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(token.strip() + "\n")
-    finally:
-        os.chmod(path, 0o600)
-    return path
-
-
-def delete_token() -> bool:
-    """Remove the stored token file. Returns True if a file was deleted."""
-    path = license_path()
-    if path.exists():
-        path.unlink()
-        return True
-    return False
-
 
 # ── OAuth auth token ("~/.atelier/auth_token") ───────────────────────────────────
 
@@ -127,7 +78,8 @@ def load_auth_user() -> dict[str, object] | None:
         return None
     try:
         data: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
-        cached_at = float(data.get("_cached_at", 0))
+        cached_at_raw = data.get("_cached_at", 0)
+        cached_at = float(cached_at_raw) if isinstance(cached_at_raw, int | float) else 0.0
         if time.time() - cached_at > AUTH_USER_CACHE_TTL:
             return None  # stale
         return data
@@ -199,7 +151,6 @@ def device_id_path() -> Path:
 
 def _read_os_machine_id() -> str | None:
     """Read the OS-provided stable machine identifier."""
-    import hashlib
     import subprocess
     import sys
 
@@ -228,6 +179,7 @@ def _read_os_machine_id() -> str | None:
     elif sys.platform == "win32":
         try:
             import winreg  # type: ignore[import]
+
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography")
             val, _ = winreg.QueryValueEx(key, "MachineGuid")
             return str(val)
@@ -255,6 +207,7 @@ def load_or_create_device_id() -> str:
         if val:
             return val
     import uuid
+
     device_id = uuid.uuid4().hex[:12]
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

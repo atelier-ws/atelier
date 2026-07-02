@@ -1780,30 +1780,13 @@ SETTINGS: list[SettingSpec] = [
         "Model id used for Ollama-backed internal LLM calls.",
     ),
     # -- licensing --
-    SettingSpec("licensing.license", "ATELIER_LICENSE", "str", "", "licensing", "Signed Atelier license token."),
     SettingSpec(
         "licensing.auth_token",
         "ATELIER_AUTH_TOKEN",
         "str",
         "",
         "licensing",
-        "Bearer token used to authenticate against the licensing/device API.",
-    ),
-    SettingSpec(
-        "licensing.public_key",
-        "ATELIER_LICENSE_PUBLIC_KEY",
-        "str",
-        "",
-        "licensing",
-        "Base64-encoded Ed25519 public key used to verify license tokens.",
-    ),
-    SettingSpec(
-        "licensing.issuer_url",
-        "ATELIER_LICENSE_ISSUER_URL",
-        "str",
-        "",
-        "licensing",
-        "License issuer/device-auth base URL.",
+        "OAuth session token created by `atelier login`; used for plan checks.",
     ),
     SettingSpec(
         "licensing.pro_url",
@@ -1812,14 +1795,6 @@ SETTINGS: list[SettingSpec] = [
         "",
         "licensing",
         "URL surfaced for upgrading to the licensed/Pro tier.",
-    ),
-    SettingSpec(
-        "licensing.device_name",
-        "ATELIER_DEVICE_NAME",
-        "str",
-        "",
-        "licensing",
-        "Human-readable device name registered with the licensing API.",
     ),
     # -- lessons --
     SettingSpec(

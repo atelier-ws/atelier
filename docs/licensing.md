@@ -1,42 +1,52 @@
 # Licensing & Pro features (open-core)
 
 Atelier is open-core: the entire runtime is Apache-2.0 and runs locally. A small
-set of **paid ("Pro") control surfaces** are gated behind a device-bound
-license. The split is designed so the Free tier is genuinely useful (and already
-delivers most of the token savings) while the incremental optimizer and the full
-savings dashboard are paid.
+set of **paid ("Pro") control surfaces** are gated behind the signed-in
+account's plan. The split is designed so the Free tier is genuinely useful (and
+already delivers most of the token savings) while the incremental optimizer and
+the full savings dashboard are paid.
 
 > Looking for the customer-facing plan breakdown and prices? See
 > [**Plans & Pricing**](./pricing.md). This document is the technical design.
 
-- **Client (Apache-2.0):** `src/atelier/core/capabilities/licensing/` — verifies
-  and stores license keys, answers "is this feature unlocked?".
+- **Client (Apache-2.0):** `src/atelier/core/capabilities/licensing/` — holds
+  the OAuth session and answers "is this feature unlocked?".
 - **Pro overlay (proprietary):** the `atelier_pro` package under `pro/` — a
   separate wheel holding the paid engine activation surfaces. Tracked in this
   repo but excluded from public releases via `release/public-paths.txt`. The
   core never imports it directly; it soft-imports it through `pro_bridge`, so
   it's absent on every Free install. See [`pro/README.md`](../pro/README.md).
-- **Issuer (proprietary):** `services/license-issuer/` — a Cloudflare Worker that
-  turns a Stripe payment into a signed key and emails it. Private by default
-  (not in `release/public-paths.txt`).
+- **Auth server (proprietary):** the landing site's `/api/auth/*` functions
+  plus the Stripe webhook. Google OAuth signs the user in, Stripe payments set
+  the account's plan, and `/api/auth/me` reports `{email, plan, device_id}` to
+  the CLI.
 
-Activation requires the issuer once, then stores a signed, device-bound lease.
-Entitlement checks are local Ed25519 verification. The client automatically
-refreshes its lease after 30 days; if the issuer cannot be reached, the current
-lease remains valid for a further 7-day grace period. The private signing key
-lives only in the Worker; the public key is embedded in the client.
+## How entitlement works
+
+`atelier login` runs a browser OAuth flow against the auth server and stores a
+session token at `~/.atelier/auth_token` (mode `0600`; override with the
+`ATELIER_AUTH_TOKEN` env var — handy for CI). Entitlement checks read the plan
+from `/api/auth/me`, cached on disk for 24 hours (`~/.atelier/auth_user.json`),
+so normal operation makes at most one auth call a day. If the server is
+unreachable and no fresh cache exists, gated surfaces stay locked and the check
+retries hourly; Free surfaces are never affected.
+
+`atelier logout` deletes the session and reverts to Free. There are no offline
+license keys, no device-bound leases, and no local crypto — the account's plan
+is the single source of truth.
 
 **Two walls, defense in depth.** A Pro path runs only when *both* agree: the
 code is physically present (the `atelier_pro` overlay is installed and declares
-the feature) **and** a valid license grants it. A leaked overlay can't run
-without a key; a key with no overlay has nothing to run.
+the feature) **and** the signed-in account's plan grants it. A leaked overlay
+can't run without a Pro account; a Pro account with no overlay has nothing to
+run.
 
-| Overlay installed? | Valid license? | Result                          |
-| :----------------: | :------------: | ------------------------------- |
-|         no         |       no       | **Free** — silently skips       |
-|         no         |      yes       | Free behavior (nothing to run)  |
-|       **yes**      |       no       | **Locked** (handles a leak)     |
-|        yes         |      yes       | **Pro**                         |
+| Overlay installed? | Pro plan? | Result                          |
+| :----------------: | :-------: | ------------------------------- |
+|         no         |    no     | **Free** — silently skips       |
+|         no         |    yes    | Free behavior (nothing to run)  |
+|       **yes**      |    no     | **Locked** (handles a leak)     |
+|        yes         |    yes    | **Pro**                         |
 
 ## Free vs Pro vs Enterprise
 
@@ -59,30 +69,17 @@ The feature keys are in `src/atelier/core/capabilities/licensing/features.py`
 (`PRO_FEATURES`, with `ENTERPRISE_FEATURES` the Enterprise-only subset). For the
 customer-facing plans and prices see [Plans & Pricing](./pricing.md).
 
-## Using a license
+## Signing in
 
 ```bash
-atelier login --token <credentials>   # enroll this device and store its lease
-atelier status                        # show plan, auth, and subscription status
-atelier logout                        # revert to Free (local anonymous trial)
+atelier login          # browser OAuth; stores the session token
+atelier status --auth  # show email, plan, and device slots
+atelier logout         # revert to Free (local anonymous trial)
 ```
 
-A Pro purchase can have up to **three active devices**. When all slots are in
-use, interactive activation lists them and asks which one to remove before it
-enrolls the new device. Removal is immediate; there is no cooldown. Device-added
-and device-removed notifications are sent to the purchase email.
-
-The CLI stores the purchase credential in `~/.atelier/purchase.key`, a local
-Ed25519 device private key in `~/.atelier/device.key`, and the current signed
-device lease in `~/.atelier/license.key`. These files are created with mode
-`0600`. Use the website's license-recovery page if the purchase credential is
-lost.
-
-The `ATELIER_LICENSE` env var overrides the stored lease (handy for a stable CI
-device). Device-bound leases also require that device's private key.
-`ATELIER_LICENSE_PUBLIC_KEY` overrides the embedded public key
-(for self-issued keys or testing). `ATELIER_PRO_URL` overrides the "buy" link
-shown in upsells -- point it straight at your Stripe Payment Link.
+A Pro account supports up to **three active CLI devices**; the auth server
+tracks the slots. `ATELIER_PRO_URL` overrides the "buy" link shown in
+upsells — point it straight at your Stripe Payment Link.
 
 ## The entitlement contract
 
@@ -92,14 +89,14 @@ Every gate calls one tiny API:
 from atelier.core.capabilities import licensing
 
 licensing.is_pro()                    # bool
-licensing.has_feature("optimizer")    # license only — non-Pro keys are always True
-licensing.require("optimizer")        # raises FeatureLocked if the license doesn't grant it
-licensing.feature_active("optimizer") # license AND overlay installed (use this at seams)
+licensing.has_feature("optimizer")    # plan only — non-Pro keys are always True
+licensing.require("optimizer")        # raises FeatureLocked if the plan doesn't grant it
+licensing.feature_active("optimizer") # plan AND overlay installed (use this at seams)
 licensing.pro_impl("optimizer")       # the atelier_pro module to run, or None
 ```
 
-- `has_feature` / `require` check the **license** only.
-- `feature_active` checks the **license and** that the `atelier_pro` overlay is
+- `has_feature` / `require` check the **plan** only.
+- `feature_active` checks the **plan and** that the `atelier_pro` overlay is
   installed — the right test for a seam that should silently fall back to Free.
 - `pro_impl` returns the overlay module that actually runs the feature (or
   `None`); the seam calls into it, e.g. `pro_impl("optimizer").apply_policy(...)`.
@@ -141,9 +138,9 @@ never leaks unless it's explicitly allowlisted.
 | -------------------------------------------------- | ------------------------------------------------------------------ |
 | Whole runtime, MCP server, SDK, CLI                | `pro/` — the `atelier_pro` overlay (paid surfaces)                 |
 | License **client** (`licensing/`, `pro_bridge`)    | `internal/`, `docs-internal/`, `.planning/` (strategy)             |
-| Public compute the overlay calls into              | `services/` — license issuer (Stripe, D1, device registry)         |
+| Public compute the overlay calls into              | `services/` — auth/payments backend (Stripe, D1)                   |
 | `docs/`, `integrations/`, `tests/`, benchmarks     | `deploy/`, `release/` (publish machinery)                          |
-| `frontend/`, `landing/`, `docs-site/`              | Ed25519 **private** key + Stripe secrets (never committed)         |
+| `frontend/`, `landing/`, `docs-site/`              | Stripe secrets (never committed)                                   |
 
 The `atelier_pro` wheel is built from `pro/` and distributed only to licensed
 customers; the public snapshot never contains `pro/`.

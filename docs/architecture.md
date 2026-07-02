@@ -98,9 +98,9 @@ Atelier is a single Python runtime (mypyc-compiled for speed) that your coding a
 
 | Technology | What it is | Why Atelier uses it |
 | --- | --- | --- |
-| **Cloudflare Workers** | Edge serverless runtime | The `license-issuer` service — global, low-latency |
-| **Cloudflare D1** | Edge SQLite database | License and device records |
-| **Stripe** | Payments | Checkout → signed purchase credential → entitlement |
+| **Cloudflare Workers** | Edge serverless runtime | The Stripe→plan bridge and the landing auth API — global, low-latency |
+| **Cloudflare D1** | Edge SQLite database | Plan rows and OAuth account/session records |
+| **Stripe** | Payments | Checkout → plan on the account → OAuth entitlement |
 
 ### Quality gate (developer tooling)
 
