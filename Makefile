@@ -120,6 +120,9 @@ endif
 test-fast: | _ensure_hooks ## Run fast tests: stop on first failure, skip slow/Postgres-gated tests
 	@bash -lc 'if uv run python -c "import xdist" >/dev/null 2>&1; then uv run pytest -q -x -n auto --dist=worksteal --ignore=tests/test_postgres_store.py --ignore=tests/test_worker_jobs.py -m "not slow"; else uv run pytest -q -x --ignore=tests/test_postgres_store.py --ignore=tests/test_worker_jobs.py -m "not slow"; fi'
 
+test-pro: ## E2E dev-mode Pro purchase loop: signed webhook -> D1 -> /api/auth/me -> CLI entitlement (all local)
+	bash scripts/test_pro.sh
+
 test-cov: ## Run tests with terminal and HTML coverage reports
 	uv run pytest --cov=atelier --cov-report=term-missing --cov-report=html
 
