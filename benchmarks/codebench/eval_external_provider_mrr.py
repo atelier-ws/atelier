@@ -1551,7 +1551,7 @@ out = {
 print(json.dumps(out, ensure_ascii=False))
 
 # ── History: persist this run so trends and deltas survive across runs ────────
-_HISTORY = Path("reports/benchmark/mrr_history.jsonl")
+_HISTORY = Path("benchmarks/codebench/results/mrr_history.jsonl")
 _HISTORY.parent.mkdir(parents=True, exist_ok=True)
 try:
     _sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()

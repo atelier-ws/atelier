@@ -56,6 +56,17 @@ except Exception:  # noqa: BLE001 — metadata may be missing in dev/bundle cont
         __version__ = "0.0.0"
 
 
+# Seed process env vars from persisted `atelier settings set` overrides before
+# anything else reads them. Cheap (small local JSON, stdlib-only import) and
+# must never block a plain `import atelier` — see apply_settings_env().
+try:
+    from atelier.core.settings import apply_settings_env as _apply_settings_env
+
+    _apply_settings_env()
+except Exception:  # noqa: BLE001 - settings must never block import
+    pass
+
+
 def __getattr__(name: str) -> Any:
     lazy_export = _LAZY_EXPORTS.get(name)
     if lazy_export is not None:

@@ -2984,7 +2984,7 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     project_root_candidate = resolve_workspace_root(root)
     if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
         project_root_candidate = Path.cwd()
-    from atelier.core.capabilities.optimization_audit import (
+    from atelier.core.capabilities.optimization import (
         build_context_audit,
         build_session_quality_summary,
     )
@@ -6464,13 +6464,18 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         dependencies=[Depends(verify_api_key)],
     )
     def get_outcomes_for_session(session_id: str) -> list[dict[str, Any]]:
-        """All outcome entries (route + compact) for a single session."""
+        """All outcome entries (route + compact) for a single session.
+
+        A session with no recorded outcomes is a normal empty state, not an
+        error — return [] so the dashboard doesn't log a 404 for every
+        session opened.
+        """
         from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
         root = Path(cfg.atelier_root)
         state_path = root / "runs" / f"{session_id}.outcomes.json"
         if not state_path.exists():
-            raise HTTPException(status_code=404, detail=f"No outcomes for session '{session_id}'")
+            return []
         try:
             outcomes = load_outcomes_from_state(state_path)
         except Exception as exc:

@@ -228,26 +228,50 @@ if [ -z "${DYNAMIC_SEG:-}" ]; then
   # zero-token result to the next render that has actual tokens in context.
   # Persist only with a real SESSION_ID — never write a shared, unkeyed cache.
   if [ -n "${DYNAMIC_SEG:-}" ] && [ "${LIVE_CTX_TOK:-0}" -gt 0 ] && [ -n "${SESSION_ID:-}" ]; then
-    printf '%s' "${DYNAMIC_SEG}" > "${_SEG_CACHE}" 2>/dev/null || true
-    printf '%s' "${_NOW_S}" > "${_SEG_CACHE_TS}" 2>/dev/null || true
+    # Atomic renames so a concurrent render never reads a torn cache file.
+    printf '%s' "${DYNAMIC_SEG}" > "${_SEG_CACHE}.$$" 2>/dev/null \
+      && mv -f "${_SEG_CACHE}.$$" "${_SEG_CACHE}" 2>/dev/null || true
+    printf '%s' "${_NOW_S}" > "${_SEG_CACHE_TS}.$$" 2>/dev/null \
+      && mv -f "${_SEG_CACHE_TS}.$$" "${_SEG_CACHE_TS}" 2>/dev/null || true
   fi
 fi
 
 # --- Background shell jobs ---
 BG_JOBS=0
 if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "${TRANSCRIPT_PATH}" ]; then
-  _BG_SESSION_ROOT="${TRANSCRIPT_PATH%/subagents/*}"
-  if [ "${_BG_SESSION_ROOT}" = "${TRANSCRIPT_PATH}" ]; then
-    _BG_SESSION_ROOT="$(dirname "${TRANSCRIPT_PATH}")"
-  fi
+  # Scope: THIS session's transcript + its own subagents/*.jsonl only. The
+  # old dirname() fallback walked the whole project dir — every historical
+  # session's transcript (100s of MB of awk) on every render.
+  _BG_MAIN="${TRANSCRIPT_PATH}"
+  case "${TRANSCRIPT_PATH}" in
+    */subagents/*) _BG_MAIN="${TRANSCRIPT_PATH%/subagents/*}.jsonl" ;;
+  esac
   _BG_SCAN_FILES=()
-  while IFS= read -r -d '' _BG_F; do
-    _BG_SCAN_FILES+=("${_BG_F}")
-  done < <(find "${_BG_SESSION_ROOT}" -maxdepth 2 -type f -name '*.jsonl' -print0 2>/dev/null)
+  [ -f "${_BG_MAIN}" ] && _BG_SCAN_FILES+=("${_BG_MAIN}")
+  _BG_SUB_DIR="${_BG_MAIN%.jsonl}/subagents"
+  if [ -d "${_BG_SUB_DIR}" ]; then
+    while IFS= read -r -d '' _BG_F; do
+      _BG_SCAN_FILES+=("${_BG_F}")
+    done < <(find "${_BG_SUB_DIR}" -maxdepth 1 -type f -name '*.jsonl' -print0 2>/dev/null)
+  fi
   if [ "${#_BG_SCAN_FILES[@]}" -eq 0 ]; then
     _BG_SCAN_FILES=("${TRANSCRIPT_PATH}")
   fi
-  BG_JOBS=$(awk '
+  # Re-scan only when a scanned file changed; idle renders reuse the count.
+  _BG_CACHE=""
+  _BG_HIT=0
+  _BG_SIG=$( (stat -c '%Y:%s' "${_BG_SCAN_FILES[@]}" 2>/dev/null || stat -f '%m:%z' "${_BG_SCAN_FILES[@]}" 2>/dev/null) | cksum | cut -d' ' -f1)
+  if [ -n "${SESSION_ID:-}" ] && [ -n "${_BG_SIG:-}" ]; then
+    # tmp, not ~/.atelier: the OS reclaims per-session cache files.
+    _BG_CACHE_DIR="${TMPDIR:-/tmp}/atelier-statusline-$(id -u)"
+    _BG_CACHE="${_BG_CACHE_DIR}/bgjobs_${SESSION_ID}"
+    _BG_CACHED=$(cat "${_BG_CACHE}" 2>/dev/null || true)
+    if [ -n "${_BG_CACHED}" ] && [ "${_BG_CACHED%%|*}" = "${_BG_SIG}" ]; then
+      BG_JOBS="${_BG_CACHED##*|}"
+      _BG_HIT=1
+    fi
+  fi
+  [ "${_BG_HIT}" -eq 1 ] || BG_JOBS=$(awk '
     /tool_use_id/ && /Command running in background with ID: / {
       line = $0
       path = ""
@@ -281,6 +305,12 @@ if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "${TRANSCRIPT_PATH}" ]; then
     }
   ' "${_BG_SCAN_FILES[@]}" 2>/dev/null)
   [ -z "${BG_JOBS}" ] && BG_JOBS=0
+  if [ "${_BG_HIT}" -eq 0 ] && [ -n "${_BG_CACHE}" ]; then
+    # Atomic rename so a concurrent render never reads a torn cache file.
+    mkdir -p "${_BG_CACHE_DIR}" 2>/dev/null || true
+    printf '%s|%s' "${_BG_SIG}" "${BG_JOBS}" > "${_BG_CACHE}.$$" 2>/dev/null \
+      && mv -f "${_BG_CACHE}.$$" "${_BG_CACHE}" 2>/dev/null || true
+  fi
 fi
 
 # --- Background agents ---

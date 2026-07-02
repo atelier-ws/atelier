@@ -73,25 +73,40 @@ Atelier indexes your repo and wires itself into your coding agent’s MCP config
 
 ## 🧠 Why It Works
 
-Vanilla agents navigate by reading entire files and grepping blindly. Atelier replaces that with a grounded tool layer — so agents find what they need in **tens of tokens instead of thousands**.
+Vanilla agents aren't running inside anything — a chat model with tool access just calls whatever functions happen to be in scope, which is why it navigates by reading entire files and grepping blindly. Atelier is the **agent runtime** underneath: it owns the tool surface an agent calls (search, read, edit, shell, fetch — grounded and budgeted, in **tens/hundreds of tokens instead of thousands**), the role boundaries each agent runs inside, the procedures it can invoke as first-class capabilities, and the event hooks that intercept every call before and after it executes. That's the actual product: not a code-indexing feature bolted onto a stock agent, a runtime the agent runs *inside* — the same way an OS runtime owns syscalls, process isolation, and interrupts instead of leaving a program to manage its own memory.
 
 ### 🛠️ MCP Tools
 
-Atelier exposes exactly **5 tools** — not because the others don't exist, but because more tools means more decision overhead. Every extra tool the agent sees is a choice it has to make. `grep`, `search`, `memory`, `sql`, `codemod` and others are all registered and callable by name, but hidden from the advertised surface so the agent leads with the right primitive every time.
+Atelier exposes **5 dedicated tools** and hides **7 Claude Code built-ins** behind them (`disallowedTools` denies the natives outright — the model never sees them as a choice). Less tools less decision. More tools means more decision overhead. Every extra tool the agent sees is a choice it has to make.
 
-| Tool          | What it does                                                         | Why this and not something else                                                                                                                                                |
-| --------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `code_search` | Symbol lookup + callers, callees, usages + ranked source in one call | `grep` makes agents loop over results and read whole files. `code_search` returns the exact symbol, its call graph, and the relevant source in one shot — no follow-up needed |
-| `read`        | Token-budgeted file reads by outline, range, or full file            | Only needed after`code_search` pinpoints the location. Budget cap prevents agents from pulling entire files when they need three lines                                         |
-| `edit`        | Deterministic, verified file edits — multiple files in one call     | CC's`Edit` batches within a single file only. Atelier's `edit` handles cross-file edits in one tool call — fewer round-trips, no create-vs-patch ambiguity                    |
-| `bash`        | Shell execution with budgeted, structured output                     | CC's`Bash` dumps the full stdout/stderr into context. Atelier's `bash` caps and structures output so a noisy build log doesn't blow the context window                         |
-| `web_fetch`   | Fetch a URL, return clean Markdown                                   | Raw HTML dumps waste thousands of tokens on tags, scripts, and nav chrome. Atelier strips it to readable Markdown — only the content reaches the context window               |
+| Tool          | What it does                                                         | Replaces (hidden from the model) | Why this and not something else                                                                                                                                                |
+| --------------- | ---------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `code_search` | Symbol lookup + callers, callees, usages + ranked source in one call | `Grep`, `Glob`                  | `grep` makes agents loop over results and read whole files. `code_search` returns the exact symbol, its call graph, and the relevant source in one shot — no follow-up needed |
+| `read`        | Token-budgeted file reads by outline, range, or full file            | `Read`                          | Only needed after`code_search` pinpoints the location. Budget cap prevents agents from pulling entire files when they need three lines                                         |
+| `edit`        | Deterministic, verified file edits — multiple files in one call     | `Edit`, `Write`                 | CC's`Edit` batches within a single file only. Atelier's `edit` handles cross-file edits in one tool call — fewer round-trips, no create-vs-patch ambiguity                    |
+| `bash`        | Shell execution with budgeted, structured output                     | `Bash`                          | CC's`Bash` dumps the full stdout/stderr into context. Atelier's `bash` caps and structures output so a noisy build log doesn't blow the context window                         |
+| `web_fetch`   | Fetch a URL, return clean Markdown                                   | `WebFetch`                      | Raw HTML dumps waste thousands of tokens on tags, scripts, and nav chrome. Atelier strips it to readable Markdown — only the content reaches the context window               |
+
+**Total token footprint** (`cl100k` proxy, read from captured request flows — see [Tool surface & per-tool token counts](#tool-surface--per-tool-token-counts) for the full table this is drawn from): Atelier's whole advertised surface (5 replacement tools + `Agent`/`Skill`/`ToolSearch`, identical in both arms) is **2,729 tok** vs **3,081 tok** for Claude Code's — an **11% smaller** fixed prefix before a single turn runs. That total covers `Bash`/`Read`/`Edit`/`Write` (**1,246 vs 1,598 tok**, −22%) — the four built-ins actually measured in every request. `Grep`/`Glob` and a disabled `WebFetch` add nothing to either arm's realized total (deferred/dropped, zero calls either way), but they're still hidden from the model: estimated standalone cost ≈605 / ≈191 / ≈276 tok respectively — gone from the tool menu regardless of what they'd have cost had they loaded. Full per-tool breakdown, methodology, and the zero-call evidence in the table below.
+
+### 🧩 Why a runtime, not just tools
+
+A bare MCP server is a library: tools the model can call *if* it remembers to. A runtime is different — it decides what's callable at all, what's callable safely, and what happens the instant something goes wrong. Grounded tools alone only cover the first of those. They tell an agent *what's true about the code*; they don't tell it *when to stop exploring and edit*, *how to run a procedure the same way twice*, *who's allowed to touch what*, or *catch a bad call before it lands*. Those are four separate runtime responsibilities, and no single layer covers all four:
+
+| Runtime layer removed | What still goes wrong | What closes it |
+| --- | --- | --- |
+| **Agents** — process isolation | A general-purpose agent can `edit` mid-"exploration," skip `code_search` for old grep habits under pressure, or call `bash` with no verification gate — the right tools are *available*, not *obligatory* | `explore` / `review` / `research` hard-deny `edit` via `disallowedTools` at the host-config level — a capability the model doesn't have, not a rule it might break |
+| **Skills** — standard library | Every recurring, multi-step task — perf regression gates, WCAG + token + visual UX checks, swarm coordination — gets re-improvised each session: different depth, missed steps, no shared procedure across agents or runs | Skills encode the procedure once (`perf-review` always runs the same latency / memory / I-O gates); any agent invokes it the same way, every time, as a callable capability rather than remembered advice |
+| **Hooks** — interrupts | Everything above sets the rules, but nothing stops a bad call *in the moment* — an agent re-reading a file it just edited, editing a risky config path before it's grounded in a task, or declaring "done" without ever running a check | `PreToolUse` hooks deny the call before it executes (`pre_tool_discipline.py` blocks wasteful full re-reads, `pre_tool_use.py` blocks ungrounded risky edits); a `Stop` hook (`verify_before_done.py`) blocks session close until verification actually ran — enforced at the event layer, outside the model's control, so it can't be reasoned around |
+| **MCP tools** — syscall surface | Agents still navigate by grep-and-read-whole-file; "use grounded retrieval" is a sentence competing for attention in a shrinking context window — easy to drop under pressure, impossible to enforce from inside a prompt | `code_search` / `read` / `edit` / `bash` / `web_fetch` are the *only* tools the model can see for those jobs — natives are hidden, not just discouraged |
+
+Plain instructions can *ask* for discipline the way a code comment asks a caller to be careful — advisory, and gone the moment attention moves elsewhere. A runtime doesn't ask. Atelier enforces all four at the layer built for each: host config governs the syscall surface, capability grants govern process isolation, packaged skills govern the standard library, event hooks govern interrupts — so correct behavior is the only path available, not the one the model happened to choose this turn.
 
 ---
 
 ## 🤖 Agents & Skills
 
-Atelier ships ready-to-use agent personas and skills — drop them into any supported host.
+Atelier ships ready-to-use agent personas and skills — drop them into any supported host. Both are runtime primitives built on the same 5-tool MCP surface above (agents for process isolation, skills for the standard library of procedures), not a separate system bolted on top of it.
 
 ### Agents
 
@@ -310,19 +325,17 @@ uv run --project benchmarks python -m benchmarks.codebench.multiswe_run \
   --jobs 8
 ```
 
-Opt out of the defaults with `CODEBENCH_EDIT_VERIFY=0` (disable the edit-verify gate) or widen the egress allowlist with `CODEBENCH_EGRESS_ALLOW=anthropic.com,amazonaws.com,…`.
-
 #### Benchmark Setup
 
 Every knob below is identical for both arms **unless marked (atelier-only)**: **Model:** `claude-opus-4-8`, default sampling, both arms.
 
-* **Environment:** each instance's official SWE-bench Verified Docker image; the repo's conda env activated identically; agent runs as root (`IS_SANDBOX=1`). Both arms run _in-image_.
+* **Environment:** each instance's official SWE-bench Verified Docker image; the repo's conda env activated identically; agent runs as root (`IS_SANDBOX=1`). Both arms run *in-image*.
 * **Reps:** 5 per instance. **Resolved** = reps whose patch passes the hidden gold tests (official `swebench` harness; gold tests are never shown to the agent and gold test files are stripped from the model patch before grading).
 * **Turn cap / timeout:** `--max-turns 100`; per-run agent timeout 3600 s.
 * **Egress:** hermetic — only `api.anthropic.com` is reachable (no fetching answers, patches, or hints).
 * **Disabled tools (both arms):** see Tool parity below.
 * **Task set:** 50 SWE-bench Verified instances across 12 Python repos (astropy, django, matplotlib, seaborn, pallets, requests, xarray, pylint, pytest, scikit-learn, sphinx, sympy). List: `benchmarks/codebench/data/verified.txt`.
-* **(atelier-only) persona:** `atelier:auto` — lean autonomous persona; it _replaces_ Claude Code's default system prompt (does not stack — see the fixed-cost note).
+* **(atelier-only) persona:** `atelier:auto` — lean autonomous persona; it *replaces* Claude Code's default system prompt (does not stack — see the fixed-cost note).
 
 #### Tool parity (fair comparison)
 
@@ -343,7 +356,9 @@ Every tool each arm loads, with schema token counts (cl100k proxy, read from the
 | Shell                      | `Bash`       |       724 |      3,171 | `bash`                 |       307 |      1,638 |
 | Read file                  | `Read`       |       446 |      1,798 | `read`                 |       222 |        987 |
 | Edit file                  | `Edit`       |       255 |      1,444 | `edit` (handles both)  |       306 |        711 |
-| Create file                | `Write`      |       173 |         — | _(folded into `edit`)_ |        — |         — |
+| Create file                | `Write`      |       173 |         — | *(folded into `edit`)* |        — |         — |
+| Search (content, regex)²   | `Grep`       |      ~605 |           0 | *(folded into `code_search`)* |        — |         — |
+| Search (filenames, glob)²  | `Glob`       |      ~191 |           0 | *(folded into `code_search`)* |        — |         — |
 | Symbol search + call graph | —           |        — |         — | `code_search`          |       280 |        544 |
 | Web fetch                  | `WebFetch`   |        — | disabled¹ | `web_fetch`            |       131 | disabled¹ |
 | Subagents                  | `Agent`      |       615 |            | `Agent`                |       615 |            |
@@ -354,6 +369,8 @@ Every tool each arm loads, with schema token counts (cl100k proxy, read from the
 | **Fixed prefix**           |              | **4,691** |            |                        | **3,444** |            |
 
 ¹ `WebFetch` disabled in this benchmark (both arms) — no fetching answers from the web.
+
+² `Grep`/`Glob` are deferred-loaded natives (see the deferred-pool note below), so they're excluded from **Tools total** — but here's what they'd cost. Calls are real: grepped from all 250 baseline `.flow_dump.txt` transcripts for this run, **zero** invocations either way — the baseline agent used `Bash` (`grep`/`find`) for search instead, never triggering `ToolSearch` to pull them in, so their realized cost this run truly is zero. Token counts are estimates of what loading them *would* cost once: the raw request bodies (which carry the full `tools` schema array) weren't retained for this run, so instead these are computed the same way as the rest of the table — cl100k over `name`+`description`+`input_schema` JSON — from Claude Code's current tool definitions (extracted from the installed CLI), then calibrated −15% against this table's own `Read`/`Write` rows, since a literal JSON reconstruction of a *known* tool consistently overshoots its real measured count by about that margin. Same method puts `WebFetch`'s schema (if enabled) at ≈276 tok, for reference — well above Atelier's 131 tok `web_fetch`.
 
 Both keep `Agent`/`Skill`/`ToolSearch`, so both reach the same native deferred pool (TodoWrite, Glob, NotebookEdit, Task, …) on demand.
 
@@ -369,9 +386,125 @@ Atelier trades a small recurring overhead for fewer, better-grounded turns. Meas
 
 ### Terminal-Bench
 
-Agentic terminal tasks on **[Terminal-Bench 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1)** — the official **89-task** suite, run through the **[Harbor](https://www.harborframework.com/)** harness. The Atelier arm is the `atelier:auto` persona loaded into Claude Code via `--plugin-dir`; both arms run **`claude-opus-4-8`** at **high effort** with **fixed (default) per-task timeouts** and **5 attempts** (`-k 5`) — matching Anthropic's official Opus 4.8 setup (System Card §8.3). The agent runs as root (`IS_SANDBOX=1`) in each throwaway task container, with full trajectories captured (`--output-format stream-json`). Disabled tools: `AskUserQuestion`/`ExitPlanMode` (no stalling on prompts), `WebFetch`/`WebSearch`/`mcp__atelier__web_fetch` (no answer-fetching), `Workflow`/`ScheduleWakeup` (token-heavy).
+Agentic terminal tasks on **[Terminal-Bench 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1)** — the official **89-task** suite, run through the **[Harbor](https://www.harborframework.com/)** harness. The Atelier arm is the `atelier:solve` persona loaded into Claude Code via `--plugin-dir`; both arms run **`claude-opus-4-8`** at **high effort** with **fixed (default) per-task timeouts** and **5 attempts** (`-k 5`) — matching Anthropic's official Opus 4.8 setup (System Card §8.3). The agent runs as root (`IS_SANDBOX=1`) in each throwaway task container, with full trajectories captured (`--output-format stream-json`). Disabled tools: `AskUserQuestion`/`ExitPlanMode` (no stalling on prompts), `WebFetch`/`WebSearch`/`mcp__atelier__web_fetch` (no answer-fetching), `Workflow`/`ScheduleWakeup` (token-heavy).
 
-Auth uses Claude **subscription OAuth tokens** (not API keys), in `benchmarks/harbor/.env`. Each present token gets `ATELIER_BENCH_TOKEN_SLOTS` (default 6) concurrent slots — run `-n 6` with one token, `-n 12` with two:
+**Results: 73/89 resolved (82.0%)** — single-rep Atelier run (`n_attempts=1`). Baseline: public [tbench.ai leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.1) entry for Claude Code 2.1.152 / Opus 4.8, **80.0%** (5-rep average) — not yet a matched-rep comparison; a 5-rep Atelier run (`-k 5`, matching the setup below) is needed before this is apples-to-apples. Raw data: [`benchmarks/harbor/results/atelier/2026-07-01__01-00-07/`](benchmarks/harbor/results/atelier/2026-07-01__01-00-07/).
+
+<details>
+<summary>All 89 tasks</summary>
+
+| Task | Resolved |
+| --- | :---: |
+| adaptive-rejection-sampler | ✅ |
+| bn-fit-modify | ✅ |
+| break-filter-js-from-html | ✅ |
+| build-cython-ext | ✅ |
+| build-pmars | ✅ |
+| build-pov-ray | ✅ |
+| caffe-cifar-10 | ✅ |
+| cancel-async-tasks | ❌ |
+| chess-best-move | ✅ |
+| circuit-fibsqrt | ✅ |
+| cobol-modernization | ✅ |
+| code-from-image | ✅ |
+| compile-compcert | ✅ |
+| configure-git-webserver | ❌ |
+| constraints-scheduling | ✅ |
+| count-dataset-tokens | ✅ |
+| crack-7z-hash | ✅ |
+| custom-memory-heap-crash | ✅ |
+| db-wal-recovery | ✅ |
+| distribution-search | ✅ |
+| dna-assembly | ✅ |
+| dna-insert | ❌ |
+| extract-elf | ❌ |
+| extract-moves-from-video | ✅ |
+| feal-differential-cryptanalysis | ✅ |
+| feal-linear-cryptanalysis | ✅ |
+| filter-js-from-html | ❌ |
+| financial-document-processor | ✅ |
+| fix-code-vulnerability | ✅ |
+| fix-git | ✅ |
+| fix-ocaml-gc | ✅ |
+| gcode-to-text | ❌ |
+| git-leak-recovery | ✅ |
+| git-multibranch | ✅ |
+| gpt2-codegolf | ❌ |
+| headless-terminal | ✅ |
+| hf-model-inference | ✅ |
+| install-windows-3.11 | ❌ |
+| kv-store-grpc | ✅ |
+| large-scale-text-editing | ✅ |
+| largest-eigenval | ❌ |
+| llm-inference-batching-scheduler | ✅ |
+| log-summary-date-ranges | ✅ |
+| mailman | ✅ |
+| make-doom-for-mips | ✅ |
+| make-mips-interpreter | ✅ |
+| mcmc-sampling-stan | ✅ |
+| merge-diff-arc-agi-task | ✅ |
+| model-extraction-relu-logits | ❌ |
+| modernize-scientific-stack | ✅ |
+| mteb-leaderboard | ✅ |
+| mteb-retrieve | ❌ |
+| multi-source-data-merger | ✅ |
+| nginx-request-logging | ✅ |
+| openssl-selfsigned-cert | ✅ |
+| overfull-hbox | ✅ |
+| password-recovery | ✅ |
+| path-tracing | ✅ |
+| path-tracing-reverse | ✅ |
+| polyglot-c-py | ✅ |
+| polyglot-rust-c | ✅ |
+| portfolio-optimization | ✅ |
+| protein-assembly | ✅ |
+| prove-plus-comm | ✅ |
+| pypi-server | ✅ |
+| pytorch-model-cli | ✅ |
+| pytorch-model-recovery | ❌ |
+| qemu-alpine-ssh | ✅ |
+| qemu-startup | ✅ |
+| query-optimize | ❌ |
+| raman-fitting | ❌ |
+| regex-chess | ✅ |
+| regex-log | ✅ |
+| reshard-c4-data | ✅ |
+| rstan-to-pystan | ✅ |
+| sam-cell-seg | ✅ |
+| sanitize-git-repo | ✅ |
+| schemelike-metacircular-eval | ✅ |
+| sparql-university | ✅ |
+| sqlite-db-truncate | ✅ |
+| sqlite-with-gcov | ✅ |
+| torch-pipeline-parallelism | ✅ |
+| torch-tensor-parallelism | ✅ |
+| train-fasttext | ❌ |
+| tune-mjcf | ✅ |
+| video-processing | ❌ |
+| vulnerable-secret | ✅ |
+| winning-avg-corewars | ✅ |
+| write-compressor | ✅ |
+
+</details>
+
+Run it:
+
+```bash
+atelier benchmark harbor -y
+```
+
+Rebuilds the Atelier bundle from current source, then runs the full 89-task suite (5 attempts/task by default) through the `atelier:solve` persona loaded into Claude Code via `--plugin-dir`. Needs Docker and a `benchmarks/harbor/.env` token — see Environment setup below.
+
+```bash
+atelier benchmark harbor --baseline -y                                             # vanilla Claude Code, no Atelier plugin
+atelier benchmark harbor --limit 3 --attempts 1 -y                                  # quick smoke test
+atelier benchmark harbor --resume benchmarks/jobs/harbor/2026-07-01__12-00-00 -y    # resume a rate-limited run
+```
+
+<details>
+<summary>Environment setup</summary>
+
+Auth uses Claude **subscription OAuth tokens** (not API keys), in `benchmarks/harbor/.env`. Each present token gets `ATELIER_BENCH_TOKEN_SLOTS` (default `2`, override via `--slots`) concurrent slots:
 
 ```bash
 # benchmarks/harbor/.env
@@ -380,27 +513,22 @@ CLAUDE_CODE_OAUTH_TOKEN_1=sk-ant-oat01-...
 ATELIER_BENCH_MODEL=claude-opus-4-8
 ```
 
-Build the portable Atelier bundle (pure-Python, old-glibc, reused across every task image), then swap it in:
+`atelier benchmark harbor` rebuilds the bundle and drives Harbor for you end-to-end. For manual control — rebuilding the portable Atelier bundle (pure-Python, old-glibc, reused across every task image) by hand, running the zero-LLM preflight (validates install + code index + the exact `claude` flags on a real task image, without spending any AI credits), or driving Harbor directly:
 
 ```bash
+# Rebuild the bundle by hand
 docker run --rm -v "$PWD":/atelier:ro -v /tmp/avbuild:/out \
   debian:bullseye-slim bash /atelier/benchmarks/harbor/rebuild_bundle.sh
 mv -f /tmp/avbuild/atelier-bundle-new.tar.gz /tmp/avbuild/atelier-bundle.tar.gz
-```
 
-Zero-LLM preflight — validates install + code index + the exact `claude` flags on a real task image, **without spending any AI credits**:
-
-```bash
+# Zero-LLM preflight
 docker run --rm -v "$PWD":/atelier:ro \
   -v /tmp/avbuild/atelier-bundle.tar.gz:/atelier-bundle.tar.gz:ro \
   alexgshaw/adaptive-rejection-sampler:20251031 \
   bash /atelier/benchmarks/harbor/setup_preflight.sh adaptive-rejection-sampler
 # -> RESULT:...:PASS node=... cmdprobe=ok idx_git=2 idx_nogit=1 emptyrc=0 logs_agent=ok
-```
 
-Run the benchmark — Atelier arm, then the baseline (timeouts stay at the default `1.0` multiplier, per the leaderboard rule):
-
-```bash
+# Drive Harbor directly
 set -a; . benchmarks/harbor/.env; set +a
 MOUNTS='[{"type":"bind","source":"'"$PWD"'","target":"/atelier","read_only":true},{"type":"bind","source":"/tmp/avbuild/atelier-bundle.tar.gz","target":"/atelier-bundle.tar.gz","read_only":true}]'
 
@@ -416,6 +544,8 @@ uv run --no-sync harbor run -d terminal-bench/terminal-bench-2-1 \
 ```
 
 Resume rate-limited or incomplete trials in place with `harbor job resume -p <job-dir>`.
+
+</details>
 
 Pure retrieval quality vs. every other code-search MCP/CLI we could get running, on the **same 15 repos** and the **same ~9.3k query/gold pairs** (5 gold sets: definition, content, semantic, SWE-bench, session-mined). One row per provider — Atelier's three channels, then common CLI tools, then custom MCP servers (MRR-sorted within each group); click a row to expand its per-repo breakdown. `rec@k` = fraction of queries where the correct file lands in the top-k results. Atelier's three rows are its internal channel progression (`lexical` → `+zoekt` → `+semantic`); `+zoekt` (`lexical+zoekt`) is the shipped default — `code_search` exactly as installed, no special-cased channel.
 
@@ -529,7 +659,7 @@ python3 benchmarks/codebench/run_embedder_sweep.py
 
 [FSL-1.1-ALv2](LICENSE) — the Functional Source License: source-available and free for any
 Permitted Purpose, converting to Apache 2.0 two years after each release. The one carve-out is
-a _Competing Use_ (a commercial product or service that competes with Atelier). Two directories
+a *Competing Use* (a commercial product or service that competes with Atelier). Two directories
 are proprietary and licensed separately under their own `LICENSE` files: `pro/` (the
 `atelier_pro` overlay) and `services/license-issuer/`. The core runs fully in Free mode
 without either.

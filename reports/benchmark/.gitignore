@@ -3,4 +3,3 @@
 
 # Keep the MRR history so trend comparisons survive across sessions
 !.gitignore
-!mrr_history.jsonl

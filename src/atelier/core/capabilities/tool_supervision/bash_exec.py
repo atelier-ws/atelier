@@ -79,7 +79,9 @@ _MAX_SPOOL_BYTES = max(
 )
 
 # Read granularity for `_pump_capped`; large enough to keep the drain loop cheap
-# without buffering an unbounded amount per iteration.
+# without buffering an unbounded amount per iteration, and used as the size hint
+# for `readline()` so a single pathological line (no trailing newline) still has
+# a bounded worst-case read instead of buffering unboundedly.
 _PUMP_CHUNK_CHARS = 64 * 1024
 
 
@@ -109,20 +111,49 @@ def _read_capped(handle: Any) -> tuple[str, bool]:
     return chunk[:_MAX_OUTPUT_BYTES], True
 
 
+def _tail_lines_from_file(handle: Any, n: int) -> list[str]:
+    """Return up to the last *n* lines currently written to *handle*.
+
+    Text-mode file cursors only support seeking to 0 or a value previously
+    returned by `tell()` -- arithmetic offsets (e.g. "tell() - 4096") are
+    undefined for encoded streams -- so this reads from the start rather than
+    seeking backward from the end, bounded by the same output-byte ceiling as
+    a finished read. Restores the writer's append position before returning;
+    callers must hold the file's `output_lock` so a concurrent write can't
+    land between the seek(0) and the seek-back.
+    """
+    if n <= 0:
+        return []
+    pos = handle.tell()
+    if pos == 0:
+        return []
+    handle.seek(0)
+    text, _ = _read_capped(handle)
+    handle.seek(pos)
+    return text.splitlines()[-n:]
+
+
 def _pump_capped(src: Any, write: Callable[[str], Any], cap: int) -> bool:
     """Copy text from *src* into *write*, appending at most *cap* UTF-8 bytes.
 
-    Reads in fixed chunks until EOF. Once the running byte count reaches *cap*
-    the overflow is read and discarded rather than written, so the source pipe
-    keeps draining (no deadlock when both stdout and stderr are large) while the
-    in-memory or on-disk sink stays bounded. Byte accounting mirrors `_cap_text`,
-    cutting a straddling chunk on a character boundary at or just under the cap.
-    Returns True if the stream exceeded the cap.
+    Reads line-by-line (bounded by `_PUMP_CHUNK_CHARS` per call) until EOF.
+    `readline()` returns as soon as a line is available instead of blocking
+    until a full fixed-size chunk is read (as a plain buffered `.read(n)` does
+    on a non-interactive pipe) -- required so a `status` peek on a still-running
+    command sees output as it's produced rather than only once `_PUMP_CHUNK_CHARS`
+    has accumulated or the process exits. The size hint still bounds a single
+    call's read for pathological output with no newlines. Once the running byte
+    count reaches *cap* the overflow is read and discarded rather than written,
+    so the source pipe keeps draining (no deadlock when both stdout and stderr
+    are large) while the in-memory or on-disk sink stays bounded. Byte
+    accounting mirrors `_cap_text`, cutting a straddling chunk on a character
+    boundary at or just under the cap. Returns True if the stream exceeded the
+    cap.
     """
     written = 0
     truncated = False
     while True:
-        chunk = src.read(_PUMP_CHUNK_CHARS)
+        chunk = src.readline(_PUMP_CHUNK_CHARS)
         if not chunk:
             break
         if written >= cap:
@@ -231,6 +262,10 @@ class _ManagedCommand:
     # before a read guarantees all surviving bytes are flushed to disk.
     readers: list[threading.Thread] = field(default_factory=list)
     spool_truncated: bool = False
+    # Guards stdout_file/stderr_file cursor + write operations shared between
+    # the spool drain threads and a `status` peek (the peek repositions the
+    # cursor to read a tail without disturbing the writer's append position).
+    output_lock: threading.Lock = field(default_factory=threading.Lock)
     # Phase 2 deferred bash: completion callbacks the watcher fires once the
     # process finishes. Snapshotted+cleared under the lock, invoked outside it.
     on_complete: list[Callable[[], None]] = field(default_factory=list)
@@ -1032,6 +1067,48 @@ def _is_noexec_shell(tokens: list[str]) -> bool:
     return False
 
 
+# A shell short-option cluster carrying inline (`-c`) or stdin (`-s`) code.
+_SHELL_INLINE_SHORT_RE = re.compile(r"^-[a-zA-Z]*[cs]")
+
+
+def _is_script_file_run(tokens: list[str], *, cwd: Path | None) -> bool:
+    """True for ``bash <existing script> [args...]`` — no inline code on the line.
+
+    ``bash -c '...'`` (inline) and ``bash -s`` (stdin) stay blocked: their
+    command text is opaque to the per-segment blocklist. A script that exists
+    on disk is an auditable on-disk artifact — the same risk class as
+    ``python file.py`` or ``make``, which the policy already allows. A missing
+    path falls through to the block (catches ``bash <(curl ...)`` styles and
+    typos).
+    """
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--":
+            i += 1
+            break
+        if tok.startswith("-"):
+            if not tok.startswith("--") and _SHELL_INLINE_SHORT_RE.match(tok):
+                return False  # -c / -s (possibly bundled): inline or stdin code
+            if tok == "-o":
+                i += 2  # -o consumes its option value
+                continue
+            i += 1
+            continue
+        break
+    if i >= len(tokens):
+        return False  # bare `bash`: interactive / stdin
+    script = Path(tokens[i])
+    if not script.is_absolute():
+        if cwd is None:
+            return False
+        script = cwd / script
+    try:
+        return script.is_file()
+    except OSError:
+        return False
+
+
 _ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # Wrappers that run a following command; stripping them exposes the real head so
 # the blocklist isn't bypassed by ``timeout 5 rm -rf x`` / ``nice rm -rf x`` /
@@ -1128,12 +1205,15 @@ def _block_check_segment(
     if head in _SHELL_INTERPRETERS:
         if _is_noexec_shell(tokens):
             return None  # `bash -n` / `-o noexec`: parse-only, runs nothing
+        if _is_script_file_run(tokens, cwd=cwd):
+            return None  # `bash existing-script.sh`: on-disk artifact, like `python file.py`
         return CommandPolicyDecision(
             category="shell-interpreter",
             action="block",
             reason=(
-                f"Direct {head} execution is blocked; use Atelier tools instead "
-                f"(non-executing syntax checks like `{head} -n` are allowed)"
+                f"Inline {head} execution is blocked; use Atelier tools instead "
+                f"(allowed: running an existing script file — `{head} path/to/script.sh` — "
+                f"and `{head} -n` syntax checks)"
             ),
         )
     if _is_rm_family(tokens):
@@ -1478,10 +1558,16 @@ def _spool_managed_stream(stream: Any, dst_file: Any, managed: _ManagedCommand) 
     Runs for the command's lifetime in a daemon thread; `_pump_capped` stops
     appending once `_MAX_SPOOL_BYTES` is reached but keeps reading to EOF so the
     child never blocks on a full pipe. Flags the session as spool-truncated when
-    either stream overflows.
+    either stream overflows. Writes go through `managed.output_lock` so a
+    concurrent `status` peek can't interleave a cursor move with a write.
     """
+
+    def _locked_write(text: str) -> None:
+        with managed.output_lock:
+            dst_file.write(text)
+
     with contextlib.suppress(Exception):
-        truncated = _pump_capped(stream, dst_file.write, _MAX_SPOOL_BYTES)
+        truncated = _pump_capped(stream, _locked_write, _MAX_SPOOL_BYTES)
         if truncated:
             with _MANAGED_COMMANDS_LOCK:
                 managed.spool_truncated = True
@@ -1496,7 +1582,7 @@ def start_managed_command(
     max_chars: int | None = None,
 ) -> dict[str, Any]:
     """Start a command without blocking the MCP request."""
-    policy = classify_command(command)
+    policy = classify_command(command, cwd=cwd)
     if policy.action == "block":
         return {
             "status": "blocked",
@@ -1582,6 +1668,50 @@ def start_managed_command(
     if managed.discipline_warning:
         started_payload["discipline"] = managed.discipline_warning
     return started_payload
+
+
+def _tail_managed_output(managed: _ManagedCommand, n: int) -> tuple[list[str], list[str]]:
+    """(stdout_tail, stderr_tail): up to the last *n* lines of each stream."""
+    with managed.output_lock:
+        return (
+            _tail_lines_from_file(managed.stdout_file, n),
+            _tail_lines_from_file(managed.stderr_file, n),
+        )
+
+
+_STATUS_TAIL_LINES = 10
+
+
+def peek_managed_command(session_id: str, *, tail_lines: int = _STATUS_TAIL_LINES) -> dict[str, Any]:
+    """Non-blocking status snapshot: state, pid, timing, and a `tail`-style
+    look at output collected so far.
+
+    Unlike `poll_managed_command`, this never blocks on the command finishing,
+    never reaps the session, and never closes its spool files -- a later
+    `poll`/`cancel` on the same session_id still behaves normally.
+    """
+    with _MANAGED_COMMANDS_LOCK:
+        managed = _MANAGED_COMMANDS.get(session_id)
+        if managed is None:
+            raise KeyError(f"unknown shell session: {session_id}")
+
+    running = managed.proc.poll() is None
+    elapsed_ms = int((time.perf_counter() - managed.started) * 1000)
+    stdout_tail, stderr_tail = _tail_managed_output(managed, tail_lines)
+    payload: dict[str, Any] = {
+        "status": "running" if running else managed.state,
+        "session_id": session_id,
+        "pid": managed.proc.pid,
+        "duration_ms": elapsed_ms,
+        "stdout": "\n".join(stdout_tail),
+        "stderr": "\n".join(stderr_tail),
+        "tail_lines": tail_lines,
+    }
+    if running:
+        payload["timeout_remaining_ms"] = max(0, managed.timeout * 1000 - elapsed_ms)
+    else:
+        payload["exit_code"] = managed.proc.returncode
+    return payload
 
 
 def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, Any]:
@@ -1709,7 +1839,7 @@ def run_command(
     - stderr always kept in full (usually short; errors live here).
     - Structured return: LLM checks exit_code first, reads output only if needed.
     """
-    policy = classify_command(command)
+    policy = classify_command(command, cwd=cwd)
     if policy.action == "block":
         return RunResult(
             stdout="",

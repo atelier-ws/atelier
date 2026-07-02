@@ -79,6 +79,21 @@ class _BinaryHandler(BaseHTTPRequestHandler):
         pass
 
 
+class _PdfHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        from tests.core.capabilities.test_web_fetch import _build_minimal_pdf
+
+        body = _build_minimal_pdf("Hello PDF")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_a: Any) -> None:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # SSRF: literal private / link-local IP targets blocked at connection level   #
 # --------------------------------------------------------------------------- #
@@ -158,6 +173,18 @@ def test_async_rejects_binary_content_type() -> None:
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_async_accepts_and_extracts_pdf() -> None:
+    srv, port = _loopback_server(_PdfHandler)
+    try:
+        result = asyncio.run(web_fetch.async_fetch_url(f"http://127.0.0.1:{port}/", output_format="text"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert result["content"].startswith("Hello PDF")
+    assert "downloaded PDF:" in result["content"]
+    assert result["format"] == "text"
 
 
 # --------------------------------------------------------------------------- #

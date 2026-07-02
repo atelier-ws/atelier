@@ -108,13 +108,9 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool) ->
     if as_json:
         _emit(payload, as_json=True)
     else:
-        for k, v in payload.items():
-            if isinstance(v, dict):
-                click.echo(f"{k}:")
-                for k2, v2 in v.items():
-                    click.echo(f"  {k2}: {v2}")
-            else:
-                click.echo(f"{k}: {v}")
+        from atelier.core.capabilities.savings_summary import render_savings_summary
+
+        click.echo(render_savings_summary(payload))
 
 
 def _legacy_optimize_report(ctx: click.Context, host: str | None, days: int, limit: int) -> dict[str, Any]:

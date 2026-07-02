@@ -2534,6 +2534,82 @@ def _zoekt_broad_gate(query: str) -> tuple[bool, str]:
     return False, "plain_identifier"
 
 
+# ── Symbol-exact fast path ────────────────────────────────────────────────────
+# When a definition/symbol-intent query resolves to a high-confidence exact
+# definition in the symbol index, the anchor-Zoekt and line-FTS recall channels
+# are pure overhead: profiling shows the line-FTS scan dominates explore's
+# critical path (~2/3 of wall clock on definition golds; it is what the 200ms
+# fusion deadline waits on), while the exact channel answers in ~1-2ms.  The
+# gate decides — from the exact channel's own confidence signals — whether those
+# channels can be skipped entirely.  Deterministic by design: skipped channels
+# are never submitted, so fusion sees the same inputs on every run rather than
+# "whatever happened to finish before the deadline".
+# Disable via ATELIER_HEF_FAST_PATH=0 (benchmark ablation).
+
+# Intent-aware confidence floor for the top exact hit. The exact channel's
+# confidence formula caps at 1.0 for definition intent (kind coverage counts)
+# but at 0.70 for bare-identifier symbol intent (no `def`/`class` kinds to
+# match), so the two intents need different floors.
+_HEF_FAST_PATH_MIN_CONFIDENCE: dict[str, float] = {"definition": 0.72, "symbol": 0.65}
+# Collision guard: the rarest matched name must be defined in at most this many
+# files. A collision-heavy name ('save', 'get') matches dozens of files at equal
+# confidence — ranking those needs the full multi-channel pipeline.
+_HEF_FAST_PATH_MAX_DF = 4
+# Ambiguity guard: the top exact hit must be separated from the runner-up by at
+# least this much confidence. Same-name definitions in sibling files (e.g. a
+# `client` fixture in three conftest.py files) tie at equal confidence — the
+# exact channel cannot order them; only the full pipeline's centrality/lexical
+# signals can, so ties are never decisive.
+_HEF_FAST_PATH_MIN_MARGIN = 0.05
+# Fire-rate counter keyed by (decisive, intent) — same pattern as
+# _ZOEKT_GATE_COUNTS; inspectable in-process by the benchmark harness.
+_HEF_FAST_PATH_COUNTS: dict[tuple[bool, str], int] = {}
+# Regex-shaped queries (escapes, groups, char classes, quantifiers — anything
+# beyond plain `a|b` alternation) are asking for CONTENT matches; line-FTS is
+# precisely the channel that serves those, so they are never decisive.
+_HEF_FAST_PATH_REGEX_META = re.compile(r"[()\[\]{}*+?^$\\]")
+
+
+def _hef_fast_path_enabled() -> bool:
+    value = os.environ.get("ATELIER_HEF_FAST_PATH")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _hef_exact_is_decisive(
+    query: str,
+    plan: _HefQueryPlan,
+    exact_files: list[str],
+    exact_details: dict[str, dict[str, Any]],
+) -> bool:
+    """True when the exact-symbol channel alone confidently resolves *plan*.
+
+    Requires the query to be name-shaped (no regex metacharacters beyond `|`
+    alternation) and the top hit to (a) actually DEFINE a queried name (not
+    merely bind a variable of that name), (b) match on a rare name (df-capped),
+    and (c) clear the intent-aware confidence floor.
+    """
+    if not exact_files:
+        return False
+    if _HEF_FAST_PATH_REGEX_META.search(query):
+        return False
+    threshold = _HEF_FAST_PATH_MIN_CONFIDENCE.get(plan.intent)
+    if threshold is None:
+        return False
+    top = exact_details.get(exact_files[0]) or {}
+    if not top.get("definition_tokens"):
+        return False
+    if int(top.get("best_df", 1_000_000)) > _HEF_FAST_PATH_MAX_DF:
+        return False
+    if len(exact_files) > 1:
+        runner_up = exact_details.get(exact_files[1]) or {}
+        margin = float(top.get("confidence", 0.0)) - float(runner_up.get("confidence", 0.0))
+        if margin < _HEF_FAST_PATH_MIN_MARGIN:
+            return False
+    return float(top.get("confidence", 0.0)) >= threshold
+
+
 def _zoekt_gate_enforced() -> bool:
     """Whether the broad-Zoekt EXECUTION gate is active (default ON).
 
@@ -4438,6 +4514,28 @@ class CodeContextEngine:
         starting them early is purely a latency win (identical results).
         """
         plan = self._hef_parse_query(query)
+        # Symbol-exact fast path: for definition/symbol-intent queries, resolve
+        # the cheap exact channel inline (~1-2ms indexed lookup) and consult the
+        # gate. When the exact hits are decisive, anchor-Zoekt and line-FTS are
+        # never submitted — fusion sees them as deterministically-empty channels
+        # instead of paying their scan time (the dominant explore cost).
+        # Pre-resolved futures keep _fused_explore_hybrid's collect path uniform.
+        if _hef_fast_path_enabled() and plan.intent in {"definition", "symbol"}:
+            exact = self._hef_exact_symbol_candidates(plan)
+            f_exact_done: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            f_exact_done.set_result(exact)
+            decisive = _hef_exact_is_decisive(query, plan, *exact)
+            key = (decisive, plan.intent)
+            _HEF_FAST_PATH_COUNTS[key] = _HEF_FAST_PATH_COUNTS.get(key, 0) + 1
+            if decisive:
+                f_anchor_empty: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                f_anchor_empty.set_result(([], {}))
+                f_line_empty: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                f_line_empty.set_result(([], {}))
+                return plan, f_exact_done, f_anchor_empty, f_line_empty
+            f_anchor = _HEF_CHANNEL_EXECUTOR.submit(self._hef_anchor_zoekt_candidates, plan)
+            f_line = _HEF_CHANNEL_EXECUTOR.submit(self._hef_line_fts_candidates, plan)
+            return plan, f_exact_done, f_anchor, f_line
         f_exact = _HEF_CHANNEL_EXECUTOR.submit(self._hef_exact_symbol_candidates, plan)
         f_anchor = _HEF_CHANNEL_EXECUTOR.submit(self._hef_anchor_zoekt_candidates, plan)
         f_line = _HEF_CHANNEL_EXECUTOR.submit(self._hef_line_fts_candidates, plan)
@@ -4993,6 +5091,26 @@ class CodeContextEngine:
                 )
                 for record in raw_symbols
             ]
+        # Path-quality filter FIRST: hard-remove minified/vendor artefacts and
+        # soft-penalise test files BEFORE the ranking sort and the score floor.
+        # The penalty must precede the sort or it can never demote a test file:
+        # test symbols often score highest (query terms repeat in assertion
+        # bodies), and the sort order fixed here also seeds the stable
+        # _explore_priority tie-break below. Pinned exact hits and seed files
+        # are exempt.
+        query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
+        pinned_ids = exact_ids | anchor_ids | token_exact_ids | _ref_anchor_ids
+        pre_filtered: list[SymbolRecord] = []
+        for record in raw_symbols:
+            fp = record.file_path or ""
+            if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
+                if record.symbol_id not in pinned_ids and fp not in seed_set:
+                    continue  # hard remove before floor
+            if not query_wants_tests and _TEST_PATH_RE.search(fp):
+                if record.symbol_id not in pinned_ids and fp not in seed_set:
+                    record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
+            pre_filtered.append(record)
+        raw_symbols = pre_filtered
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
@@ -5004,25 +5122,6 @@ class CodeContextEngine:
                 record.start_line,
             ),
         )
-        # Path-quality filter FIRST: hard-remove minified/vendor artefacts and
-        # soft-penalise test files BEFORE computing the score floor. This matters
-        # because test files often score highest (function name appears many times
-        # in test assertions), which would otherwise set a floor that eliminates
-        # the actual implementation file. Pinned exact hits and seed files are exempt.
-        query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
-        if ranked_symbols:
-            pinned_ids = exact_ids | anchor_ids | token_exact_ids | _ref_anchor_ids
-            pre_filtered: list[SymbolRecord] = []
-            for record in ranked_symbols:
-                fp = record.file_path or ""
-                if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
-                    if record.symbol_id not in pinned_ids and fp not in seed_set:
-                        continue  # hard remove before floor
-                if not query_wants_tests and _TEST_PATH_RE.search(fp):
-                    if record.symbol_id not in pinned_ids and fp not in seed_set:
-                        record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
-                pre_filtered.append(record)
-            ranked_symbols = pre_filtered
         # Relevance floor: when the top hit is strongly dominant (e.g. an exact
         # symbol scoring far above the lexical sub-token co-matches that share a
         # token like "get"/"name"), drop the near-zero tail so a precise query

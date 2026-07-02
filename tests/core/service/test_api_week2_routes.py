@@ -1337,9 +1337,10 @@ class TestGetOutcomesForSession:
             assert "kind" in e
             assert e["kind"] in ("route", "compact")
 
-    def test_404_no_outcomes_file(self, client: TestClient) -> None:
+    def test_empty_list_when_no_outcomes_file(self, client: TestClient) -> None:
         resp = client.get("/v1/outcomes/no-such-session")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.json() == []
 
 
 # ---------------------------------------------------------------------------

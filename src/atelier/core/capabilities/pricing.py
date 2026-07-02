@@ -673,7 +673,7 @@ def get_model_pricing(model_id: str) -> ModelPricing:
     # 4. Unknown — log once, return zero-cost sentinel
     if model_id and model_id not in _PLACEHOLDER_MODEL_IDS and model_id not in _warned_unknown_models:
         _warned_unknown_models.add(model_id)
-        logger.warning(
+        logger.debug(
             "atelier.pricing: no entry for model %r — costs for this model will be reported as $0. "
             "Upgrade LiteLLM or call override_pricing() to fix.",
             model_id,

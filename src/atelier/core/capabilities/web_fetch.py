@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import functools
 import hashlib
+import io
 import ipaddress
 import json
 import logging
@@ -13,6 +14,7 @@ import socket
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
@@ -34,6 +36,17 @@ DEFAULT_TIMEOUT_S = 20.0
 DEFAULT_MAX_CHARS = 12_000
 MAX_MAX_CHARS = 100_000
 MAX_BODY_BYTES = 2_000_000
+# PDFs are inherently larger than HTML/text pages (embedded fonts, images) and the
+# critical xref/trailer structure lives at the END of the file -- truncating at the
+# generic text-page cap corrupts the file before pypdf ever gets to read it. A real
+# ~100-page model system card with embedded charts runs 20MB+ (observed: 20.6MB).
+# This is NOT unbounded: web_fetch runs inside a long-lived shared gateway process,
+# so one huge/malicious URL reading without limit can hang or OOM it for every other
+# session, not just the caller's. 200MB comfortably covers any legitimate paper,
+# manual, or system card while still bounding the worst case. If a real PDF ever
+# exceeds this, _render_content raises a clear "too large" error instead of feeding
+# pypdf a truncated (and therefore unparseable) file.
+MAX_PDF_BODY_BYTES = 200_000_000
 MAX_REDIRECTS = 5
 FETCH_CACHE_TTL_S = 300.0
 FETCH_CACHE_MAX_ITEMS = 128
@@ -53,6 +66,7 @@ _TEXT_TYPES = {
     *_MARKDOWN_TYPES,
     *_HTML_TYPES,
 }
+_PDF_TYPES = {"application/pdf"}
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _NON_CONTENT_HTML_RE = re.compile(
@@ -411,6 +425,9 @@ def _finish_fetch(
         content = (
             _truncate_with_relevance(content, char_limit, query) if query else _truncate_with_spill(content, char_limit)
         )
+    source_path = rendered.get("source_path")
+    if source_path:
+        content = f"{content}\n\n[downloaded PDF: {source_path}"
 
     payload: dict[str, Any] = {"content": content, "format": rendered["format"]}
     tokens_saved = _estimate_tokens_saved(raw, content)
@@ -491,14 +508,16 @@ class _ValidatingResolver(AbstractResolver):
         return None
 
 
-async def _async_read_limited_body(response: aiohttp.ClientResponse) -> tuple[bytes, bool]:
+async def _async_read_limited_body(
+    response: aiohttp.ClientResponse, *, max_bytes: int = MAX_BODY_BYTES
+) -> tuple[bytes, bool]:
     chunks: list[bytes] = []
     total = 0
     truncated = False
     async for chunk in response.content.iter_chunked(65_536):
         if not chunk:
             continue
-        remaining = MAX_BODY_BYTES - total
+        remaining = max_bytes - total
         if remaining <= 0:
             truncated = True
             break
@@ -544,11 +563,12 @@ async def _async_fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _
                         continue
                     if status in _REDIRECT_STATUSES:
                         raise ValueError(f"web_fetch failed: HTTP {status} redirect without Location")
-                    body, truncated_body = await _async_read_limited_body(response)
                     content_type = response.headers.get("content-type", "") or ""
                     media_type = _media_type(content_type)
-                    if media_type not in _TEXT_TYPES:
+                    if media_type not in _TEXT_TYPES and media_type not in _PDF_TYPES:
                         raise ValueError(f"web_fetch unsupported content type: {media_type or 'unknown'}")
+                    max_bytes = MAX_PDF_BODY_BYTES if media_type in _PDF_TYPES else MAX_BODY_BYTES
+                    body, truncated_body = await _async_read_limited_body(response, max_bytes=max_bytes)
                     if status < 200 or status >= 300:
                         raise ValueError(f"web_fetch failed: HTTP {status}")
                     return _RawFetchResult(
@@ -686,11 +706,12 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
                 continue
             if status in _REDIRECT_STATUSES:
                 raise ValueError(f"web_fetch failed: HTTP {status} redirect without Location")
-            body, truncated_body = _read_limited_body(response)
             content_type = response.headers.get("content-type", "") or ""
             media_type = _media_type(content_type)
-            if media_type not in _TEXT_TYPES:
+            if media_type not in _TEXT_TYPES and media_type not in _PDF_TYPES:
                 raise ValueError(f"web_fetch unsupported content type: {media_type or 'unknown'}")
+            max_bytes = MAX_PDF_BODY_BYTES if media_type in _PDF_TYPES else MAX_BODY_BYTES
+            body, truncated_body = _read_limited_body(response, max_bytes=max_bytes)
             if status < 200 or status >= 300:
                 raise ValueError(f"web_fetch failed: HTTP {status}")
             return _RawFetchResult(
@@ -707,14 +728,14 @@ def _fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResu
     raise ValueError("web_fetch failed: too many redirects")
 
 
-def _read_limited_body(response: BaseHTTPResponse) -> tuple[bytes, bool]:
+def _read_limited_body(response: BaseHTTPResponse, *, max_bytes: int = MAX_BODY_BYTES) -> tuple[bytes, bool]:
     chunks: list[bytes] = []
     total = 0
     truncated = False
     for chunk in response.stream(amt=65_536, decode_content=True):
         if not chunk:
             continue
-        remaining = MAX_BODY_BYTES - total
+        remaining = max_bytes - total
         if remaining <= 0:
             truncated = True
             break
@@ -760,6 +781,21 @@ def _decode_body(body: bytes, content_type: str) -> str:
 
 def _render_content(raw: _RawFetchResult, *, requested_format: OutputFormat) -> dict[str, str]:
     media_type = _media_type(raw.content_type)
+    if media_type in _PDF_TYPES:
+        if raw.truncated_body:
+            cap_mb = MAX_PDF_BODY_BYTES // 1_000_000
+            raise ValueError(
+                f"web_fetch: PDF exceeds the {cap_mb}MB fetch cap and was truncated mid-download; "
+                "a truncated PDF has no valid trailer and can't be parsed. Fetch a smaller "
+                "page range, an HTML/text version of the same document, or ask for a raise to "
+                "MAX_PDF_BODY_BYTES if this document is legitimately larger."
+            )
+        # Binary format -- must not go through _decode_body's text charset decode.
+        rendered: dict[str, str] = {"content": _pdf_to_text(raw.body), "format": "text"}
+        pdf_record = _spill_original_pdf(raw.body)
+        if pdf_record is not None:
+            rendered["source_path"] = str(pdf_record.path)
+        return rendered
     decoded = _decode_body(raw.body, raw.content_type)
     if media_type in _MARKDOWN_TYPES:
         markdown = clean_markdown_for_agent(decoded)
@@ -992,6 +1028,136 @@ def _markdown_looks_weak(markdown: str, html: str) -> bool:
         return True
     code_or_table = markdown.count("```") + markdown.count("|")
     return code_or_table == 0 and len(markdown) < len(html) * 0.03
+
+
+def _spill_original_pdf(body: bytes) -> Any:
+    """Persist the raw downloaded PDF bytes so an agent can open the real file.
+
+    Extraction is text-only and loses charts/scanned pages/complex layout;
+    stashing the original next to the extracted text gives a fallback the
+    agent (or a human) can open directly. Gated by the same T7 spill kill
+    switch as text overflow spilling. Best-effort: returns ``None`` on any
+    failure so a PDF still renders even if the spill write doesn't happen.
+    """
+    if not _spill_enabled():
+        return None
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    return tool_output_spill.spill_bytes(body, tool_name="web_fetch", kind="original", suffix=".pdf")
+
+
+def _table_to_markdown(table: list[list[Any]]) -> str:
+    """Render a pdfplumber-extracted table (rows of cells) as a Markdown table."""
+    if not table or not any(table):
+        return ""
+    rows = [[("" if cell is None else str(cell).strip().replace("\n", " ")) for cell in row] for row in table]
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    header, *body = rows
+    lines = ["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * width) + " |"]
+    lines += ["| " + " | ".join(row) + " |" for row in body]
+    return "\n".join(lines)
+
+
+# Hard cap on embedded images extracted to individual files per PDF. Some decks
+# embed hundreds of tiny decorative images; without a cap a single pathological
+# document could spill hundreds of files and dominate fetch latency.
+_MAX_PDF_IMAGES_EXTRACTED = 200
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".gif"}
+
+
+def _spill_pdf_image(data: bytes, *, suffix: str) -> Any:
+    """Persist one embedded PDF image and return its spill record (or None)."""
+    if not _spill_enabled():
+        return None
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+    normalized_suffix = suffix if suffix.lower() in _IMAGE_SUFFIXES else ".bin"
+    return tool_output_spill.spill_bytes(data, tool_name="web_fetch", kind="pdf-image", suffix=normalized_suffix)
+
+
+def _pdf_to_text(body: bytes) -> str:
+    """Extract a PDF's content as text, preserving as much information as possible.
+
+    Uses pdfplumber (layout-aware, built on pdfminer.six) for prose + tables --
+    naive stream-order extraction jumbles multi-column pages and completely
+    discards table structure. Detected tables render as Markdown tables (may
+    duplicate a table's cell text that also appears jumbled in the prose --
+    overinclusion is the right default when the goal is not losing information).
+
+    Embedded images/figures are extracted via pypdf (its image reconstruction
+    handles more embedded encodings than pdfplumber exposes) and each spilled
+    to its OWN small file, with an inline pointer at the point in the text
+    where the image appeared -- so an agent that needs one chart can open that
+    one file instead of the whole PDF. Capped at ``_MAX_PDF_IMAGES_EXTRACTED``;
+    remaining images past the cap are just counted.
+
+    Lazily imported like the other transform libraries in this module
+    (markdownify, trafilatura, bs4) so the dependency cost is only paid when a
+    PDF is actually fetched.
+    """
+    import pdfplumber
+    from pypdf import PdfReader
+
+    images_extracted = 0
+    images_capped = 0
+
+    def _image_notes(images: list[Any], page_number: int) -> str:
+        nonlocal images_extracted, images_capped
+        notes: list[str] = []
+        for image in images:
+            if images_extracted >= _MAX_PDF_IMAGES_EXTRACTED:
+                images_capped += 1
+                continue
+            try:
+                suffix = Path(str(image.name)).suffix
+                record = _spill_pdf_image(image.data, suffix=suffix)
+            except (OSError, ValueError, AttributeError):
+                record = None
+            if record is not None:
+                notes.append(f"[image on page {page_number}: {record.path}]")
+                images_extracted += 1
+            else:
+                notes.append(f"[page {page_number} has an embedded image not represented as text]")
+        return "\n".join(notes)
+
+    try:
+        pages_out: list[str] = []
+        try:
+            pypdf_pages = list(PdfReader(io.BytesIO(body)).pages)
+        except (OSError, ValueError):  # image extraction is a bonus -- text/tables must not fail because of it
+            pypdf_pages = []
+        with pdfplumber.open(io.BytesIO(body)) as pdf:
+            for i, page in enumerate(pdf.pages):
+                parts: list[str] = []
+                text = (page.extract_text() or "").strip()
+                if text:
+                    parts.append(text)
+                for table in page.extract_tables():
+                    markdown_table = _table_to_markdown(table)
+                    if markdown_table:
+                        parts.append(markdown_table)
+                try:
+                    page_images = pypdf_pages[i].images if i < len(pypdf_pages) else []
+                except (IndexError, AttributeError):
+                    page_images = []
+                if page_images:
+                    note = _image_notes(list(page_images), page.page_number)
+                    if note:
+                        parts.append(note)
+                if parts:
+                    pages_out.append("\n\n".join(parts))
+    except Exception as exc:  # pdfplumber/pdfminer raise a variety of error types on malformed input
+        raise ValueError(f"web_fetch: failed to extract PDF text: {exc}") from exc
+    text = "\n\n".join(page for page in pages_out if page.strip())
+    if images_capped:
+        text += (
+            f"\n\n[{images_capped} additional embedded image(s) not extracted "
+            f"-- image cap ({_MAX_PDF_IMAGES_EXTRACTED}) reached; see the raw PDF]"
+        )
+    if not text:
+        raise ValueError("web_fetch: PDF contains no extractable text (likely scanned/image-only)")
+    return _normalize_plain_text(text)
 
 
 def _format_json(text: str) -> str:

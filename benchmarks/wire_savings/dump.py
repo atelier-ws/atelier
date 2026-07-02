@@ -1,6 +1,6 @@
 """Dump human-readable conversation text from .flow files.
 
-Usage: uv run --project benchmarks python scripts/extract_flow.py <path>
+Usage: uv run --project benchmarks python -m benchmarks.wire_savings.dump <path>
 
 Outputs <file>.flow_dump.txt alongside each .flow file.
 Only shows the text/tool content - skips all raw request/response payloads.
@@ -19,6 +19,8 @@ from pathlib import Path
 
 from mitmproxy.exceptions import FlowReadException
 from mitmproxy.io import FlowReader
+
+from benchmarks.wire_savings.usage_parser import extract_usage
 
 # Sensitive-value scrubbing: bare tokens are replaced wholesale; key/value
 # assignments keep the key and redact only the value.
@@ -41,53 +43,6 @@ def _scrub(text: str) -> str:
     for pat in _TOKEN_RES:
         text = pat.sub("<redacted>", text)
     return _KV_RE.sub(r"\1\2<redacted>", text)
-
-
-def _usage_from_bedrock_stream(raw: bytes) -> dict | None:
-    """Per-request token usage from Bedrock's binary event-stream framing.
-
-    Same base64 "bytes"-field frames `_iter_text_from_bedrock_stream` reads
-    for text, folded the same way `_usage_from_response`'s SSE loop folds
-    message_start/message_delta usage.
-    """
-    usage: dict | None = None
-    for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
-        try:
-            chunk = json.loads(base64.b64decode(b64))
-        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
-            continue
-        if chunk.get("type") == "message_start":
-            usage = chunk.get("message", {}).get("usage") or usage
-        elif chunk.get("type") == "message_delta" and isinstance(chunk.get("usage"), dict):
-            if usage is None:
-                usage = {}
-            usage.update(chunk["usage"])
-    return usage
-
-
-def _usage_from_response(resp_raw: bytes) -> dict | None:
-    """Per-request token usage: JSON body `usage`, SSE message_start/delta, or Bedrock event-stream."""
-    try:
-        return json.loads(resp_raw.decode("utf-8", errors="ignore")).get("usage")
-    except (json.JSONDecodeError, ValueError, AttributeError):
-        pass
-    usage: dict | None = None
-    for line in resp_raw.decode("utf-8", errors="ignore").splitlines():
-        if not line.startswith("data: "):
-            continue
-        try:
-            chunk = json.loads(line[6:])
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if chunk.get("type") == "message_start":
-            usage = chunk.get("message", {}).get("usage") or usage
-        elif chunk.get("type") == "message_delta" and isinstance(chunk.get("usage"), dict):
-            if usage is None:
-                usage = {}
-            usage.update(chunk["usage"])
-    if usage is None:
-        usage = _usage_from_bedrock_stream(resp_raw)
-    return usage
 
 
 def _is_messages_request(url: str) -> bool:
@@ -226,15 +181,11 @@ def extract(path: str, output_file: str) -> None:
                 out.write(f"[assistant] (empty response, status={flow.response.status_code})\n")
             # Per-request measured token usage -- the ground truth for offline
             # context/cost reconstruction (savings accounting validation).
-            usage = _usage_from_response(resp_raw)
-            if usage:
+            usage = extract_usage(flow.response.headers.get("content-type", ""), resp_raw)
+            if not usage.is_empty():
                 out.write(
-                    "[usage] input={} cache_read={} cache_write={} output={}\n".format(
-                        usage.get("input_tokens", 0),
-                        usage.get("cache_read_input_tokens", 0),
-                        usage.get("cache_creation_input_tokens", 0),
-                        usage.get("output_tokens", 0),
-                    )
+                    f"[usage] input={usage.input_tokens} cache_read={usage.cache_read_input_tokens} "
+                    f"cache_write={usage.cache_creation_input_tokens} output={usage.output_tokens}\n"
                 )
 
     print(f"  {interactions} turns -> {output_file}")

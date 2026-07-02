@@ -47,6 +47,14 @@ def _seed_ledger(root: Path, session_id: str, *, est_cost: float, saved: float) 
     sidecar.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
 
+def _stamp_hosted_plan(root: Path, *, plan: str = "PRO") -> None:
+    """Re-plan the stamped auth.json: positive limits only apply to hosted/licensed plans, never LOCAL."""
+    path = pr.auth_state_path(root)
+    auth = json.loads(path.read_text(encoding="utf-8"))
+    auth["subscriptionStatus"]["plan"] = plan
+    path.write_text(json.dumps(auth), encoding="utf-8")
+
+
 def test_no_limit_reports_spend_but_never_warns(atelier_root: Path) -> None:
     _seed_ledger(atelier_root, "s", est_cost=999.0, saved=1.0)
     sub = pr.compute_usage_meter(atelier_root, subscription={"monthlyLimitInUsd": 0.0})
@@ -108,9 +116,57 @@ def test_default_trial_has_no_limit_and_never_warns(atelier_root: Path) -> None:
     assert persisted["remainingUsd"] is None
 
 
+def test_legacy_trial_cap_is_ignored(atelier_root: Path) -> None:
+    # Old builds stamped the anonymous trial with a $5 cap ("Local anonymous
+    # trial active."); the free core is uncapped, so the meter must neutralize
+    # the persisted limit and stay report-only however large the spend.
+    _seed_ledger(atelier_root, "s", est_cost=999.0, saved=1.0)
+    pr.write_auth_state(
+        atelier_root,
+        {
+            "accessToken": "local-anonymous-legacy",
+            "userId": "anon-legacy",
+            "isAnonymous": True,
+            "subscriptionStatus": {
+                "isValid": True,
+                "status": "FREE",
+                "plan": "LOCAL",
+                "monthlySavingsInUsd": 0.0,
+                "monthlyLimitInUsd": 5.0,
+                "message": "Local anonymous trial active.",
+            },
+        },
+    )
+    sub = pr.compute_usage_meter(atelier_root)
+    assert sub["monthlyLimitInUsd"] == 0.0
+    assert sub["warning"] is False
+    assert sub["overLimit"] is False
+    assert sub["remainingUsd"] is None
+
+    pr.refresh_subscription_meter(atelier_root)
+    persisted = json.loads((atelier_root / "subscription.json").read_text())
+    assert persisted["monthlyLimitInUsd"] == 0.0
+    assert persisted["warning"] is False
+
+
+def test_cumulative_session_end_snapshots_count_once(atelier_root: Path) -> None:
+    # The stop hook appends one session_end row per Stop fire, each carrying the
+    # session's cumulative cost; only the last snapshot is the session's total.
+    sidecar = _find_savings_sidecar("s", atelier_root)
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"ts": pr._iso_now(), "session_id": "s", "kind": "session_end", "est_cost_usd": cost}
+        for cost in (10.0, 20.0, 30.0)
+    ]
+    sidecar.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    sub = pr.compute_usage_meter(atelier_root, subscription={"monthlyLimitInUsd": 0.0})
+    assert sub["monthlySpendInUsd"] == pytest.approx(30.0)
+
+
 def test_refresh_persists_and_statusline_surfaces_warning(atelier_root: Path) -> None:
     _seed_ledger(atelier_root, "s", est_cost=6.0, saved=2.0)
     pr.claim_anonymous_trial(atelier_root, monthly_limit_usd=5.0)
+    _stamp_hosted_plan(atelier_root)
     metered = pr.refresh_subscription_meter(atelier_root)
     assert metered["overLimit"] is True
 
@@ -128,10 +184,11 @@ def test_refresh_persists_and_statusline_surfaces_warning(atelier_root: Path) ->
 def test_auth_status_enrichment_is_additive_and_live(atelier_root: Path) -> None:
     _seed_ledger(atelier_root, "s", est_cost=6.0, saved=2.0)
     pr.claim_anonymous_trial(atelier_root, monthly_limit_usd=5.0)
+    _stamp_hosted_plan(atelier_root)
     status = pr.auth_status(atelier_root)
     sub = status["subscription"]
-    # Original trial keys preserved...
-    assert sub["status"] == "FREE" and sub["plan"] == "LOCAL"
+    # Original plan keys preserved...
+    assert sub["status"] == "FREE" and sub["plan"] == "PRO"
     # ...and live meter fields added (monthlySavingsInUsd no longer hardcoded 0).
     assert sub["overLimit"] is True
     assert sub["monthlySavingsInUsd"] == pytest.approx(2.0)
@@ -140,6 +197,7 @@ def test_auth_status_enrichment_is_additive_and_live(atelier_root: Path) -> None
 def test_stop_event_refreshes_meter(atelier_root: Path) -> None:
     _seed_ledger(atelier_root, "s", est_cost=6.0, saved=2.0)
     pr.claim_anonymous_trial(atelier_root, monthly_limit_usd=5.0)
+    _stamp_hosted_plan(atelier_root)
     # No subscription.json yet (claim writes only auth.json).
     assert not (atelier_root / "subscription.json").exists()
     pr.update_session_stats(atelier_root, {"hook_event_name": "Stop", "session_id": "s"})

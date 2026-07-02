@@ -177,19 +177,6 @@ def pre_run_gate(command: str, *, cwd: str | None = None) -> GateDecision:
                 "warn",
                 "this exact command failed earlier this session.",
             )
-        if _silences_diagnostics(norm):
-            if norm in _silence_warned:
-                return GateDecision(
-                    "block",
-                    "this command still silences stderr (2>/dev/null) — those diagnostics "
-                    "are exactly what's needed to debug a failure; rerun without silencing.",
-                )
-            _silence_warned.add(norm)
-            return GateDecision(
-                "warn",
-                "stderr is being silenced (2>/dev/null) on a diagnostic command — "
-                "keep stderr visible so failures stay debuggable.",
-            )
         hint = _redirect_hint(norm, cwd)
         if hint is not None:
             cls, warn_msg, repeat_msg = hint
