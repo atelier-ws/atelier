@@ -399,10 +399,171 @@ def _bucket_cost_usd(model_id: str, b: dict[str, int]) -> float:
     return cost
 
 
-# Mtime-keyed cache for read_transcript_stats: the transcript only grows when
-# Claude makes a new turn, so repeated statusline polls during the same turn
-# can reuse the parsed result (< 1ms instead of ~15ms for large transcripts).
-_transcript_stats_cache: dict[str, tuple[int, "TranscriptStats | None"]] = {}  # path → (mtime_ns, result)
+# Cursor cache for read_transcript_stats: transcripts are append-only JSONL,
+# so instead of re-parsing the whole file on every call (O(session) per turn,
+# O(session²) over a session's life once transcripts reach tens of MB) we keep
+# a per-source byte offset plus the running fold state and parse only appended
+# lines. A source that shrinks (rewrite/truncation) forces a full rebuild.
+_transcript_stats_cache: dict[str, dict[str, Any]] = {}  # main path → {cursors, fold, stats}
+_TRANSCRIPT_CACHE_MAX = 8  # main transcripts tracked per process
+
+
+class _TranscriptFold:
+    """Running accumulator for one transcript + its subagent transcripts.
+
+    Holds every counter and dedup structure the single-pass parse builds so
+    parsing can resume from a byte offset instead of restarting. The per-line
+    logic mirrors the pre-incremental ``read_transcript_stats`` exactly.
+    """
+
+    def __init__(self) -> None:
+        self.tool_calls = 0
+        self.turns = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.cache_read_tokens = 0
+        self.cache_write_tokens = 0
+        self.tools_used: dict[str, int] = {}
+        self.model_id = ""
+        self.last_model_id = ""  # most recently seen model (resumed sessions)
+        self.per_model: dict[str, dict[str, int]] = {}
+        self.turn_timestamps: list[str] = []
+        # Per-subagent turn timestamps keyed by subagent transcript path so an
+        # incremental append lands in the right bucket.
+        self.sub_ts: dict[str, list[str]] = {}
+        self.seen_usage_message_ids: set[str] = set()
+        self.seen_tool_use_ids: set[str] = set()
+        self.lc_thresholds: dict[str, int] = {}
+
+    def fold_line(self, raw: str, *, is_main: bool, source_key: str) -> None:
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(entry, dict):
+            return
+        msg = entry.get("message") or {}
+        if not isinstance(msg, dict):
+            return
+        msg_id = str(msg.get("id") or "").strip()
+
+        candidate = msg.get("model") or entry.get("model") or ""
+        if is_main and is_real_model(candidate):
+            candidate_str = str(candidate).strip()
+            if not self.model_id:
+                self.model_id = candidate_str
+            self.last_model_id = candidate_str
+
+        usage = msg.get("usage") or {}
+        if not isinstance(usage, dict):
+            return
+        in_t = int(usage.get("input_tokens", 0) or 0)
+        out_t = int(usage.get("output_tokens", 0) or 0)
+        cr_t = int(usage.get("cache_read_input_tokens", 0) or 0)
+        cw_t = int(usage.get("cache_creation_input_tokens", 0) or 0)
+        cache_creation = usage.get("cache_creation") or {}
+        cw1_t = int(cache_creation.get("ephemeral_1h_input_tokens", 0) or 0) if isinstance(cache_creation, dict) else 0
+        cw1_t = min(cw1_t, cw_t)
+        has_usage = bool(in_t or out_t or cr_t or cw_t)
+        count_usage = has_usage
+        if has_usage and msg_id:
+            if msg_id in self.seen_usage_message_ids:
+                count_usage = False
+            else:
+                self.seen_usage_message_ids.add(msg_id)
+        if count_usage:
+            self.input_tokens += in_t
+            self.output_tokens += out_t
+            self.cache_read_tokens += cr_t
+            self.cache_write_tokens += cw_t
+            # A turn = one assistant message with non-zero usage.
+            # Dedup on msg_id (same dedup as token accumulation).
+            ts_raw = str(entry.get("timestamp") or "")
+            if is_main:
+                self.turns += 1
+                if ts_raw:
+                    self.turn_timestamps.append(ts_raw)
+            elif ts_raw:
+                # Subagent assistant turn — bucketed per subagent so carry
+                # credit attributes a subagent-saved token to that subagent's
+                # own context window, not the main thread's.
+                self.sub_ts.setdefault(source_key, []).append(ts_raw)
+
+            turn_model = str(msg.get("model") or entry.get("model") or "").strip()
+            if is_real_model(turn_model):
+                bucket = self.per_model.setdefault(
+                    turn_model,
+                    {"in": 0, "out": 0, "cR": 0, "cW": 0, "cW1": 0}
+                    | {f"{k}_lc": 0 for k in ("in", "out", "cR", "cW", "cW1")},
+                )
+                bucket["in"] += in_t
+                bucket["out"] += out_t
+                bucket["cR"] += cr_t
+                bucket["cW"] += cw_t
+                bucket["cW1"] += cw1_t
+                # Per-request long-context premium: the whole message bills at
+                # premium rates once its context crosses the model's threshold
+                # (e.g. 200k).
+                threshold = _long_context_threshold(turn_model, self.lc_thresholds)
+                if threshold and (in_t + cr_t + cw_t) > threshold:
+                    bucket["in_lc"] += in_t
+                    bucket["out_lc"] += out_t
+                    bucket["cR_lc"] += cr_t
+                    bucket["cW_lc"] += cw_t
+                    bucket["cW1_lc"] += cw1_t
+
+        if not is_main:
+            return
+        for index, block in enumerate(msg.get("content") or []):
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_use":
+                continue
+            name = block.get("name") or "unknown"
+            tool_use_id = str(block.get("id") or "").strip()
+            tool_key = tool_use_id or (f"{msg_id}:{index}:{name}" if msg_id else "")
+            if tool_key:
+                if tool_key in self.seen_tool_use_ids:
+                    continue
+                self.seen_tool_use_ids.add(tool_key)
+            self.tools_used[name] = self.tools_used.get(name, 0) + 1
+            self.tool_calls += 1
+
+    def finalize(self) -> "TranscriptStats":
+        resolved_model = resolve_model_id(self.model_id)
+        resolved_last_model = resolve_model_id(self.last_model_id) if self.last_model_id else resolved_model
+        if self.per_model:
+            est_cost_usd = sum(_bucket_cost_usd(resolve_model_id(m), b) for m, b in self.per_model.items())
+        else:
+            est_cost_usd = estimate_cost_usd(
+                model_id=resolved_model,
+                input_tokens=self.input_tokens,
+                output_tokens=self.output_tokens,
+                cache_read_tokens=self.cache_read_tokens,
+                cache_write_tokens=self.cache_write_tokens,
+            )
+        # Copies for the containers the fold keeps mutating, so a stats object
+        # returned now never changes under a caller on a later fold.
+        return TranscriptStats(
+            tool_calls=self.tool_calls,
+            turns=self.turns,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens,
+            est_cost_usd=est_cost_usd,
+            model=resolved_model,
+            last_model=resolved_last_model,
+            models_used=(
+                sorted(resolve_model_id(m) for m in self.per_model)
+                if self.per_model
+                else ([resolved_model] if resolved_model else [])
+            ),
+            tools_used=dict(self.tools_used),
+            per_model={resolve_model_id(m): dict(b) for m, b in self.per_model.items()},
+            turn_timestamps=list(self.turn_timestamps),
+            subagent_turn_timestamps=[list(ts) for ts in self.sub_ts.values() if ts],
+        )
 
 
 def read_transcript_stats(transcript_path: str | Path) -> "TranscriptStats | None":
@@ -417,187 +578,70 @@ def read_transcript_stats(transcript_path: str | Path) -> "TranscriptStats | Non
     session. Turn count, tool counts, and the session model fields remain
     main-transcript-only.
 
-    Results are cached by mtime_ns so repeated statusline polls during the same
-    Claude turn are fast (< 1ms instead of ~15ms).
+    Incremental: transcripts are append-only, so only bytes past each source's
+    consumed offset are parsed (a partially written tail line is left for the
+    next call). A shrunken source forces a full rebuild.
     """
     p = Path(transcript_path)
     if not p.exists():
         return None
-    try:
-        _mtime_ns = p.stat().st_mtime_ns
-    except OSError:
-        _mtime_ns = 0
-    _key = str(p)
-    _cached = _transcript_stats_cache.get(_key)
-    if _cached is not None and _cached[0] == _mtime_ns:
-        return _cached[1]
-
-    tool_calls = 0
-    turns = 0
-    input_tokens = 0
-    output_tokens = 0
-    cache_read_tokens = 0
-    cache_write_tokens = 0
-    tools_used: dict[str, int] = {}
-    model_id = ""
-    last_model_id = ""  # tracks most recently seen model (for resumed sessions)
-    per_model: dict[str, dict[str, int]] = {}
-    turn_timestamps: list[str] = []
-    subagent_turn_timestamps: list[list[str]] = []
-    seen_usage_message_ids: set[str] = set()
-    seen_tool_use_ids: set[str] = set()
-    lc_thresholds: dict[str, int] = {}
-
+    key = str(p)
     sources: list[tuple[Path, bool]] = [(p, True)]
     sources.extend((sub, False) for sub in _subagent_transcripts(p))
+    sizes: dict[str, int] = {}
+    for source, _ in sources:
+        try:
+            sizes[str(source)] = source.stat().st_size
+        except OSError:
+            sizes[str(source)] = 0
 
-    try:
-        for source, is_main in sources:
-            sub_ts: list[str] = []
-            for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
-                raw = raw.strip()
-                if not raw:
-                    continue
-                try:
-                    entry = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-                except Exception:
-                    logging.exception("Recovered from broad exception handler")
-                    continue
+    entry = _transcript_stats_cache.get(key)
+    if entry is not None and any(sizes.get(k, 0) < off for k, off in entry["cursors"].items()):
+        entry = None  # a source shrank (rewrite): fold state is invalid
+    if (
+        entry is not None
+        and entry.get("stats") is not None
+        and all(sizes[str(s)] <= entry["cursors"].get(str(s), 0) for s, _ in sources)
+    ):
+        return entry["stats"]  # type: ignore[no-any-return]
+    if entry is None:
+        entry = {"cursors": {}, "fold": _TranscriptFold(), "stats": None}
 
-                msg = entry.get("message") or {}
-                if not isinstance(msg, dict):
-                    continue
-                msg_id = str(msg.get("id") or "").strip()
+    fold: _TranscriptFold = entry["fold"]
+    cursors: dict[str, int] = entry["cursors"]
+    for source, is_main in sources:
+        skey = str(source)
+        offset = cursors.get(skey, 0)
+        if sizes.get(skey, 0) <= offset:
+            continue
+        try:
+            with source.open("rb") as fh:
+                fh.seek(offset)
+                chunk = fh.read()
+        except OSError:
+            continue
+        # Only consume complete lines; a partially written tail line stays
+        # unconsumed (the cursor stops at the last newline) for the next call.
+        last_nl = chunk.rfind(b"\n")
+        if last_nl < 0:
+            continue
+        cursors[skey] = offset + last_nl + 1
+        for raw in chunk[: last_nl + 1].decode("utf-8", errors="replace").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                fold.fold_line(raw, is_main=is_main, source_key=skey)
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                continue
 
-                candidate = msg.get("model") or entry.get("model") or ""
-                if is_main and is_real_model(candidate):
-                    candidate_str = str(candidate).strip()
-                    if not model_id:
-                        model_id = candidate_str
-                    last_model_id = candidate_str
-
-                usage = msg.get("usage") or {}
-                if not isinstance(usage, dict):
-                    continue
-                in_t = int(usage.get("input_tokens", 0) or 0)
-                out_t = int(usage.get("output_tokens", 0) or 0)
-                cr_t = int(usage.get("cache_read_input_tokens", 0) or 0)
-                cw_t = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                cache_creation = usage.get("cache_creation") or {}
-                cw1_t = (
-                    int(cache_creation.get("ephemeral_1h_input_tokens", 0) or 0)
-                    if isinstance(cache_creation, dict)
-                    else 0
-                )
-                cw1_t = min(cw1_t, cw_t)
-                has_usage = bool(in_t or out_t or cr_t or cw_t)
-                count_usage = has_usage
-                if has_usage and msg_id:
-                    if msg_id in seen_usage_message_ids:
-                        count_usage = False
-                    else:
-                        seen_usage_message_ids.add(msg_id)
-                if count_usage:
-                    input_tokens += in_t
-                    output_tokens += out_t
-                    cache_read_tokens += cr_t
-                    cache_write_tokens += cw_t
-                    # A turn = one assistant message with non-zero usage.
-                    # Dedup on msg_id (same dedup as token accumulation).
-                    ts_raw = str(entry.get("timestamp") or "")
-                    if is_main:
-                        turns += 1
-                        if ts_raw:
-                            turn_timestamps.append(ts_raw)
-                    elif ts_raw:
-                        # Subagent assistant turn — bucketed per subagent so
-                        # carry credit attributes a subagent-saved token to that
-                        # subagent's own context window, not the main thread's.
-                        sub_ts.append(ts_raw)
-
-                    turn_model = str(msg.get("model") or entry.get("model") or "").strip()
-                    if is_real_model(turn_model):
-                        bucket = per_model.setdefault(
-                            turn_model,
-                            {"in": 0, "out": 0, "cR": 0, "cW": 0, "cW1": 0}
-                            | {f"{k}_lc": 0 for k in ("in", "out", "cR", "cW", "cW1")},
-                        )
-                        bucket["in"] += in_t
-                        bucket["out"] += out_t
-                        bucket["cR"] += cr_t
-                        bucket["cW"] += cw_t
-                        bucket["cW1"] += cw1_t
-                        # Per-request long-context premium: the whole message
-                        # bills at premium rates once its context crosses the
-                        # model's threshold (e.g. 200k).
-                        threshold = _long_context_threshold(turn_model, lc_thresholds)
-                        if threshold and (in_t + cr_t + cw_t) > threshold:
-                            bucket["in_lc"] += in_t
-                            bucket["out_lc"] += out_t
-                            bucket["cR_lc"] += cr_t
-                            bucket["cW_lc"] += cw_t
-                            bucket["cW1_lc"] += cw1_t
-
-                if not is_main:
-                    continue
-                for index, block in enumerate(msg.get("content") or []):
-                    if not isinstance(block, dict):
-                        continue
-                    if block.get("type") != "tool_use":
-                        continue
-                    name = block.get("name") or "unknown"
-                    tool_use_id = str(block.get("id") or "").strip()
-                    tool_key = tool_use_id or (f"{msg_id}:{index}:{name}" if msg_id else "")
-                    if tool_key:
-                        if tool_key in seen_tool_use_ids:
-                            continue
-                        seen_tool_use_ids.add(tool_key)
-                    tools_used[name] = tools_used.get(name, 0) + 1
-                    tool_calls += 1
-            if not is_main and sub_ts:
-                subagent_turn_timestamps.append(sub_ts)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return None
-
-    resolved_model = resolve_model_id(model_id)
-    resolved_last_model = resolve_model_id(last_model_id) if last_model_id else resolved_model
-
-    if per_model:
-        est_cost_usd = sum(_bucket_cost_usd(resolve_model_id(m), b) for m, b in per_model.items())
-    else:
-        est_cost_usd = estimate_cost_usd(
-            model_id=resolved_model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read_tokens,
-            cache_write_tokens=cache_write_tokens,
-        )
-
-    _result = TranscriptStats(
-        tool_calls=tool_calls,
-        turns=turns,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_write_tokens=cache_write_tokens,
-        est_cost_usd=est_cost_usd,
-        model=resolved_model,
-        last_model=resolved_last_model,
-        models_used=(
-            sorted(resolve_model_id(m) for m in per_model)
-            if per_model
-            else ([resolved_model] if resolved_model else [])
-        ),
-        tools_used=tools_used,
-        per_model={resolve_model_id(m): b for m, b in per_model.items()} if per_model else {},
-        turn_timestamps=turn_timestamps,
-        subagent_turn_timestamps=subagent_turn_timestamps,
-    )
-    _transcript_stats_cache[_key] = (_mtime_ns, _result)
-    return _result
+    stats = fold.finalize()
+    entry["stats"] = stats
+    _transcript_stats_cache[key] = entry
+    while len(_transcript_stats_cache) > _TRANSCRIPT_CACHE_MAX:
+        _transcript_stats_cache.pop(next(iter(_transcript_stats_cache)))
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -1440,6 +1484,32 @@ def _invalidate_historical_savings_cache() -> None:
     _historical_savings_cache.clear()
 
 
+def _bump_historical_savings_cache(row: dict[str, Any]) -> None:
+    """Fold ONE just-appended savings row into every cached window total.
+
+    O(1) alternative to full invalidation: appends are the hot path (every
+    savings-bearing tool call), and invalidating forced a full sessions/**
+    re-scan on the next statusline render — O(store) every ~5s during active
+    work. Cached entries keep their timestamps, so the normal TTL still
+    refreshes them within ``_HISTORICAL_SAVINGS_CACHE_TTL_S`` to pick up other
+    processes' writes. Mirrors :func:`_read_historical_savings`'s per-row math.
+    """
+    if not _historical_savings_cache:
+        return
+    pt, usd, calls, calls_usd, up = _price_savings_row(row)
+    row_usd = usd + calls_usd
+    row_tok = pt + up
+    if row_usd <= 0 and row_tok <= 0 and calls <= 0:
+        return
+    turns_inc = 1 if (row_usd > 0 or row_tok > 0) else 0
+    for cache_key, (cached_ts, val) in list(_historical_savings_cache.items()):
+        u, t, c, turns, spend, carry = val
+        _historical_savings_cache[cache_key] = (
+            cached_ts,
+            (u + row_usd, t + row_tok, c + calls, turns + turns_inc, spend, carry),
+        )
+
+
 def _read_historical_savings(
     days: int, root: Path
 ) -> tuple[float, int, int, int, float, float]:  # (usd, tok, calls, turns, spend, carry)
@@ -1469,7 +1539,7 @@ def _read_historical_savings(
     if _cached is not None:
         _cached_ts, _cached_val = _cached
         if _now - _cached_ts < _HISTORICAL_SAVINGS_CACHE_TTL_S:
-            return _cached_val  # type: ignore[return-value]
+            return _cached_val
     cutoff = _now - days * 86_400
     total_usd = 0.0
     total_tok = 0
@@ -1666,7 +1736,16 @@ def _get_frame_index(state_path: Path, num_frames: int) -> int:
     return counter % max(1, num_frames)
 
 
-def savings_segment(
+def _resolve_atelier_root(atelier_root: str | Path | None) -> Path:
+    env_root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
+    if atelier_root is not None:
+        return Path(atelier_root)
+    if env_root:
+        return Path(env_root)
+    return Path.home() / ".atelier"
+
+
+def savings_frames(
     session_id: str = "",
     *,
     atelier_root: str | Path | None = None,
@@ -1675,32 +1754,22 @@ def savings_segment(
     live_cache_tok: int = 0,
     live_out_tok: int = 0,
     no_color: bool = False,
-) -> str:
-    """Return a pre-formatted, pre-colored rotating statusline segment.
+) -> list[str]:
+    """Return EVERY pre-formatted statusline frame, weighted, ready to print.
 
-    Reads frame state from ``<root>/statusline_frame_state.json``, advances the
-    frame every ``_SEGMENT_INTERVAL_S`` seconds, and returns the current frame's
-    content.  Callers just print what they receive — all formatting lives here.
+    Each entry is a complete drop-in segment (icon/separator prefix and the
+    pinned review verdict included). The MCP sidecar writes all of them (one
+    per line) so statusline.sh can rotate by wall clock BETWEEN writes instead
+    of freezing on whichever single frame was current at write time.
 
     Frames (non-empty only):
-      0  live cost + I/C/O token breakdown
-      1  session savings + % saved
-      2  carry credit (♻) and/or routing savings
-      3  vs vanilla Claude Code roundtrips
-      4  7-day historical savings
-      5  30-day historical savings
-      6  status tip / update notice
-
-    The review:NEEDS_FIX alert is appended to every frame (not rotated away).
+      0  live cost + I/C/O token breakdown + savings + carry (weighted 3x)
+      1  1-day historical savings
+      2  7-day historical savings
+      3  30-day historical savings
+      4  status tip / update notice
     """
-    env_root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
-    root: Path
-    if atelier_root is not None:
-        root = Path(atelier_root)
-    elif env_root:
-        root = Path(env_root)
-    else:
-        root = Path.home() / ".atelier"
+    root = _resolve_atelier_root(atelier_root)
 
     # ANSI palette (mirrors statusline.sh)
     if no_color:
@@ -1801,19 +1870,53 @@ def savings_segment(
     if summary.status_text:
         frames.append((False, _colorize_tip(summary.status_text, C_DIM, C_BRAND, C_RESET)))
 
-    # Advance the rolling counter and select current frame.
-    # Frame 0 (cost+savings+carry) gets 6 slots at 5s each = ~30s; others get 5s each.
-    weighted = [frames[0]] * 6 + frames[1:] if frames else frames
-    state_path = root / "statusline_frame_state.json"
-    idx = _get_frame_index(state_path, len(weighted))
-    has_icon, segment = weighted[idx]
+    # Frame 0 (cost+savings+carry) gets 3 slots at 5s each = ~15s; others get 5s
+    # each. Weighting frame 0 higher than this made the line feel static — the
+    # render path refreshes every 5-10s at best (sidecar rate-limit / cache TTL),
+    # so a 30s hold on one frame read as "not rotating at all".
+    weighted = [frames[0]] * 3 + frames[1:] if frames else frames
 
     # Review verdict: pinned — appended to every frame, never rotated away.
+    pin = ""
     if session_id:
         verdict = _read_review_verdict(session_id, root)
         if verdict == "NEEDS_FIX":
-            segment += f" {SEP} {C_RED}review: NEEDS_FIX{C_RESET}"
+            pin = f" {SEP} {C_RED}review: NEEDS_FIX{C_RESET}"
 
     # Icon-led frames (↑ ↓ ♻) are their own visual separator.
     # Text-only frames get SEP prepended so they don't abut ctx% directly.
-    return f" {segment}" if has_icon else f" {SEP} {segment}"
+    return [f" {content}{pin}" if has_icon else f" {SEP} {content}{pin}" for has_icon, content in weighted]
+
+
+def savings_segment(
+    session_id: str = "",
+    *,
+    atelier_root: str | Path | None = None,
+    live_cost_usd: float = 0.0,
+    live_in_tok: int = 0,
+    live_cache_tok: int = 0,
+    live_out_tok: int = 0,
+    no_color: bool = False,
+) -> str:
+    """Return ONE pre-formatted rotating statusline frame.
+
+    Subprocess/CLI path (``atelier savings --segment``): builds all frames via
+    :func:`savings_frames` and picks the current one from the shared rolling
+    counter at ``<root>/statusline_frame_state.json`` (advances every
+    ``_SEGMENT_INTERVAL_S`` seconds). The MCP sidecar path writes the full
+    frame list instead and lets statusline.sh rotate by wall clock.
+    """
+    frames = savings_frames(
+        session_id,
+        atelier_root=atelier_root,
+        live_cost_usd=live_cost_usd,
+        live_in_tok=live_in_tok,
+        live_cache_tok=live_cache_tok,
+        live_out_tok=live_out_tok,
+        no_color=no_color,
+    )
+    if not frames:
+        return ""
+    root = _resolve_atelier_root(atelier_root)
+    idx = _get_frame_index(root / "statusline_frame_state.json", len(frames))
+    return frames[idx]

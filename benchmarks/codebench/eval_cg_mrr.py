@@ -1,13 +1,13 @@
 """CodeGraph MRR eval on SWE-bench pairs.
 
-Methodology mirrors ``fitness_explore_mrr.py`` — iterate over all (query, tid,
+Methodology mirrors ``eval_external_provider_mrr.py`` — iterate over all (query, tid,
 prefix) pairs, run ``codegraph query`` once per unique query, then score each
 pair independently via rank-of-gold-file.
 
 Requires ``codegraph`` on PATH (``npm install -g @colbymchenry/codegraph``).
 Per-repo index is auto-built on first query (``codegraph init``).
 
-Environment variables (same as fitness_explore_mrr):
+Environment variables (same as eval_external_provider_mrr):
   FITNESS_PAIRS     Path to pairs JSON  (default: benchmarks/codebench/data/bench_pairs_def_gold.json)
   FITNESS_SAMPLE    Cap total unique queries across all repos (default: 0 = all)
   FITNESS_REPO      Substring filter on repo prefix
@@ -48,7 +48,7 @@ def norm(p: str) -> str:
 
 
 def rank_of_true(files: list, true_files: list[str]) -> int | None:
-    """Return 1‑indexed rank of the first true file, or None."""
+    """Return 1-indexed rank of the first true file, or None."""
     tn = [norm(t) for t in true_files]
     for i, f in enumerate(files, 1):
         nf = norm(f)
@@ -94,7 +94,7 @@ for q, _tid, prefix in pairs:
 if REPO_FILTER:
     uq = {p: qs for p, qs in uq.items() if REPO_FILTER in p}
 if SAMPLE:
-    # Spread SAMPLE evenly across repos (matches fitness_explore_mrr behavior),
+    # Spread SAMPLE evenly across repos (matches eval_external_provider_mrr behavior),
     # so FITNESS_SAMPLE=N caps total unique queries to ~N, not N per repo.
     n_repos = max(len(uq), 1)
     per_repo = max(1, SAMPLE // n_repos)
@@ -168,11 +168,14 @@ for prefix, queries in sorted(uq.items()):
 
 # ── Phase 3: score each pair independently ─────────────────────────────
 
+
 def _pct(vals: list[float], p: int) -> float:
     if not vals:
         return 0.0
     s = sorted(vals)
     return s[min(len(s) - 1, int((p / 100.0) * (len(s) - 1)))]
+
+
 def _score_gold(gpairs, gtm):
     agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
     by_repo: dict[str, dict] = {}
@@ -199,6 +202,8 @@ def _score_gold(gpairs, gtm):
         "n": agg["n"],
         "by_repo": {p: {"mrr": round(d["rr"] / max(d["n"], 1), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
     }
+
+
 _lat = {
     "mean": round(sum(latencies) / max(len(latencies), 1), 1),
     "p50": round(_pct(latencies, 50), 1),

@@ -191,6 +191,12 @@ def test_initialize_returns_server_info() -> None:
     assert resp is not None
     assert resp["result"]["serverInfo"]["name"] == "atelier"
     assert resp["result"]["protocolVersion"] == "2024-11-05"
+    # Server-level steering: injected into the host system prompt by every MCP
+    # client automatically — the surface that reaches hosts and subagents that
+    # never see Atelier's persona files.
+    instructions = resp["result"]["instructions"]
+    assert "code_search" in instructions
+    assert "grep" in instructions and "read" in instructions
 
 
 def test_notifications_initialized_returns_none() -> None:
@@ -1209,6 +1215,35 @@ def test_finish_code_result_credits_distinct_files_not_items() -> None:
     assert mcp_server._finish_code_result({"items": items, "calls_saved": 7})["calls_saved"] == 7
 
 
+def test_finish_code_result_counterfactual_token_credit(tmp_path: Path) -> None:
+    """Surfaced files credit capped vanilla reads minus returned bytes — max
+    with any engine packing credit, never the sum."""
+    big = tmp_path / "big.py"
+    big.write_text("x" * 40_000, encoding="utf-8")
+    small = tmp_path / "small.py"
+    small.write_text("y" * 4_000, encoding="utf-8")
+    items = [{"name": "a", "path": str(big)}, {"name": "b", "path": str(small)}]
+
+    result = mcp_server._finish_code_result({"items": items})
+    returned = len(json.dumps({"items": items, "calls_saved": 2}, default=str))
+    assert result["tokens_saved"] == (44_000 - returned) // 4
+
+    # A larger engine-stamped packing credit is preserved (max, not sum).
+    stamped = mcp_server._finish_code_result({"items": list(items), "tokens_saved": 999_999})
+    assert stamped["tokens_saved"] == 999_999
+
+    # Per-file cap: a giant file cannot inflate the credit past the vanilla dump.
+    giant = tmp_path / "giant.py"
+    giant.write_text("z" * 500_000, encoding="utf-8")
+    capped_items = [{"name": "g", "path": str(giant)}, {"name": "a", "path": str(big)}]
+    capped = mcp_server._finish_code_result({"items": capped_items})
+    assert capped["tokens_saved"] <= (mcp_server._VANILLA_READ_FILE_CAP_CHARS + 40_000) // 4
+
+    # Unreadable paths contribute nothing (no counterfactual read to avoid).
+    ghost = mcp_server._finish_code_result({"items": [{"path": "nope/a.py"}, {"path": "nope/b.py"}]})
+    assert "tokens_saved" not in ghost
+
+
 def test_smart_read_batch_credits_calls_saved(store_root: Path, tmp_path: Path) -> None:
     """N files in one read call replace N single-file read calls => N - 1 saved;
     errored entries earned nothing and are excluded from the credit."""
@@ -2126,9 +2161,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,7 +6,7 @@ developer might type. Queries are deliberately fuzzy (partial names, multi-token
 composites, regex alternations, path-qualified searches) so retrieval isn't
 trivial.
 
-Output format (compatible with fitness_explore_mrr.py):
+Output format (compatible with eval_external_provider_mrr.py):
 
     {"pairs": [(query, tid, repo_prefix), ...],
      "true_map": {tid: [file_paths...]},
@@ -218,10 +218,7 @@ def gen_partial_symbol(symbols: list[str]) -> str | None:
         parts = stripped.split("_")
         if len(parts) >= 3:
             # Drop first or last
-            if random.random() < 0.5:
-                stripped = "_".join(parts[1:])
-            else:
-                stripped = "_".join(parts[:-1])
+            stripped = "_".join(parts[1:]) if random.random() < 0.5 else "_".join(parts[:-1])
         elif len(parts) == 2:
             # Just take the second part
             stripped = parts[-1]
@@ -318,7 +315,7 @@ def gen_path_qualified(filepath: str, symbols: list[str]) -> str | None:
         sym_tokens = [t for t in sym_tokens if len(t) >= 3 and t not in dir_tokens]
         if sym_tokens:
             token = random.choice(sym_tokens)
-            query = " ".join(dir_tokens + [token])
+            query = " ".join([*dir_tokens, token])
             if len(query) >= 8:
                 return query
 
@@ -423,7 +420,7 @@ def generate_queries_for_file(
     rng.shuffle(strategies)
 
     applied: set[str] = set()
-    for sname, sfunc in strategies:
+    for _sname, sfunc in strategies:
         if len(queries) >= max_queries:
             break
         try:
@@ -439,7 +436,7 @@ def generate_queries_for_file(
 
         # Reject single-word queries shorter than 6 chars — they're too generic
         # (e.g. "json", "time", "flow", "type")
-        nospace = q.replace(" ", "")
+        q.replace(" ", "")
         if " " not in q and len(q) < 6:
             continue
         # Also reject single-token queries (no spaces/pipes) that are pure
@@ -487,7 +484,7 @@ def generate_queries_for_file(
 
         # Anti-triviality checks
         # 1. Not an exact file path
-        if q == rel_path or q == filepath:
+        if q in (rel_path, filepath):
             continue
         # 2. Not an exact symbol name
         if q in all_syms:
@@ -591,9 +588,7 @@ def _skip_path(path: Path, repo_path: Path) -> bool:
     ):
         return True
     # Skip minified files
-    if name.endswith(".min.js") or name.endswith(".min.css"):
-        return True
-    return False
+    return bool(name.endswith(".min.js") or name.endswith(".min.css"))
 
 
 def mine_synthetic_pairs(
@@ -613,7 +608,7 @@ def mine_synthetic_pairs(
         max_files: Cap on files to process (None = all).
         seed: Random seed for reproducibility.
 
-    Returns (pairs, true_map) compatible with fitness_explore_mrr.py.
+    Returns (pairs, true_map) compatible with eval_external_provider_mrr.py.
     """
     repo_path = Path(repo_dir).resolve()
     if not repo_path.is_dir():

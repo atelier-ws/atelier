@@ -25,10 +25,52 @@ def bench_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return configure_benchmark_runtime(root, workspace_root=repo_root)
 
 
+def _disable_autosync_watcher() -> None:
+    """Pre-seed the MCP code-intel engine cache with autosync disabled.
+
+    mode="symbols" context cases construct a CodeContextEngine via
+    mcp_server._code_context_engine(), which defaults autosync_enabled=True --
+    a watchdog.Observer file-watcher + background resync thread meant for
+    long-lived interactive MCP sessions. In this short-lived benchmark process
+    that watcher thrashes (inotify watch-limit exhaustion -> polling fallback
+    -> native tree-sitter Node objects dropped cross-thread), dominating
+    wall-clock (~15s/case instead of near-instant). One-shot processes don't
+    need it: gateway/cli/commands/code.py's own _code_context_engine() already
+    opts out for the identical reason ("One-shot CLI commands don't need
+    background autosync threads"). Pre-seed the cache so
+    mcp_server._code_context_engine() reuses this instance instead of
+    constructing a fresh autosync-enabled one.
+    """
+    import atelier.gateway.adapters.mcp_server as mcp_server
+    from atelier.core.capabilities.code_context import CodeContextEngine
+
+    resolved = mcp_server._workspace_root().resolve()
+    mcp_server._code_engine_cache[str(resolved)] = CodeContextEngine(resolved, autosync_enabled=False)
+
+
+def _disable_background_worker_spawn() -> None:
+    """Neutralize tool_get_context's auto-spawned background bootstrap worker.
+
+    On a cold repo, tool_get_context fires a daemon thread
+    (_spawn_worker_if_idle -> _run_worker_tick_safe) that asynchronously
+    rebuilds the same code-intel index _preseed_bootstrap() below rebuilds
+    synchronously right after the cold-start case. The two race for the same
+    on-disk index/lock (IndexLockTimeout), and the daemon thread can crash
+    mid-teardown ("cannot schedule new futures after interpreter shutdown")
+    once this short-lived benchmark process starts exiting. Neutralized the
+    same way tests/gateway/test_mcp_tool_handlers.py does for this exact hazard.
+    """
+    import atelier.gateway.adapters.mcp_server as mcp_server
+
+    mcp_server._run_worker_tick_safe = lambda root: None
+
+
 @pytest.fixture(scope="session")
 def context_tool_fn(bench_workspace: Path) -> Any:
     from atelier.gateway.adapters.mcp_server import tool_get_context
 
+    _disable_background_worker_spawn()
+    _disable_autosync_watcher()
     return tool_get_context
 
 

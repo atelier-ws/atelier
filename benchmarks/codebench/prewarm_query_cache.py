@@ -55,7 +55,7 @@ def _already_cached(conn: sqlite3.Connection, keys: list[str]) -> set[str]:
     rows = conn.execute(
         f"SELECT cache_key FROM playbook_embedding_cache WHERE embedder_name = ?"
         f" AND cache_key IN ({','.join('?' * len(keys))})",
-        [EMBEDDER_NAME] + keys,
+        [EMBEDDER_NAME, *keys],
     ).fetchall()
     return {r[0] for r in rows}
 
@@ -92,7 +92,7 @@ def main() -> None:
 
     keys = [_cache_key(q) for q in queries]
     already = _already_cached(conn, keys)
-    pending_pairs = [(q, k) for q, k in zip(queries, keys) if k not in already]
+    pending_pairs = [(q, k) for q, k in zip(queries, keys, strict=False) if k not in already]
     print(f"  {len(already):,} already cached, {len(pending_pairs):,} to embed", flush=True)
     if not pending_pairs:
         print("All queries already cached — nothing to do.", flush=True)
@@ -112,7 +112,7 @@ def main() -> None:
         batch_q = pending_queries[i : i + bs]
         batch_k = pending_keys[i : i + bs]
         vecs = model.encode(batch_q, batch_size=len(batch_q), normalize_embeddings=True, show_progress_bar=False)
-        rows = [(k, EMBEDDER_NAME, json.dumps(v.tolist())) for k, v in zip(batch_k, vecs)]
+        rows = [(k, EMBEDDER_NAME, json.dumps(v.tolist())) for k, v in zip(batch_k, vecs, strict=False)]
         conn.executemany(
             "INSERT OR REPLACE INTO playbook_embedding_cache (cache_key, embedder_name, vector_json) VALUES (?,?,?)",
             rows,

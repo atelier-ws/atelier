@@ -984,9 +984,8 @@ def code_train_cmd(
 
     Requires the ``semantic`` extra::  pip install -e '.[semantic]'
 
-    Measured lift on the grep-style retrieval benchmark is ~0 (see
-    benchmarks/codebench/RETRIEVAL_EVAL.md): the bench queries are lexical, so
-    lexical+zoekt already wins. This command is the productised shape, wired for
+    Measured lift on the grep-style retrieval benchmark is ~0: the bench
+    queries are lexical, so lexical+zoekt already wins. This command is the productised shape, wired for
     NL-query training data where the embedder is expected to help.
     """
     import sys

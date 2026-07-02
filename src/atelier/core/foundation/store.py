@@ -288,9 +288,15 @@ class ContextStore:
     so they can be reviewed in PRs without running tools.
     """
 
-    def __init__(self, root: Path | str, lessons_root: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        lessons_root: Path | str | None = None,
+        *,
+        db_name: str = "atelier.db",
+    ) -> None:
         self.root = Path(root).resolve()
-        self.db_path = self.root / "atelier.db"
+        self.db_path = self.root / db_name
 
         # Lessons (blocks/rubrics) are project-local by default for Git tracking.
         # History (traces/raw) stays in the primary root.
@@ -1193,7 +1199,7 @@ class ContextStore:
         """
         with self._transaction() as conn:
             rows = conn.execute(
-                "SELECT payload FROM traces WHERE task != 'session-auto-record' " "ORDER BY created_at DESC LIMIT ?",
+                "SELECT payload FROM traces WHERE task != 'session-auto-record' ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]

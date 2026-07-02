@@ -232,7 +232,7 @@ impl_approx = [
     for t, fus, rr in zip(
         total_lats,
         timings["hef_fusion"] or [0] * len(total_lats),
-        timings["rerank"] or [0] * len(total_lats),
+        timings["rerank"] or [0] * len(total_lats), strict=False,
     )
 ]
 _row("_tool_explore_impl (approx=total-rest)", impl_approx)

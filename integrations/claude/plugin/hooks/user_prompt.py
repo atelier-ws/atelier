@@ -694,6 +694,29 @@ def main() -> int:
     # model context would itself waste the tokens it complains about.
     transcript_path: str = payload.get("transcript_path", "") or ""
     session_id = str(payload.get("session_id") or "").strip()
+    # Re-anchor this window's identity file to the LIVE session id on every
+    # prompt. SessionStart alone is not enough: Claude Code fires
+    # SessionStart(clear) with the PRE-clear session id, so after /clear the
+    # window file points at a dead session — every MCP savings row and the
+    # statusline sidecar land under the old id while the statusline renders
+    # the post-clear id (↓ $0.000 forever). The prompt payload always carries
+    # the live id, so registering here heals the anchor on the first
+    # post-clear turn, before any tool call of that turn can misattribute.
+    if session_id:
+        with contextlib.suppress(Exception):
+            from atelier.core.foundation.session_window import (
+                register_window_session,
+                workspace_hash,
+            )
+
+            _ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+            register_window_session(
+                _atelier_root(),
+                workspace_hash(_ws),
+                session_id=session_id,
+                source="prompt",
+                transcript_path=transcript_path,
+            )
     if session_id and _NOOP_PROMPT not in prompt:
         # Feeds mcp_server.py's convergence-spiral detector: it reads
         # sessions/<session_id>/stats.json's `turns` counter (maintained here,

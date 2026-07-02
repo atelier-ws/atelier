@@ -21,6 +21,7 @@ import csv
 import hashlib
 import json
 import os
+import select
 import shutil
 import socket
 import statistics
@@ -30,7 +31,7 @@ import tempfile
 import time
 import urllib.request
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -179,22 +180,18 @@ class SerenaRunner:
 
 
 class CodeIndexRunner:
-    def __init__(self, repo_root: Path, workspace_root: Path, code_index_repo: Path) -> None:
-        self.repo_root = repo_root
-        self.workspace_root = workspace_root
-        self.code_index_repo = code_index_repo
-        self.project_root: Path | None = None
-        self.python_bin: Path | None = None
+    """Persistent worker: one subprocess per repo that indexes once, then
+    serves search_code queries over a stdin/stdout line protocol.
 
-    def _script(self, *, rebuild: bool) -> str:
-        rebuild_block = (
-            """
-IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
-"""
-            if rebuild
-            else ""
-        )
-        return f"""
+    A fresh ``python -c`` per query costs ~0.5s of interpreter + import
+    overhead vs ~0.08s for the search itself, so one-shot mode made benchmark
+    runs ~12x slower and reported latencies that measured the harness, not
+    the tool.
+    """
+
+    _MARKER = "__CIDX__"
+
+    _WORKER_SCRIPT = """
 import json
 import sys
 from pathlib import Path
@@ -213,17 +210,35 @@ from mcp.server.fastmcp import Context
 lifespan = CodeIndexerContext(base_path="", settings=ProjectSettings("", skip_load=True))
 ctx = Context(request_context=_BootstrapRequestContext(lifespan), fastmcp=mcp)
 ProjectManagementService(ctx).initialize_project(str(repo_root))
-{rebuild_block}
-result = SearchService(ctx).search_code(
-    pattern=sys.argv[3],
-    regex=False,
-    file_pattern=sys.argv[4] if len(sys.argv) > 4 else "*",
-    max_results=50,
-    context_lines=0,
-    case_sensitive=False,
-)
-print(json.dumps(result, ensure_ascii=False))
+IndexManagementService(ctx).rebuild_deep_index(max_workers=4, timeout=600)
+print("__CIDX__" + json.dumps({"ready": True}), flush=True)
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    req = json.loads(line)
+    try:
+        result = SearchService(ctx).search_code(
+            pattern=req["pattern"],
+            regex=False,
+            file_pattern=req.get("file_pattern", "*"),
+            max_results=50,
+            context_lines=0,
+            case_sensitive=False,
+        )
+    except Exception as exc:  # report per-query failures without dying
+        result = {"__cidx_error__": str(exc)}
+    print("__CIDX__" + json.dumps(result, ensure_ascii=False), flush=True)
 """
+
+    def __init__(self, repo_root: Path, workspace_root: Path, code_index_repo: Path) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.code_index_repo = code_index_repo
+        self.project_root: Path | None = None
+        self.python_bin: Path | None = None
+        self.proc: subprocess.Popen[str] | None = None
+        self._stderr_file: Any = None
 
     def start(self, *, python_bin: Path | None = None) -> None:
         tool_workspace = external_workspace_root(self.workspace_root)
@@ -239,42 +254,80 @@ print(json.dumps(result, ensure_ascii=False))
             self.code_index_repo = ensure_code_index_checkout(self.code_index_repo)
             self.python_bin = ensure_code_index_runtime(self.code_index_repo)
         self.project_root = prepare_repo_snapshot(self.repo_root, tool_workspace, "code-index-target")
-        proc = run_cmd(
+        # Deliberately not a context manager: the file outlives start() and is
+        # closed in stop() alongside the worker it captures stderr for.
+        self._stderr_file = tempfile.TemporaryFile(mode="w+", prefix="cidx-worker-")  # noqa: SIM115
+        self.proc = subprocess.Popen(
             [
                 str(self.python_bin),
                 "-c",
-                self._script(rebuild=True),
+                self._WORKER_SCRIPT,
                 str(self.project_root),
                 str(self.code_index_repo),
-                "classify_command",
             ],
-            cwd=self.code_index_repo,
-            timeout=1800,
+            cwd=str(self.code_index_repo),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self._stderr_file,
+            text=True,
+            bufsize=1,
         )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+        # Ready marker arrives after initialize_project + deep index rebuild.
+        self._read_response(timeout=1800)
+
+    def _stderr_tail(self) -> str:
+        try:
+            self._stderr_file.seek(0)
+            tail = self._stderr_file.read()[-1200:]
+            assert isinstance(tail, str)
+            return tail
+        except Exception:
+            return ""
+
+    def _read_response(self, timeout: float) -> dict[str, Any]:
+        assert self.proc is not None and self.proc.stdout is not None
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.stop()
+                raise TimeoutError(f"code-index-mcp worker timed out after {timeout:.0f}s")
+            ready, _, _ = select.select([self.proc.stdout], [], [], remaining)
+            if not ready:
+                continue  # loop re-checks the deadline
+            line = self.proc.stdout.readline()
+            if not line:
+                err = self._stderr_tail()
+                self.stop()
+                raise RuntimeError(f"code-index-mcp worker died: {err}")
+            if not line.startswith(self._MARKER):
+                continue  # stray library output on stdout
+            result = json.loads(line[len(self._MARKER) :])
+            assert isinstance(result, dict)
+            if "__cidx_error__" in result:
+                raise RuntimeError(str(result["__cidx_error__"]))
+            return result
 
     def query(self, pattern: str, file_pattern: str = "*") -> dict[str, Any]:
-        if self.python_bin is None or self.project_root is None:
+        if self.proc is None or self.proc.stdin is None:
             raise RuntimeError("code-index-mcp not initialized")
-        proc = run_cmd(
-            [
-                str(self.python_bin),
-                "-c",
-                self._script(rebuild=False),
-                str(self.project_root),
-                str(self.code_index_repo),
-                pattern,
-                file_pattern,
-            ],
-            cwd=self.code_index_repo,
-            timeout=300,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-        result = json.loads(proc.stdout)
-        assert isinstance(result, dict)
-        return result
+        request = json.dumps({"pattern": pattern, "file_pattern": file_pattern}, ensure_ascii=False)
+        self.proc.stdin.write(request + "\n")
+        self.proc.stdin.flush()
+        return self._read_response(timeout=300)
+
+    def stop(self) -> None:
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+        if self._stderr_file is not None:
+            with suppress(Exception):
+                self._stderr_file.close()
+            self._stderr_file = None
 
 
 def ensure_workspace(workspace: Path) -> None:
@@ -524,7 +577,13 @@ def external_workspace_root(workspace_root: Path) -> Path:
 
 
 def default_benchmark_root(repo_root: Path) -> Path:
-    return repo_root.parent / "benchmarks" / repo_root.name
+    # Scratch/cache root for mcp_tools benchmark runs (repo snapshots, external
+    # indexer installs, per-shard artifacts) -- lives inside the repo under
+    # benchmarks/mcp_tools/results/, not a sibling directory outside the
+    # checkout. Gitignored (see benchmarks/mcp_tools/results/.gitignore); the
+    # committed results.csv/summary.csv for `atelier eval mcp` stay at the
+    # shared reports/benchmark/mcp/ location every other suite uses.
+    return repo_root / "benchmarks" / "mcp_tools" / "results"
 
 
 def ensure_code_index_checkout(code_index_repo: Path) -> Path:
@@ -785,14 +844,17 @@ def bench_code_index(
     times: list[float] = []
     toks: list[int] = []
     sample = ""
-    for _ in range(iterations):
-        t0 = time.perf_counter()
-        resp = runner.query(query)
-        elapsed = (time.perf_counter() - t0) * 1000
-        payload = json.dumps(resp, ensure_ascii=False)
-        times.append(elapsed)
-        toks.append(token_count(payload))
-        sample = payload[:280]
+    try:
+        for _ in range(iterations):
+            t0 = time.perf_counter()
+            resp = runner.query(query)
+            elapsed = (time.perf_counter() - t0) * 1000
+            payload = json.dumps(resp, ensure_ascii=False)
+            times.append(elapsed)
+            toks.append(token_count(payload))
+            sample = payload[:280]
+    finally:
+        runner.stop()
     return ToolBenchResult(
         tool="code-index-mcp",
         ok=True,

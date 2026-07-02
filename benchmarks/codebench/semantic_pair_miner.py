@@ -2,7 +2,7 @@
 
 Connects to the repo's code context SQLite DB, extracts docstring first-sentences
 and generates natural-language intent queries from symbol names, then merges them
-into a pairs JSON file compatible with fitness_explore_mrr.py.
+into a pairs JSON file compatible with eval_external_provider_mrr.py.
 
 Usage::
 
@@ -13,7 +13,7 @@ Usage::
         --out /tmp/session_pairs.json \\
         --max-pairs 100
 
-Output format (compatible with fitness_explore_mrr.py)::
+Output format (compatible with eval_external_provider_mrr.py)::
 
     {"pairs": [(query, tid, repo_prefix), ...],
      "true_map": {tid: [file_paths...]},
@@ -32,8 +32,9 @@ import sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path resolution (mirrors fitness_explore_mrr._db_path_for)
+# DB path resolution (bench convention: /tmp/<workspace_key>/code_context.sqlite)
 # ---------------------------------------------------------------------------
+
 
 def _workspace_key(repo_root: Path) -> str:
     """Derive the workspace dir name from a repo root path."""
@@ -59,13 +60,51 @@ _CODE_RE = re.compile(r"[{}<>()\[\]|=]|\b(?:def|class|import|return|self)\b")
 _SHORT = 25
 _TENSE = re.compile(r"[AEIOUaeiou]")
 
-_INTENT_VERBS = frozenset({
-    "get", "set", "is", "has", "to", "build", "make", "create", "handle", "parse",
-    "run", "check", "find", "search", "load", "save", "fetch", "push", "pull",
-    "merge", "split", "format", "encode", "decode", "validate", "compute",
-    "resolve", "render", "dispatch", "register", "connect", "close", "start",
-    "stop", "init", "reset", "update", "delete", "insert", "append", "prepend",
-})
+_INTENT_VERBS = frozenset(
+    {
+        "get",
+        "set",
+        "is",
+        "has",
+        "to",
+        "build",
+        "make",
+        "create",
+        "handle",
+        "parse",
+        "run",
+        "check",
+        "find",
+        "search",
+        "load",
+        "save",
+        "fetch",
+        "push",
+        "pull",
+        "merge",
+        "split",
+        "format",
+        "encode",
+        "decode",
+        "validate",
+        "compute",
+        "resolve",
+        "render",
+        "dispatch",
+        "register",
+        "connect",
+        "close",
+        "start",
+        "stop",
+        "init",
+        "reset",
+        "update",
+        "delete",
+        "insert",
+        "append",
+        "prepend",
+    }
+)
 
 
 def _clean_doc_sentence(doc: str) -> str | None:
@@ -128,8 +167,7 @@ def mine_semantic_pairs(
         db_path = _user_db_path_for(repo_dir)
         if not db_path.exists():
             print(
-                f"[semantic] No DB found at {db_path} — "
-                f"run 'atelier code index --reindex' first.",
+                f"[semantic] No DB found at {db_path} — run 'atelier code index --reindex' first.",
                 file=sys.stderr,
             )
             return [], {}
@@ -203,6 +241,7 @@ def mine_semantic_pairs(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     import argparse
 
@@ -224,7 +263,9 @@ def main() -> None:
         help="Output path for pairs JSON",
     )
     parser.add_argument(
-        "--merge", "-m", default=None,
+        "--merge",
+        "-m",
+        default=None,
         help="Existing pairs JSON to merge semantic pairs into (deduplicated)",
     )
     parser.add_argument(

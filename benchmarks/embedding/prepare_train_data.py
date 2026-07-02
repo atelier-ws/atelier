@@ -61,15 +61,16 @@ def read_file_content(repo_dir: str | Path, rel_path: str, max_chars: int = 8192
     return text
 
 
-def build_corpus(repo_dir: str | Path, true_map: dict[str, list[str]],
-                 max_chars: int = 8192, verbose: bool = False) -> dict[str, str]:
+def build_corpus(
+    repo_dir: str | Path, true_map: dict[str, list[str]], max_chars: int = 8192, verbose: bool = False
+) -> dict[str, str]:
     """Build a deduplicated corpus of {rel_path: content} from all gold files.
 
     Also includes other source files for negative mining if needed.
     The corpus dict maps relative paths to file content.
     """
     corpus: dict[str, str] = {}
-    for tid, paths in true_map.items():
+    for _tid, paths in true_map.items():
         for p in paths:
             if p in corpus:
                 continue
@@ -147,13 +148,10 @@ def create_train_test_split(
                 train_examples.append(example)
 
     if verbose:
-        print(f"[prepare] Train: {len(train_examples)} examples "
-              f"({len(train_tids)} files)", file=sys.stderr)
-        print(f"[prepare] Test:  {len(test_examples)} examples "
-              f"({len(test_tids)} files)", file=sys.stderr)
+        print(f"[prepare] Train: {len(train_examples)} examples ({len(train_tids)} files)", file=sys.stderr)
+        print(f"[prepare] Test:  {len(test_examples)} examples ({len(test_tids)} files)", file=sys.stderr)
         if skipped_no_content:
-            print(f"[prepare] Skipped (no content): {skipped_no_content} tids",
-                  file=sys.stderr)
+            print(f"[prepare] Skipped (no content): {skipped_no_content} tids", file=sys.stderr)
 
     return train_examples, test_examples
 
@@ -169,8 +167,8 @@ def write_dataset(
 
     - train.jsonl:  query + positive (for MultipleNegativesRankingLoss)
     - test.jsonl:   query + positive + gold_path + tid (for eval)
-    - corpus.jsonl: id + text (for building the search index; eval_semantic_mrr
-                    format: each line has "id" and "text" with "Path:" prefix)
+    - corpus.jsonl: id + text (for building the search index; each line has
+                    "id" and "text" with a "Path:" prefix)
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -180,30 +178,32 @@ def write_dataset(
         for ex in train_examples:
             f.write(json.dumps({"query": ex["query"], "positive": ex["positive"]}) + "\n")
     if verbose:
-        print(f"[prepare] Wrote {len(train_examples)} train pairs → "
-              f"{out_dir / 'train.jsonl'}", file=sys.stderr)
+        print(f"[prepare] Wrote {len(train_examples)} train pairs → {out_dir / 'train.jsonl'}", file=sys.stderr)
 
     # Test set (includes gold_path for scoring)
     with open(out_dir / "test.jsonl", "w") as f:
         for ex in test_examples:
-            f.write(json.dumps({
-                "query": ex["query"],
-                "positive": ex["positive"],
-                "gold_path": ex["gold_path"],
-                "tid": ex["tid"],
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "query": ex["query"],
+                        "positive": ex["positive"],
+                        "gold_path": ex["gold_path"],
+                        "tid": ex["tid"],
+                    }
+                )
+                + "\n"
+            )
     if verbose:
-        print(f"[prepare] Wrote {len(test_examples)} test pairs → "
-              f"{out_dir / 'test.jsonl'}", file=sys.stderr)
+        print(f"[prepare] Wrote {len(test_examples)} test pairs → {out_dir / 'test.jsonl'}", file=sys.stderr)
 
-    # Corpus (for eval_semantic_mrr.py compatibility)
+    # Corpus (id + text pairs for a search-index/eval corpus)
     with open(out_dir / "corpus.jsonl", "w") as f:
         for rel_path, content in corpus.items():
             entry = {"id": rel_path, "text": f"Path: {rel_path}\n{content}"}
             f.write(json.dumps(entry) + "\n")
     if verbose:
-        print(f"[prepare] Wrote {len(corpus)} corpus files → "
-              f"{out_dir / 'corpus.jsonl'}", file=sys.stderr)
+        print(f"[prepare] Wrote {len(corpus)} corpus files → {out_dir / 'corpus.jsonl'}", file=sys.stderr)
 
     # Write a metadata file
     meta = {
@@ -227,36 +227,42 @@ def main():
     parser = argparse.ArgumentParser(
         description="Prepare embedding training data from mined pairs",
     )
-    parser.add_argument("--pairs", "-p", required=True,
-                        help="Path to pairs JSON (from synthetic_pair_miner or offline_session_analyzer)")
-    parser.add_argument("--repo-dir", "-r", required=True,
-                        help="Repository root directory (to read file contents)")
-    parser.add_argument("--out-dir", "-o", default="/tmp/train_data",
-                        help="Output directory for train/test/corpus JSONL")
-    parser.add_argument("--test-frac", type=float, default=0.15,
-                        help="Fraction of files to hold out for test (default: 0.15)")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed for split")
-    parser.add_argument("--max-chars", type=int, default=1024,
-                        help="Max characters per file content (default: 1024 — "
-                             "shorter = less GPU memory during training)")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Print progress")
+    parser.add_argument(
+        "--pairs",
+        "-p",
+        required=True,
+        help="Path to pairs JSON (from synthetic_pair_miner or offline_session_analyzer)",
+    )
+    parser.add_argument("--repo-dir", "-r", required=True, help="Repository root directory (to read file contents)")
+    parser.add_argument(
+        "--out-dir", "-o", default="/tmp/train_data", help="Output directory for train/test/corpus JSONL"
+    )
+    parser.add_argument(
+        "--test-frac", type=float, default=0.15, help="Fraction of files to hold out for test (default: 0.15)"
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for split")
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=1024,
+        help="Max characters per file content (default: 1024 — shorter = less GPU memory during training)",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print progress")
     args = parser.parse_args()
 
     # Load pairs
     pairs, true_map, repos = load_pairs(args.pairs)
     if args.verbose:
-        print(f"[prepare] Loaded {len(pairs)} pairs, {len(true_map)} tids, "
-              f"{len(repos)} repos", file=sys.stderr)
+        print(f"[prepare] Loaded {len(pairs)} pairs, {len(true_map)} tids, {len(repos)} repos", file=sys.stderr)
 
     # Build corpus
-    corpus = build_corpus(args.repo_dir, true_map, max_chars=args.max_chars,
-                          verbose=args.verbose)
+    corpus = build_corpus(args.repo_dir, true_map, max_chars=args.max_chars, verbose=args.verbose)
 
     # Split into train/test
     train_examples, test_examples = create_train_test_split(
-        pairs, true_map, corpus,
+        pairs,
+        true_map,
+        corpus,
         test_frac=args.test_frac,
         seed=args.seed,
         verbose=args.verbose,
@@ -264,14 +270,19 @@ def main():
 
     # Write outputs
     meta = write_dataset(
-        args.out_dir, train_examples, test_examples, corpus,
+        args.out_dir,
+        train_examples,
+        test_examples,
+        corpus,
         verbose=args.verbose,
     )
 
-    print(f"[prepare] Done. Train={meta['num_train']} pairs, "
-          f"Test={meta['num_test']} pairs, "
-          f"Corpus={meta['num_corpus']} files",
-          file=sys.stderr)
+    print(
+        f"[prepare] Done. Train={meta['num_train']} pairs, "
+        f"Test={meta['num_test']} pairs, "
+        f"Corpus={meta['num_corpus']} files",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

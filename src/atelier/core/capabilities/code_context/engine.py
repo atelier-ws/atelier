@@ -803,7 +803,7 @@ def _repo_id(repo_root: Path) -> str:
 
 # Above this many bytes, skip vector_quantize_preload and let the TurboQuant scan
 # read the quantized data via mmap (reclaimable, file-backed) instead of pinning it
-# in anonymous RAM. ~960 MB for linux's 1.24M×1536 store stays under the cap.
+# in anonymous RAM. ~960 MB for linux's 1.24Mx1536 store stays under the cap.
 _SQLITE_VEC_PRELOAD_MAX_BYTES = 2 * 1024**3
 
 # One-element memo: [] = not probed yet, [path|None] = resolved once per process.
@@ -868,6 +868,13 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
 # present in only 2-3 symbols (breaking recall on small indexes).
 _FTS_COMMON_TERM_DF_FRACTION = 0.10
 _FTS_COMMON_TERM_DF_FLOOR = 1500
+# Anchor-df cap for the substring/path trigram channels (a MUCH tighter bound than
+# the FTS OR/prefix cap above). A token with df over this has large trigram
+# postings, so `t.name LIKE '%anchor%'` scans 100s of ms on a big repo to surface a
+# few non-token substring matches -- while FTS bm25 already ranked the whole-token
+# match in ~15ms. Below it, the substring scan is a few ms and catches partial-token
+# substrings the FTS tokenizer splits ('mbedde' in 'Embedder'). Override via env.
+_SUBSTRING_ANCHOR_DF_CAP = int(os.environ.get("ATELIER_SUBSTRING_ANCHOR_DF_CAP", "500"))
 # "Semantic additive only" fusion gate for the hybrid symbol-search path: freeze
 # the top-K lexical(+graph) hits so the semantic channel can only surface symbols
 # lexical missed -- it never demotes a symbol lexical already ranked in the top-K.
@@ -917,13 +924,25 @@ _HEF_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.future
 # the 8s caller wait so the channel returns [] cleanly before that fires.
 _SEARCH_CHANNEL_DEADLINE_S = float(os.environ.get("ATELIER_SEARCH_CHANNEL_DEADLINE_S", "2.5"))
 
+# Tight deadline for the low-priority recall-supplement channels (substring +
+# path trigram scans, base 820-860).  Their cost is set by trigram POSTING size,
+# not token df: a common substring like 'include' has huge 3-gram postings
+# ('inc','ncl'), so the LIKE scans 300-500ms to surface a few non-token matches
+# the FTS bm25 channel already ranked in ~15ms.  A rare anchor's scan finishes in
+# <5ms, so this bound only ever fires on the non-discriminative case, where the
+# channel adds no recall anyway -- it self-aborts (-> empty) instead of dominating
+# p100.  Override via ATELIER_SUPPLEMENT_CHANNEL_DEADLINE_S.
+_SUPPLEMENT_CHANNEL_DEADLINE_S = float(os.environ.get("ATELIER_SUPPLEMENT_CHANNEL_DEADLINE_S", "0.08"))
 
-def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+
+def _run_search_channel(
+    db_path: Path, sql: str, params: tuple[Any, ...], deadline_s: float = _SEARCH_CHANNEL_DEADLINE_S
+) -> list[dict[str, Any]]:
     """Execute one FTS/trigram search channel on a dedicated read connection.
 
     Called from worker threads in _SEARCH_CHANNEL_EXECUTOR so that all five
     channels of _search_symbols_local run concurrently.  Each invocation opens
-    its own SQLite connection (WAL mode makes reader–reader access lock-free)
+    its own SQLite connection (WAL mode makes reader-reader access lock-free)
     and closes it on return.  SQLite's C extension releases the GIL during
     query execution, so threads achieve genuine CPU-level parallelism for
     these I/O-bound FTS reads.
@@ -945,7 +964,7 @@ def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> lis
         check_same_thread=False,
     )
     conn.row_factory = sqlite3.Row
-    _deadline = time.monotonic() + _SEARCH_CHANNEL_DEADLINE_S
+    _deadline = time.monotonic() + deadline_s
     # Checked every ~50k VM ops: frequent enough to abort a runaway scan within
     # milliseconds of the deadline, rare enough to add no measurable overhead to
     # the common <200ms query.
@@ -2395,7 +2414,7 @@ def _watcher_load_gitignore_patterns(repo_root: Path) -> Any | None:
                 continue
 
         return pathspec.PathSpec.from_lines("gitignore", spec_lines)
-    except Exception:
+    except (OSError, ValueError):
         logger.debug("Failed to load gitignore patterns", exc_info=True)
         return None
 
@@ -2572,7 +2591,7 @@ class CodeContextEngine:
         # reindex bumps index_version and invalidates this.
         self._ann_vectors_cache: tuple[tuple[str, int, int], list[str], Any] | None = None
         # sqlite-vector TurboQuant in-DB ANN: replaces the numpy matrix scan on
-        # large corpora (linux: 1.24M×1536 = 7.5 GB matrix → OOM). The extension
+        # large corpora (linux: 1.24Mx1536 = 7.5 GB matrix → OOM). The extension
         # only operates on a connection's *main* schema, so a dedicated per-thread
         # direct connection to vectors.sqlite is used (bare 'symbol_vectors')
         # rather than the engine's attached-vectors connection. Falls back to the
@@ -2625,8 +2644,8 @@ class CodeContextEngine:
         # File bytes cache: inside a _reuse_connection() scope, _read_file_slice()
         # caches raw file bytes so the same file is read from disk only once per
         # tool call even when multiple symbols are selected from it. Eliminates
-        # N_symbols × read_bytes() cost (e.g. 5 symbols from engine.py = 5 × 18 MB
-        # → 1 × 18 MB). Cleared on scope exit; no inter-call sharing.
+        # N_symbols x read_bytes() cost (e.g. 5 symbols from engine.py = 5 x 18 MB
+        # -> 1 x 18 MB). Cleared on scope exit; no inter-call sharing.
         self._file_cache_tls = threading.local()
         self._wal_primed = False
         # FTS corpus size for IDF term pruning, keyed by index_version so a reindex
@@ -2857,7 +2876,7 @@ class CodeContextEngine:
                 fts_rows.append((sid, _fts_name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
                 # Trigram table uses the PLAIN name (no n-gram expansion) — the trigram
                 # tokenizer handles substring matching natively, so pre-expansion only wastes
-                # space. Signature is omitted: 5× size amplification, rarely unique over name.
+                # space. Signature is omitted: 5x size amplification, rarely unique over name.
                 trigram_rows.append((sid, sym.name, sym.qualified_name, d.rel))
 
         conn.executemany(
@@ -3198,6 +3217,13 @@ class CodeContextEngine:
                         _vc = sqlite3.connect(str(_vac_db))
                         _vc.execute("VACUUM")
                         _vc.close()
+
+        # Compute+persist the centrality map for the new index_version NOW so the
+        # O(edges) power iteration is charged to indexing, never to the first
+        # query. Loads the persisted map when the version is unchanged (cheap
+        # no-op for incremental runs that indexed nothing).
+        with contextlib.suppress(Exception):
+            self._symbol_centrality_map()
 
         emit_product_local(
             "code_index_completed",
@@ -4068,16 +4094,14 @@ class CodeContextEngine:
             term_values = [*literal_tuple, *prose_terms]
         wants_tests = bool(
             re.search(
-                r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|"
-                r"tearDown|setUp|TestCase|Tests\b",
+                r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|" r"tearDown|setUp|TestCase|Tests\b",
                 query,
                 re.IGNORECASE,
             )
         )
         wants_auxiliary = bool(
             re.search(
-                r"\bdocs?|documentation|example|gallery|benchmark|frontend|"
-                r"javascript|typescript|readme\b",
+                r"\bdocs?|documentation|example|gallery|benchmark|frontend|" r"javascript|typescript|readme\b",
                 query,
                 re.IGNORECASE,
             )
@@ -4425,13 +4449,15 @@ class CodeContextEngine:
         baseline_payload: dict[str, Any],
         max_files: int,
         precomputed_zoekt: list[str] | None = None,
-        hef_futures: tuple[
-            _HefQueryPlan,
-            concurrent.futures.Future[Any],
-            concurrent.futures.Future[Any],
-            concurrent.futures.Future[Any],
-        ]
-        | None = None,
+        hef_futures: (
+            tuple[
+                _HefQueryPlan,
+                concurrent.futures.Future[Any],
+                concurrent.futures.Future[Any],
+                concurrent.futures.Future[Any],
+            ]
+            | None
+        ) = None,
     ) -> dict[str, Any]:
         """Apply the V6 multi-channel fusion on top of the baseline explore result.
 
@@ -4726,7 +4752,7 @@ class CodeContextEngine:
             if _zk is not None:
                 try:
                     _zk_list = _zk.result(timeout=0.8)
-                except Exception:
+                except (TimeoutError, concurrent.futures.CancelledError):
                     _zk_list = []
             # _zk_list may have up to 96 entries (for the fusion channel).
             # Limit baseline anchors to anchor_budget to match V6 behaviour:
@@ -4745,7 +4771,7 @@ class CodeContextEngine:
                 _sem_scores = _sem.result(timeout=_sem_remaining)
                 for _f in _sem_scores:
                     _seen_anchors.setdefault(_f, None)
-            except Exception:
+            except (TimeoutError, concurrent.futures.CancelledError):
                 pass
             _pool.shutdown(wait=False)  # don't block; slow threads drain in bg
             anchor_candidates = list(_seen_anchors)
@@ -4880,7 +4906,7 @@ class CodeContextEngine:
         # timezone_name) but the gold file is the concrete backend override
         # (e.g. mysql/operations.py) which only REFERENCES that symbol.
         # Uses the intel.sqlite 'references' table which is already attached
-        # to the shared connection – no extra connection overhead.
+        # to the shared connection - no extra connection overhead.
         _ref_anchor_ids: set[str] = set()
         if not exact_hits:
             _top_sym_names = list(
@@ -4916,7 +4942,7 @@ class CodeContextEngine:
                         )
                         _ref_anchor_ids = {s.symbol_id for s in _ref_syms}
                         raw_symbols = self._dedupe_symbols(raw_symbols + _ref_syms)
-                except Exception:
+                except (KeyError, TypeError):
                     pass
         if exact_hits:
             raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
@@ -4960,9 +4986,11 @@ class CodeContextEngine:
         if _sem_scores:
             _sem_w = float(os.environ.get("ATELIER_SEMANTIC_RANK_WEIGHT", "120"))
             raw_symbols = [
-                record.model_copy(update={"score": (record.score or 0.0) + _sem_scores[record.file_path] * _sem_w})
-                if record.file_path in _sem_scores
-                else record
+                (
+                    record.model_copy(update={"score": (record.score or 0.0) + _sem_scores[record.file_path] * _sem_w})
+                    if record.file_path in _sem_scores
+                    else record
+                )
                 for record in raw_symbols
             ]
         ranked_symbols = sorted(
@@ -6283,7 +6311,7 @@ class CodeContextEngine:
                             kind=kind,
                             language=language,
                         )
-                    except Exception:
+                    except (KeyError, TypeError, ValueError):
                         pass
                 # Merge commit chunks as a third candidate source (LINEAGE-03)
                 commit_hits: list[SymbolRecord] = []
@@ -6329,8 +6357,10 @@ class CodeContextEngine:
         self._fts_doc_count_cache[version] = total
         return total
 
-    def _discriminative_fts_terms(self, conn: sqlite3.Connection, terms: list[str]) -> tuple[list[str], list[str]]:
-        """IDF pruning of FTS query terms -> (or_terms, prefix_terms).
+    def _discriminative_fts_terms(
+        self, conn: sqlite3.Connection, terms: list[str]
+    ) -> tuple[list[str], list[str], frozenset[str]]:
+        """IDF pruning of FTS query terms -> (or_terms, prefix_terms, common_terms).
 
         Tokens whose document frequency exceeds _FTS_COMMON_TERM_DF_FRACTION of the
         corpus (``get``, ``name``, ``field`` -- present in a large fraction of all
@@ -6355,10 +6385,10 @@ class CodeContextEngine:
                 seen.add(term)
                 unique.append(term)
         if not unique:
-            return [], []
+            return [], [], frozenset()
         total = self._fts_document_count(conn)
         if total <= 0:
-            return unique, unique
+            return unique, unique, frozenset()
         cap = max(_FTS_COMMON_TERM_DF_FLOOR, int(total * _FTS_COMMON_TERM_DF_FRACTION))
         try:
             # One batched vocab lookup for all terms instead of a round-trip per
@@ -6372,10 +6402,16 @@ class CodeContextEngine:
             ).fetchall()
         except sqlite3.OperationalError:
             # Vocab table unavailable (e.g. mid-migration DB) -- skip pruning.
-            return unique, unique
+            return unique, unique, frozenset()
         doc_by_term = {str(r["term"]): int(r["doc"]) if r["doc"] is not None else 0 for r in doc_rows}
         freqs: list[tuple[str, int]] = [(term, doc_by_term.get(term, 0)) for term in unique]
         df_by_term = dict(freqs)
+        # Tokens common enough that their trigram-substring scan is too costly for
+        # its marginal recall (df > _SUBSTRING_ANCHOR_DF_CAP): the substring channel
+        # skips these; FTS bm25 already indexes the whole token. See
+        # _search_symbols_local. (Distinct from the FTS OR/prefix `cap` above, which
+        # is ~10% of the corpus -- far too loose to bound a trigram scan.)
+        common_terms = frozenset(t for t, d in freqs if d > _SUBSTRING_ANCHOR_DF_CAP)
         discriminative = sorted((t for t, d in freqs if d <= cap), key=lambda t: df_by_term[t])
         if discriminative:
             # Add rarest-first until the cumulative posting-list size hits the budget.
@@ -6389,9 +6425,9 @@ class CodeContextEngine:
             # Skip prefix-expansion of 1-char terms only (``"d"*`` matches every
             # d-token); 2+ char prefixes stay (short identifiers like "fit" need them).
             prefix_terms = [t for t in kept if len(t) >= 2]
-            return kept, prefix_terms
+            return kept, prefix_terms, common_terms
         # Every token is common -- keep the single rarest so recall doesn't collapse.
-        return [min(freqs, key=lambda item: item[1])[0]], []
+        return [min(freqs, key=lambda item: item[1])[0]], [], common_terms
 
     def _search_symbols_local(
         self,
@@ -6551,7 +6587,7 @@ class CodeContextEngine:
             self._init_schema(conn)
             # IDF-pruned FTS queries: high document-frequency tokens are dropped so
             # the OR/prefix bm25 scan stays small (see _discriminative_fts_terms).
-            or_fts_terms, prefix_fts_terms = self._discriminative_fts_terms(conn, terms)
+            or_fts_terms, prefix_fts_terms, common_fts_terms = self._discriminative_fts_terms(conn, terms)
             fts_query = _fts_or_query_from_terms(or_fts_terms)
             fts_prefix_query = _fts_prefix_query_from_terms(prefix_fts_terms)
             # Exact + case-insensitive name lookup.  Split into one index-backed seek
@@ -6672,28 +6708,37 @@ class CodeContextEngine:
             )
 
         # Substring channel via trigram index (base 860).
-        if len(normalized_query_lower) >= 3:
-            _ch.append(
-                (
-                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
-                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
-                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ?)"
-                    f" ORDER BY s.file_path, s.start_line LIMIT ?",
-                    (*_base_params, substring_pattern, substring_pattern, strong_fetch_limit),
-                    4,
-                    860.0,
-                    False,
-                )
-            )
-        else:
+        # Skipped when the anchor is a COMMON whole word (df > cap): its trigram
+        # postings (common 3-grams like 'inc','ncl') are enormous, so the LIKE scans
+        # 300-500ms on linux to surface a handful of non-token substring matches --
+        # while FTS bm25 already indexes the whole token and returns it in ~15ms. The
+        # channel only earns its keep for RARE anchors, where it catches substrings
+        # the FTS tokenizer splits apart (e.g. 'mbedde' inside 'Embedder').
+        # NO intra-channel ORDER BY either: `ORDER BY file_path,start_line LIMIT n`
+        # would force a full materialize+sort before the LIMIT (another 2.7s on a
+        # common term); the outer ranker re-sorts, so per-channel order is discarded.
+        if len(normalized_query_lower) < 3:
             # <3-char queries can't use the trigram index; rare, fall back to direct scan.
             _ch.append(
                 (
                     f"SELECT *, NULL AS score FROM symbols"
                     f" WHERE {where_sql} AND"
                     f" (lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?)"
-                    f" ORDER BY file_path, start_line LIMIT ?",
+                    f" LIMIT ?",
                     (*_base_params, substring_pattern, substring_pattern, substring_pattern, strong_fetch_limit),
+                    4,
+                    860.0,
+                    False,
+                )
+            )
+        elif path_anchor not in common_fts_terms:
+            _ch.append(
+                (
+                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
+                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
+                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ?)"
+                    f" LIMIT ?",
+                    (*_base_params, substring_pattern, substring_pattern, strong_fetch_limit),
                     4,
                     860.0,
                     False,
@@ -6708,7 +6753,7 @@ class CodeContextEngine:
                     f"SELECT s.*, NULL AS score FROM symbol_trigram t"
                     f" JOIN symbols s ON s.symbol_id = t.symbol_id"
                     f" WHERE {where_sql_s} AND ({_path_like_sql})"
-                    f" ORDER BY s.file_path, s.start_line LIMIT ?",
+                    f" LIMIT ?",
                     (*_base_params, *path_patterns, strong_fetch_limit),
                     5,
                     820.0,
@@ -6719,9 +6764,7 @@ class CodeContextEngine:
             _path_like_sql = " OR ".join("lower(file_path) LIKE ?" for _ in path_patterns)
             _ch.append(
                 (
-                    f"SELECT *, NULL AS score FROM symbols"
-                    f" WHERE {where_sql} AND ({_path_like_sql})"
-                    f" ORDER BY file_path, start_line LIMIT ?",
+                    f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND ({_path_like_sql}) LIMIT ?",
                     (*_base_params, *path_patterns, strong_fetch_limit),
                     5,
                     820.0,
@@ -6732,10 +6775,20 @@ class CodeContextEngine:
         # Submit all channels in parallel; collect in submission order so that
         # higher-priority channels (AND > OR > prefix) are merged first.
         _db = self.db_path
+        # Supplement channels (rank >= 4: substring + path trigram) get a tight
+        # deadline so a common-gram scan self-aborts instead of dominating latency;
+        # the precise FTS/exact channels (rank < 4) keep the full budget.
         _futures = [
-            _SEARCH_CHANNEL_EXECUTOR.submit(_run_search_channel, _db, sql, ch_params) for sql, ch_params, _, _, _ in _ch
+            _SEARCH_CHANNEL_EXECUTOR.submit(
+                _run_search_channel,
+                _db,
+                sql,
+                ch_params,
+                _SUPPLEMENT_CHANNEL_DEADLINE_S if _rank >= 4 else _SEARCH_CHANNEL_DEADLINE_S,
+            )
+            for sql, ch_params, _rank, _, _ in _ch
         ]
-        for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch):
+        for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch, strict=False):
             try:
                 # 8 s timeout: a timed-out channel contributes no rows (graceful
                 # degradation) instead of blocking the caller indefinitely.  Normal
@@ -6746,7 +6799,7 @@ class CodeContextEngine:
                     base=_base_score,
                     use_row_score=_use_score,
                 )
-            except Exception:
+            except (TimeoutError, ValueError):
                 pass
 
         ranked = sorted(
@@ -6899,7 +6952,7 @@ class CodeContextEngine:
                         "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
                         (self._ann_symbol_index.repo_id, embedder.name, embedding_dim),
                     ).fetchone()[0]
-                except Exception:
+                except (KeyError, TypeError, ValueError):
                     vec_count = 0
 
             if vec_count > _ANN_CACHE_LIMIT:
@@ -6994,6 +7047,50 @@ class CodeContextEngine:
                 if len(results) >= limit:
                     break
         return results
+
+    def warm_query_path(self) -> dict[str, float]:
+        """Warm every one-time cost the first live query would otherwise pay.
+
+        - OS page cache: on a large cold DB the lexical structures (symbols /
+          symbol_trigram / symbol_fts / file_line_fts) are spread thin across
+          the file, and the first query pages them in from disk (measured 33s
+          cold vs <0.4s warm on an 11.9GB DB). No-match probes touch exactly
+          the structures the real channels scan; the page cache is
+          kernel-global, so every process sharing the DB benefits.
+        - centrality map: load the persisted map (or compute+persist once).
+        - ANN vector matrix: resident-cache load via ``prewarm_semantic_matrix``
+          (no-op without an embedder or above the cache cap).
+
+        Fail-open, read-only apart from centrality persistence, safe from a
+        background thread at server startup. Returns per-step seconds.
+        """
+        timings: dict[str, float] = {}
+        _t0 = time.perf_counter()
+        try:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5.0)
+            try:
+                for probe_sql in (
+                    "SELECT COUNT(*) FROM symbols WHERE symbol_name LIKE '%zqx9zzz%'",
+                    "SELECT COUNT(*) FROM symbol_trigram WHERE name LIKE '%zqx9zzz%'",
+                    "SELECT COUNT(*) FROM symbol_fts WHERE symbol_fts MATCH 'zqx9zzz'",
+                    "SELECT COUNT(*) FROM file_line_fts WHERE file_line_fts MATCH 'zqx9zzz'",
+                ):
+                    with contextlib.suppress(sqlite3.Error):
+                        conn.execute(probe_sql).fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            logger.debug("lexical page-cache warm skipped", exc_info=True)
+        timings["page_cache_s"] = round(time.perf_counter() - _t0, 3)
+        _t0 = time.perf_counter()
+        with contextlib.suppress(Exception):
+            self._symbol_centrality_map()
+        timings["centrality_s"] = round(time.perf_counter() - _t0, 3)
+        _t0 = time.perf_counter()
+        with contextlib.suppress(Exception):
+            self.prewarm_semantic_matrix()
+        timings["ann_matrix_s"] = round(time.perf_counter() - _t0, 3)
+        return timings
 
     def prewarm_semantic_matrix(self) -> bool:
         """Load the ANN vector matrix into the in-memory cache ahead of the first
@@ -7909,6 +8006,31 @@ class CodeContextEngine:
             return token.group(1)
         return query
 
+    _zoekt_ready_waited: bool = False
+
+    def _zoekt_wait_ready_once(self, supervisor: Any) -> None:
+        """Bounded first-use wait for the zoekt webserver (once per engine).
+
+        The hot query path never blocks on startup, so queries issued while
+        index shards are still loading silently lose the entire Zoekt channel
+        -- a recall hit, not just latency. A bounded wait exactly once per
+        engine converts that silent quality loss into a small first-query
+        delay; after the first attempt (ready or not) searches never block
+        again and keep the existing degrade-to-empty behaviour.
+        Budget via ATELIER_ZOEKT_READY_TIMEOUT_S (default 5s, 0 disables).
+        """
+        if self._zoekt_ready_waited:
+            return
+        self._zoekt_ready_waited = True
+        try:
+            timeout = float(os.environ.get("ATELIER_ZOEKT_READY_TIMEOUT_S", "5.0"))
+        except ValueError:
+            timeout = 5.0
+        if timeout <= 0:
+            return
+        with contextlib.suppress(Exception):
+            supervisor.server.wait_until_searchable(timeout)
+
     def _zoekt_candidate_files(
         self,
         query: str,
@@ -7929,6 +8051,7 @@ class CodeContextEngine:
             supervisor = get_zoekt_supervisor(self.repo_root)
             if not supervisor.should_route(search_path):
                 return []
+            self._zoekt_wait_ready_once(supervisor)
             result = supervisor.search(
                 query=normalized_query,
                 search_path=search_path,
@@ -8302,9 +8425,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -8696,8 +8817,62 @@ class CodeContextEngine:
         self._init_schema(conn)
         return conn
 
+    def _schema_current(self, conn: sqlite3.Connection) -> bool:
+        """Read-only probe: True when the schema is fully created AND migrated.
+
+        Lets ``_init_schema`` skip its DDL/write path entirely, so pure-read
+        engines (benchmark harnesses, read-only MCP tools on provisioned DBs)
+        never take a write lock on a live DB another process may be writing.
+        Mirrors every migration below -- any miss falls through to the full
+        write path.
+        """
+        try:
+            objects = {
+                str(r[0])
+                for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','index')").fetchall()
+            }
+            required = {
+                "engine_state",
+                "files",
+                "symbols",
+                "symbol_fts",
+                "symbol_fts_vocab",
+                "symbol_trigram",
+                "imports",
+                "commit_chunks",
+                # newest indexes stand in for the full index set
+                "idx_symbols_repo_lower_name",
+                "idx_symbols_repo_kind",
+            }
+            if not required <= objects:
+                return False
+            # old monolithic tables must have been migrated out of the main DB
+            if objects & {"references", "call_edges", "centrality_map", "file_line_fts"}:
+                return False
+            if "mtime_ns" not in {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}:
+                return False
+            if "signature" in {str(row[1]) for row in conn.execute("PRAGMA table_info(symbol_trigram)")}:
+                return False
+            if (
+                conn.execute("SELECT 1 FROM symbol_trigram LIMIT 1").fetchone() is None
+                and conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone() is not None
+            ):
+                return False  # trigram backfill pending
+            if conn.execute("SELECT 1 FROM engine_state WHERE key = 'index_version'").fetchone() is None:
+                return False
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone() is None:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    if conn.execute("SELECT 1 FROM call_edges LIMIT 1").fetchone() is not None:
+                        return False  # one-time ANALYZE pending
+            return True
+        except sqlite3.Error:
+            return False
+
     def _init_schema(self, conn: sqlite3.Connection) -> None:
         if self._schema_ready:
+            return
+        if self._schema_current(conn):
+            self._schema_ready = True
             return
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS engine_state (
@@ -8768,7 +8943,7 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_lower_name ON symbols(repo_id, lower(symbol_name));
             -- Covers _complete_sibling_families: WHERE repo_id=? AND lower(kind)=? ...
             -- instr(lower(symbol_name),?) scans only the matching-kind rows rather than
-            -- the whole repo, cutting ~200K-row scans to ~20K (10× for 10 kinds).
+            -- the whole repo, cutting ~200K-row scans to ~20K (10x for 10 kinds).
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_kind ON symbols(repo_id, lower(kind));
             CREATE INDEX IF NOT EXISTS idx_imports_target ON imports(repo_id, target_file);
             CREATE TABLE IF NOT EXISTS commit_chunks (
@@ -9150,7 +9325,7 @@ class CodeContextEngine:
     def badge_counts_batch(self, symbol_names: list[str]) -> dict[str, dict[str, int]]:
         """Return caller/callee/usage counts for multiple symbols in 3 queries.
 
-        Used by the grep badge provider to replace 3×N serial queries with 3
+        Used by the grep badge provider to replace 3xN serial queries with 3
         bulk ``IN (?)`` queries. Returns a mapping of symbol_name →
         {callers: N, callees: N, usages: N}; missing symbols map to all zeros.
         Fail-open: any error returns the zero-filled map so grep never breaks.
@@ -9779,7 +9954,6 @@ class CodeContextEngine:
                         SELECT s.*, NULL AS score
                         FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
                         WHERE s.repo_id = ? AND lower(s.kind) IN ({placeholders}) AND t.name LIKE ?
-                        ORDER BY s.file_path, s.start_line
                         LIMIT ?
                         """,
                         (self.repo_id, *batch_kinds, like_pat, len(batch_kinds) * per_family_sql_limit),
@@ -11045,7 +11219,7 @@ class CodeContextEngine:
         # estimator jumps by 1 token, so the fixed point X + f(X) = full_total
         # may not exist as an integer and the naive iteration oscillates forever.
         # Omitting tokens_saved from the probe breaks the cycle with at most a
-        # 1–2 token error on an informational field — acceptable.
+        # 1-2 token error on an informational field -- acceptable.
         probe = {k: v for k, v in finalized.items() if k != "tokens_saved"}
         total_tokens = self._compute_total_tokens(probe)
         finalized["tokens_saved"] = max(base_tokens_saved, full_total_tokens - total_tokens)
@@ -12040,7 +12214,7 @@ class CodeContextEngine:
             from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 
             get_zoekt_supervisor(self.repo_root).refresh_index_if_head_changed()
-        except Exception:
+        except (ImportError, OSError, ValueError):
             logging.debug("zoekt autosync refresh skipped", exc_info=True)
 
     def _parse_autosync_poll_ms(self, raw_value: str | None) -> int:
@@ -12168,7 +12342,7 @@ class CodeContextEngine:
                             except OSError:
                                 pass
                     return
-        except Exception:
+        except (OSError, ValueError):
             logger.debug("gitignore reload check failed", exc_info=True)
 
     def _notify_watcher_event(self) -> None:

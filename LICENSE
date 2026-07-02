@@ -6,7 +6,10 @@ FSL-1.1-ALv2
 
 ## Notice
 
-Copyright 2026 Pankaj Kumar
+Copyright 2026 Pankaj Kumar (d/b/a Atelier)
+
+The `pro/` directory (the `atelier_pro` overlay) is NOT licensed under these
+Terms. It is proprietary and licensed separately under `pro/LICENSE`.
 
 ## Terms and Conditions
 

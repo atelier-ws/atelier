@@ -129,7 +129,15 @@ def render_bootstrap_context(memory_store: MemoryStore, repo_id: str) -> tuple[s
 
 def build_bootstrap_plan(repo_root: str | Path) -> BootstrapPlan:
     root = Path(repo_root).resolve()
-    engine = CodeContextEngine(root)
+    # One-shot planning call (invoked from the background bootstrap job and
+    # benchmark preseeding, never a long-lived interactive session): no need
+    # for a live autosync file-watcher thread, and leaving one running past
+    # this function's return leaks a watchdog.Observer that has been
+    # observed thrashing (inotify watch-limit exhaustion -> polling fallback
+    # -> native tree-sitter Node objects dropped cross-thread) for the rest
+    # of the process's life. Same reasoning as the CLI's one-shot engine
+    # (gateway/cli/commands/code.py's _code_context_engine).
+    engine = CodeContextEngine(root, autosync_enabled=False)
     engine.index_repo()
     repo_map = engine.repo_map(budget_tokens=1200)
     outline_payload = engine.file_outline(limit=400, auto_index=False)

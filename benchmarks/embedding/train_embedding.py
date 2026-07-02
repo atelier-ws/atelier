@@ -76,7 +76,7 @@ def embed_texts(
     # BGE models need the instruction prefix for queries, but not for docs.
     # Since our test set mixes queries and docs, we embed raw (the instruction
     # prefix should only be applied at query time during eval, not during training).
-    # Here we embed without prefix — consistency with eval_semantic_mrr.py.
+    # Here we embed without prefix for training/eval consistency.
     embeddings = model.encode(
         texts, batch_size=batch_size, normalize_embeddings=True, show_progress_bar=len(texts) > 100
     )
@@ -94,7 +94,7 @@ def evaluate_mrr(
 ) -> dict:
     """Compute MRR, hit@1, hit@3 on the test set.
 
-    This mirrors eval_semantic_mrr.py: embed the corpus once, embed each query,
+    This embeds the corpus once, embeds each query,
     compute cosine similarity via dot-product (since vectors are normalized),
     rank corpus by similarity, and score rank-of-gold-file.
 
@@ -214,12 +214,20 @@ def main():
         "--batch-size", type=int, default=4, help="Batch size for training (default: 4 — reduce further if OOM)"
     )
     parser.add_argument("--warmup-steps", type=int, default=500, help="Warmup steps (default: 500)")
-    parser.add_argument("--learning-rate", type=float, default=1e-6,
-                        help="Peak learning rate (default: 1e-6 — conservative for large pre-trained models; "
-                             "use 2e-5 only for small models like bge-small-en-v1.5)")
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=1e-6,
+        help="Peak learning rate (default: 1e-6 — conservative for large pre-trained models; "
+        "use 2e-5 only for small models like bge-small-en-v1.5)",
+    )
     parser.add_argument("--device", default=None, help="Device: cuda, cpu, or auto (default: auto)")
-    parser.add_argument("--max-seq", type=int, default=512,
-                        help="Max sequence length during training (caps activation memory; default 512).")
+    parser.add_argument(
+        "--max-seq",
+        type=int,
+        default=512,
+        help="Max sequence length during training (caps activation memory; default 512).",
+    )
     parser.add_argument(
         "--compare-baseline", action="store_true", help="Also eval the un-fine-tuned model for comparison"
     )

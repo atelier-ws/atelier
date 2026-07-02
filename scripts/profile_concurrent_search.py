@@ -67,7 +67,7 @@ def _run_one_task(task: tuple[str, str, str]) -> float:
 
     from atelier.core.capabilities.code_context.engine import CodeContextEngine, _default_db_path
 
-    prefix, q, ws_str = task
+    _prefix, q, ws_str = task
     ws = Path(ws_str)
     db = _default_db_path(ws)
     eng = CodeContextEngine(repo_root=ws, db_path=db)

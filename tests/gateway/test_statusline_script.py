@@ -64,6 +64,48 @@ def _payload() -> dict[str, object]:
     }
 
 
+def test_statusline_prefers_fresh_mcp_sidecar_in_canonical_session_dir(tmp_path: Path) -> None:
+    """The MCP server writes statusline_segment under the date+host partitioned
+    session dir (sessions/YYYY/MM/DD/<host>/<id>/); the script must find it
+    there — the flat sessions/<id>/ path is only a legacy fallback."""
+    from atelier.core.foundation.paths import session_dir
+
+    seg_dir = session_dir(tmp_path, "claude", "s1")
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | SIDECAR-SEGMENT-MARKER", encoding="utf-8")
+
+    output = _run_statusline(tmp_path, _payload())
+    assert "SIDECAR-SEGMENT-MARKER" in output
+
+
+def test_statusline_rotates_multiframe_sidecar_by_wall_clock(tmp_path: Path) -> None:
+    """statusline_frames (all frames, one per line) is preferred over the
+    legacy single-frame statusline_segment, and the shown frame is one of the
+    file's lines — picked by wall clock, so rotation continues even when the
+    sidecar is not rewritten between renders."""
+    from atelier.core.foundation.paths import session_dir
+
+    seg_dir = session_dir(tmp_path, "claude", "s1")
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | STALE-SINGLE-FRAME", encoding="utf-8")
+    os.utime(seg_dir / "statusline_segment", (1, 1))  # ancient — must lose to frames
+    frames = [" | FRAME-ALPHA", " | FRAME-BETA", " | FRAME-GAMMA"]
+    (seg_dir / "statusline_frames").write_text("\n".join(frames) + "\n", encoding="utf-8")
+
+    output = _run_statusline(tmp_path, _payload())
+    assert "STALE-SINGLE-FRAME" not in output
+    assert sum(marker in output for marker in ("FRAME-ALPHA", "FRAME-BETA", "FRAME-GAMMA")) == 1
+
+
+def test_statusline_falls_back_to_legacy_flat_sidecar(tmp_path: Path) -> None:
+    seg_dir = tmp_path / "sessions" / "s1"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    (seg_dir / "statusline_segment").write_text(" | FLAT-SEGMENT-MARKER", encoding="utf-8")
+
+    output = _run_statusline(tmp_path, _payload())
+    assert "FLAT-SEGMENT-MARKER" in output
+
+
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
     # MCP dispatcher writes one row per tool call to the canonical session dir.
     _seed_savings_sidecar(tmp_path, "s1", {"tool": "search", "tokens": 12_000, "calls": 4})

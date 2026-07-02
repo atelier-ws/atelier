@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from atelier.core.foundation._graph import Graph as _Graph
+from atelier.core.foundation._graph import pagerank as _pagerank
 from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import (
@@ -32,9 +34,6 @@ from atelier.infra.storage.vector import (
 )
 
 from .dead_ends import DeadEndTracker
-
-from atelier.core.foundation._graph import Graph as _Graph
-from atelier.core.foundation._graph import pagerank as _pagerank
 
 nx: Any = None  # kept as sentinel; callers guard on `nx is None`
 

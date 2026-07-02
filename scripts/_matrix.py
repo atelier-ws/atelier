@@ -90,8 +90,10 @@ def centrality(channel_lists):
 
 
 # ---------------- WIRING strategies: query -> final ranked files ----------------
-IDENT = lambda q: q.replace("_", "").isalnum() and " " not in q
-REGEX = lambda q: any(c in q for c in "|()[]\\.*+?^$")
+def IDENT(q):
+    return q.replace("_", "").isalnum() and " " not in q
+def REGEX(q):
+    return any(c in q for c in "|()[]\\.*+?^$")
 
 
 def w_ripgrep_only(q, rank):

@@ -13,6 +13,10 @@
 set -u
 cd /home/pankaj/Projects/leanchain/atelier
 set -a; . benchmarks/harbor/.env; set +a
+# Reproducibility: record the exact source commit (reported as the agent
+# version) and pass the model explicitly so harbor's agent_info carries it.
+export ATELIER_BENCH_COMMIT=$(git rev-parse --short HEAD)
+MODEL="anthropic/${ATELIER_BENCH_MODEL:-claude-opus-4-8}"
 LOG=/tmp/tb21_driver.log
 MOUNTS='[{"type":"bind","source":"/home/pankaj/Projects/leanchain/atelier","target":"/atelier","read_only":true},{"type":"bind","source":"/tmp/avbuild/atelier-bundle.tar.gz","target":"/atelier-bundle.tar.gz","read_only":true}]'
 AIP=benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent
@@ -55,7 +59,7 @@ run_rep(){
     say "START $label fresh (extra='$extra')"
     set -a; . benchmarks/harbor/.env; set +a
     uv run --no-sync harbor run -d terminal-bench/terminal-bench-2-1 \
-      --agent-import-path "$AIP" --mounts "$MOUNTS" \
+      --agent-import-path "$AIP" --mounts "$MOUNTS" -m "$MODEL" \
       -k 1 -n 4 -r 2 $extra \
       -o "$outdir" -y >>"$LOG" 2>&1
     jd=$(ls -dt "$outdir"/*/ 2>/dev/null | head -1)

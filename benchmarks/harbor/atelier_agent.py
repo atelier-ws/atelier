@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
+from harbor.agents.installed.claude_code import ClaudeCode
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
@@ -51,8 +52,7 @@ _DISALLOWED_TOOLS = os.environ.get(
     "AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch"
     # plugin tools are namespaced mcp__plugin_<plugin>_<server>__<tool>; list both
     # the bare and the plugin-loaded name so the web fetch is removed either way.
-    " mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch"
-    " Workflow ScheduleWakeup",
+    " mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch" " Workflow ScheduleWakeup",
 )
 
 # Path inside the container where atelier writes its run log
@@ -145,7 +145,11 @@ class AtelierHarborAgent(BaseInstalledAgent):
             logs_dir = _Path("/tmp/atelier-harbor-logs")
         super().__init__(logs_dir=logs_dir, **kwargs)
         self._bench_mode = bench_mode
-        self._model = model or _DEFAULT_MODEL
+        # Operational model: explicit kwarg > harbor's -m (provider/model form,
+        # parsed by BaseAgent) > env default. Passing -m keeps harbor's recorded
+        # agent_info.model consistent with the model actually run (a leaderboard
+        # validation requirement).
+        self._model = model or self._parsed_model_name or _DEFAULT_MODEL
 
     @staticmethod
     def name() -> str:
@@ -267,6 +271,11 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
     # the host trial dir (self.logs_dir); /logs root is NOT agent-writable.
     _CLAUDE_LOG = "/logs/agent/claude-run.json"
 
+    # populate_context_post_run writes agent/trajectory.json in ATIF format
+    # (required for every passing trial on the TB-2.1 leaderboard). Validate the
+    # generated file on a pilot trial before uploading a full job.
+    SUPPORTS_ATIF: bool = True
+
     # Per-trial OAuth token, assigned from the weighted token pool in run() when
     # two subscriptions are configured; empty -> fall back to the single
     # CLAUDE_CODE_OAUTH_TOKEN env var.
@@ -275,6 +284,12 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
     @staticmethod
     def name() -> str:
         return "atelier-claude-code"
+
+    def version(self) -> str | None:
+        # The bundle installs atelier from the mounted working tree; report the
+        # actual git commit (exported by the driver as ATELIER_BENCH_COMMIT)
+        # instead of the meaningless "latest".
+        return os.environ.get("ATELIER_BENCH_COMMIT") or super().version()
 
     @property
     def _agent_env(self) -> dict[str, str]:
@@ -327,12 +342,15 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
                 "echo node_retry_$i; sleep $((i*5)); done"
             ),
         )
-        # Install Claude Code CLI
+        # Install Claude Code CLI. Pin via ATELIER_BENCH_CLAUDE_CODE_VERSION for
+        # reproducible leaderboard runs; unset -> latest.
+        cc_ver = os.environ.get("ATELIER_BENCH_CLAUDE_CODE_VERSION", "")
+        cc_pkg = f"@anthropic-ai/claude-code@{cc_ver}" if cc_ver else "@anthropic-ai/claude-code"
         await self.exec_as_root(
             environment,
             command=(
                 "npm config set fetch-retries 5; "
-                "i=0; while :; do npm install -g @anthropic-ai/claude-code && break; "
+                f"i=0; while :; do npm install -g {cc_pkg} && break; "
                 "i=$((i+1)); [ $i -ge 5 ] && { echo npm_install_failed_after_$i; exit 1; }; "
                 "echo npm_retry_$i; sleep $((i*5)); done"
             ),
@@ -394,10 +412,11 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         oauth_token = await token_queue.get() if token_queue is not None else None
         if oauth_token is not None:
             self._oauth_token = oauth_token
-        # Export env into the bash -c subshell. A leading `VAR=val` command prefix
-        # would bind only to the first statement, and we run several below, so use
-        # `export` for each (exec_as_root does not forward an env= dict).
-        env_exports = " ".join(f"export {k}={shlex.quote(v)};" for k, v in self._agent_env.items())
+        # Env (including the OAuth token) goes through exec's env= dict, NEVER
+        # the command string: harbor's BaseInstalledAgent._exec logs every
+        # command verbatim ("Running command: ...") into trial.log/job.log,
+        # which `harbor upload` makes public. The env dict is only attached as
+        # logging `extra`, which harbor's default log formatter drops.
         # bench_mode="off" -> vanilla claude-code baseline (no Atelier plugin),
         # making the plugin the ONLY variable vs the "on" arm. Select the
         # baseline at run time with `--ak bench_mode=off`.
@@ -437,7 +456,7 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             )
         )
         inner = (
-            env_exports + " " + prewarm + f"claude -p {escaped} {model_flag} {effort_flag} "
+            prewarm + f"claude -p {escaped} {model_flag} {effort_flag} "
             # stream-json (requires --verbose) captures the full turn-by-turn
             # trajectory -- every assistant turn + MCP tool call -- to the tee'd
             # log, not just the final result blob. Needed for leaderboard
@@ -448,7 +467,13 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             f"{plugin_flags}"
             # --disallowedTools LAST (variadic): no-ask + no-web for the bench.
             f"--disallowedTools {_DISALLOWED_TOOLS} "
-            f"2>&1 | tee {log}"
+            f"2>&1 | tee {log}; rc=$?; "
+            # Stage ONLY the Claude session JSONLs (not the whole config dir --
+            # it can hold credentials) in the layout harbor's ATIF converter
+            # expects: <logs>/sessions/projects/<project>/*.jsonl.
+            "mkdir -p /logs/agent/sessions/projects && "
+            "cp -r /root/.claude-bench/projects/. /logs/agent/sessions/projects/ 2>/dev/null; "
+            "exit $rc"
         )
         # Run as root directly (IS_SANDBOX=1 in _agent_env lets claude accept
         # bypassPermissions as root). Root matches the verifier, so system
@@ -458,42 +483,88 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             await self.exec_as_root(
                 environment,
                 command=cmd,
+                env=self._agent_env,
             )
         finally:
             if token_queue is not None and oauth_token is not None:
                 token_queue.put_nowait(oauth_token)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
-        """Parse the claude --output-format stream-json log for token/cost.
+        """Fill token/cost totals and write the ATIF trajectory.
 
         claude writes a JSONL stream to /logs/agent/claude-run.json in the
         container (one JSON object per line: an init line, the assistant/user
-        turns + tool calls = the trajectory, then a final type="result" object
-        carrying usage + total_cost_usd). harbor collects /logs/agent ->
-        self.logs_dir on the host. Scan from the end for the result line; this
-        also still handles the older single-object --output-format json log.
+        turns + tool calls, then a final type="result" object carrying usage +
+        total_cost_usd). harbor collects /logs/agent -> self.logs_dir on the
+        host, including the session JSONLs run() staged under sessions/.
+        """
+        result_line = self._parse_result_line()
+        self._write_atif_trajectory(result_line)
+        if result_line is None:
+            return
+        u = result_line.get("usage", {}) or {}
+        context.n_input_tokens = int(u.get("input_tokens", 0) or 0)
+        context.n_cache_tokens = int(u.get("cache_read_input_tokens", 0) or 0)
+        context.n_output_tokens = int(u.get("output_tokens", 0) or 0)
+        context.cost_usd = float(result_line.get("total_cost_usd", 0.0) or 0.0)
+
+    def _parse_result_line(self) -> dict[str, Any] | None:
+        """Last type="result" object from the host-collected claude-run.json.
+
+        Scans from the end; also still handles the older single-object
+        --output-format json log.
         """
         host_log = os.path.join(str(self.logs_dir), "claude-run.json")
         if not os.path.exists(host_log):
-            return
+            return None
         try:
             with open(host_log, encoding="utf-8") as fh:
                 lines = [ln.strip() for ln in fh if ln.strip()]
         except OSError:
-            return
+            return None
         for line in reversed(lines):
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if obj.get("type") != "result" and "total_cost_usd" not in obj:
-                continue
-            u = obj.get("usage", {}) or {}
-            context.n_input_tokens = int(u.get("input_tokens", 0) or 0)
-            context.n_cache_tokens = int(u.get("cache_read_input_tokens", 0) or 0)
-            context.n_output_tokens = int(u.get("output_tokens", 0) or 0)
-            context.cost_usd = float(obj.get("total_cost_usd", 0.0) or 0.0)
+            if obj.get("type") == "result" or "total_cost_usd" in obj:
+                return obj
+        return None
+
+    def _write_atif_trajectory(self, result_line: dict[str, Any] | None) -> None:
+        """Convert the staged Claude session into agent/trajectory.json (ATIF).
+
+        run() copies CLAUDE_CONFIG_DIR/projects -> /logs/agent/sessions/projects,
+        the exact layout harbor's built-in ClaudeCode converter expects, so the
+        conversion is delegated to that implementation via a shim instance (it
+        only reads logs_dir/model_name/logger). The TB-2.1 leaderboard requires
+        this file for every passing trial.
+        """
+        shim = ClaudeCode(logs_dir=self.logs_dir, model_name=self.model_name)
+        session_dir = shim._get_session_dir()
+        if session_dir is None:
+            self.logger.debug("No staged Claude session found; skipping trajectory")
             return
+        try:
+            trajectory = shim._convert_events_to_trajectory(session_dir)
+        except Exception as exc:
+            self.logger.debug(f"ATIF conversion failed: {exc}")
+            return
+        if trajectory is None:
+            return
+        # The upstream converter takes total cost from its own stream log name
+        # (claude-code.txt); ours is claude-run.json, so patch the total in.
+        cost = float((result_line or {}).get("total_cost_usd", 0.0) or 0.0)
+        if trajectory.final_metrics is not None and not trajectory.final_metrics.total_cost_usd and cost:
+            trajectory.final_metrics.total_cost_usd = cost
+        trajectory_path = Path(str(self.logs_dir)) / "trajectory.json"
+        try:
+            trajectory_path.write_text(
+                json.dumps(trajectory.to_json_dict(), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            self.logger.debug(f"Failed writing {trajectory_path}: {exc}")
 
 
 # ── Bedrock arm ───────────────────────────────────────────────────────────────

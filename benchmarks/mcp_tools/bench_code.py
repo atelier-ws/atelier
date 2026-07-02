@@ -17,6 +17,7 @@ for nearly all symbol-level operations.
 from __future__ import annotations
 
 import contextlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -34,112 +35,127 @@ from benchmarks.mcp_tools.reporter import render_summary
 
 @pytest.fixture(scope="session")
 def code_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Point workspace reads at the repo while keeping runtime state isolated."""
+    """Point workspace reads at the repo while keeping runtime state isolated.
+
+    Code-intel indexing is expensive to build cold (10-30s+ for this repo);
+    point ATELIER_ROOT at the real ``~/.atelier`` (mirroring bench_savings.py's
+    ``scip_workspace`` fixture) so the index persists across benchmark
+    invocations instead of rebuilding from a fresh temp dir on every run.
+    """
+    real_root = Path(os.environ.get("ATELIER_ROOT") or Path.home() / ".atelier")
     root = tmp_path_factory.mktemp("bench_code")
     repo_root = Path(__file__).resolve().parent.parent.parent
     configure_benchmark_runtime(root, workspace_root=repo_root)
+    os.environ["ATELIER_ROOT"] = str(real_root)
     return repo_root
+
+
+def code_tool_dispatch(args: dict[str, Any]) -> Any:
+    """Dispatch a code-intel benchmark case to its public MCP tool.
+
+    Shared by the pytest suite (``code_tool_fn`` below) and the CLI/CSV
+    exporter (``export_public_mcp_csv.py``) so the two entry points can't
+    drift out of sync with each other or with the real tool surface.
+    """
+    from atelier.gateway.adapters import mcp_server
+
+    payload = dict(args)
+    tool_name = _tool_name_for_case_args(payload)
+    payload.pop("_tool", None)
+    if tool_name == "search":
+        # Symbol/search via the _op_search engine (the
+        # `symbols` tool face was removed; `search` mode='symbol' and this
+        # benchmark both route through _op_search, so the measured tokens
+        # are identical to the former `symbols` tool).
+        return mcp_server._op_search(
+            **{
+                key: value
+                for key, value in payload.items()
+                if key
+                in {
+                    "query",
+                    "mode",
+                    "intent",
+                    "view",
+                    "kind",
+                    "language",
+                    "snippet",
+                    "snippet_lines",
+                    "file_glob",
+                    "scope",
+                    "since",
+                    "touched_by",
+                    "provenance",
+                    "seed_files",
+                    "max_symbols",
+                    "depth",
+                    "limit",
+                    "budget_tokens",
+                    "repo",
+                    "repo_root",
+                    "render_compact",
+                }
+            }
+        )
+    if tool_name == "node":
+        # `node` is reached via the `relations` drill-in tool (kind=self) --
+        # the agent's only public path for a single definition now. It
+        # delegates to the same _op_node wrapper, so the payload (and token
+        # count) is identical to the former standalone tool.
+        return mcp_server.tool_relations({"kind": "self", "symbol": _symbol_arg(payload)})
+    # callers/callees/usages are reached via the `relations` tool -- the
+    # agent's only public path now. It delegates to the same _op_* wrapper,
+    # so the payload (and token count) is identical to the former standalone
+    # tools; this measures what the agent can call. (grep shows the COUNTS
+    # inline; relations expands one count into the list.)
+    if tool_name == "callers":
+        return mcp_server.tool_relations(
+            {
+                "kind": "callers",
+                "symbol": _symbol_arg(payload),
+                "depth": int(payload.get("depth", 1)),
+                "limit": int(payload.get("limit", 20)),
+            }
+        )
+    if tool_name == "callees":
+        return mcp_server.tool_relations(
+            {
+                "kind": "callees",
+                "symbol": _symbol_arg(payload),
+                "depth": int(payload.get("depth", 1)),
+                "limit": int(payload.get("limit", 20)),
+            }
+        )
+    if tool_name == "usages":
+        return mcp_server.tool_relations(
+            {
+                "kind": "usages",
+                "symbol": _symbol_arg(payload),
+                "limit": int(payload.get("limit", 20)),
+            }
+        )
+    if tool_name == "explore":
+        # Concept-mode explore has no single-tool agent surface after the
+        # explore fold; measure the engine wrapper grep's relations route to.
+        return mcp_server._op_explore(
+            query=str(payload["query"]),
+            seed_files=payload.get("seed_files"),
+            max_files=int(payload.get("max_files", 8)),
+        )
+    if tool_name == "pattern":
+        return mcp_server.tool_pattern(
+            {
+                key: value
+                for key, value in payload.items()
+                if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
+            }
+        )
+    raise ValueError(f"unsupported code-intel benchmark tool: {tool_name}")
 
 
 @pytest.fixture(scope="session")
 def code_tool_fn() -> Any:
-    from atelier.gateway.adapters import mcp_server
-
-    def _call(args: dict[str, Any]) -> Any:
-        payload = dict(args)
-        tool_name = _tool_name_for_case_args(payload)
-        payload.pop("_tool", None)
-        if tool_name == "search":
-            # Symbol/search via the _op_search engine (the
-            # `symbols` tool face was removed; `search` mode='symbol' and this
-            # benchmark both route through _op_search, so the measured tokens
-            # are identical to the former `symbols` tool).
-            return mcp_server._op_search(
-                **{
-                    key: value
-                    for key, value in payload.items()
-                    if key
-                    in {
-                        "query",
-                        "mode",
-                        "intent",
-                        "view",
-                        "kind",
-                        "language",
-                        "snippet",
-                        "snippet_lines",
-                        "file_glob",
-                        "scope",
-                        "since",
-                        "touched_by",
-                        "provenance",
-                        "seed_files",
-                        "max_symbols",
-                        "depth",
-                        "limit",
-                        "budget_tokens",
-                        "repo",
-                        "repo_root",
-                        "render_compact",
-                    }
-                }
-            )
-        if tool_name == "node":
-            # `node` is reached via the `relations` drill-in tool (kind=self) --
-            # the agent's only public path for a single definition now. It
-            # delegates to the same _op_node wrapper, so the payload (and token
-            # count) is identical to the former standalone tool.
-            return mcp_server.tool_relations({"kind": "self", "symbol": _symbol_arg(payload)})
-        # callers/callees/usages are reached via the `relations` tool -- the
-        # agent's only public path now. It delegates to the same _op_* wrapper,
-        # so the payload (and token count) is identical to the former standalone
-        # tools; this measures what the agent can call. (grep shows the COUNTS
-        # inline; relations expands one count into the list.)
-        if tool_name == "callers":
-            return mcp_server.tool_relations(
-                {
-                    "kind": "callers",
-                    "symbol": _symbol_arg(payload),
-                    "depth": int(payload.get("depth", 1)),
-                    "limit": int(payload.get("limit", 20)),
-                }
-            )
-        if tool_name == "callees":
-            return mcp_server.tool_relations(
-                {
-                    "kind": "callees",
-                    "symbol": _symbol_arg(payload),
-                    "depth": int(payload.get("depth", 1)),
-                    "limit": int(payload.get("limit", 20)),
-                }
-            )
-        if tool_name == "usages":
-            return mcp_server.tool_relations(
-                {
-                    "kind": "usages",
-                    "symbol": _symbol_arg(payload),
-                    "limit": int(payload.get("limit", 20)),
-                }
-            )
-        if tool_name == "explore":
-            # Concept-mode explore has no single-tool agent surface after the
-            # explore fold; measure the engine wrapper grep's relations route to.
-            return mcp_server._op_explore(
-                query=str(payload["query"]),
-                seed_files=payload.get("seed_files"),
-                max_files=int(payload.get("max_files", 8)),
-            )
-        if tool_name == "pattern":
-            return mcp_server.tool_pattern(
-                {
-                    key: value
-                    for key, value in payload.items()
-                    if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
-                }
-            )
-        raise ValueError(f"unsupported code-intel benchmark tool: {tool_name}")
-
-    return _call
+    return code_tool_dispatch
 
 
 @pytest.fixture(scope="session")

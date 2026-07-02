@@ -2,42 +2,6 @@
 
 <div align="center">
 
-# 🎨 Atelier
-
-## The honest and efficient runtime that makes AI agents cheaper, faster, and more correct
-
-[![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=flat-square)](https://github.com/atelier-ws/atelier/releases)
-[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/atelier-ws/atelier?style=flat-square)](https://github.com/atelier-ws/atelier)
-
-[![macOS](https://img.shields.io/badge/macOS-supported-blue?style=flat-square)](#)
-[![Linux](https://img.shields.io/badge/Linux-supported-blue?style=flat-square)](#)
-
-[![Claude Code](https://img.shields.io/badge/Claude_Code-supported-CF6D3F?style=flat-square)](https://claude.ai/code)
-[![Codex](https://img.shields.io/badge/Codex-supported-10A37F?style=flat-square)](https://openai.com/codex)
-[![opencode](https://img.shields.io/badge/opencode-supported-7C3AED?style=flat-square)](https://opencode.ai)
-
-<p>
-⚡ <b>92.8% on SWE-bench Verified (50 tasks)</b> &nbsp;·&nbsp;
-💰 <b>29.5% cheaper</b> &nbsp;·&nbsp;
-🔁 <b>37.7% fewer turns</b> &nbsp;·&nbsp;
-🪙 <b>44.1% fewer tokens</b>
-</p>
-
-```bash
-curl -fsSL https://install.atelier.ws | bash
-```
-
-**Live savings across all Atelier sessions** &nbsp;·&nbsp; updates on every session end
-
-Estimated gross savings: input tokens Atelier kept out of context, priced at each model's input / cache-read rates (zero for unknown models). Net end-to-end cost is measured separately under [Benchmarks](#benchmarks).
-
-[![Cost saved](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dsavings&style=for-the-badge&color=04ba0d)](https://atelier.ws)
-[![Tokens less](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dtokens&style=for-the-badge&color=7904b8)](https://atelier.ws)
-[![Calls avoided](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dcalls&style=for-the-badge&color=eae4ed)](https://atelier.ws)
-
-</div>
-
 ---
 
 ## 📊 Results
@@ -91,6 +55,7 @@ Vanilla agents navigate by reading entire files and grepping blindly. Atelier re
 
 Atelier exposes exactly **5 tools** — not because the others don't exist, but because more tools means more decision overhead. Every extra tool the agent sees is a choice it has to make. `grep`, `search`, `memory`, `sql`, `codemod` and others are all registered and callable by name, but hidden from the advertised surface so the agent leads with the right primitive every time.
 
+
 | Tool          | What it does                                                         | Why this and not something else                                                                                                                                                |
 | --------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `code_search` | Symbol lookup + callers, callees, usages + ranked source in one call | `grep` makes agents loop over results and read whole files. `code_search` returns the exact symbol, its call graph, and the relevant source in one shot — no follow-up needed |
@@ -109,6 +74,7 @@ Atelier ships ready-to-use agent personas and skills — drop them into any supp
 
 Packaged agents in [integrations/agents/](integrations/agents/). Each covers a distinct phase of the coding loop — explore → plan → execute for human checkpoints, `code` as the all-in-one interactive default, `solve` for autonomous well-defined tasks, `auto` for fully headless runs, and `review`/`research` as read-only specialists that must never write. Removing any one collapses two phases together; adding more creates overlapping choices.
 
+
 | Agent    | Subagent         | Writes? | Use                                   | Why this and not the default agent                                                                                                             |
 | ---------- | ------------------ | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | auto     | atelier:auto     | Yes     | Fully autonomous unattended mode      | No plan approval, no questions asked. Use for CI, benchmarks, headless runs where interruptions break the pipeline                             |
@@ -125,6 +91,7 @@ Packaged agents in [integrations/agents/](integrations/agents/). Each covers a d
 ### Skills
 
 Packaged skills in [integrations/skills/](integrations/skills/):
+
 
 | Skill         | What it does                                                                                                                                                   | Why                                                                                                                                                                                             |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -144,6 +111,7 @@ Packaged skills in [integrations/skills/](integrations/skills/):
 ### Exploration tasks
 
 8 open-source codebases · 5 questions each · `claude-opus-4-8` · costs summed across all 5 prompts (5 reps). Sorted by savings. Raw data: [`benchmarks/codebench/results/exploration_2026_06_29/`](benchmarks/codebench/results/exploration_2026_06_29/)
+
 
 | Codebase                                               | Language                                           |                 Atelier | Baseline |    Cost ↓ |   Δ Input |   Δ Cache W | Δ Cache R | Δ Output |
 | -------------------------------------------------------- | ---------------------------------------------------- | ------------------------: | ---------: | -----------: | -----------: | -------------: | -----------: | ----------: |
@@ -241,6 +209,7 @@ atelier benchmark codebench \
 
 End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — **50 instances** across **12 Python repos**, **5 reps** each, `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run inside the image with the project's conda env activated identically (same setup for both arms). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [benchmarks/codebench/results/swe50_2026_06_30/](benchmarks/codebench/results/swe50_2026_06_30/)
 
+
 |              |        Cost | Input tok | Cache Write |  Cache Read | Output tok |   Total tok |       Turns |        Time |       Resolved       |
 | -------------- | ------------: | ----------: | ------------: | ------------: | -----------: | ------------: | ------------: | ------------: | :---------------------: |
 | **atelier**  | **$165.45** | 1,007,977 |   5,730,565 |  97,238,294 |  2,192,112 |  **106.2M** |   **4,336** |   **10.9h** | **232 / 250 (92.8%)** |
@@ -250,6 +219,7 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 #### Per-task breakdown (5 reps each)
 
 ✅ = all 5 reps correct · 🟡 = partial · ❌ = none. Rep costs ordered rep 1–5.
+
 
 | Task                               | Baseline (CC) ✓ | Atelier ✓ |       Baseline (CC) total |                                                                Atelier total |                                                                  Save | Baseline (CC) rep costs ($) | Atelier rep costs ($) |  |
 | ------------------------------------ | :----------------: | :-----------: | --------------------------: | -----------------------------------------------------------------------------: | ----------------------------------------------------------------------: | ----------------------------------------------------- | -- |
@@ -350,6 +320,7 @@ These are deferred-loaded (`ToolSearch`), so disabling them costs **neither arm 
 
 Every tool each arm loads, with schema token counts (cl100k proxy, read from the request flows). `Agent` / `Skill` / `ToolSearch` are **identical** Claude Code natives in both arms; heavier tools load on demand via `ToolSearch`.
 
+
 | Capability                 | Vanilla      |       tok |      calls | Atelier                |       tok |      calls |
 | ---------------------------- | -------------- | ----------: | -----------: | ------------------------ | ----------: | -----------: |
 | Shell                      | `Bash`       |       724 |      3,171 | `bash`                 |       307 |      1,638 |
@@ -437,6 +408,7 @@ atelier benchmark providers
 
 Provider/read benchmark numbers: triplet is `correctness / median tokens / median ms`; `-` means unsupported or not benchmarked.
 
+
 | Test type         | [atelier](https://github.com/atelier-ws/atelier) | [atelier-zoekt](https://github.com/sourcegraph/zoekt) | [ast-grep](https://github.com/ast-grep/ast-grep) | [code-index-mcp](https://github.com/johnhuang316/code-index-mcp) | [codegraph](https://github.com/colbymchenry/codegraph) | [jcodemunch-mcp](https://github.com/jgravelle/jcodemunch-mcp) | [scip-python](https://github.com/sourcegraph/scip-python) | [serena](https://github.com/oraios/serena) | [universal-ctags](https://github.com/universal-ctags/ctags) | [zoekt](https://github.com/sourcegraph/zoekt) |
 | ------------------- | -------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- |
 | callees           | **1.00 / 78 / 114**                              | -                                                     | -                                                | -                                                                | 0.85 / 112 / 135                                       | 0.97 / 1654 / 283                                             | -                                                         | -                                          | -                                                           | -                                             |
@@ -455,6 +427,7 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 Pure retrieval quality across **14 open-source repos**, balanced at **100 queries per repo** per gold type (1,400 def + 1,400 content + 520 semantic = 3,320 total). Each query is embedded and ranked against all symbols in the repo by cosine similarity; MRR = mean reciprocal rank of the correct symbol.
 
 > Atelier ships **BGE-Code-v1** (`BAAI/bge-code-v1`) as the default semantic embedder — best avg MRR at ~1.5B params and 6× faster indexing throughput than the next-closest model. Requires ≥ 3.5 GB free VRAM; on CPU or GPUs below that threshold, Atelier automatically falls back to **SFR-Embedding-Code-400M_R** (~800 MB, avg MRR 0.757) — no configuration needed.
+
 
 | Model                      | Params | Def MRR   | Content MRR | Semantic MRR | **Avg**   |
 | ---------------------------- | -------- | ----------- | ------------- | -------------- | ----------- |
