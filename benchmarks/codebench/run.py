@@ -70,8 +70,8 @@ from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_co
 
 from benchmarks.codebench import local as local_mode
 from benchmarks.codebench.tasks import BY_ID, TASKS, Task
-from benchmarks.wire_savings.report import aggregate, flow_records
-from benchmarks.wire_savings.usage_parser import extract_usage
+from benchmarks.flowlib.report import aggregate, flow_records
+from benchmarks.flowlib.usage_parser import extract_usage
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = REPO_ROOT / "benchmarks" / "codebench" / "results"

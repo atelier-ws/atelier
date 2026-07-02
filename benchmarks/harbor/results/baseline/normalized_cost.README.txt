@@ -1,13 +1,18 @@
-normalized_cost.csv — baseline (tbench Opus4.8 ClaudeCode 2.1.152) re-priced at Atelier's cost model.
-Atelier bills cache; tbench bills cache at $0. To compare Atelier vs baseline fairly, re-price baseline.
+normalized_cost.csv — baseline (tbench Opus4.8 ClaudeCode 2.1.152) re-priced at Atelier's REAL cost model.
+Atelier's runs pay the real bill (1h ephemeral cache); tbench bills cache at $0. To compare like for
+like, re-price the baseline. Regenerate: uv run python benchmarks/harbor/normalize_baseline_cost.py
 
-Rates (Atelier model): input $5/M, output $25/M, cache_read $0.5/M, cache_write $6.25/M.
+Rates (Atelier model): input $5/M, output $25/M, cache_read $0.5/M, cache_write 1h ephemeral $10/M (2x input).
 
 Columns:
   cost_raw_tbench_cache_free : original tbench cost (cache billed $0). NOT comparable to Atelier.
-  cost_norm_read_0p5         : cache_read priced at $0.5/M. CONSERVATIVE — omits baseline cache-WRITE
-                               (tbench records only cache_read_tokens), so slightly favors baseline.
-  cost_norm_blended_0p79     : cache_read priced at $0.79/M (read + amortized write). Reproduces the
-                               existing atelier_vs_baseline_per_task.csv 'baseline_avg_cost_corrected'.
+  cost_norm_read_0p5         : all cache tokens priced as reads ($0.5/M). CONSERVATIVE lower bound —
+                               prices the baseline's cache WRITES as cheap reads, so it favors baseline.
+  cost_norm_blended_1h       : cache priced at a blended $0.91/M — 4.31% write share (token-weighted
+                               cache_creation vs cache_read across all 86 Atelier Harbor trials) at the
+                               1h write rate ($10/M), remainder at the read rate ($0.5/M). This is the
+                               apples-to-apples column: compare Atelier's actual total_cost_usd to it.
 
-Caveat: tbench does not record cache_write separately; the write term is estimated via the 0.79/M blend.
+Caveats: tbench exposes only a combined cache figure per trial (avg_cache_tokens = read+write, no
+split), so the write term is an estimated blend applied uniformly; the write share is measured from
+Atelier trials, not baseline ones.

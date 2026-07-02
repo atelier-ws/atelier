@@ -136,14 +136,20 @@ def resolve_embed_batch_size() -> int:
 
 
 def render_embedding_text(symbol: SymbolRecord, *, source_text: str | None = None) -> str:
-    """Render the text used to embed a symbol."""
+    """Render the text used to embed a symbol.
+
+    Always includes both the doc summary (when present) AND the source body --
+    previously source was dropped entirely whenever a docstring existed and
+    capped at 200 chars otherwise, which measurably hurt semantic-query MRR
+    (a real symbol has more retrievable signal in its body than its docstring
+    alone). The caller already bounds ``source_text`` (``ATELIER_EMBED_MAX_CHARS``,
+    default 4000) before it reaches here, so no additional cap is applied.
+    """
     source = (source_text or "").strip().replace("\x00", " ")
-    if len(source) > 200:
-        source = source[:200]
     parts = [symbol.symbol_name, symbol.signature]
     if symbol.doc_summary:
         parts.append(symbol.doc_summary)
-    elif source:
+    if source:
         parts.append(source)
     return "\n".join(part for part in parts if part).strip()
 

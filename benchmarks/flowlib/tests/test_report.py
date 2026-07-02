@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from benchmarks.wire_savings.report import (
+from benchmarks.flowlib.report import (
     _DEFAULT_PRICING,
     aggregate,
     format_report,

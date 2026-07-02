@@ -42,7 +42,7 @@ Benchmark gate workflow:
 
 Today this workflow is intentionally built on the current repo reality:
 `benchmarks/codebench/run.py --report`, the real A/B calibration tests, and
-`uv run python -m benchmarks.wire_savings.report ...` are valid evidence
+`uv run python -m benchmarks.flowlib.report ...` are valid evidence
 surfaces, while deleted `benchmarks/ab/` infrastructure is not.
 
 ## Measured cross-check fixture

@@ -454,7 +454,7 @@ export default function Sessions() {
                         {highlightSearchText(t.task || "Untitled Task", query)}
                       </p>
 
-                      <div className="grid grid-cols-2 gap-1.5 rounded-sm border border-neutral-800/60 bg-black/20 p-2">
+                      <div className="grid grid-cols-2 gap-1.5 rounded-sm border border-neutral-800/60 bg-surface-sunken/70 p-2">
                         {(
                           [
                             [

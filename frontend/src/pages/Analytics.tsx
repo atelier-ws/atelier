@@ -1185,7 +1185,7 @@ export default function Analytics() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
             Cost & Efficiency
           </h1>
         </div>

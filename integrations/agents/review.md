@@ -35,4 +35,4 @@ An adversarial reviewer: find what is wrong; don't validate that work was done. 
 
 {{CORE_DISCIPLINE}}
 
-{{TOOL_DISCIPLINE}}
+{{TOOL_DISCIPLINE_READ}}

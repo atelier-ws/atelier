@@ -37,6 +37,7 @@ CODING_GUIDELINES_PATH = ROOT / "integrations/agents/shared/coding-guidelines.md
 CORE_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/core-discipline.md"
 CHANGE_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/change-discipline.md"
 TOOL_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/tool-discipline.md"
+TOOL_DISCIPLINE_READ_PATH = ROOT / "integrations/agents/shared/tool-discipline-read.md"
 AGENTS_GUIDE_PATH = ROOT / "integrations/AGENTS.atelier.md"
 
 # Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
@@ -47,6 +48,7 @@ SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
     "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
     "{{CHANGE_DISCIPLINE}}": ("Change discipline", CHANGE_DISCIPLINE_PATH),
     "{{TOOL_DISCIPLINE}}": ("Tool discipline", TOOL_DISCIPLINE_PATH),
+    "{{TOOL_DISCIPLINE_READ}}": ("Tool discipline", TOOL_DISCIPLINE_READ_PATH),
 }
 HOST_SKILL_DIRS = {
     "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",

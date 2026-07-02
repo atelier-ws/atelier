@@ -14,7 +14,7 @@ Pro/Max subscription.
         NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem claude
     # repeat for atelier_on.flow with the Atelier MCP server enabled, then:
 
-    uv run python -m benchmarks.wire_savings.report \\
+    uv run python -m benchmarks.flowlib.report \\
         atelier_off=atelier_off.flow atelier_on=atelier_on.flow
 
 List the baseline capture FIRST: the delta row is computed as
@@ -28,7 +28,7 @@ import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-from benchmarks.wire_savings.usage_parser import Usage, extract_usage
+from benchmarks.flowlib.usage_parser import Usage, extract_usage
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ def _parse_args(argv: list[str]) -> tuple[list[tuple[str, str]], dict[str, float
     import argparse
 
     p = argparse.ArgumentParser(
-        prog="benchmarks.wire_savings.report",
+        prog="benchmarks.flowlib.report",
         description="Compare token usage across mitmproxy .flow captures.",
     )
     p.add_argument(

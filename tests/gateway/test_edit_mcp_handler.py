@@ -759,9 +759,44 @@ def test_schema_documents_flat_item_shape() -> None:
 
     items = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]
     assert "anyOf" not in items
-    assert set(items["properties"]) == {"path", "old", "new", "overwrite"}
+    assert set(items["properties"]) == {"path", "old", "new", "replace"}
     assert items.get("additionalProperties") is False
     assert ":Lx" in items["properties"]["path"]["description"]
+
+
+def test_description_advertises_edits_wrapper() -> None:
+    """The short description must show the edits=[...] wrapper, not just the
+    item shape -- a cold model that reads only the description otherwise calls
+    edit(path=..., new=...) flat (observed in Harbor runs)."""
+    from atelier.gateway.adapters.mcp_server import TOOLS
+
+    assert "edits=[" in TOOLS["edit"]["description"]
+
+
+def test_flattened_create_call_auto_recovered(workspace: Path) -> None:
+    """edit(path=..., new=..., replace=True) at top level (no edits[]) is
+    auto-wrapped into edits=[{...}] instead of erroring."""
+    payload = _edit({"path": "gen.py", "new": "print('hi')\n", "replace": True, "hooks": False})
+    # Clean create renders as silent success ({} after normalization); the
+    # file on disk is the real check.
+    assert "failed" not in payload, payload
+    assert (workspace / "gen.py").read_text(encoding="utf-8") == "print('hi')\n"
+
+
+def test_flattened_replace_call_auto_recovered(workspace: Path) -> None:
+    """A flattened old/new replace at top level is lifted into edits=[...]."""
+    f = workspace / "a.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    payload = _edit({"path": "a.py", "old": "x = 1", "new": "x = 2", "hooks": False})
+    assert payload.get("applied"), payload
+    assert f.read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_flattened_call_without_content_still_rejected(workspace: Path) -> None:
+    """A stray path with no new-content key is NOT an unambiguous edit -- the
+    unknown-argument error must still surface."""
+    resp = _call("edit", {"path": "a.py"})
+    assert "unknown argument" in json.dumps(resp), resp
 
 
 # ---------------------------------------------------------------------------

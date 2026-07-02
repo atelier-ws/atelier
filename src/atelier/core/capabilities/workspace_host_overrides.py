@@ -502,6 +502,10 @@ def _render_codex_mode_body(body: str, repo_root: Path) -> str:
             "Tool discipline",
             repo_root / "integrations" / "agents" / "shared" / "tool-discipline.md",
         ),
+        "{{TOOL_DISCIPLINE_READ}}": (
+            "Tool discipline",
+            repo_root / "integrations" / "agents" / "shared" / "tool-discipline-read.md",
+        ),
     }
     rendered = body.rstrip()
     for token, (heading, path) in shared.items():

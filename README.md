@@ -568,27 +568,32 @@ Pure retrieval quality vs. every other code-search MCP/CLI we could get running,
 
 <sub>Click any provider row to expand its per-repo (15-repo) breakdown.</sub>
 
-**Indexing time by repo (s)** — cold-start latency for Atelier's 3 channels, per repo (same `p100` proxy as above, see note).
+**Indexing time by repo (s)** — real, cold-full-rebuild time per phase. Three real commands, each one env toggle apart:
 
-| Repo | lexical | +zoekt | +semantic |
-|---|---:|---:|---:|
-| astropy | 0.2s | 0.5s | 0.8s |
-| atelier-dev | 0.7s | 0.7s | 14.4s |
-| atelier | 0.7s | 0.9s | 17.8s |
-| django | 0.3s | 0.5s | 0.8s |
-| matplotlib | 0.2s | 0.2s | 1.0s |
-| seaborn | 0.2s | 0.3s | 0.6s |
-| flask | 0.2s | 0.2s | 0.4s |
-| requests | 0.2s | 0.2s | 0.5s |
-| xarray | 0.3s | 0.3s | 0.7s |
-| pylint | 0.2s | 0.4s | 0.8s |
-| pytest | 0.1s | 0.3s | 0.6s |
-| scikit-learn | 0.2s | 0.2s | 0.7s |
-| sphinx | 0.2s | 0.5s | 0.4s |
-| sympy | 0.2s | 0.3s | 0.5s |
-| linux | 2.8s | 2.8s | 2.7s |
+```bash
+ATELIER_ZOEKT_MODE=off atelier code index --reindex        # lexical only
+atelier code index --reindex                                # lexical + zoekt (default: zoekt auto-builds if installed)
+ATELIER_CODE_EMBEDDER=bge atelier code index --reindex      # lexical + zoekt + semantic
+```
 
-> Latency (p95/p100) was captured on a shared dev machine under variable background load — read it as directional, not a clean-room number. MRR is stable regardless of contention. serena's p100 (480s) is its LSP server cold-indexing the `linux` kernel tree on first query, not steady-state latency — see the [full retrieval writeup](benchmarks/codebench/results/retrieval_2026_07_01/README.md) for per-repo indexing time. Raw per-channel JSON: [`benchmarks/codebench/`](benchmarks/codebench/).
+| Repo | Symbols | Lexical Only (s) | Zoekt Only (s) | Semantic Only - **BGE-Code-v1** (s) |
+|---|---:|---:|---:|---:|
+| requests | 1,133 | 1.87 | 0.16 | 1.61 |
+| flask | 1,354 | 1.78 | 0.12 | 1.38 |
+| seaborn | 3,167 | 3.83 | 0.24 | 3.27 |
+| pytest | 4,250 | 3.59 | 0.25 | 4.64 |
+| xarray | 5,276 | 4.25 | 0.32 | 5.73 |
+| pylint | 12,995 | 6.08 | 0.48 | 16.64 |
+| sphinx | 12,223 | 7.09 | 1.00 | 21.32 |
+| scikit-learn | 13,239 | 10.26 | 0.94 | 22.25 |
+| sympy | 24,112 | 30.55 | 1.06 | 24.49 |
+| matplotlib | 31,399 | 12.58 | 2.02 | 31.65 |
+| django | 38,951 | 21.64 | 1.94 | 51.27 |
+| astropy | 42,039 | 22.69 | 2.73 | 53.54 |
+| atelier | 131,401 | 34.88 | 3.72 | 924.45 |
+| linux | 1,239,077 | 196.31 | 14.42 | 1,341.81 |
+
+>The columns below attribute time to each phase separately for reporting (via [`benchmarks/codebench/bench_index_latency.py`](benchmarks/codebench/bench_index_latency.py) — `uv run python benchmarks/codebench/bench_index_latency.py --out /tmp/index_latency.json`);
 
 Reproduce:
 

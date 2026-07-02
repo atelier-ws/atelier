@@ -23,6 +23,7 @@ import dataclasses
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -75,6 +76,51 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def _live_savings_path(root: Path) -> Path:
     return root / "live_savings_events.jsonl"
+
+
+@lru_cache(maxsize=4)
+def _live_savings_index(path_str: str, _mtime_ns: int, _size: int) -> dict[str, tuple[int, float, float]]:
+    """Index ``live_savings_events.jsonl`` by session in ONE parse.
+
+    Maps ``session_id -> (compact_event_count, compact_saved_usd,
+    total_saved_usd)``. Keyed on the file's ``(mtime_ns, size)`` so appends
+    invalidate the cache. Profiling showed the previous per-session
+    full-file scans (build_report → _read_compact_savings re-parsing every
+    line once PER SESSION) costing 25M+ json.loads per /v1/insights call.
+    """
+    try:
+        text = Path(path_str).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    index: dict[str, list[float]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        sid = ev.get("session_id")
+        if not sid:
+            continue
+        saved = float(ev.get("cost_saved_usd") or 0.0)
+        bucket = index.setdefault(str(sid), [0, 0.0, 0.0])
+        bucket[2] += saved
+        if ev.get("lever") == "session_compaction":
+            bucket[0] += 1
+            bucket[1] += saved
+    return {sid: (int(b[0]), b[1], b[2]) for sid, b in index.items()}
+
+
+def _live_savings_for_session(session_id: str, root: Path) -> tuple[int, float, float]:
+    """(compact_count, compact_saved_usd, total_saved_usd) for one session."""
+    path = _live_savings_path(root)
+    try:
+        st = path.stat()
+    except OSError:
+        return 0, 0.0, 0.0
+    return _live_savings_index(str(path), st.st_mtime_ns, st.st_size).get(session_id, (0, 0.0, 0.0))
 
 
 # --------------------------------------------------------------------------- #
@@ -132,27 +178,8 @@ def _read_compact_savings(session_id: str, root: Path) -> tuple[int, float]:
 
     Returns ``(event_count, total_cost_saved_usd)``.
     """
-    path = _live_savings_path(root)
-    if not path.exists():
-        return 0, 0.0
-
-    count = 0
-    total_saved = 0.0
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if ev.get("session_id") == session_id and ev.get("lever") == "session_compaction":
-                count += 1
-                total_saved += float(ev.get("cost_saved_usd") or 0.0)
-    except OSError:
-        pass
-    return count, round(total_saved, 6)
+    count, compact_saved, _ = _live_savings_for_session(session_id, root)
+    return count, round(compact_saved, 6)
 
 
 def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int, float, list[dict[str, Any]]]:
@@ -241,24 +268,8 @@ def read_total_savings_from_events(session_id: str, root: Path) -> float:
     Atelier id; the second matches when the trace UUID is the host id that
     the MCP server wrote at the time.
     """
-    total = 0.0
-
-    # 1. live_savings_events.jsonl
-    path = _live_savings_path(root)
-    if path.exists():
-        try:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if ev.get("session_id") == session_id:
-                    total += float(ev.get("cost_saved_usd") or 0.0)
-        except OSError:
-            pass
+    # 1. live_savings_events.jsonl (single shared parse, indexed by session)
+    _, _, total = _live_savings_for_session(session_id, root)
 
     # 2. host sidecar savings (priced per-row by the helper)
     _, compression_saved, _ = _read_context_compression_savings(session_id, root)

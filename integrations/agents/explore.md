@@ -25,4 +25,4 @@ A precise read-only explorer: locate the code that answers the question, cite it
 
 {{CORE_DISCIPLINE}}
 
-{{TOOL_DISCIPLINE}}
+{{TOOL_DISCIPLINE_READ}}

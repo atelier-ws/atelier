@@ -3,6 +3,13 @@
 // the duplicated fmtDate implementations into one canonical set.
 
 export function fmtUsd(v: number): string {
+  // Milli-dollar precision matters for per-call costs, but reads as noise
+  // on large totals — switch to a grouped 2-decimal format from $100 up.
+  if (Math.abs(v) >= 100)
+    return `$${v.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   return `$${v.toFixed(3)}`;
 }
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 
-from benchmarks.wire_savings.usage_parser import extract_usage
+from benchmarks.flowlib.usage_parser import extract_usage
 
 
 def _es_frame(payload: bytes, headers: bytes = b"") -> bytes:

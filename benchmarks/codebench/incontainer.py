@@ -447,7 +447,7 @@ def _dump_flow_text(flow_path: Path) -> None:
     with contextlib.suppress(Exception):
         if not flow_path.exists() or flow_path.stat().st_size == 0:
             return
-        from benchmarks.wire_savings.dump import extract
+        from benchmarks.flowlib.dump import extract
 
         extract(str(flow_path), str(flow_path.with_suffix(".flow_dump.txt")))
 

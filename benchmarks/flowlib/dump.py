@@ -1,6 +1,6 @@
 """Dump human-readable conversation text from .flow files.
 
-Usage: uv run --project benchmarks python -m benchmarks.wire_savings.dump <path>
+Usage: uv run --project benchmarks python -m benchmarks.flowlib.dump <path>
 
 Outputs <file>.flow_dump.txt alongside each .flow file.
 Only shows the text/tool content - skips all raw request/response payloads.
@@ -20,7 +20,7 @@ from pathlib import Path
 from mitmproxy.exceptions import FlowReadException
 from mitmproxy.io import FlowReader
 
-from benchmarks.wire_savings.usage_parser import extract_usage
+from benchmarks.flowlib.usage_parser import extract_usage
 
 # Sensitive-value scrubbing: bare tokens are replaced wholesale; key/value
 # assignments keep the key and redact only the value.
