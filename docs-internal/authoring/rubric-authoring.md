@@ -6,7 +6,8 @@ They are YAML documents validated against the `Rubric` model in
 
 ## Current File Format
 
-Built-in rubrics live under `src/atelier/core/rubrics/` and look like this:
+Rubrics load from `src/atelier/core/rubrics/` (via `load_packaged_rubrics()`);
+no seed rubrics ship there today. A rubric looks like this:
 
 ```yaml
 id: rubric_state_change_safety
@@ -48,20 +49,10 @@ related_blocks:
 ATELIER_ROOT=/tmp/atelier-docs-check uv run atelier init
 ```
 
-1. Exercise the rubric with the live CLI:
-
-```bash
-echo '{
-  "canonical_identifier_used": true,
-  "pre_change_state_captured": true,
-  "read_after_write_completed": true,
-  "observed_state_matches_intent": true
-}' | ATELIER_DEV_MODE=1 uv run atelier verify rubric_state_change_safety
-```
-
 1. Add targeted tests when the rubric changes a safety-critical contract.
 
 ## Important Note
 
-Older docs referred to `atelier pack create/install` for rubrics. That is not
-the current public CLI workflow.
+Older docs referred to `atelier pack create/install` for rubrics and to an
+`atelier verify <rubric-id>` CLI. Both have been removed; rubric gates run
+inside the runtime.

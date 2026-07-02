@@ -1,42 +1,0 @@
-[build] plan:
-  astropy__astropy             cur=bge:BAAI/bge-code-v1 dim=1536 n=40522  -> OK (skip)
-  atelier__atelier             cur=local:hashing dim=384 n=22046  -> BUILD
-  django__django               cur=bge:BAAI/bge-code-v1 dim=1536 n=42023  -> OK (skip)
-  matplotlib__matplotlib       cur=(none) dim=0 n=0  -> BUILD
-  mwaskom__seaborn             cur=(none) dim=0 n=0  -> BUILD
-  pallets__flask               cur=(none) dim=0 n=0  -> BUILD
-  psf__requests                cur=(none) dim=0 n=0  -> BUILD
-  pydata__xarray               cur=bge:BAAI/bge-code-v1 dim=1536 n=5171  -> OK (skip)
-  pylint-dev__pylint           cur=(none) dim=0 n=0  -> BUILD
-  pytest-dev__pytest           cur=bge:BAAI/bge-code-v1 dim=1536 n=4163  -> OK (skip)
-  scikit-learn__scikit-learn   cur=bge:BAAI/bge-code-v1 dim=1536 n=12642  -> OK (skip)
-  sphinx-doc__sphinx           cur=(none) dim=0 n=0  -> BUILD
-  sympy__sympy                 cur=bge:BAAI/bge-code-v1 dim=1536 n=24048  -> OK (skip)
-[build] loading shared bge:BAAI/bge-code-v1 on GPU ...
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.05s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.72it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.53it/s]
-[build] model ready in 10.4s (dim=1536)
-[build] atelier__atelier             -> bge:BAAI/bge-code-v1 dim=1536 n=22798  (407.0s)
-Traceback (most recent call last):
-  File "/home/pankaj/Projects/leanchain/atelier/experiments/retrieval_symbol_vote/build_bge_vectors.py", line 106, in <module>
-    raise SystemExit(main())
-                     ~~~~^^
-  File "/home/pankaj/Projects/leanchain/atelier/experiments/retrieval_symbol_vote/build_bge_vectors.py", line 95, in main
-    eng._build_symbol_embeddings(conn, iv)  # commits on `with` exit
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "/home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py", line 6586, in _build_symbol_embeddings
-        language: str | None = None,
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-    ...<5 lines>...
-        hydrates ONLY the winning rows -- the 40k+ non-winners are never turned
-        ^^^^^
-  File "/home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/ann_symbol_index.py", line 175, in upsert_vectors
-    conn.executemany(
-    ~~~~~~~~~~~~~~~~^
-        """
-        ^^^
-    ...<10 lines>...
-        rows,
-        ^^^^^
-    )
-    ^
-sqlite3.OperationalError: database is locked

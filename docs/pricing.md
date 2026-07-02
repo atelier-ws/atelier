@@ -113,9 +113,9 @@ gracefully falls back to **Free**.
 3. **Activate** —
 
    ```bash
-   atelier license activate <key>   # enroll this device and store its lease
-   atelier license status           # show plan, expiry, unlocked features
-   atelier license deactivate       # revert to Free
+   atelier login --token <credentials>   # enroll this device and store its lease
+   atelier status                        # show plan, auth, and subscription status
+   atelier logout                        # revert to Free (local anonymous trial)
    ```
 
    In CI or containers, set `ATELIER_LICENSE=<key>` instead.

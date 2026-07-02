@@ -36,12 +36,11 @@ Atelier is an MCP server + SDK middleware that gives every agent shared procedur
 | [Python SDK](./sdk/python.md) | Embedded Python client     |
 | [MCP Server](./sdk/mcp.md)    | Current MCP server surface |
 
-## Strategy & Roadmap
+## Roadmap
 
-| Document                  | Description                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| [Strategy](./strategy.md) | Current architecture, capabilities, and guiding principles |
-| [Roadmap](./roadmap.md)   | Shipped capabilities and active development                |
+| Document                | Description                                 |
+| ----------------------- | ------------------------------------------- |
+| [Roadmap](./roadmap.md) | Shipped capabilities and active development |
 
 ---
 

@@ -171,10 +171,8 @@ callees, usages — fold into one `explore` call.)
 
 | Command                 | Purpose                                                |
 | ----------------------- | ------------------------------------------------------ |
-| `atelier code index`    | Build or refresh the code index for a repository. |
-| `atelier tool-mode ...` | Configure smart tool replacement/shadow/suggest modes. |
-| `atelier tool-report`   | Report tool usage, savings, and redundancy patterns.   |
-| `atelier optimize`      | Show session cost optimization recommendations.        |
+| `atelier code index` | Build or refresh the code index for a repository. |
+| `atelier optimize`   | Show session cost optimization recommendations.   |
 
 Examples:
 
@@ -189,15 +187,11 @@ These commands manage the reusable knowledge layer and failure review flows.
 
 | Command                      | Purpose                                         |
 | ---------------------------- | ----------------------------------------------- |
-| `atelier lesson ...`         | Review and promote lesson candidates.           |
-| `atelier eval ...`           | Run mini and harbor evaluation suites.          |
-| `atelier report`             | Generate an engineering governance report.      |
-| `atelier import-style-guide` | Draft lesson candidates from Markdown guidance. |
-| `atelier deprecate`          | Mark a block as deprecated.                     |
-| `atelier quarantine`         | Quarantine a block from retrieval.              |
-| `atelier consolidate`        | Run manual consolidation.                       |
-| `atelier consolidation ...`  | Review consolidation candidates.                |
-| `atelier proof ...`          | Run cost-quality proof gate workflows.          |
+| `atelier lesson ...`         | Review and promote lesson candidates.            |
+| `atelier eval ...`           | Run eval suites (`mcp`, `retrieval`, `fitness`). |
+| `atelier report`             | Generate an engineering governance report.       |
+| `atelier import-style-guide` | Draft lesson candidates from Markdown guidance.  |
+| `atelier proof ...`          | Run cost-quality proof gate workflows.           |
 
 ## Imports and Host Integrations
 
@@ -205,16 +199,11 @@ Atelier ships import and integration commands for supported agent hosts.
 
 | Command                | Purpose                                               |
 | ---------------------- | ----------------------------------------------------- |
-| `atelier import`       | Import sessions from all supported hosts in one pass. |
-| `atelier claude ...`   | Claude Code import and session workflows.             |
-| `atelier codex ...`    | Codex session workflows.                              |
-| `atelier copilot ...`  | Copilot session workflows.                            |
-| `atelier opencode ...` | OpenCode session workflows.                           |
-| `atelier bash ...`     | Shell interception helpers.                           |
+| `atelier import` | Import sessions from all supported hosts in one pass. |
 
 Supported session import hosts are defined in the runtime registry, not in the
-docs. Use `atelier help import` or the host-specific help output to inspect the
-exact flags and options supported by your installed build.
+docs. Use `atelier help import` to inspect the exact flags and options
+supported by your installed build.
 
 ## Benchmarks, Savings, and External Reports
 
@@ -222,21 +211,16 @@ These commands support performance validation and cost-accounting workflows.
 
 | Command                   | Purpose                                        |
 | ------------------------- | ---------------------------------------------- |
-| `atelier benchmark ...`   | Run benchmark suites and benchmark reports.    |
+| `atelier benchmark ...`   | Run benchmark suites (`mini`, `harbor`, `codebench`, `swe`, `local`). |
 | `atelier benchmark local` | BYO-repo A/B: Atelier vs vanilla on your repo. |
 | `atelier savings`         | Aggregate cost and token savings.              |
-| `atelier savings-detail`  | Show per-operation savings breakdowns.         |
-| `atelier savings-reset`   | Reset persisted savings state.                 |
-| `atelier loop-report`     | Generate a full loop/pathology report.         |
-| `atelier external-status` | Check optional upstream analyzer availability. |
-| `atelier external-report` | Run supported upstream JSON reports.           |
+| `atelier dashboard`       | Show the spend & savings dashboard.            |
 
 Examples:
 
 ```bash
-atelier benchmark full --json
+atelier benchmark mini --dry-run --json
 atelier savings --json
-atelier loop-report --help
 ```
 
 `atelier benchmark local` is the user-facing BYO benchmark, also surfaced as the
@@ -253,7 +237,8 @@ Wire capture is off by default — cost comes from the CLI receipts, so no
 mitmproxy or MITM CA cert is needed. Pass `--capture` to opt into mitmproxy
 wire-level cost verification (requires `mitmproxy` and its CA cert).
 
-The internal/dev suites are `atelier benchmark {codebench,atelierbench,mcp,providers}`.
+The internal/dev suites are `atelier benchmark {codebench,swe}` and
+`atelier eval {mcp,retrieval,fitness}`.
 
 ## Configuration and Account State
 

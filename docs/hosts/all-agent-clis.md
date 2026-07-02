@@ -74,7 +74,7 @@ All install scripts:
 - [hermes-install.md](hermes-install.md)
 - [antigravity-install.md](antigravity-install.md)
 
-Archived capability-contract detail now lives under `docs-archive/hosts/host-capability-matrix.md`.
+Capability-contract detail lives in [host-capability-matrix.md](host-capability-matrix.md).
 
 ---
 
@@ -86,10 +86,15 @@ Detailed documentation and example configs for each host live in:
 atelier/integrations/
 ├── claude/          # Full plugin config
 ├── codex/           # Codex plugin template + marketplace docs
+├── cursor/          # Cursor MCP config + rules
 ├── opencode/        # opencode.json example
 ├── copilot/         # .vscode/mcp.json + copilot-instructions
+├── copilot-cli/     # Copilot CLI config
 └── antigravity/     # Antigravity MCP template + host guidance
 ```
+
+Hermes has no directory here — its installer writes `~/.hermes/config.yaml`
+directly.
 
 Host install entrypoints are under `scripts/install_<host>.sh`.
 

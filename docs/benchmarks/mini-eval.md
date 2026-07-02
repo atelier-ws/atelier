@@ -22,7 +22,7 @@ eval gives a quick signal you can run locally:
 ### Dry-run (offline, no API keys)
 
 ```bash
-atelier eval mini --dry-run --json
+atelier benchmark mini --dry-run --json
 ```
 
 Dry-run loads and validates every case, then returns a report with
@@ -33,7 +33,7 @@ is well-formed without spending anything.
 ### Live run
 
 ```bash
-atelier eval mini --limit 5 --json
+atelier benchmark mini --limit 5 --json
 ```
 
 A live run requires a configured API key (e.g. `ANTHROPIC_API_KEY`). For each
@@ -117,7 +117,7 @@ was not accepted (verify failed or the file boundary was violated).
 4. Validate without spending anything:
 
    ```bash
-   atelier eval mini --dry-run --json
+   atelier benchmark mini --dry-run --json
    ```
 
 ## Relationship to `make proof-cost-quality`

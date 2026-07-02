@@ -1,9 +1,0 @@
-repo_root: /tmp/idx_ws_pylint-dev__pylint
-ensure_started FAILED: RuntimeError("no Zoekt index found at /home/pankaj/.atelier/workspaces/tmp-idx_ws_pylint-dev__pylint/zoekt/index -- run 'atelier code index' or 'atelier zoekt up' to build it first")
-index_root: /home/pankaj/.atelier/workspaces/tmp-idx_ws_pylint-dev__pylint/zoekt/index
-shards: [('github.com%2Fpylint-dev%2Fpylint_v16.00000.zoekt', 16745459)]
-state_path: /home/pankaj/.atelier/workspaces/tmp-idx_ws_pylint-dev__pylint/zoekt/state.json exists: True
-spawned pid 1214433
-poll 0.0s: has_loaded_repo=True raw=b'{"List":{"Repos":[{"Repository":{"TenantID":0,"ID":0,"Name":"github.com/pylint-dev/pylint","URL":"https://github.com/pylint-dev/pylint","Metadata":null,"Source":"/tmp/idx_ws_pylint-dev__pylint","Branches":[{"Name":"HEAD","Version":"3143578ce53c7bb94572ebc978def76c1e1ba649"}],"SubRepoMap":{},"CommitURLTemplate":"{{URLJoinPath \\"https://github.com/pylint-dev/pylint\\" \\"commit\\" .Version}}","FileURLT'
-SEARCH regex took 27.2ms bytes=6696
-EXIT=0

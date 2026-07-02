@@ -6,20 +6,17 @@ Atelier core capabilities live at:
 
 ## Capability Set
 
-1. `context_reuse`
-2. `semantic_file_memory`
-3. `loop_detection`
-4. `tool_supervision`
-5. `context_compression`
+1. `context_compression`
+2. `context_reuse`
+3. `failure_analysis`
+4. `proof_gate`
+5. `quality_router`
+6. `semantic_file_memory`
+7. `tool_supervision`
 
 These capabilities are internal and runtime-managed. Agent code and host adapters remain thin.
 
 ## Runtime Exposure
-
-CLI:
-
-- `atelier capability list`
-- `atelier capability status`
 
 MCP tools:
 
@@ -37,4 +34,4 @@ MCP tools:
 - `code`
 - `shell`
 
-CLI-only workflows include `atelier lesson inbox`, `atelier consolidation inbox`, `atelier report`, `atelier proof show`, and `atelier route contract`.
+CLI-only workflows include `atelier lesson inbox`, `atelier report`, and `atelier proof show`.

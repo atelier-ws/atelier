@@ -62,9 +62,9 @@ customer-facing plans and prices see [Plans & Pricing](./pricing.md).
 ## Using a license
 
 ```bash
-atelier license activate <key>   # enroll this device and store its lease
-atelier license status           # show plan, expiry, unlocked features
-atelier license deactivate       # revert to Free
+atelier login --token <credentials>   # enroll this device and store its lease
+atelier status                        # show plan, auth, and subscription status
+atelier logout                        # revert to Free (local anonymous trial)
 ```
 
 A Pro purchase can have up to **three active devices**. When all slots are in

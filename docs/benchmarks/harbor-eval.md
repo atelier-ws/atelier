@@ -12,43 +12,48 @@ Run Atelier on official [Harbor](https://harborframework.com) benchmark datasets
 ## Quick start
 
 ```bash
-# Anthropic API key
-export ANTHROPIC_API_KEY=sk-ant-...
+# The default arm (Claude Code CLI + Atelier plugin) reads OAuth tokens
+# from benchmarks/harbor/.env (CLAUDE_CODE_OAUTH_TOKEN_1/_2).
 
-# Run 5 tasks from terminal-bench-core:
-atelier eval harbor --limit 5
+# Quick smoke test (3 tasks, 1 attempt):
+atelier benchmark harbor --limit 3 --attempts 1 -y
 
 # A/B comparison (atelier augmentation on vs off):
-atelier eval harbor --agent atelier          --limit 5 --output evals/harbor/on
-atelier eval harbor --agent atelier-baseline --limit 5 --output evals/harbor/off
+atelier benchmark harbor -y
+atelier benchmark harbor --baseline -y
 
 # With Bedrock credentials:
 export AWS_BEARER_TOKEN_BEDROCK=...
 export AWS_REGION=us-east-1
-atelier eval harbor --agent atelier-bedrock --limit 5
+atelier benchmark harbor --agent atelier-bedrock --limit 5 -y
 ```
 
 ## Command reference
 
 ```
-atelier eval harbor [OPTIONS]
+atelier benchmark harbor [OPTIONS]
 
 Options:
-  -d, --dataset TEXT    Harbor dataset (default: terminal-bench/terminal-bench-core@0.1.1)
-  --limit INTEGER       Max tasks to run (default: 5)
-  --agent TEXT          Agent arm: atelier | atelier-baseline | atelier-bedrock
-  --model TEXT          Model to use inside container
-  --parallel INTEGER    Parallel trials (default: 1)
-  --output TEXT         Output directory for results
+  -d, --dataset TEXT        Harbor dataset (default: terminal-bench/terminal-bench-2-1)
+  --limit INTEGER           Max tasks to run (default: all)
+  --agent TEXT              Agent arm: atelier | atelier-bedrock | atelier-claude-code (default)
+  --baseline                Run baseline arm (bench_mode=off, no plugin)
+  --model TEXT              Model override (default: ATELIER_BENCH_MODEL)
+  -n, --attempts INTEGER    Attempts per task for pass@k scoring (default: 5)
+  -c, --concurrent INTEGER  Max concurrent trials (default: slots x tokens)
+  --resume TEXT             Resume an existing job dir
+  -o, --output TEXT         Output directory for results
+  -y, --yes                 Skip confirmation prompt
 ```
 
 ## Agent arms
 
 | Arm | Description |
 |-----|-------------|
-| `atelier` | Full Atelier augmentation (routing, memory, MCP) |
-| `atelier-baseline` | `ATELIER_BENCH_MODE=off` — baseline without Atelier |
+| `atelier-claude-code` | Claude Code CLI + Atelier plugin (default) |
+| `atelier` | Direct API with Atelier augmentation |
 | `atelier-bedrock` | Atelier via AWS Bedrock |
+| `--baseline` flag | `bench_mode=off` — baseline without the Atelier plugin |
 
 The two-arm comparison proves Atelier's value-add over a clean baseline.
 
@@ -66,20 +71,21 @@ harbor run -d "terminal-bench/terminal-bench-core@0.1.1" \
 
 | Command | Purpose |
 |---------|---------|
-| `atelier eval mini --dry-run` | Offline schema validation, no Docker needed |
-| `atelier eval mini --limit 5` | Live local repo tasks, cheap, no Docker |
-| `atelier eval harbor --limit 5` | Official Harbor datasets in Docker containers |
+| `atelier benchmark mini --dry-run` | Offline schema validation, no Docker needed |
+| `atelier benchmark mini --limit 5` | Live local repo tasks, cheap, no Docker |
+| `atelier benchmark harbor --limit 5` | Official Harbor datasets in Docker containers |
 | `make proof-cost-quality` | Deterministic proof gate (zero live calls) |
 
-Start with `atelier eval mini --dry-run` to verify setup, then escalate to
-`atelier eval harbor` for credible published results.
+Start with `atelier benchmark mini --dry-run` to verify setup, then escalate to
+`atelier benchmark harbor` for credible published results.
 
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `CLAUDE_CODE_OAUTH_TOKEN_1/_2` | For default arm | Claude Code OAuth tokens, in `benchmarks/harbor/.env` |
 | `ANTHROPIC_API_KEY` | For `atelier` arm | Anthropic API key |
 | `AWS_BEARER_TOKEN_BEDROCK` | For `atelier-bedrock` arm | Bedrock bearer token |
 | `AWS_REGION` | For `atelier-bedrock` arm | AWS region |
 | `ATELIER_BENCH_VERSION` | No | Atelier version to install (default: latest) |
-| `ATELIER_BENCH_MODEL` | No | Default model (default: claude-sonnet-4-5) |
+| `ATELIER_BENCH_MODEL` | No | Model override for the run |

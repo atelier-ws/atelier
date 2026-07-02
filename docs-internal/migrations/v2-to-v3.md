@@ -34,7 +34,7 @@ measured replay benchmark.
 | `stub_embedding`     | SHA-256 hash used as a fake embedding vector in lesson promoter and archival recall | Deleted. All embedding paths go through the `Embedder` protocol (`LocalEmbedder` by default, `NullEmbedder` in CI). New rows carry `embedding_provenance`; legacy rows are flagged `legacy_stub` and ranked by BM25 only until re-embedded. |
 | Memory backend       | Implicit dual-write to Letta + SQLite when `ATELIER_LETTA_URL` is set               | Single-primary, chosen by `[memory].backend = "sqlite"` (default) or `"letta"`. No silent fallback — if Letta is configured but unavailable, `MemorySidecarUnavailable` is raised explicitly.                                               |
 | Sleeptime summarizer | Template `groupby` + string truncation; counted as a savings lever                  | Replaced with a real Ollama-backed summarizer (sub-path A1) or Letta-delegated summary (A2). If neither is available, `SleeptimeUnavailable` is raised — no silent fallback to the template. Telemetry records net savings only.            |
-| Savings claims       | README stated "81% reduction" derived from hand-written YAML constants              | Retracted. README now cites the measured baseline from `make bench-savings-honest`. `benchmarks/swe/prompts_11.yaml` may not contain `reduction_pct` constants.                                                                             |
+| Savings claims       | README stated "81% reduction" derived from hand-written YAML constants              | Retracted. README now cites measured baselines from the `atelier benchmark` suites (the WP-50 replay harness has since been retired). `benchmarks/swe/prompts_11.yaml` may not contain `reduction_pct` constants.                                                                             |
 | Lesson promoter      | Clustered by SHA-hash fingerprint; precision target never met                       | Rebuilt on real embeddings; precision ≥ 0.7 on the 200-trace fixture.                                                                                                                                                                       |
 | Letta as primary     | Dual-write proxy; passage writes bypassed Letta                                     | Full single-primary path when `backend=letta`. Self-hosted Docker setup via `atelier letta up`.                                                                                                                                             |
 
@@ -125,11 +125,11 @@ atelier --root .atelier consolidate --since 7d --json
 ### 6. Verify measured savings
 
 ```bash
-make bench-savings-honest
+atelier benchmark codebench
 ```
 
-This runs the replay benchmark and persists a `BenchmarkRun` row. The README
-links to this measured number, not a hand-written constant.
+This runs the cost/quality comparison and persists the measured result. The
+README links to measured numbers, not hand-written constants.
 
 ---
 

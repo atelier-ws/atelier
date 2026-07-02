@@ -39,9 +39,7 @@ make test-cov      # pytest with coverage report
 cd atelier && uv run pytest
 ```
 
-Expected: **209 passed, 9 skipped**
-
-The 9 skips are Postgres-gated tests. They require `ATELIER_DATABASE_URL=postgresql+asyncpg://...` and are skipped when only SQLite is configured. This is **not a failure**.
+Expected: all tests pass, with Postgres-gated tests skipped. Those tests require `ATELIER_DATABASE_URL=postgresql+asyncpg://...` and are skipped when only SQLite is configured. This is **not a failure**.
 
 To run Postgres-gated tests:
 
@@ -73,28 +71,26 @@ Do not run these inside the atelier directory — they are separate test suites.
 1. Create `src/atelier/your_module/` with `__init__.py`
 2. Add Pydantic schemas in `schemas.py`
 3. Add core logic in separate files — never mix I/O and business logic
-4. Register any new CLI commands in `src/atelier/adapters/cli.py`
-5. Register any new MCP tools in `src/atelier/adapters/mcp_server.py`
+4. Register any new CLI commands in `src/atelier/gateway/cli/commands/`
+5. Register any new MCP tools in `src/atelier/gateway/adapters/mcp_server.py`
 6. Write tests in `tests/test_your_module.py`
 7. Use `mcp__atelier__context mode="symbols"` to discover module structure from the code index
 
 ## Never Modify Generated Files
 
-- `src/atelier/adapters/mcp_server.py` tool schemas are generated from Pydantic models — update models, not the generated output
+- `src/atelier/gateway/adapters/mcp_server.py` tool schemas are generated from Pydantic models — update models, not the generated output
 - `frontend/src/services/stub/` in the atelier project is generated from OpenAPI spec — regenerate it from the atelier repo after API changes
 
 ## Pull Request Guidelines
 
 1. Run `make pre-commit` and fix all errors before opening PR
 2. Include test coverage for all new behavior
-3. Create an ADR (`docs/decisions/NNN-description.md`) for significant design decisions
+3. Create an ADR (`docs-internal/decisions/NNN-description.md`) for significant design decisions
 4. Never commit directly - human review required per project rules
 
 ## Repo-native execution memory
 
-- Durable multi-step work belongs in `docs/plans/active/` or `docs/plans/completed/`.
-- Durable architectural or workflow decisions belong in `docs/decisions/`.
-- Recurring cleanup belongs in `docs/plans/tech-debt.md` and should be reflected in the quality scorecard when relevant.
+- Durable architectural or workflow decisions belong in `docs-internal/decisions/`.
 
 ## Host instruction generation
 

@@ -24,13 +24,10 @@ severity: high
 
 ## How Clusters Are Normally Produced
 
-The normal workflow is trace-driven rather than hand-installed:
-
-```bash
-uv run atelier analyze-failures --json
-uv run atelier failure list --json
-uv run atelier eval-from-cluster <cluster-id> --json
-```
+The normal workflow is trace-driven rather than hand-installed: the runtime's
+`failure_analysis` capability clusters repeated failed traces automatically.
+The former `atelier analyze-failures` / `atelier failure` CLI surface has been
+removed.
 
 Use manual YAML fixtures only for contributor tests, migrations, or explicitly
 curated source data.

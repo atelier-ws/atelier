@@ -1,4 +1,0 @@
-astropy__astropy ensure_started FAILED: RuntimeError("no Zoekt index found at /home/pankaj/.atelier/workspaces/tmp-idx_ws_astropy__astropy/zoekt/index -- run 'atelier code index' or 'atelier zoekt up' to build it first")
-mwaskom__seaborn ensure_started FAILED: RuntimeError("no Zoekt index found at /home/pankaj/.atelier/workspaces/tmp-idx_ws_mwaskom__seaborn/zoekt/index -- run 'atelier code index' or 'atelier zoekt up' to build it first")
-pytest-dev__pytest ensure_started FAILED: RuntimeError("no Zoekt index found at /home/pankaj/.atelier/workspaces/tmp-idx_ws_pytest-dev__pytest/zoekt/index -- run 'atelier code index' or 'atelier zoekt up' to build it first")
-EXIT=0

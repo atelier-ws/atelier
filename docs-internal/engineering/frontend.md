@@ -5,8 +5,6 @@ This doc is the live frontend guide for agent runs in this repository.
 ## Read before editing
 
 - `frontend/src/api.ts`
-- `docs/agent-os/validation-matrix.md`
-- `docs/reliability/README.md`
 
 ## Current repo rules
 

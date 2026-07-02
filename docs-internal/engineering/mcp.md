@@ -206,10 +206,7 @@ When a match is found at a different indentation level than `old_string` implies
 ## Verifying the MCP Server
 
 ```bash
-# Quick verify (tools/list)
-cd atelier && bash scripts/verify_atelier_mcp_stdio.sh
-
-# Manual test
+# Verify (tools/list)
 echo '&#123;"jsonrpc":"2.0","method":"tools/list","id":1&#125;' | atelier mcp
 ```
 
