@@ -18,7 +18,7 @@ def explore_files(q):
     try:
         r = eng.tool_explore(q, max_files=10, auto_index=False)
         return [f.get("path", "") for f in r.get("files", [])]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort script
         return [f"ERR:{e}"]
 
 

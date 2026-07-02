@@ -77,13 +77,15 @@ def dedup(fs):
 def _tok(s):
     return max(0, len(s) // 4)  # ~4 chars/token proxy, consistent across systems
 
+
 def explore_files(q):
     try:
         r = eng.tool_explore(q, max_files=10, auto_index=False)
         files = dedup([f.get("path", "") for f in r.get("files", [])])
         return files, _tok(json.dumps(r))
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return [], 0
+
 
 def search_files(q):
     # Cheap locator (symbols [+ semantic when Ollama is up]); apples-to-apples vs cg_query.
@@ -92,26 +94,36 @@ def search_files(q):
         locs = [{"name": r.symbol_name, "file": r.file_path, "line": r.start_line, "kind": r.kind} for r in rows]
         files = dedup([r.file_path for r in rows])[:10]
         return files, _tok(json.dumps(locs))
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return [], 0
+
 
 def cg_explore_files(q):
     try:
-        out = subprocess.run(["node", str(CGBIN), "explore", q, "-p", str(DJ), "--max-files", "10"],
-                             capture_output=True, text=True, timeout=60)
+        out = subprocess.run(
+            ["node", str(CGBIN), "explore", q, "-p", str(DJ), "--max-files", "10"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         files = dedup(re.findall(r"([A-Za-z0-9_./-]+\.py)", out.stdout))[:10]
         return files, _tok(out.stdout)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return [], 0
+
 
 def cg_query_files(q):
     try:
-        out = subprocess.run(["node", str(CGBIN), "query", q, "-p", str(DJ), "-j", "-l", "15"],
-                             capture_output=True, text=True, timeout=60)
+        out = subprocess.run(
+            ["node", str(CGBIN), "query", q, "-p", str(DJ), "-j", "-l", "15"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         data = json.loads(out.stdout)
         rows = data if isinstance(data, list) else []
         return dedup([(r.get("node") or {}).get("filePath", "") for r in rows]), _tok(out.stdout)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return [], 0
 
 

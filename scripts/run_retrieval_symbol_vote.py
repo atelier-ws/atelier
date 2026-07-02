@@ -115,13 +115,8 @@ def _report_metrics(root: Path, diagnostics: Path) -> None:
         return
 
     try:
-        data = json.loads(
-            (root / "benchmarks/codebench/data/bench_pairs_multi.json").read_text()
-        )
-        repo_by_root = {
-            str(Path(meta["ws"]).resolve()): prefix
-            for prefix, meta in data["repos"].items()
-        }
+        data = json.loads((root / "benchmarks/codebench/data/bench_pairs_multi.json").read_text())
+        repo_by_root = {str(Path(meta["ws"]).resolve()): prefix for prefix, meta in data["repos"].items()}
 
         records: dict[tuple[str, str], dict[str, Any]] = {}
         malformed = 0
@@ -131,7 +126,7 @@ def _report_metrics(root: Path, diagnostics: Path) -> None:
                 continue
             try:
                 record: dict[str, Any] = json.loads(line)
-            except Exception:
+            except json.JSONDecodeError:
                 malformed += 1
                 continue
             version = str(record.get("version") or "unknown")
@@ -145,9 +140,7 @@ def _report_metrics(root: Path, diagnostics: Path) -> None:
         actual = _empty_bucket()
         actual_by_repo: dict[str, dict[str, int | float]] = {}
         channel_recall: dict[str, dict[str, int]] = defaultdict(_empty_recall_bucket)
-        channel_by_repo: dict[str, dict[str, dict[str, int]]] = defaultdict(
-            lambda: defaultdict(_empty_recall_bucket)
-        )
+        channel_by_repo: dict[str, dict[str, dict[str, int]]] = defaultdict(lambda: defaultdict(_empty_recall_bucket))
         oracle_best = _empty_recall_bucket()
         oracle_best_by_repo: dict[str, dict[str, int]] = defaultdict(_empty_recall_bucket)
         interleaved = _empty_recall_bucket()
@@ -166,11 +159,15 @@ def _report_metrics(root: Path, diagnostics: Path) -> None:
             else:
                 final = [str(path) for path in record.get("final", [])]
                 raw_channels = record.get("channels")
-                channels = {
-                    str(name): [str(path) for path in paths]
-                    for name, paths in raw_channels.items()
-                    if isinstance(paths, list)
-                } if isinstance(raw_channels, dict) else {}
+                channels = (
+                    {
+                        str(name): [str(path) for path in paths]
+                        for name, paths in raw_channels.items()
+                        if isinstance(paths, list)
+                    }
+                    if isinstance(raw_channels, dict)
+                    else {}
+                )
 
             actual_rank = _rank(final, gold)
             _add_rank(actual, actual_rank)
@@ -208,31 +205,21 @@ def _report_metrics(root: Path, diagnostics: Path) -> None:
             },
             "oracle_best_channel": _recall_rates(oracle_best),
             "interleaved_union": _recall_rates(interleaved),
-            "channel_recall": {
-                name: _recall_rates(bucket)
-                for name, bucket in sorted(channel_recall.items())
-            },
+            "channel_recall": {name: _recall_rates(bucket) for name, bucket in sorted(channel_recall.items())},
             "by_repo": {
                 prefix: {
                     "actual": _rates(actual_by_repo[prefix]),
-                    "oracle_best_channel": _recall_rates(
-                        oracle_best_by_repo[prefix]
-                    ),
-                    "interleaved_union": _recall_rates(
-                        interleaved_by_repo[prefix]
-                    ),
+                    "oracle_best_channel": _recall_rates(oracle_best_by_repo[prefix]),
+                    "interleaved_union": _recall_rates(interleaved_by_repo[prefix]),
                     "channels": {
-                        name: _recall_rates(bucket)
-                        for name, bucket in sorted(
-                            channel_by_repo[prefix].items()
-                        )
+                        name: _recall_rates(bucket) for name, bucket in sorted(channel_by_repo[prefix].items())
                     },
                 }
                 for prefix in sorted(actual_by_repo)
             },
         }
         print("[experiment-analysis] " + json.dumps(report, sort_keys=True), flush=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - best-effort script
         print(f"[experiment-analysis] unable to calculate diagnostics: {exc}", flush=True)
 
 
@@ -247,9 +234,7 @@ def main() -> int:
     env["ATELIER_EXPERIMENT_DIAGNOSTICS"] = str(diagnostics)
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = (
-        str(experiment_dir)
-        if not existing_pythonpath
-        else str(experiment_dir) + os.pathsep + existing_pythonpath
+        str(experiment_dir) if not existing_pythonpath else str(experiment_dir) + os.pathsep + existing_pythonpath
     )
 
     command = ["uv", "run", "atelier", "eval", "retrieval", "--full"]

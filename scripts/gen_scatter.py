@@ -140,7 +140,7 @@ ax.axhline(
 # $50 annotation — star marker
 ax.scatter([50], [y50], color="gold", edgecolors="steelblue", s=180, zorder=6, marker="*")
 ax.annotate(
-    f"$50 task → ~${y50:.0f} saved\n(95% CI  ${y50_lo:.0f} – ${y50_hi:.0f})",
+    f"$50 task → ~${y50:.0f} saved\n(95% CI  ${y50_lo:.0f} - ${y50_hi:.0f})",
     xy=(50, y50),
     xytext=(38, y50 + (y50 * 0.15 + 0.3)),
     arrowprops=dict(arrowstyle="->", color="dimgray", lw=1.3),
@@ -154,7 +154,7 @@ ax.annotate(
 ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"${v:.0f}"))
 ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"${v:.1f}"))
 ax.set_xlabel("Baseline cost per rep ($)  —  what vanilla Claude Code spent", fontsize=12)
-ax.set_ylabel("$ saved per rep  (baseline − Atelier)", fontsize=12)
+ax.set_ylabel("$ saved per rep  (baseline - Atelier)", fontsize=12)
 ax.set_title(
     "The bigger the task, the more Atelier saves\n"
     "SWE-bench Verified · correct reps only · outliers removed · extrapolated to $50",
@@ -173,5 +173,5 @@ plt.tight_layout()
 plt.savefig("reports/public/benchmark/codebench/cost_vs_savings_scatter.svg", format="svg")
 plt.savefig("reports/public/benchmark/codebench/cost_vs_savings_scatter.png", dpi=150, format="png")
 print(
-    f"n={len(data)}, slope=${slope:.3f}/$ baseline, R²={r**2:.3f}, at $50 → ${y50:.2f} saved (CI ${y50_lo:.2f}–${y50_hi:.2f})"
+    f"n={len(data)}, slope=${slope:.3f}/$ baseline, R²={r**2:.3f}, at $50 → ${y50:.2f} saved (CI ${y50_lo:.2f}-${y50_hi:.2f})"
 )

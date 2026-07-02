@@ -45,7 +45,7 @@ for rep in sorted(by_rep):
 
 print("\n=== per-task atelier resolved (new persona) ===")
 by_task = collections.defaultdict(list)
-for (t, rep), ok in resolved_all.items():
+for (t, _rep), ok in resolved_all.items():
     by_task[t].append(ok)
 for t in sorted(by_task):
     v = by_task[t]

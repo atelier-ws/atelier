@@ -375,10 +375,14 @@ def _tool_policies() -> dict[str, ToolPolicy]:
     return {
         "code": ToolPolicy(policy_id="code", allowed_tools=("*",)),
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
+        # Non-orchestrating roles also deny workflow/schedule: the Workflow and
+        # ScheduleWakeup tool schemas cost ~4-5k tokens on EVERY request the
+        # subagent makes, and a reviewer/explorer/executor invoking multi-agent
+        # orchestration is always a mis-pick. Only code/general/auto keep them.
         "explore": ToolPolicy(
             policy_id="explore",
             allowed_tools=("read", "grep", "search", "node", "explore"),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete", "agent-spawn", "workflow", "schedule"),
         ),
         "plan": ToolPolicy(
             policy_id="plan",
@@ -391,9 +395,13 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "explore",
                 "web_fetch",
             ),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
-        "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",), denied_actions=("agent-spawn",)),
+        "execute": ToolPolicy(
+            policy_id="execute",
+            allowed_tools=("*",),
+            denied_actions=("agent-spawn", "workflow", "schedule"),
+        ),
         "review": ToolPolicy(
             policy_id="review",
             allowed_tools=(
@@ -404,14 +412,18 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "explore",
                 "verify",
             ),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
         "research": ToolPolicy(
             policy_id="research",
             allowed_tools=("web_fetch", "web_search", "read", "search"),
-            denied_actions=("edit", "write", "delete"),
+            denied_actions=("edit", "write", "delete", "workflow", "schedule"),
         ),
-        "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
+        "solve": ToolPolicy(
+            policy_id="solve",
+            allowed_tools=("*",),
+            denied_actions=("agent-spawn", "workflow", "schedule"),
+        ),
         "auto": ToolPolicy(
             policy_id="auto",
             allowed_tools=("*",),

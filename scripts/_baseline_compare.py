@@ -13,7 +13,7 @@ from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
 try:
     from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
-except Exception:
+except Exception:  # noqa: BLE001 - best-effort script
     get_zoekt_supervisor = None
 
 CG = "/tmp/" + open("/tmp/cgdir.txt").read().strip() + "/dist/bin/codegraph.js"
@@ -43,7 +43,7 @@ for prefix, meta in repos.items():
     if get_zoekt_supervisor is not None:
         try:
             get_zoekt_supervisor(Path(meta["ws"]))
-        except Exception:
+        except Exception:  # noqa: BLE001 - best-effort script
             pass
     engines[prefix] = eng
 
@@ -52,7 +52,7 @@ def atelier_explore(prefix, q):
     try:
         r = engines[prefix].tool_explore(q, max_files=10, auto_index=False)
         return dedup([f.get("path", "") for f in r.get("files", [])])[:10]
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -65,7 +65,7 @@ def cg_explore(prefix, q):
             timeout=60,
         )
         return dedup(re.findall(r"([A-Za-z0-9_./-]+\.py)", out.stdout))[:10]
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 
@@ -80,7 +80,7 @@ def cg_query(prefix, q):
         rows = json.loads(out.stdout)
         rows = rows if isinstance(rows, list) else []
         return dedup([(r.get("node") or {}).get("filePath", "") for r in rows])[:10]
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort script
         return []
 
 

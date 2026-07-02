@@ -64,13 +64,15 @@ def _silences_diagnostics(norm: str) -> bool:
 
 
 # Tool-redirect coaching: shell commands that duplicate Atelier's indexed tools.
-# Graduated per class per session: the FIRST violation executes with a warning
-# naming the replacement tool; a REPEAT in the same class is blocked (search and
-# read classes only — `find` and db shells stay warn-once, their shell uses are
-# too often legitimate). Set ATELIER_SHELL_REDIRECT_BLOCK=0 to keep everything
-# warn-only. Rationale: one nudge per session measurably does not change
-# behavior — sessions still run 50+ grep/cat calls through bash and save
-# nothing; the indexed tools only pay off if they are actually used.
+# NEVER blocks — a blocked call wastes the whole turn, and the bash rewrite
+# layer (bash_exec.classify_command) already serves the servable cases through
+# the indexed grep/read tools while deliberately letting shell run the rest for
+# correctness. Coaching is graduated instead: the FIRST violation per class
+# carries the full replacement guidance; every REPEAT in the search/read
+# classes carries a compact one-line reminder (one nudge per session measurably
+# does not change behavior — sessions still run 50+ grep/cat calls through
+# bash). `find` and db shells stay warn-once: their shell uses are too often
+# legitimate to nag.
 _redirect_warned: set[str] = set()
 
 _SEARCH_HEADS = frozenset({"grep", "rg", "ag", "ack"})
@@ -79,15 +81,9 @@ _FIND_HEADS = frozenset({"find"})
 _SQL_HEADS = frozenset(
     {"psql", "mysql", "mariadb", "sqlite3", "pg_dump", "mongosh", "mongo", "redis-cli", "clickhouse-client"}
 )
-# Classes that escalate warn -> block on repeat. find/sql never block.
-_BLOCKING_CLASSES = frozenset({"search", "read"})
+# Classes whose repeats keep carrying the compact reminder. find/sql warn once.
+_REPEAT_COACHED_CLASSES = frozenset({"search", "read"})
 _HEAD_SKIP = frozenset({"sudo", "command", "time", "nice", "env", "nohup", "stdbuf"})
-
-
-def _redirect_block_enabled() -> bool:
-    import os
-
-    return os.environ.get("ATELIER_SHELL_REDIRECT_BLOCK", "1").strip().lower() not in {"0", "false", "no"}
 
 
 def _first_head(norm: str) -> str:
@@ -120,12 +116,12 @@ def _is_repo_path(token: str, cwd: str | None) -> bool:
 def _redirect_hint(norm: str, cwd: str | None) -> tuple[str, str, str] | None:
     """Coaching for a leading shell command that duplicates an Atelier tool.
 
-    Returns ``(class, warn_message, block_message)`` or None. Only the *first*
+    Returns ``(class, warn_message, repeat_message)`` or None. Only the *first*
     command word is inspected, so piped output filters like ``ps aux | grep
     node`` are left alone — only a top-level code search/read or database
-    command is gated. Also skipped when an argument is an absolute path outside
-    the workspace (e.g. ``grep foo /tmp/scratch.html``) — code_search/read only
-    cover the workspace, so the redirect would be wrong.
+    command is coached. Also skipped when an argument is an absolute path
+    outside the workspace (e.g. ``grep foo /tmp/scratch.html``) —
+    code_search/read only cover the workspace, so the redirect would be wrong.
     """
     head = _first_head(norm)
     if head in _SQL_HEADS:
@@ -148,8 +144,7 @@ def _redirect_hint(norm: str, cwd: str | None) -> tuple[str, str, str] | None:
             "read",
             f"Use the `read` tool instead of shell `{head}` for file content — "
             "it batches files=[...] and takes exact ranges/head=/tail=.",
-            f"shell `{head}` for workspace file content is disabled after coaching: "
-            "use the `read` tool (files=[...], :Lx-Ly ranges, head=/tail=).",
+            f"`read` replaces shell `{head}` for workspace file content.",
         )
     if head in _FIND_HEADS:
         msg = f"Prefer the `code_search` tool over shell `{head}` for locating code."
@@ -159,10 +154,8 @@ def _redirect_hint(norm: str, cwd: str | None) -> tuple[str, str, str] | None:
         f"Use the `code_search` tool instead of shell `{head}` for code exploration — "
         "one call searches the index and returns grouped source plus the call graph; "
         "use `read` for known paths.",
-        f"shell `{head}` over workspace code is disabled after coaching: use the "
-        "`code_search` tool (indexed; returns grouped source, callers/callees, and "
-        "`candidate_files`) and `read` for known paths. Absolute paths outside the "
-        "workspace are exempt.",
+        f"`code_search` replaces shell `{head}` for exploration — one indexed call "
+        "returns grouped source plus the call graph.",
     )
 
 
@@ -199,13 +192,31 @@ def pre_run_gate(command: str, *, cwd: str | None = None) -> GateDecision:
             )
         hint = _redirect_hint(norm, cwd)
         if hint is not None:
-            cls, warn_msg, block_msg = hint
+            cls, warn_msg, repeat_msg = hint
             if cls not in _redirect_warned:
                 _redirect_warned.add(cls)
                 return GateDecision("warn", warn_msg)
-            if cls in _BLOCKING_CLASSES and _redirect_block_enabled():
-                return GateDecision("block", block_msg)
+            # Repeats still execute — blocking would waste the turn — but the
+            # search/read classes keep carrying a compact one-line reminder.
+            if cls in _REPEAT_COACHED_CLASSES:
+                return GateDecision("warn", repeat_msg)
     return GateDecision("allow")
+
+
+def served_note_once(cls: str) -> bool:
+    """True the FIRST time a served-rewrite class is seen this session.
+
+    Lets the bash rewrite layer attach a one-time provenance note ("this was
+    served from the index") to a transparently rewritten command — the
+    retraining signal that the indexed tool exists — without nagging on every
+    subsequent served call.
+    """
+    with _lock:
+        key = f"served:{cls}"
+        if key in _redirect_warned:
+            return False
+        _redirect_warned.add(key)
+        return True
 
 
 def note_result(command: str, *, exit_code: int | None, timed_out: bool = False) -> None:

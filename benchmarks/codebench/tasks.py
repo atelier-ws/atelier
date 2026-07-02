@@ -477,7 +477,7 @@ TASKS: list[Task] = [
             'case "$(pwd)" in *_atelier_rep*) /home/pankaj/Projects/leanchain/atelier/.venv/bin/atelier code index --repo-root . || true ;; esac',
         ),
     ),
-    # --- original task1–8 (coding capability) ---
+    # --- original task1-8 (coding capability) ---
     Task(
         "task1",
         "swift",

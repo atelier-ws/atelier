@@ -25,7 +25,7 @@ for t in tasks:
 stat.sort(reverse=True)
 print(f"{'task':28} | base $/rep | atel $/rep | save/rep | % saving")
 print("-" * 74)
-for sav, t, bpr, apr, bn, an in stat:
+for sav, t, bpr, apr, _bn, _an in stat:
     print(f"{t.split('__')[-1]:28} | ${bpr:6.2f}    | ${apr:6.2f}    | ${bpr - apr:+6.2f}  | {sav:+6.1f}%")
 print("-" * 74)
 # weighted (matched per-rep average across overlap)

@@ -124,8 +124,8 @@ SERVER_INSTRUCTIONS = (
     "index; re-checking is slower and wastes context. With a known path use "
     "`read` (batch files=[...], exact :Lx-Ly ranges, head=/tail=) — never "
     "cat/sed/head/tail. `bash` is for execution (tests, git, builds), not for "
-    "file content or code search; grep-style shell commands over workspace "
-    "code are coached once, then blocked."
+    "file content or code search; grep/cat-style shell commands over workspace "
+    "code are auto-served from the index where possible and coached otherwise."
 )
 CONTEXT_WINDOW_TOKENS = 200_000
 COMPACT_ADVISORY_THRESHOLD = 60.0
@@ -8720,7 +8720,7 @@ def _run_bash_tool(
             except (OSError, ValueError, _sp.TimeoutExpired):  # type: ignore[possibly-undefined]
                 pass  # fall through with unpiped output on any error
 
-        return {
+        _grep_served: dict[str, Any] = {
             "stdout": rewritten_stdout,
             "stderr": "",
             "exit_code": 0,
@@ -8728,6 +8728,17 @@ def _run_bash_tool(
             "lines_omitted": 0,
             "duration_ms": 0,
         }
+        # One-time provenance so the agent learns the indexed tools exist — the
+        # rewrite is otherwise invisible and silently teaches that shell grep
+        # "works great". Once per session, never on later served calls.
+        from atelier.core.capabilities.tool_supervision import command_discipline as _cmd_discipline
+
+        if _cmd_discipline.served_note_once("grep"):
+            _grep_served["discipline"] = (
+                "served from the index by the `grep` tool — for exploration, one "
+                "`code_search` call returns grouped source plus the call graph."
+            )
+        return _grep_served
 
     if policy.action == "rewrite" and policy.rewrite_target == "web_fetch" and policy.rewrite_payload:
         _wf_url = str(policy.rewrite_payload.get("url") or "").strip()
