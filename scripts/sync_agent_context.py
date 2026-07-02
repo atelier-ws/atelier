@@ -33,10 +33,10 @@ from atelier.core.capabilities.workspace_host_overrides import (
 )
 from atelier.core.environment import skill_visible
 
-CODING_GUIDELINES_PATH = ROOT / "integrations/shared/coding-guidelines.md"
-CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
-CHANGE_DISCIPLINE_PATH = ROOT / "integrations/shared/change-discipline.md"
-TOOL_DISCIPLINE_PATH = ROOT / "integrations/shared/tool-discipline.md"
+CODING_GUIDELINES_PATH = ROOT / "integrations/agents/shared/coding-guidelines.md"
+CORE_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/core-discipline.md"
+CHANGE_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/change-discipline.md"
+TOOL_DISCIPLINE_PATH = ROOT / "integrations/agents/shared/tool-discipline.md"
 AGENTS_GUIDE_PATH = ROOT / "integrations/AGENTS.atelier.md"
 
 # Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared

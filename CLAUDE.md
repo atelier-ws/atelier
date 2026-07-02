@@ -33,7 +33,7 @@ make typecheck      # mypy --strict src
 make pre-commit     # format + lint + typecheck + docs + test
 
 # Docs governance
-make sync-agent-context   # regenerate host instruction files from integrations/shared/
+make sync-agent-context   # regenerate host instruction files from integrations/agents/shared/
 
 # Install Claude plugin (after changing integrations/claude/plugin/)
 bash scripts/install_claude.sh
@@ -45,4 +45,4 @@ bash scripts/install_claude.sh
 
 ## Coding Guidelines
 
-The full guidelines (think before coding, simplicity first, surgical changes, goal-driven execution) are embedded in every Atelier persona. Source of truth: `integrations/shared/coding-guidelines.md` — do not restate them here.
+The full guidelines (think before coding, simplicity first, surgical changes, goal-driven execution) are embedded in every Atelier persona. Source of truth: `integrations/agents/shared/coding-guidelines.md` — do not restate them here.
