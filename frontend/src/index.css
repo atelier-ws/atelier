@@ -1,0 +1,565 @@
+/* Local Hack Nerd Font - shipped with app */
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Hack Nerd Font Mono';
+  src: url('/fonts/HackNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Design tokens (themed via a root class: default dark, .light overrides) ===== */
+:root {
+  color-scheme: dark;
+
+  /* neutral ramp — dark */
+  --n-50: 250 250 250;
+  --n-100: 245 245 245;
+  --n-200: 229 229 229;
+  --n-300: 212 212 212;
+  --n-400: 163 163 163;
+  --n-500: 115 115 115;
+  --n-600: 82 82 82;
+  --n-700: 64 64 64;
+  --n-800: 38 38 38;
+  --n-900: 23 23 23;
+  --n-950: 10 10 10;
+
+  /* brand purple ramp (saturated; stable across themes except the text stops) */
+  --brand-50: 245 242 253;
+  --brand-100: 235 229 251;
+  --brand-200: 215 204 247;
+  --brand-300: 195 178 243;
+  --brand-400: 155 117 217;
+  --brand-500: 134 94 210;
+  --brand-600: 123 70 203;
+  --brand-700: 106 57 179;
+  --brand-800: 90 49 150;
+  --brand-900: 73 40 122;
+  --brand-950: 54 32 92;
+
+  /* surfaces — dark */
+  --surface: 10 10 10;
+  --surface-sunken: 7 7 7;
+  --surface-code: 8 8 8;
+  --surface-raised: 13 13 13;
+  --surface-tint: 15 15 15;
+  --surface-overlay: 20 20 20;
+}
+
+:root.light {
+  color-scheme: light;
+
+  /* neutral ramp — inverted (preserves every fg/bg contrast pairing on light) */
+  --n-50: 10 10 10;
+  --n-100: 23 23 23;
+  --n-200: 38 38 38;
+  --n-300: 64 64 64;
+  --n-400: 82 82 82;
+  --n-500: 115 115 115;
+  --n-600: 163 163 163;
+  --n-700: 212 212 212;
+  --n-800: 229 229 229;
+  --n-900: 245 245 245;
+  --n-950: 250 250 250;
+
+  /* brand accent text must be dark enough on light surfaces */
+  --brand-300: 123 70 203;
+  --brand-400: 106 57 179;
+
+  /* surfaces — light */
+  --surface: 255 255 255;
+  --surface-sunken: 244 244 245;
+  --surface-code: 247 247 248;
+  --surface-raised: 255 255 255;
+  --surface-tint: 250 250 250;
+  --surface-overlay: 240 240 240;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Base body */
+body {
+  background-color: rgb(var(--n-950));
+  color: rgb(var(--n-200));
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--n-900));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--n-700));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--n-600));
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--n-700)) rgb(var(--n-900));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background-color: rgb(var(--brand-400) / 0.2);
+  color: rgb(var(--n-100));
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--brand-400));
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  background-color: rgb(var(--n-900));
+  border-color: rgb(var(--n-700));
+  color: rgb(var(--n-200));
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+select option {
+  background-color: rgb(var(--n-900));
+  color: rgb(var(--n-200));
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--n-500));
+}
+
+/* Code blocks - terminal style with Nerd Font */
+code,
+pre {
+  background-color: rgb(var(--surface-code));
+  border: 1px solid rgb(var(--n-800));
+  color: rgb(var(--n-200));
+  font-family: 'Hack Nerd Font Mono', 'Hack Nerd Font', 'Droid Sans Mono', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Links */
+a {
+  color: rgb(var(--brand-400));
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Table styles */
+table {
+  border-color: rgb(var(--n-800));
+}
+
+th,
+td {
+  border-color: rgb(var(--n-800));
+}
+
+/* Button base */
+button {
+  color: rgb(var(--n-200));
+  border-color: rgb(var(--n-700));
+}
+
+button:hover {
+  background-color: rgb(var(--n-700));
+}
+
+#root {
+  background-color: rgb(var(--n-950));
+}
+
+/* Remove box-shadow globally - use borders instead */
+* {
+  box-shadow: none !important;
+}
+
+/* Terminal-style borders for cards */
+.terminal-card {
+  border: 1px solid rgb(var(--n-800));
+  background: rgb(var(--surface-tint));
+}
+
+.terminal-card:hover {
+  border-color: rgb(var(--n-700));
+}
+
+/* Status indicator styles */
+.status-active::before {
+  content: '● ';
+  color: #10b981;
+}
+
+.status-inactive::before {
+  content: '◦ ';
+  color: #6b7280;
+}
+
+.status-error::before {
+  content: '✗ ';
+  color: #ef4444;
+}
+
+.status-warning::before {
+  content: '⚠ ';
+  color: #f59e0b;
+}
+
+/* ===== Accent palettes (themed: dark = native ramp, light = inverted) ===== */
+:root {
+  --emerald-50: 236 253 245;
+  --emerald-100: 209 250 229;
+  --emerald-200: 167 243 208;
+  --emerald-300: 110 231 183;
+  --emerald-400: 52 211 153;
+  --emerald-500: 16 185 129;
+  --emerald-600: 5 150 105;
+  --emerald-700: 4 120 87;
+  --emerald-800: 6 95 70;
+  --emerald-900: 6 78 59;
+  --emerald-950: 2 44 34;
+  --amber-50: 255 251 235;
+  --amber-100: 254 243 199;
+  --amber-200: 253 230 138;
+  --amber-300: 252 211 77;
+  --amber-400: 251 191 36;
+  --amber-500: 245 158 11;
+  --amber-600: 217 119 6;
+  --amber-700: 180 83 9;
+  --amber-800: 146 64 14;
+  --amber-900: 120 53 15;
+  --amber-950: 69 26 3;
+  --red-50: 254 242 242;
+  --red-100: 254 226 226;
+  --red-200: 254 202 202;
+  --red-300: 252 165 165;
+  --red-400: 248 113 113;
+  --red-500: 239 68 68;
+  --red-600: 220 38 38;
+  --red-700: 185 28 28;
+  --red-800: 153 27 27;
+  --red-900: 127 29 29;
+  --red-950: 69 10 10;
+  --cyan-50: 236 254 255;
+  --cyan-100: 207 250 254;
+  --cyan-200: 165 243 252;
+  --cyan-300: 103 232 249;
+  --cyan-400: 34 211 238;
+  --cyan-500: 6 182 212;
+  --cyan-600: 8 145 178;
+  --cyan-700: 14 116 144;
+  --cyan-800: 21 94 117;
+  --cyan-900: 22 78 99;
+  --cyan-950: 8 51 68;
+  --violet-50: 245 243 255;
+  --violet-100: 237 233 254;
+  --violet-200: 221 214 254;
+  --violet-300: 196 181 253;
+  --violet-400: 167 139 250;
+  --violet-500: 139 92 246;
+  --violet-600: 124 58 237;
+  --violet-700: 109 40 217;
+  --violet-800: 91 33 182;
+  --violet-900: 76 29 149;
+  --violet-950: 46 16 101;
+  --blue-50: 239 246 255;
+  --blue-100: 219 234 254;
+  --blue-200: 191 219 254;
+  --blue-300: 147 197 253;
+  --blue-400: 96 165 250;
+  --blue-500: 59 130 246;
+  --blue-600: 37 99 235;
+  --blue-700: 29 78 216;
+  --blue-800: 30 64 175;
+  --blue-900: 30 58 138;
+  --blue-950: 23 37 84;
+  --sky-50: 240 249 255;
+  --sky-100: 224 242 254;
+  --sky-200: 186 230 253;
+  --sky-300: 125 211 252;
+  --sky-400: 56 189 248;
+  --sky-500: 14 165 233;
+  --sky-600: 2 132 199;
+  --sky-700: 3 105 161;
+  --sky-800: 7 89 133;
+  --sky-900: 12 74 110;
+  --sky-950: 8 47 73;
+  --orange-50: 255 247 237;
+  --orange-100: 255 237 213;
+  --orange-200: 254 215 170;
+  --orange-300: 253 186 116;
+  --orange-400: 251 146 60;
+  --orange-500: 249 115 22;
+  --orange-600: 234 88 12;
+  --orange-700: 194 65 12;
+  --orange-800: 154 52 18;
+  --orange-900: 124 45 18;
+  --orange-950: 67 20 7;
+  --green-50: 240 253 244;
+  --green-100: 220 252 231;
+  --green-200: 187 247 208;
+  --green-300: 134 239 172;
+  --green-400: 74 222 128;
+  --green-500: 34 197 94;
+  --green-600: 22 163 74;
+  --green-700: 21 128 61;
+  --green-800: 22 101 52;
+  --green-900: 20 83 45;
+  --green-950: 5 46 22;
+  --yellow-50: 254 252 232;
+  --yellow-100: 254 249 195;
+  --yellow-200: 254 240 138;
+  --yellow-300: 253 224 71;
+  --yellow-400: 250 204 21;
+  --yellow-500: 234 179 8;
+  --yellow-600: 202 138 4;
+  --yellow-700: 161 98 7;
+  --yellow-800: 133 77 14;
+  --yellow-900: 113 63 18;
+  --yellow-950: 66 32 6;
+  --rose-50: 255 241 242;
+  --rose-100: 255 228 230;
+  --rose-200: 254 205 211;
+  --rose-300: 253 164 175;
+  --rose-400: 251 113 133;
+  --rose-500: 244 63 94;
+  --rose-600: 225 29 72;
+  --rose-700: 190 18 60;
+  --rose-800: 159 18 57;
+  --rose-900: 136 19 55;
+  --rose-950: 76 5 25;
+  --teal-50: 240 253 250;
+  --teal-100: 204 251 241;
+  --teal-200: 153 246 228;
+  --teal-300: 94 234 212;
+  --teal-400: 45 212 191;
+  --teal-500: 20 184 166;
+  --teal-600: 13 148 136;
+  --teal-700: 15 118 110;
+  --teal-800: 17 94 89;
+  --teal-900: 19 78 74;
+  --teal-950: 4 47 46;
+  --indigo-50: 238 242 255;
+  --indigo-100: 224 231 255;
+  --indigo-200: 199 210 254;
+  --indigo-300: 165 180 252;
+  --indigo-400: 129 140 248;
+  --indigo-500: 99 102 241;
+  --indigo-600: 79 70 229;
+  --indigo-700: 67 56 202;
+  --indigo-800: 55 48 163;
+  --indigo-900: 49 46 129;
+  --indigo-950: 30 27 75;
+  --fuchsia-50: 253 244 255;
+  --fuchsia-100: 250 232 255;
+  --fuchsia-200: 245 208 254;
+  --fuchsia-300: 240 171 252;
+  --fuchsia-400: 232 121 249;
+  --fuchsia-500: 217 70 239;
+  --fuchsia-600: 192 38 211;
+  --fuchsia-700: 162 28 175;
+  --fuchsia-800: 134 25 143;
+  --fuchsia-900: 112 26 117;
+  --fuchsia-950: 74 4 78;
+}
+
+:root.light {
+  --emerald-50: 2 44 34;
+  --emerald-100: 6 78 59;
+  --emerald-200: 6 78 59;
+  --emerald-300: 6 95 70;
+  --emerald-400: 4 120 87;
+  --emerald-500: 16 185 129;
+  --emerald-600: 52 211 153;
+  --emerald-700: 110 231 183;
+  --emerald-800: 167 243 208;
+  --emerald-900: 209 250 229;
+  --emerald-950: 236 253 245;
+  --amber-50: 69 26 3;
+  --amber-100: 120 53 15;
+  --amber-200: 120 53 15;
+  --amber-300: 146 64 14;
+  --amber-400: 180 83 9;
+  --amber-500: 245 158 11;
+  --amber-600: 251 191 36;
+  --amber-700: 252 211 77;
+  --amber-800: 253 230 138;
+  --amber-900: 254 243 199;
+  --amber-950: 255 251 235;
+  --red-50: 69 10 10;
+  --red-100: 127 29 29;
+  --red-200: 127 29 29;
+  --red-300: 153 27 27;
+  --red-400: 185 28 28;
+  --red-500: 239 68 68;
+  --red-600: 248 113 113;
+  --red-700: 252 165 165;
+  --red-800: 254 202 202;
+  --red-900: 254 226 226;
+  --red-950: 254 242 242;
+  --cyan-50: 8 51 68;
+  --cyan-100: 22 78 99;
+  --cyan-200: 22 78 99;
+  --cyan-300: 21 94 117;
+  --cyan-400: 14 116 144;
+  --cyan-500: 6 182 212;
+  --cyan-600: 34 211 238;
+  --cyan-700: 103 232 249;
+  --cyan-800: 165 243 252;
+  --cyan-900: 207 250 254;
+  --cyan-950: 236 254 255;
+  --violet-50: 46 16 101;
+  --violet-100: 76 29 149;
+  --violet-200: 76 29 149;
+  --violet-300: 91 33 182;
+  --violet-400: 109 40 217;
+  --violet-500: 139 92 246;
+  --violet-600: 167 139 250;
+  --violet-700: 196 181 253;
+  --violet-800: 221 214 254;
+  --violet-900: 237 233 254;
+  --violet-950: 245 243 255;
+  --blue-50: 23 37 84;
+  --blue-100: 30 58 138;
+  --blue-200: 30 58 138;
+  --blue-300: 30 64 175;
+  --blue-400: 29 78 216;
+  --blue-500: 59 130 246;
+  --blue-600: 96 165 250;
+  --blue-700: 147 197 253;
+  --blue-800: 191 219 254;
+  --blue-900: 219 234 254;
+  --blue-950: 239 246 255;
+  --sky-50: 8 47 73;
+  --sky-100: 12 74 110;
+  --sky-200: 12 74 110;
+  --sky-300: 7 89 133;
+  --sky-400: 3 105 161;
+  --sky-500: 14 165 233;
+  --sky-600: 56 189 248;
+  --sky-700: 125 211 252;
+  --sky-800: 186 230 253;
+  --sky-900: 224 242 254;
+  --sky-950: 240 249 255;
+  --orange-50: 67 20 7;
+  --orange-100: 124 45 18;
+  --orange-200: 124 45 18;
+  --orange-300: 154 52 18;
+  --orange-400: 194 65 12;
+  --orange-500: 249 115 22;
+  --orange-600: 251 146 60;
+  --orange-700: 253 186 116;
+  --orange-800: 254 215 170;
+  --orange-900: 255 237 213;
+  --orange-950: 255 247 237;
+  --green-50: 5 46 22;
+  --green-100: 20 83 45;
+  --green-200: 20 83 45;
+  --green-300: 22 101 52;
+  --green-400: 21 128 61;
+  --green-500: 34 197 94;
+  --green-600: 74 222 128;
+  --green-700: 134 239 172;
+  --green-800: 187 247 208;
+  --green-900: 220 252 231;
+  --green-950: 240 253 244;
+  --yellow-50: 66 32 6;
+  --yellow-100: 113 63 18;
+  --yellow-200: 113 63 18;
+  --yellow-300: 133 77 14;
+  --yellow-400: 161 98 7;
+  --yellow-500: 234 179 8;
+  --yellow-600: 250 204 21;
+  --yellow-700: 253 224 71;
+  --yellow-800: 254 240 138;
+  --yellow-900: 254 249 195;
+  --yellow-950: 254 252 232;
+  --rose-50: 76 5 25;
+  --rose-100: 136 19 55;
+  --rose-200: 136 19 55;
+  --rose-300: 159 18 57;
+  --rose-400: 190 18 60;
+  --rose-500: 244 63 94;
+  --rose-600: 251 113 133;
+  --rose-700: 253 164 175;
+  --rose-800: 254 205 211;
+  --rose-900: 255 228 230;
+  --rose-950: 255 241 242;
+  --teal-50: 4 47 46;
+  --teal-100: 19 78 74;
+  --teal-200: 19 78 74;
+  --teal-300: 17 94 89;
+  --teal-400: 15 118 110;
+  --teal-500: 20 184 166;
+  --teal-600: 45 212 191;
+  --teal-700: 94 234 212;
+  --teal-800: 153 246 228;
+  --teal-900: 204 251 241;
+  --teal-950: 240 253 250;
+  --indigo-50: 30 27 75;
+  --indigo-100: 49 46 129;
+  --indigo-200: 49 46 129;
+  --indigo-300: 55 48 163;
+  --indigo-400: 67 56 202;
+  --indigo-500: 99 102 241;
+  --indigo-600: 129 140 248;
+  --indigo-700: 165 180 252;
+  --indigo-800: 199 210 254;
+  --indigo-900: 224 231 255;
+  --indigo-950: 238 242 255;
+  --fuchsia-50: 74 4 78;
+  --fuchsia-100: 112 26 117;
+  --fuchsia-200: 112 26 117;
+  --fuchsia-300: 134 25 143;
+  --fuchsia-400: 162 28 175;
+  --fuchsia-500: 217 70 239;
+  --fuchsia-600: 232 121 249;
+  --fuchsia-700: 240 171 252;
+  --fuchsia-800: 245 208 254;
+  --fuchsia-900: 250 232 255;
+  --fuchsia-950: 253 244 255;
+}

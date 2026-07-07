@@ -1,0 +1,80 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Tokio is a work-stealing, multi-threaded runtime for executing async Rust. Here's how the pieces fit together.
+
+## The core abstraction: tasks and `Future`s
+
+An async task is a `Future` that the runtime polls to completion. A `Future` exposes one method:
+
+```rust
+fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>
+```
+
+`poll` returns either `Poll::Ready(value)` (done) or `Poll::Pending` (blocked on something — I/O, a timer, a channel). The key contract: **a task that returns `Pending` is responsible for arranging to be woken later**, via the `Waker` carried in `Context`. Tokio never busy-polls; a pending task is set aside and only re-polled after its waker fires.
+
+When you write `async fn`, the compiler lowers it into a state machine that implements `Future`. Each `.await` is a potential suspension point where `poll` may return `Pending`, saving its position in the state machine so the next `poll` resumes there.
+
+## The scheduler
+
+`tokio::spawn` hands a future to the scheduler, which boxes it into a **task** (a heap allocation holding the future, its state, and a join handle). The multi-threaded scheduler (`flavor = "multi_thread"`, the default with `#[tokio::main]`) runs N worker threads, each with:
+
+- A **local run queue** (a fixed-size, lock-free ring buffer, ~256 slots).
+- Access to a shared **global/injection queue** for overflow and for tasks spawned from outside a worker.
+
+The scheduling loop on each worker roughly does:
+
+1. Pop a task from its local queue and `poll` it.
+2. If the task returns `Pending`, drop it — it's now owned by whatever it's waiting on, and will be re-scheduled when its waker fires.
+3. If it returns `Ready`, complete the `JoinHandle`.
+4. Periodically check the global queue and the I/O driver for fairness.
+
+**Work-stealing:** when a worker's local queue is empty, it tries to steal half the tasks from another worker's queue, then falls back to the global queue. This keeps all cores busy without central contention. There's also an **LIFO slot** optimization: when a task wakes another task (common in message-passing), the woken task goes into a single-slot fast path so it runs immediately on the same worker, improving cache locality. Tokio caps consecutive LIFO hops to avoid starving the queue.
+
+## Waking: how a `Pending` task gets re-scheduled
+
+The `Waker` is the bridge between "I'm blocked" and "I'm runnable again." When a task awaits, say, a socket read:
+
+1. The future registers interest with the **I/O driver** (an epoll/kqueue/IOCP reactor), storing its `Waker`.
+2. `poll` returns `Pending`; the worker moves on.
+3. A dedicated driver thread (or a worker between polls) blocks on `epoll_wait`. When the socket becomes readable, the OS notifies it.
+4. The driver looks up the registered `Waker` and calls `wake()`, which **pushes the task back onto a run queue**.
+5. A worker eventually pops it and polls again — this time the read succeeds.
+
+Timers work the same way via a hierarchical timing wheel; channels and `Notify` call `wake()` directly when a sender makes progress. So scheduling is entirely event-driven: tasks consume zero CPU while pending.
+
+## Fairness and budgeting
+
+To prevent one hot task from monopolizing a worker, Tokio gives each task a **budget** (a poll-operation quota). Tokio's own resources (I/O, channels, timers) decrement this budget on each ready operation; when it's exhausted, they artificially return `Pending` and yield, forcing the scheduler to give other tasks a turn. This is why a tight loop of `recv().await` on an always-ready channel can't starve the runtime.
+
+## Blocking work
+
+Because workers cooperatively share threads, **a blocking call (sync file I/O, `std::thread::sleep`, CPU-bound crunching) stalls a whole worker** and the tasks queued on it. Tokio provides a separate, dynamically-sized blocking pool: `tokio::task::spawn_blocking` moves such work there so the async workers stay responsive. The runtime's own file operations use this pool internally.
+
+## Single-threaded flavor
+
+`flavor = "current_thread"` runs everything on one thread with a single queue — no work-stealing, no `Send` requirement on futures. Useful for `!Send` workloads, deterministic tests, or pinning a runtime to one core.
+
+## Putting it together
+
+```
+spawn ──> task allocated ──> local/global run queue
+                                   │
+            worker pops & polls ───┤
+                                   ├─ Ready  ──> JoinHandle resolved
+                                   └─ Pending ──> Waker registered with
+                                                  I/O driver / timer / channel
+                                                       │ (event fires)
+                                                  wake() pushes task back
+                                                       │
+                                                  re-polled by some worker
+```
+
+The whole design is built around: cheap heap-allocated tasks, per-core local queues with work-stealing for load balance, event-driven wakeups so pending tasks cost nothing, and a budget system for fairness.
+
+If you'd like, I can go deeper on any one layer — the LIFO/steal heuristics, the timer wheel, the I/O driver registration, or how the `async`/`await` state machine is generated.

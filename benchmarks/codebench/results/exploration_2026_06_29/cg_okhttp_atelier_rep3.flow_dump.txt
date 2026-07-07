@@ -1,0 +1,84 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] OkHttp processes every request through an ordered **chain of interceptors**, each of which can inspect, modify, retry, or short-circuit the call. The design is a classic chain-of-responsibility: each interceptor does some work, then calls `chain.proceed(request)` to hand off to the next link, and eventually gets a `Response` bubbling back up.
+
+## The flow
+
+When you call `call.execute()` or `call.enqueue()`, OkHttp builds a `RealInterceptorChain` and walks it in this order:
+
+```
+Your request
+   │
+   ▼
+[ Application Interceptors ]      ← your custom interceptors (addInterceptor)
+   │
+   ▼
+RetryAndFollowUpInterceptor       ← retries, redirects, follow-ups
+   │
+   ▼
+BridgeInterceptor                 ← app-level → network-level headers
+   │                                 (Content-Length, gzip, Cookie, User-Agent…)
+   ▼
+CacheInterceptor                  ← serves/stores responses via the Cache
+   │
+   ▼
+ConnectInterceptor                ← opens a connection / socket to the server
+   │
+   ▼
+[ Network Interceptors ]          ← your custom interceptors (addNetworkInterceptor)
+   │
+   ▼
+CallServerInterceptor            ← writes the request, reads the response (terminal)
+   │
+   ▼
+Response (flows back up the chain)
+```
+
+## How each link works
+
+Each interceptor receives the `Chain` and typically does:
+
+```kotlin
+override fun intercept(chain: Interceptor.Chain): Response {
+    val request = chain.request()
+    // ... do work BEFORE the request is sent (modify request) ...
+    val response = chain.proceed(request)   // hand off to the next interceptor
+    // ... do work AFTER the response comes back (modify response) ...
+    return response
+}
+```
+
+`chain.proceed()` is the recursion point: it constructs the *next* `RealInterceptorChain` (with an incremented index) and invokes the next interceptor's `intercept()`. The last interceptor, `CallServerInterceptor`, doesn't call `proceed` — it actually talks to the server and returns the real `Response`, which then unwinds back up through every interceptor.
+
+## The built-in interceptors
+
+- **RetryAndFollowUpInterceptor** — wraps everything in a loop that handles retries on recoverable failures and follows redirects / auth challenges (`3xx`, `401`, etc.).
+- **BridgeInterceptor** — translates your high-level request into an HTTP request: adds `Content-Type`, `Content-Length`, `Host`, `Connection: Keep-Alive`, `Accept-Encoding: gzip`, cookies; on the way back it transparently un-gzips the response.
+- **CacheInterceptor** — consults the configured `Cache`; can return a cached response without hitting the network, or store a fresh one.
+- **ConnectInterceptor** — establishes the actual healthy connection (TCP + TLS handshake), reusing a pooled connection when possible.
+- **CallServerInterceptor** — the terminal link: writes request headers/body to the socket and reads the response.
+
+## Application vs. network interceptors
+
+This is the key practical distinction:
+
+| | **Application interceptors** | **Network interceptors** |
+|---|---|---|
+| Added via | `addInterceptor()` | `addNetworkInterceptor()` |
+| Position | Outermost (first) | Just before `CallServerInterceptor` |
+| Called once per call? | Yes — even if redirects/retries happen | No — called once per *network* request (so multiple times across redirects/retries) |
+| Sees cached responses? | Yes (short-circuited responses count) | No — only network traffic |
+| Sees redirects/retries? | No (sees only the final result) | Yes — sees each intermediate request |
+| Access to `Connection`? | No | Yes (`chain.connection()`) |
+
+**Rule of thumb:** use an application interceptor for things like logging the logical request/response or adding an auth header once; use a network interceptor when you need to observe actual wire traffic, redirects, or the connection.
+
+So a request "descends" the chain (each interceptor pre-processing the request), hits the server at the bottom, and the response "ascends" back up (each interceptor post-processing it) — with any interceptor free to short-circuit by returning its own `Response` instead of calling `proceed()`.
+
+Want me to go deeper on any part — e.g. the exact `RealInterceptorChain.proceed()` source, writing a custom interceptor, or how retries interact with request bodies?

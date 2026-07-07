@@ -1,0 +1,7 @@
+{
+  "atelier": {
+    "command": "atelier",
+    "args": ["mcp", "--host", "codex"],
+    "env": {}
+  }
+}

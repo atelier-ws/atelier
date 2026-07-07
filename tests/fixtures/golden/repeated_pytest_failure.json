@@ -1,0 +1,6 @@
+{
+  "task": "fix flaky test suite",
+  "error": "AssertionError: expected 200 got 500",
+  "attempt": 3,
+  "context": "pytest tests/test_api.py::test_endpoint - 3rd consecutive failure"
+}

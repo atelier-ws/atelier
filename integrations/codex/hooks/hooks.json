@@ -1,0 +1,105 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/update_notification.py\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/user_prompt.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/pre_tool_use.py\""
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/permission_request.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/savings_reporter.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/subagent.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/subagent.py\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/compact.py\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/compact.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/stop.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

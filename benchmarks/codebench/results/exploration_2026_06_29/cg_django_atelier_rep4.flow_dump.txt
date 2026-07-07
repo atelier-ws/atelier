@@ -1,0 +1,68 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Django's ORM turns a `QuerySet` into SQL through a layered pipeline. The key idea is **lazy construction**: building a `QuerySet` does no database work — it just accumulates an abstract description of the query, which is compiled to SQL and executed only when results are actually needed.
+
+## The layers
+
+```
+QuerySet  →  Query  →  SQLCompiler  →  SQL string + params  →  DB cursor  →  model instances
+(public)     (AST)      (per-backend)                          (DBAPI)
+```
+
+| Object | File (roughly) | Role |
+|---|---|---|
+| `QuerySet` | `django/db/models/query.py` | Public, chainable, lazy API |
+| `Query` | `django/db/models/sql/query.py` | Backend-independent representation of the query (the "AST") |
+| `SQLCompiler` | `django/db/models/sql/compiler.py` | Walks the `Query` and emits SQL for a specific backend |
+| `Node`/`WhereNode`/`Lookup`/`Expression` | `django/db/models/sql/where.py`, `lookups.py`, `expressions.py` | The tree pieces filters compile into |
+
+## 1. Building — `QuerySet` accumulates into `Query`
+
+Every `QuerySet` wraps a `Query` instance (`qs.query`). Chained methods are **non-mutating**: each returns a *clone* of the `QuerySet` with a cloned, modified `Query`. That's why you can branch a queryset safely.
+
+```python
+qs = Author.objects.filter(age__gt=30).order_by("name")
+```
+
+- `.filter(age__gt=30)` calls `Query.add_q()`, which resolves `age__gt` against the model's `Meta` → a `Field`, builds a `Lookup` (`GreaterThan`), and adds it to the `Query.where` tree (a `WhereNode`, an AND/OR tree of conditions).
+- `.order_by("name")` sets `Query.order_by`.
+- Spanning relations (`author__book__title`) populates `Query.alias_map` and sets up the JOINs needed.
+
+At this point **nothing has hit the database.** The `Query` holds: the model, selected columns, the `where` tree, joins/aliases, grouping, ordering, limits (`low_mark`/`high_mark` for slicing), annotations, etc.
+
+## 2. Triggering execution — laziness
+
+A `QuerySet` evaluates only when something forces it: iterating, `len()`, `list()`, `bool()`, slicing with a step, `repr()`, or pickling. Results are cached in `QuerySet._result_cache`, so re-iterating doesn't re-query.
+
+When evaluation is triggered, `QuerySet._fetch_all()` runs the compiler's results iterator and builds model instances.
+
+## 3. Compiling — `Query` → SQL
+
+`query.get_compiler(using=db_alias)` returns a backend-specific `SQLCompiler` (the backend's `ops` and `features` drive dialect differences). `compiler.as_sql()` produces `(sql_string, params)`:
+
+1. **`pre_sql_setup()`** — resolves which columns to SELECT, sets up GROUP BY, ordering, and the JOIN list from `alias_map`.
+2. Each piece compiles itself recursively via a `compile()` callback: `WhereNode.as_sql()` emits the `WHERE`; each `Lookup.as_sql()` emits `"age" > %s` and appends `30` to params.
+3. **Parameters are always kept separate** from the SQL text — values go through DB-API placeholders (`%s`), which is what makes the ORM safe against SQL injection by default.
+4. The compiler assembles the clauses in order: `SELECT ... FROM ... JOIN ... WHERE ... GROUP BY ... HAVING ... ORDER BY ... LIMIT`.
+
+## 4. Executing — cursor and row→object mapping
+
+`SQLCompiler.execute_sql()`:
+
+- Gets a cursor from the connection (`connections[db_alias]`), with `cursor.execute(sql, params)`.
+- Returns rows lazily (chunked via `fetchmany` / `cursor.iter`), not all at once for large result sets.
+- `QuerySet.iterator()` / the `ModelIterable` then maps each row tuple to a model instance, assigning column values to fields (and handling `select_related` joins, annotations, and deferred fields).
+
+## Why this design
+
+- **Lazy + cloning** → composable querysets with no premature queries.
+- **`Query` as a backend-neutral AST** → one query description, many SQL dialects via swappable compilers.
+- **Separation of SQL text and params** → injection safety and statement reuse.
+
+If you'd like, I can trace a specific case end to end (e.g., a `select_related` join, an aggregation/`annotate`, or how `.values()` swaps in a different row iterator) against the actual Django source in your environment.

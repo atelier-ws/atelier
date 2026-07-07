@@ -1,0 +1,93 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "gin HandlersChain Next middleware Context index"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["src/atelier/core/capabilities/workflow_runner.py","src/atelier/gateway/adapters/mcp_server.py","src/atelier/core/capabilities/code_context/engine.py","src/atelier/core/service/api.py","src/atelier/core/capabilities/plugin_runtime.py","experiments/retrieval_symbol_v
+[assistant] This repo is Atelier (Python), not gin — so this is a general-knowledge question about the Go framework. Here's how gin's middleware chain actually works.
+
+## The core data structure
+
+Gin represents a route's handlers — middleware *and* the final handler — as a single flat slice:
+
+```go
+type HandlerFunc func(*Context)
+type HandlersChain []HandlerFunc
+```
+
+There is no separate "middleware list" vs "handler." When you register a route, gin **concatenates** the group's middleware with the route handler into one chain:
+
+```go
+func (group *RouterGroup) handle(httpMethod, relativePath string, handlers HandlersChain) {
+    handlers = group.combineHandlers(handlers)  // group middleware + route handlers
+    group.engine.addRoute(httpMethod, absolutePath, handlers)
+}
+
+func (group *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain {
+    finalSize := len(group.Handlers) + len(handlers)
+    mergedHandlers := make(HandlersChain, finalSize)
+    copy(mergedHandlers, group.Handlers)
+    copy(mergedHandlers[len(group.Handlers):], handlers)
+    return mergedHandlers
+}
+```
+
+So a route ends up as `[globalMW..., groupMW..., routeHandler]` — one contiguous slice stored in the radix tree node for that path.
+
+## The routing step
+
+`Engine.ServeHTTP` grabs a pooled `Context`, resets it, and calls `handleHTTPRequest`. That looks up the method tree (gin keeps one radix/trie tree per HTTP method), matches the path, and assigns the matched chain to the context:
+
+```go
+c.handlers = value.handlers   // the combined HandlersChain
+c.params  = value.params
+c.index = -1
+c.Next()
+```
+
+## The chain walk — `Context.index` + `Next()`
+
+The middleware "chain" is not nested function wrapping (unlike Go's `net/http` middleware idiom). It's an **index cursor** over the slice:
+
+```go
+func (c *Context) Next() {
+    c.index++
+    for c.index < int8(len(c.handlers)) {
+        c.handlers[c.index](c)
+        c.index++
+    }
+}
+```
+
+Key consequences of this design:
+
+- **Pre/post logic** — A middleware runs code, calls `c.Next()` to descend into the rest of the chain, and then the code *after* `c.Next()` runs on the way back out. That's how timing/logging/recovery middleware wrap the handler:
+  ```go
+  func Logger() gin.HandlerFunc {
+      return func(c *gin.Context) {
+          t := time.Now()
+          c.Next()                 // run everything downstream
+          latency := time.Since(t) // runs after handler returns
+      }
+  }
+  ```
+- **Abort** — Calling `c.Abort()` sets `c.index = abortIndex` (a large sentinel, 63). The `for` loop in `Next()` then fails its bounds check and stops, so no later handlers run. `Abort()` does **not** unwind the stack — already-running middleware still finish their post-`Next()` code. To stop *and* respond, you use `c.AbortWithStatus(...)` / `AbortWithStatusJSON(...)`.
+- **A middleware that never calls `Next()`** still works: when it returns, `Next()`'s loop increments `index` and continues to the next handler anyway. Calling `Next()` explicitly only matters when you need post-processing logic or want to control ordering relative to downstream handlers.
+- **`index` is an `int8`** — which is why the chain is limited to 63 handlers (`abortIndex = math.MaxInt8 >> 1`).
+
+## Putting it together
+
+1. Route registration flattens middleware + handler into one `HandlersChain` per route, stored in the per-method radix tree.
+2. On a request, `ServeHTTP` pulls a `Context` from a `sync.Pool`, the tree lookup attaches the matched chain, sets `index = -1`.
+3. `Next()` drives the cursor forward; each handler may call `Next()` to run downstream handlers before its own tail code.
+4. `Abort()` jumps the cursor past the end to halt progression.
+
+The elegant part is that there's no wrapper-closure allocation per middleware per request — it's one shared slice plus an integer cursor on a pooled context, which is a big part of why gin is fast.
+
+If you have a specific gin version checked out somewhere and want me to trace the exact source, point me at it and I'll read the actual files.

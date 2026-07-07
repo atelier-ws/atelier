@@ -1,0 +1,1004 @@
+"""Comprehensive MCP-level tests for the `edit` tool handler (tool_smart_edit).
+
+These tests exercise tool_smart_edit end-to-end through the _handle dispatcher,
+covering all six descriptor families, atomicity, hooks, diff recording, and edge
+cases that were previously untested.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from atelier.gateway.adapters import mcp_server
+from atelier.gateway.adapters.mcp_server import tool_smart_edit
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+from tests.helpers import init_store_at
+
+
+def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    req: dict[str, Any] = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": args},
+    }
+    resp = mcp_server._handle(req)
+    assert isinstance(resp, dict)
+    return resp
+
+
+def _result(resp: dict[str, Any]) -> dict[str, Any]:
+    assert "result" in resp, resp
+    text = resp["result"]["content"][0]["text"]
+    # Clean success renders "ok" (no ranges) or "applied path:line[, ...]" (the
+    # minimal orientation echo); normalize both so callers can assert structurally.
+    if text == "ok":
+        return {}
+    if text.startswith("applied "):
+        return {"applied": text[len("applied ") :].split(", ")}
+    payload = json.loads(text)
+    assert isinstance(payload, dict)
+    return payload
+
+
+def _edit(args: dict[str, Any]) -> dict[str, Any]:
+    """Shortcut: call edit and return the parsed result."""
+    return _result(_call("edit", args))
+
+
+def _edit_text(args: dict[str, Any]) -> str:
+    """Call edit and return the raw model-facing text (clean success == "applied path:line")."""
+    resp = _call("edit", args)
+    assert "result" in resp, resp
+    return str(resp["result"]["content"][0]["text"])
+
+
+def _assert_silent_success(payload: dict[str, Any]) -> None:
+    """A clean exact-match edit carries only the minimal `applied` range echo.
+
+    `applied` is a list of compact "path:line" strings (orientation, not a diff)
+    so the model need not re-read the file it just edited; nothing else actionable
+    (`failed`/`rolled_back`/`writes`/`hooks`/`diagnostics`). (`calls_saved` is
+    internal accounting the dispatcher strips before rendering.)
+    """
+    assert payload.get("applied"), f"clean success must echo applied ranges: {payload}"
+    assert all(isinstance(a, str) for a in payload["applied"]), payload
+    for key in ("failed", "rolled_back", "writes", "hooks", "diagnostics"):
+        assert key not in payload, f"clean success must not carry {key!r}: {payload}"
+
+
+# ---------------------------------------------------------------------------
+# Fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-gnd-session")
+    monkeypatch.chdir(tmp_path)
+    mcp_server._current_ledger = None
+    mcp_server._realtime_ctx = None
+    mcp_server._remote_client = MagicMock()
+    mcp_server._remote_client.get_context.return_value = {"context": "", "run_ledger": []}
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# #1  Rich descriptor family
+# ---------------------------------------------------------------------------
+
+
+def test_rich_replace_basic(workspace: Path) -> None:
+    """Rich replace updates text and returns an applied hunk."""
+    f = workspace / "hello.py"
+    f.write_text("def greet():\n    return HELLO\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "hello.py", "old_string": "HELLO", "new_string": "WORLD"}],
+        }
+    )
+
+    # Clean exact-match edit echoes the minimal applied range (orientation only).
+    assert payload.get("applied") == ["hello.py:2"]
+    assert "failed" not in payload
+    assert "rolled_back" not in payload
+    assert "writes" not in payload
+    assert "WORLD" in f.read_text(encoding="utf-8")
+    assert "HELLO" not in f.read_text(encoding="utf-8")
+
+
+def test_rich_create_new_file_via_overwrite(workspace: Path) -> None:
+    """Rich overwrite with no existing file creates it from scratch."""
+    f = workspace / "new_module.py"
+    assert not f.exists()
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "new_module.py", "new_string": "# new\n", "overwrite": True}],
+        }
+    )
+
+    # An overwrite/create is a clean success too: minimal body, file created.
+    assert "failed" not in payload
+    assert f.exists()
+    assert f.read_text(encoding="utf-8") == "# new\n"
+
+
+def test_rich_overwrite_replaces_existing_file(workspace: Path) -> None:
+    """Rich overwrite with an existing file replaces its full content."""
+    f = workspace / "config.txt"
+    f.write_text("old content\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "config.txt", "new_string": "new content\n", "overwrite": True}],
+        }
+    )
+
+    assert "failed" not in payload
+    assert f.read_text(encoding="utf-8") == "new content\n"
+
+
+def test_rich_overwrite_with_line_range_rejected(workspace: Path) -> None:
+    """overwrite=true + a #line range is a contradiction: reject, don't truncate."""
+    f = workspace / "big.py"
+    original = "".join(f"line_{i} = {i}\n" for i in range(1, 21))
+    f.write_text(original, encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "big.py:L5-L10", "new_string": "replacement\n", "overwrite": True}]})
+
+    assert payload["rolled_back"] is True
+    assert payload["failed"]
+    assert "ignores the :L5-L10 line range" in payload["failed"][0]["error"]
+    # The file must be untouched — not emptied, not partially overwritten.
+    assert f.read_text(encoding="utf-8") == original
+
+
+def test_rich_overwrite_empty_string_truncation_rejected(workspace: Path) -> None:
+    """overwrite=true with an empty new_string must not silently zero a non-empty file."""
+    f = workspace / "keep.py"
+    f.write_text("def keep():\n    return 1\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "keep.py", "overwrite": True}]})
+
+    assert payload["rolled_back"] is True
+    assert payload["failed"]
+    assert "truncate non-empty file" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "def keep():\n    return 1\n"
+
+
+def test_rich_overwrite_empty_string_allowed_for_new_file(workspace: Path) -> None:
+    """Creating an empty file via overwrite stays allowed — nothing is destroyed."""
+    f = workspace / "fresh.py"
+    assert not f.exists()
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "fresh.py", "new_string": "", "overwrite": True}],
+        }
+    )
+
+    assert "failed" not in payload
+    assert f.exists()
+    assert f.read_text(encoding="utf-8") == ""
+
+
+def test_rich_line_anchor_restricts_scope(workspace: Path) -> None:
+    """file_path#line scopes the replacement to that line only."""
+    f = workspace / "scope.py"
+    f.write_text("x = 1\nx = 2\nx = 3\n", encoding="utf-8")
+
+    # Only replace the x = 2 on line 2 — the other 'x = 1' must stay
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "scope.py:L2", "old_string": "x = 2", "new_string": "x = 99"}],
+        }
+    )
+
+    assert "failed" not in payload
+    text = f.read_text(encoding="utf-8")
+    assert "x = 99" in text
+    assert "x = 1" in text
+    assert "x = 3" in text
+
+
+def test_rich_multi_file_batch_all_applied(workspace: Path) -> None:
+    """Multiple rich edits across different files succeed atomically."""
+    f1 = workspace / "a.py"
+    f2 = workspace / "b.py"
+    f1.write_text("alpha\n", encoding="utf-8")
+    f2.write_text("beta\n", encoding="utf-8")
+
+    edits = [
+        {"file_path": "a.py", "old_string": "alpha", "new_string": "ALPHA"},
+        {"file_path": "b.py", "old_string": "beta", "new_string": "BETA"},
+    ]
+    payload = _edit({"post_edit_hooks": False, "edits": edits})
+
+    # Clean multi-file success echoes the minimal applied ranges, one per file.
+    assert "failed" not in payload
+    assert sorted(payload.get("applied", [])) == ["a.py:1", "b.py:1"]
+    assert f1.read_text(encoding="utf-8") == "ALPHA\n"
+    assert f2.read_text(encoding="utf-8") == "BETA\n"
+    # ...but the internal cross-file savings credit is preserved on the
+    # structured result (the dispatcher reads calls_saved before rendering).
+    f1.write_text("alpha\n", encoding="utf-8")
+    f2.write_text("beta\n", encoding="utf-8")
+    structured = tool_smart_edit({"post_edit_hooks": False, "edits": edits})
+    assert structured == {"applied": ["a.py:1", "b.py:1"], "calls_saved": 1}
+
+
+def test_recovered_fuzzy_edit_credits_retry_loop(workspace: Path) -> None:
+    """A hunk that landed via non-exact recovery credits the avoided
+    failed-edit → re-read → re-edit chain: 2 roundtrips per recovered file
+    (a byte-exact vanilla Edit would have rejected the stale old_string)."""
+    f = workspace / "fz.py"
+    f.write_text("def alpha():\n    return   1\n", encoding="utf-8")
+    structured = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {
+                    "file_path": "fz.py",
+                    # Interior whitespace differs from disk → exact match fails,
+                    # the normalized/fuzzy recovery lands it.
+                    "old_string": "def alpha():\n    return 1",
+                    "new_string": "def alpha():\n    return 2",
+                }
+            ],
+        }
+    )
+    assert f.read_text(encoding="utf-8") == "def alpha():\n    return 2\n"
+    assert structured.get("calls_saved") == 2
+    # The recovered entry stays a dict carrying match_mode so the agent verifies.
+    modes = [e.get("match_mode") for e in structured.get("applied", []) if isinstance(e, dict)]
+    assert modes and modes[0] in ("normalized", "placeholder", "fuzzy", "minified")
+
+
+def test_rich_multi_file_atomic_rollback(workspace: Path) -> None:
+    """Second edit fails → atomic=True rolls back the first edit too."""
+    f1 = workspace / "r1.py"
+    f1.write_text("original\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "atomic": True,
+            "edits": [
+                {"file_path": "r1.py", "old_string": "original", "new_string": "changed"},
+                {"file_path": "r1.py", "old_string": "does-not-exist", "new_string": "x"},
+            ],
+        }
+    )
+
+    assert payload["rolled_back"] is True
+    assert f1.read_text(encoding="utf-8") == "original\n"
+
+
+def test_rich_non_atomic_partial_success(workspace: Path) -> None:
+    """With atomic=False a failing second edit doesn't undo the first."""
+    f = workspace / "partial.py"
+    f.write_text("keep this\nbad target here\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "atomic": False,
+            "edits": [
+                {"file_path": "partial.py", "old_string": "keep this", "new_string": "KEPT"},
+                {"file_path": "partial.py", "old_string": "no such string", "new_string": "x"},
+            ],
+        }
+    )
+
+    # Partial success is loud (non-empty failed) but sheds noise: a false
+    # rolled_back is stripped, while applied + the real failures stay.
+    assert "rolled_back" not in payload
+    assert len(payload["applied"]) >= 1
+    assert len(payload["failed"]) >= 1
+    assert "KEPT" in f.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# #2  Legacy descriptor family
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_replace_through_handler(workspace: Path) -> None:
+    """Legacy op=replace dispatches to apply_batch_edit."""
+    f = workspace / "legacy.txt"
+    f.write_text("foo bar\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"path": str(f), "op": "replace", "old_string": "foo", "new_string": "baz"}]})
+
+    assert "failed" not in payload
+    assert f.read_text(encoding="utf-8") == "baz bar\n"
+
+
+def test_legacy_insert_after(workspace: Path) -> None:
+    """Legacy op=insert_after appends text after the anchor line."""
+    f = workspace / "insert.txt"
+    f.write_text("line1\nline2\nline3\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"path": str(f), "op": "insert_after", "anchor": "line1", "new_string": "line1b"}]})
+
+    assert "failed" not in payload
+    text = f.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    assert lines[0] == "line1"
+    assert lines[1] == "line1b"
+    assert lines[2] == "line2"
+
+
+def test_legacy_replace_range(workspace: Path) -> None:
+    """Legacy op=replace_range replaces exact line range."""
+    f = workspace / "range.txt"
+    f.write_text("aaa\nbbb\nccc\nddd\n", encoding="utf-8")
+    # Blind range ops require the file to have been served this window
+    # (freshness guard); read it the way a real caller would have.
+    resp = _call("read", {"path": str(f)})
+    assert "result" in resp
+
+    payload = _edit(
+        {
+            "edits": [
+                {
+                    "path": str(f),
+                    "op": "replace_range",
+                    "line_start": 2,
+                    "line_end": 3,
+                    "new_string": "REPLACED",
+                }
+            ]
+        }
+    )
+
+    assert "failed" not in payload
+    text = f.read_text(encoding="utf-8")
+    assert "aaa" in text
+    assert "REPLACED" in text
+    assert "bbb" not in text
+    assert "ccc" not in text
+    assert "ddd" in text
+
+
+def test_legacy_fuzzy_replace(workspace: Path) -> None:
+    """Legacy fuzzy=True matches despite indentation drift."""
+    f = workspace / "fuzzy.py"
+    f.write_text("def f():\n    x = 1\n    return x\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "edits": [
+                {
+                    "path": str(f),
+                    "op": "replace",
+                    "old_string": "x = 1",
+                    "new_string": "x = 42",
+                    "fuzzy": True,
+                }
+            ]
+        }
+    )
+
+    # The legacy batch path applies a fuzzy match without emitting a match_mode
+    # marker (that is a rich-edit signal), so a successful legacy fuzzy edit is
+    # silent like any other clean success. The rich-edit fuzzy path (which DOES
+    # surface match_mode) is covered by test_rich_fuzzy_match_stays_loud.
+    assert "failed" not in payload
+    assert "x = 42" in f.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# #3  Notebook cell edits
+# ---------------------------------------------------------------------------
+
+
+def test_notebook_cell_insert_through_handler(workspace: Path) -> None:
+    """Notebook cell_action=insert_after adds a new cell via MCP."""
+    nb_path = workspace / "nb.ipynb"
+    nb_path.write_text(
+        json.dumps(
+            {
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "metadata": {},
+                        "source": "x = 1",
+                        "outputs": [],
+                        "execution_count": None,
+                    }
+                ],
+                "metadata": {},
+                "nbformat": 4,
+                "nbformat_minor": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = _edit(
+        {
+            "edits": [
+                {
+                    "file_path": "nb.ipynb#cell=0",
+                    "cell_action": "insert_after",
+                    "cell_type": "markdown",
+                    "new_string": "# heading",
+                }
+            ]
+        }
+    )
+
+    assert "failed" not in payload
+    notebook = json.loads(nb_path.read_text(encoding="utf-8"))
+    assert len(notebook["cells"]) == 2
+    assert notebook["cells"][1]["cell_type"] == "markdown"
+    assert notebook["cells"][1]["source"] == "# heading"
+
+
+def test_notebook_cell_overwrite_clears_outputs(workspace: Path) -> None:
+    """Overwriting a notebook cell via #cell=N resets its outputs."""
+    nb_path = workspace / "out.ipynb"
+    nb_path.write_text(
+        json.dumps(
+            {
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "metadata": {},
+                        "source": "print(1)",
+                        "outputs": [{"output_type": "stream", "text": "1\n"}],
+                        "execution_count": 3,
+                    }
+                ],
+                "metadata": {},
+                "nbformat": 4,
+                "nbformat_minor": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = _edit({"edits": [{"file_path": "out.ipynb#cell=0", "overwrite": True, "new_string": "print(2)"}]})
+
+    assert "failed" not in payload
+    notebook = json.loads(nb_path.read_text(encoding="utf-8"))
+    assert notebook["cells"][0]["source"] == "print(2)"
+    assert notebook["cells"][0]["outputs"] == []
+    assert notebook["cells"][0]["execution_count"] is None
+
+
+# ---------------------------------------------------------------------------
+# #4  post_edit_hooks behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_post_edit_hooks_false_no_diagnostics_key(workspace: Path) -> None:
+    """With post_edit_hooks=False the result has no diagnostics/hooks keys."""
+    f = workspace / "nohook.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "nohook.py", "old_string": "x = 1", "new_string": "x = 2"}],
+        }
+    )
+
+    assert "failed" not in payload
+    assert "diagnostics" not in payload
+    assert "hooks" not in payload
+
+
+def test_post_edit_hooks_false_diff_still_recorded(workspace: Path) -> None:
+    """Diffs are recorded in the ledger even when hooks are disabled."""
+    f = workspace / "difftest.py"
+    f.write_text("before\n", encoding="utf-8")
+
+    _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "difftest.py", "old_string": "before", "new_string": "after"}],
+        }
+    )
+
+    led = mcp_server._get_ledger()
+    file_events = [e for e in led.events if e.kind == "file_edit"]
+    assert any(e.payload.get("path") == "difftest.py" for e in file_events)
+    matching = [e for e in file_events if e.payload.get("path") == "difftest.py"]
+    assert "+after" in matching[-1].payload["diff"]
+
+
+def test_edit_result_omits_inline_diff(workspace: Path) -> None:
+    """The edit result never carries an inline diff; the agent re-reads to verify.
+
+    A unified diff echoes old+new content back into context (cache-write now,
+    cache-read on every later turn), so it is not returned. The diff is still
+    recorded to the ledger for audit/undo.
+    """
+    f = workspace / "nodiff.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "nodiff.py", "old_string": "x = 1", "new_string": "x = 2"}]})
+
+    assert "failed" not in payload
+    assert "diff" not in payload
+    assert f.read_text(encoding="utf-8") == "x = 2\n"
+    led = mcp_server._get_ledger()
+    file_events = [e for e in led.events if e.kind == "file_edit" and e.payload.get("path") == "nodiff.py"]
+    assert file_events and "+x = 2" in file_events[-1].payload["diff"]
+
+
+def test_hook_exception_does_not_fail_successful_edit(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hook crash must not surface as an edit failure — the file was already written."""
+    f = workspace / "hookcrash.py"
+    f.write_text("old\n", encoding="utf-8")
+
+    def exploding_hooks(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("hook toolchain not found")
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.tool_supervision.post_edit_hooks.run_post_edit_hooks",
+        exploding_hooks,
+    )
+
+    payload = _edit(
+        {
+            "post_edit_hooks": True,
+            "edits": [{"file_path": "hookcrash.py", "old_string": "old", "new_string": "new"}],
+        }
+    )
+
+    # Edit must succeed even when post-edit hooks crash. Hook diagnostics are
+    # intentionally stripped, so a crashed-hook success is still silent.
+    assert "failed" not in payload
+    assert "rolled_back" not in payload
+    assert f.read_text(encoding="utf-8") == "new\n"
+    assert "hooks" not in payload
+
+
+def test_hook_exception_diff_still_recorded(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Diff is recorded in the ledger even when the hooks crash."""
+    f = workspace / "hookdiff.py"
+    f.write_text("original\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.tool_supervision.post_edit_hooks.run_post_edit_hooks",
+        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    _edit(
+        {
+            "post_edit_hooks": True,
+            "edits": [{"file_path": "hookdiff.py", "old_string": "original", "new_string": "modified"}],
+        }
+    )
+
+    led = mcp_server._get_ledger()
+    file_events = [e for e in led.events if e.kind == "file_edit" and e.payload.get("path") == "hookdiff.py"]
+    assert file_events, "diff event must be recorded even after hook crash"
+    assert "+modified" in file_events[-1].payload["diff"]
+
+
+# ---------------------------------------------------------------------------
+# #5  Edge cases and validation
+# ---------------------------------------------------------------------------
+
+
+def test_empty_edits_returns_error(workspace: Path) -> None:
+    """An empty edits array is a protocol error."""
+    resp = _call("edit", {"edits": []})
+    # Either a JSON-RPC error or a result with failed containing the message
+    has_error = "error" in resp or ("result" in resp and _result(resp).get("failed"))
+    assert has_error
+
+
+def test_mixed_families_rejected(workspace: Path) -> None:
+    """Mixing legacy op/path and rich file_path descriptors raises an error."""
+    f = workspace / "mixed.txt"
+    f.write_text("hello\n", encoding="utf-8")
+
+    resp = _call(
+        "edit",
+        {
+            "edits": [
+                {"path": str(f), "op": "replace", "old_string": "hello", "new_string": "legacy"},
+                {"file_path": str(f), "old_string": "hello", "new_string": "rich"},
+            ]
+        },
+    )
+
+    assert "error" in resp
+    assert "cannot mix" in resp["error"]["message"].lower()
+    assert f.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_rich_path_escape_rejected(workspace: Path) -> None:
+    """A path that escapes the repo root is blocked by path safety."""
+    payload = _edit({"edits": [{"file_path": "../../../etc/passwd", "old_string": "root", "new_string": "hacked"}]})
+    assert payload["rolled_back"] is True
+    assert payload["failed"]
+
+
+def test_legacy_unknown_op_reported_as_failure(workspace: Path) -> None:
+    """Legacy op with unsupported opcode fails gracefully."""
+    f = workspace / "unknown.txt"
+    f.write_text("original\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"path": str(f), "op": "delete_line", "old_string": "original", "new_string": ""}]})
+
+    assert payload["failed"]
+    assert f.read_text(encoding="utf-8") == "original\n"
+
+
+# ---------------------------------------------------------------------------
+# #6  Ledger diff recording (multi-file)
+# ---------------------------------------------------------------------------
+
+
+def test_diff_recorded_per_file_multi_edit(workspace: Path) -> None:
+    """Each touched file gets its own file_edit event in the ledger."""
+    f1 = workspace / "m1.py"
+    f2 = workspace / "m2.py"
+    f1.write_text("alpha\n", encoding="utf-8")
+    f2.write_text("beta\n", encoding="utf-8")
+
+    _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "m1.py", "old_string": "alpha", "new_string": "ALPHA"},
+                {"file_path": "m2.py", "old_string": "beta", "new_string": "BETA"},
+            ],
+        }
+    )
+
+    led = mcp_server._get_ledger()
+    file_events = [e for e in led.events if e.kind == "file_edit"]
+    paths_recorded = {e.payload["path"] for e in file_events}
+    assert "m1.py" in paths_recorded
+    assert "m2.py" in paths_recorded
+
+
+# ---------------------------------------------------------------------------
+# #7  Schema contract
+# ---------------------------------------------------------------------------
+
+
+def test_schema_top_level_params_have_descriptions() -> None:
+    """atomic, hooks must each have a description."""
+    from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA, TOOLS
+
+    props = EDIT_TOOL_INPUT_SCHEMA["properties"]
+    # atomic/hooks are hidden policy knobs: absent from the advertised schema,
+    # still accepted by the handler by name.
+    assert set(props) == {"edits"}
+    assert props["edits"]["description"].strip()
+    for hidden in ("atomic", "hooks"):
+        assert hidden in TOOLS["edit"]["handler"].__wrapped__.__code__.co_varnames
+
+
+def test_schema_registered_as_edit_tool() -> None:
+    """The edit tool must be registered in TOOLS with a non-trivial description."""
+    from atelier.gateway.adapters.mcp_server import TOOLS
+
+    assert "edit" in TOOLS
+    desc = TOOLS["edit"]["description"]
+    assert "batch" in desc.lower(), "description should mention batching"
+    assert "re-read to verify" not in desc and "re-read after" in desc.lower()
+
+
+def test_schema_edits_array_requires_min_one_item() -> None:
+    """The JSON schema specifies minItems: 1 on the edits array."""
+    from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
+
+    assert EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"].get("minItems") == 1
+
+
+def test_schema_documents_flat_item_shape() -> None:
+    """The edits array items schema is a flat object with path/old/new/overwrite.
+
+    The schema is intentionally lean — notebook/symbol/projection edits are
+    accepted by the handler but not enumerated in the schema.
+    """
+    from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
+
+    items = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]
+    assert "anyOf" not in items
+    assert set(items["properties"]) == {"path", "old", "new", "replace"}
+    assert items.get("additionalProperties") is False
+    assert ":Lx" in items["properties"]["path"]["description"]
+
+
+def test_description_advertises_edits_wrapper() -> None:
+    """The short description must show the edits=[...] wrapper, not just the
+    item shape -- a cold model that reads only the description otherwise calls
+    edit(path=..., new=...) flat (observed in Harbor runs)."""
+    from atelier.gateway.adapters.mcp_server import TOOLS
+
+    assert "edits=[" in TOOLS["edit"]["description"]
+
+
+def test_flattened_create_call_auto_recovered(workspace: Path) -> None:
+    """edit(path=..., new=..., replace=True) at top level (no edits[]) is
+    auto-wrapped into edits=[{...}] instead of erroring."""
+    payload = _edit({"path": "gen.py", "new": "print('hi')\n", "replace": True, "hooks": False})
+    # Clean create renders as silent success ({} after normalization); the
+    # file on disk is the real check.
+    assert "failed" not in payload, payload
+    assert (workspace / "gen.py").read_text(encoding="utf-8") == "print('hi')\n"
+
+
+def test_flattened_replace_call_auto_recovered(workspace: Path) -> None:
+    """A flattened old/new replace at top level is lifted into edits=[...]."""
+    f = workspace / "a.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    payload = _edit({"path": "a.py", "old": "x = 1", "new": "x = 2", "hooks": False})
+    assert payload.get("applied"), payload
+    assert f.read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_flattened_call_without_content_still_rejected(workspace: Path) -> None:
+    """A stray path with no new-content key is NOT an unambiguous edit -- the
+    unknown-argument error must still surface."""
+    resp = _call("edit", {"path": "a.py"})
+    assert "unknown argument" in json.dumps(resp), resp
+
+
+# ---------------------------------------------------------------------------
+# #8  Success-silent / minimal model-facing contract
+# ---------------------------------------------------------------------------
+
+
+def test_clean_exact_match_edit_is_silent(workspace: Path) -> None:
+    """A clean exact-match edit returns the minimal model-facing body.
+
+    Success is implied by the call returning, so the rendered result is a single
+    minimal token ("ok") with NO applied/failed/rolled_back/writes/hooks body.
+    """
+    f = workspace / "silent.py"
+    f.write_text("value = 1\n", encoding="utf-8")
+
+    text = _edit_text(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 1", "new_string": "value = 2"}],
+        }
+    )
+    assert text == "applied silent.py:1"
+    # The normalized dispatched payload carries the minimal applied echo.
+    dispatched = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 2", "new_string": "value = 3"}],
+        }
+    )
+    _assert_silent_success(dispatched)
+    assert f.read_text(encoding="utf-8") == "value = 3\n"
+
+    # The structured handler return is empty (single-file => no cross-file credit).
+    f.write_text("value = 1\n", encoding="utf-8")
+    structured = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 1", "new_string": "value = 2"}],
+        }
+    )
+    assert structured == {"applied": ["silent.py:1"]}
+
+
+def test_failing_edit_stays_loud(workspace: Path) -> None:
+    """A failing edit is actionable, so its structured failure body is preserved."""
+    f = workspace / "loud.py"
+    f.write_text("keep me\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "loud.py", "old_string": "no such text", "new_string": "x"}]})
+
+    assert payload.get("rolled_back") is True
+    assert payload["failed"]
+    assert f.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_rich_fuzzy_match_stays_loud(workspace: Path) -> None:
+    """A rich-edit non-exact match keeps its applied entry + match_mode re-read warning.
+
+    A `...` placeholder forces a non-exact (placeholder) match; that is
+    actionable -- the agent should re-read to confirm the match did not diverge --
+    so the result is NOT silenced.
+    """
+    f = workspace / "fuzz.py"
+    f.write_text("start = 1\nmiddle = 2\nend = 3\n", encoding="utf-8")
+
+    # The `...` placeholder spans the middle line, so the match is not literal:
+    # rich edit resolves it as a placeholder match and stamps match_mode on the
+    # applied entry. Hooks off so the surfaced body is driven purely by match_mode.
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {
+                    "file_path": "fuzz.py",
+                    "old_string": "start = 1\n...\nend = 3",
+                    "new_string": "start = 10\nend = 30",
+                }
+            ],
+        }
+    )
+
+    assert "applied" in payload, payload
+    modes = [e.get("match_mode") for e in payload["applied"] if isinstance(e, dict)]
+    assert any(m and m != "exact" for m in modes), payload
+    assert "start = 10" in f.read_text(encoding="utf-8")
+
+
+def test_dispatcher_preserves_cross_file_calls_saved(workspace: Path) -> None:
+    """Silencing the body must not break the savings accounting path.
+
+    The model-facing text is silent, but the dispatcher still reads calls_saved
+    off the structured result and writes it into content[].saved before stripping.
+    """
+    f1 = workspace / "acc1.py"
+    f2 = workspace / "acc2.py"
+    f1.write_text("one\n", encoding="utf-8")
+    f2.write_text("two\n", encoding="utf-8")
+
+    resp = _call(
+        "edit",
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "acc1.py", "old_string": "one", "new_string": "ONE"},
+                {"file_path": "acc2.py", "old_string": "two", "new_string": "TWO"},
+            ],
+        },
+    )
+    content_item = resp["result"]["content"][0]
+    # Body is the minimal applied echo...
+    assert content_item["text"] == "applied acc1.py:1, acc2.py:1"
+    # ...but the cross-file calls_saved credit rode into content[].saved.
+    assert content_item["saved"]["calls"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Blind range edits: pre-batch coordinates + freshness guard
+# ---------------------------------------------------------------------------
+
+
+def _read(path: str) -> None:
+    """Serve a file through the read tool so its stat signature is recorded."""
+    resp = _call("read", {"path": path})
+    assert "result" in resp, resp
+
+
+def test_batch_range_edits_use_pre_batch_line_numbers(workspace: Path) -> None:
+    """Two range edits to one file: the later range must hit the lines the
+    caller READ, not coordinates shifted by the earlier splice (regression:
+    L2 growing by one line made a later L5-L5 replace pre-batch L4)."""
+    f = workspace / "seq.txt"
+    f.write_text("a1\na2\na3\na4\na5\na6\n", encoding="utf-8")
+    _read("seq.txt")
+
+    _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "seq.txt:L2-L2", "new_string": "B2\nB2b\n"},
+                {"file_path": "seq.txt:L5-L5", "new_string": "B5\n"},
+            ],
+        }
+    )
+
+    # a5 (pre-batch L5) replaced; a4 intact despite the +1 shift above it.
+    assert f.read_text(encoding="utf-8") == "a1\nB2\nB2b\na3\na4\nB5\na6\n"
+
+
+def test_batch_range_edits_overlap_fails_loudly(workspace: Path) -> None:
+    f = workspace / "ovl.txt"
+    f.write_text("a1\na2\na3\n", encoding="utf-8")
+    _read("ovl.txt")
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "ovl.txt:L1-L2", "new_string": "X\n"},
+                {"file_path": "ovl.txt:L2-L3", "new_string": "Y\n"},
+            ],
+        }
+    )
+
+    assert payload["rolled_back"] is True
+    assert "overlaps" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "a1\na2\na3\n"  # untouched
+
+
+def test_range_edit_after_content_edit_same_file_fails_loudly(workspace: Path) -> None:
+    """A content-located edit shifts lines untracked; a later range edit to the
+    same file in the same batch is ambiguous and must not guess."""
+    f = workspace / "mix.txt"
+    f.write_text("a1\na2\na3\n", encoding="utf-8")
+    _read("mix.txt")
+
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "mix.txt", "old_string": "a1\n", "new_string": "Z1\nZ1b\n"},
+                {"file_path": "mix.txt:L3-L3", "new_string": "Z3\n"},
+            ],
+        }
+    )
+
+    assert payload["rolled_back"] is True
+    assert "content-located edit" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "a1\na2\na3\n"
+
+
+def test_blind_range_edit_rejected_without_prior_read(workspace: Path) -> None:
+    """No old anchor + file never served by read/code_search → reject, do not splice."""
+    f = workspace / "unread.txt"
+    f.write_text("a1\na2\na3\n", encoding="utf-8")
+
+    payload = _edit({"post_edit_hooks": False, "edits": [{"file_path": "unread.txt:L2-L2", "new_string": "X\n"}]})
+
+    assert payload["rolled_back"] is True
+    assert "was not served by read/code_search" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "a1\na2\na3\n"
+
+
+def test_blind_range_edit_rejected_when_file_changed_since_read(workspace: Path) -> None:
+    """Read, then the file changes on disk → the range's line numbers are stale."""
+    f = workspace / "drift.txt"
+    f.write_text("a1\na2\na3\n", encoding="utf-8")
+    _read("drift.txt")
+    f.write_text("NEW\na1\na2\na3\n", encoding="utf-8")  # external change shifts every line
+
+    payload = _edit({"post_edit_hooks": False, "edits": [{"file_path": "drift.txt:L2-L2", "new_string": "X\n"}]})
+
+    assert payload["rolled_back"] is True
+    assert "changed on disk since" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "NEW\na1\na2\na3\n"
+
+
+def test_blind_range_edit_allowed_after_fresh_read_and_old_anchor_exempt(workspace: Path) -> None:
+    f = workspace / "fresh.txt"
+    f.write_text("a1\na2\na3\n", encoding="utf-8")
+    _read("fresh.txt")
+
+    _edit({"post_edit_hooks": False, "edits": [{"file_path": "fresh.txt:L2-L2", "new_string": "X\n"}]})
+    assert f.read_text(encoding="utf-8") == "a1\nX\na3\n"
+
+    # After OUR OWN write the signature is stale on purpose (lines may have
+    # shifted) — a second blind range edit must re-read…
+    payload = _edit({"post_edit_hooks": False, "edits": [{"file_path": "fresh.txt:L3-L3", "new_string": "Y\n"}]})
+    assert "changed on disk since" in payload["failed"][0]["error"]
+
+    # …while an old-anchored edit needs no freshness at all: it self-verifies.
+    _edit({"post_edit_hooks": False, "edits": [{"file_path": "fresh.txt", "old_string": "a3\n", "new_string": "Z\n"}]})
+    assert f.read_text(encoding="utf-8") == "a1\nX\nZ\n"
+
+
+def test_blind_range_guard_disabled_by_env(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_RANGE_EDIT_GUARD", "0")
+    f = workspace / "off.txt"
+    f.write_text("a1\na2\n", encoding="utf-8")
+
+    _edit({"post_edit_hooks": False, "edits": [{"file_path": "off.txt:L1-L1", "new_string": "X\n"}]})
+    assert f.read_text(encoding="utf-8") == "X\na2\n"

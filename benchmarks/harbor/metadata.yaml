@@ -1,0 +1,13 @@
+# Terminal-Bench 2.1 leaderboard submission metadata.
+#   harbor leaderboard submit --leaderboard terminal-bench/terminal-bench-2-1 \
+#     --job-id <JOB_UUID> --metadata benchmarks/harbor/metadata.yaml \
+#     --output validation-report.json
+agent_url: https://github.com/atelier-ws/atelier
+agent_display_name: Claude Code + Atelier
+agent_org_display_name: Atelier
+
+models:
+  - model_name: claude-opus-4-8
+    model_provider: anthropic
+    model_display_name: Claude Opus 4.8
+    model_org_display_name: Anthropic
