@@ -509,502 +509,502 @@
     [
       "_DEFINITION_KINDS",
       "def-2481cf8df2d8bcca",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "sync-agent-context|check-agent-context|coding-guidelines|integrations/shared",
       "def-f56844228d652521",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_SYMBOL_OPTIONAL_KEYS",
       "def-a9abb60d76598147",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "def warm_stdio_workspace|class _CodeWarmer|def warm|incremental|invalidate|reindex|on_file_change|file_changed|mtime",
       "def-9a245114698d9fb7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_EXPLORE_ESSENTIAL_KEYS",
       "def-221cb6ebdf8cdc68",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_CODE_INTEL_TOOLS definition",
       "def-6567efc5e6bc9226",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "no install-time indexers detected SCIP message",
       "def-e6f520c7ec04671a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_fingerprint_path|fingerprint|search_read|smart_state\\.json|cache_key",
       "def-d1980b3a8bfef527",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_INDEX_ESSENTIAL_KEYS",
       "def-d9b96b39d9d3d14c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "sync_dirty_state callers swarm worktree copy base child",
       "def-a4a03fc620576a4b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "test_symbol_edit_reindexes_and_tags_memory_on_success",
       "def-0f87b7df662ad0f3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tool_smart_read tool_smart_search return type signature mcp_server",
       "def-27901b8a7123c956",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "session limit|is_error|hit your|def _run_one|def.*resume|ok\\s*=|result_excerpt|429|rate.?limit|overloaded",
       "def-4e512bbf03a83b1b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tool_explore call-graph expansion source projection snippet building lexical floor search_read",
       "def-861edfee24cf4ad4",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_EXPLORE_OPTIONAL_KEYS",
       "def-359fb431f7434aed",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "correct|resolved|class ArmResult|def _metric_value|def _clean_results",
       "def-c56c9105e7f3aeb7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_search_symbols_local FTS5 BM25 tag search scoring file ranking IDF lexical",
       "def-74759ff62f938743",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_METHOD_LITERAL_RE",
       "def-904816b51c0bb338",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_canonical_json",
       "def-4dc28c3f7395c649",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "silent|== \\{\\}|applied|result ==|assert.*edit|\"ok\"",
       "def-3be8f8896daeb38d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "flow_records import or def",
       "def-b0d012b15a07502e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_CAMEL_BOUNDARY_RE",
       "def-50c54eff988ef60d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "workspace_hash|hexdigest.*12|workspaces.*\\/.*hash|def.*workspace.*path|def.*workspace.*dir",
       "def-61d5faf110ba069a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_EXPLORE_FAMILY_PER_FAMILY_CAP",
       "def-00b601eb19e33fef",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_prepare_wave search_space approach_hint per_child augment child prompt",
       "def-7af286894f3f5a14",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_ExtractedSymbol",
       "def-58501b397ed96398",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_FASTAPI_DECORATOR_RE",
       "def-4b77ef95c0358afd",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_CACHE_STATUS_ESSENTIAL_KEYS",
       "def-940b7e61910b8b5e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "truncated marker rendering skeletonize budget source render explore output",
       "def-4a188a3a5479d676",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tool_smart_edit range edit path#line overwrite old_string validation line range deletion",
       "def-c16e2494b163fa03",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "apply_field_name_shortening",
       "def-c8e290effe4b0a52",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "cwd handling lines",
       "def-ea3718736220f5f4",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_load_benchmark_env definition auth key loading",
       "def-1be667a40c6e5e97",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "duration_ms|perf_counter|time\\.time|elapsed|latency|profil",
       "def-be496f73875b6990",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_EXPRESS_ROUTE_CHAIN_RE",
       "def-985088881a34b2b7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
-      "cli_redirect|cliRedirect|_oauth_login|atelier_auth_token|handleOAuth|handleAuth",
+      "cli_redirect|cliRedirect|_oauth_login|lemoncrow_auth_token|handleOAuth|handleAuth",
       "def-ab459ee731456168",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_SKELETON_KINDS",
       "def-a08ccf47cd706eb6",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_QUERY_PROBE_KINDS",
       "def-2280fde46c912df8",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "sha256.*repo_root|hexdigest.*\\[:12\\]|workspaces.*hash|workspace_hash",
       "def-3441ef83fe1ecad6",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "contract_review|remaining_contract_consumers|reformulate|== \"ok\"|\"applied\" not in|'applied' not in",
       "def-adb2662cb0907bc4",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "instructions\\s*=|\"instructions\"|server_instructions|INSTRUCTIONS",
       "def-41d569054e28df61",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_CONTEXT_ESSENTIAL_KEYS",
       "def-b1ce33d9d0de58ab",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "compute_verdict|search:|\\[search|verdict\\b|_MISSED|VerdictResult|next\\b",
       "def-76d9a092a10b5dd8",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_RUST_MOD_RE",
       "def-15a05c1bcfcb78b7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "apply_fuzzy_replace|resolve_symbol_edit|ResolvedSymbolEdit|symbol|fuzzy",
       "def-28b1a96e89751e17",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "apply_fuzzy_replace|FuzzyAmbiguousMatchError|resolve_symbol_edit|def test_.*symbol|def test_.*fuzzy",
       "def-2c419b6ffc6be192",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_ROUTES_OPTIONAL_KEYS",
       "def-cf45c817a15fd41f",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_silence_clean_edit_result|_EDIT_ACTIONABLE_KEYS|return \"ok\"|\\\"ok\\\"",
       "def-1182c846c7ac7318",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "context_dedup|ContextDedup|_DEDUP_TOOLS|\\.stub_for|\\.delta_for|registry\\(\\)",
       "def-cf5c21cd67312778",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tool_explore tool_read tool_bash mcp server return content text markdown type",
       "def-3c46f7d64e461823",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_BLAME_OPTIONAL_KEYS",
       "def-8fe8c5c11ae327e3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_LINEAGE_INDEX_VERSION",
       "def-d18ac3f1a6c84e30",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "next_wave_directives evaluator convergence_summary apply_wave_candidates",
       "def-528d246dcc424ad3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "SKILL\\.md|skill.*frontmatter|skill.*metadata|already.active",
       "def-db5a971214007402",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "launch_swarm_children search_space child_command per-run augment",
       "def-e1c879b101989234",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_shared_db_lock",
       "def-5468e11553bdd6e7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "verify-before-done|edited code|Mechanical checks|stop again|reproduce the behavior",
       "def-0b14558ebc1c52ac",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_run_wave_children launch child command subprocess swarm child process",
       "def-9c26b624abb5bf57",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "reformulate|missed|absent|\\.next|no matches",
       "def-ac5b1c41ca73a718",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_SKELETON_MIN_BODY_LINES",
       "def-f43f4bf5c6697d3f",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "SwarmWorktreeManager create worktree copy files gitignore extra_files",
       "def-d7b725b4ff3e237c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_deleted_history_adapter|deleted_history|start_background_warmup|\\.changed_files|search_deleted|history_adapter",
       "def-6de0d1d1826bd160",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "shell tool cwd and grep glob handler tests",
       "def-57fbc5927844eb3c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_FIELD_NAME_SHORTMAP",
       "def-22c6d0e28b51d2eb",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_DELETED_SEARCH_OPTIONAL_KEYS",
       "def-ec7f077bdf05853e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "auto.?mode|\"auto\"|'auto'|MODE_AUTO|mode\\s*==\\s*[\"']auto",
       "def-3732c099e1593a85",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "def build_session_start_notice|def .*session_start_notice|_RULES|additionalContext|rule|def build",
       "def-ab0a2425ed482c35",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "test_swarm_worktree sync_dirty_state test",
       "def-ea7741bc38ea1152",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_LANG_CONFIG full definition lua html css markdown missing languages",
       "def-cfec50f556ed3f60",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "REDIRECT_BASE|SITE_URL",
       "def-377cc80979b824f1",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "flow_records aggregate definition",
       "def-dc58f3edc3542aac",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tool_explore CodeContextEngine scoring ranking retrieval FTS graph scoring symbol centrality",
       "def-d3cc398cf1dc726a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "read_transcript_stats TranscriptStats savings_summary aggregate_session_stats",
       "def-c1bac9d7b5040886",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "thinking_tokens|thinking_chars|thinking_input",
       "def-80bc9d41263b4ae9",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_complete_sibling_families _skeletonize_source _select_skeleton_symbols",
       "def-002235f0a732b6fb",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_FILES_ESSENTIAL_KEYS",
       "def-ad873f2480265843",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_ROUTES_ESSENTIAL_KEYS",
       "def-b1c8885aead75d6b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_TEST_PATH_RE",
       "def-9d10abc9664939bb",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_PATTERN_ESSENTIAL_KEYS",
       "def-6ce91de8a2910b1b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_PATTERN_OPTIONAL_KEYS",
       "def-62966a8b68a78d5d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "DeletedHistoryItem",
       "def-c62a330af4a1540a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_EXPLORE_SOURCE_SECTION_MAX_CHARS",
       "def-304f44318c1e1657",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_FLASK_ROUTE_RE",
       "def-8dd1c575942cc285",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "max_page_count|max_pages|PRAGMA page_count|temp_store|SQLITE_TMPDIR|TMPDIR",
       "def-56c6e11ebe0a5c9b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_DB_LOCKS",
       "def-175215579d2e6489",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_SEARCH_SNIPPET_FORCE_COMPACT_LIMIT",
       "def-2d5e7c11aa6a2c49",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_WATCHER_HARD_SKIP_DIRS",
       "def-836d01e5d609cd88",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_SEARCH_COMPACT_DEFAULT_KEYS",
       "def-abd70c729d9a183a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "def aggregate_session_stats",
       "def-38e9be27cc56d866",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "login_cmd|logout_cmd|def login|def logout",
       "def-167bfd8ca041af4c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "apply_rich_edits path line range overwrite old_string file_path",
       "def-80839e209651517d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_USAGES_OPTIONAL_KEYS",
       "def-9f72bf152109b43b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_MINIFIED_FILE_RE",
       "def-4fc9ca5e28d1e342",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "tags.py full file tag extraction tree-sitter queries",
       "def-61cec1fd24efbb7b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_collapse_docstrings|_CODEY_SUFFIXES|def _render_text_result|def search_workspace",
       "def-a0f2355f8f94fded",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_FTS_DF_BUDGET _ANN_SYMBOL_CANDIDATE_CAP _SEARCH_CHANNEL",
       "def-20387d6489496eb9",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "\"applied\" not in|'applied' not in",
       "def-30b7e3104c1aadc7",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "_LOCAL_PROVENANCE",
       "def-b441731c425ee438",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "truncated token budget skeletonize render_file_source tool_explore engine",
       "def-85c0838aa85af8d9",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "render_tool_result_text",
       "def-2693de13e34ee04d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "LogFormatterSciNotation",
@@ -8287,104 +8287,104 @@
     ],
     "def-2481cf8df2d8bcca": [
       "experiments/retrieval_symbol_vote/train_self_supervised_reranker.py",
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-f56844228d652521": [
       "tests/gateway/test_agent_cli_install_artifacts.py"
     ],
     "def-a9abb60d76598147": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-9a245114698d9fb7": [
       "experiments/probe_fork_zoekt.py",
-      "src/atelier/core/service/code_warm.py"
+      "src/lemoncrow/core/service/code_warm.py"
     ],
     "def-221cb6ebdf8cdc68": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-6567efc5e6bc9226": [
-      "src/atelier/infra/code_intel/lsp/client.py"
+      "src/lemoncrow/infra/code_intel/lsp/client.py"
     ],
     "def-e6f520c7ec04671a": [
       "tests/benchmarks/fixtures/sample.rb"
     ],
     "def-d1980b3a8bfef527": [
       "frontend/src/api.ts",
-      "src/atelier/core/capabilities/tool_supervision/search_read.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/search_read.py"
     ],
     "def-d9b96b39d9d3d14c": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-a4a03fc620576a4b": [
-      "src/atelier/infra/runtime/swarm_worktree.py",
+      "src/lemoncrow/infra/runtime/swarm_worktree.py",
       "tests/benchmarks/fixtures/Sample.kt"
     ],
     "def-0f87b7df662ad0f3": [
       "tests/core/capabilities/tool_supervision/test_rich_edit_symbol.py"
     ],
     "def-27901b8a7123c956": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "def-4e512bbf03a83b1b": [
       "frontend/src/lib/insightsApi.ts"
     ],
     "def-861edfee24cf4ad4": [
       "frontend/src/api.ts",
-      "src/atelier/core/capabilities/tool_supervision/search_read.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/search_read.py"
     ],
     "def-359fb431f7434aed": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-c56c9105e7f3aeb7": [
       "benchmarks/codebench/run.py"
     ],
     "def-74759ff62f938743": [
-      "src/atelier/core/capabilities/code_context/engine.py",
+      "src/lemoncrow/core/capabilities/code_context/engine.py",
       "tests/benchmarks/context_quality/README.md"
     ],
     "def-904816b51c0bb338": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-4dc28c3f7395c649": [
-      "src/atelier/core/capabilities/code_context/cache.py",
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/cache.py",
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-3be8f8896daeb38d": [
-      "src/atelier/core/capabilities/source_projection/compact.py"
+      "src/lemoncrow/core/capabilities/source_projection/compact.py"
     ],
     "def-b0d012b15a07502e": [
       "benchmarks/wire_savings/report.py"
     ],
     "def-50c54eff988ef60d": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-61d5faf110ba069a": [
-      "src/atelier/core/foundation/session_window.py"
+      "src/lemoncrow/core/foundation/session_window.py"
     ],
     "def-00b601eb19e33fef": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-7af286894f3f5a14": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "def-58501b397ed96398": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-4b77ef95c0358afd": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-940b7e61910b8b5e": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-4a188a3a5479d676": [
       "examples/sdk/phase4_demo.py",
       "frontend/src/api.ts"
     ],
     "def-c16e2494b163fa03": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "def-c8e290effe4b0a52": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-ea3718736220f5f4": [
       "benchmarks/codebench/_del_failed_only.py",
@@ -8392,28 +8392,28 @@
     ],
     "def-1be667a40c6e5e97": [
       "benchmarks/codebench/run.py",
-      "src/atelier/infra/code_intel/lsp/client.py"
+      "src/lemoncrow/infra/code_intel/lsp/client.py"
     ],
     "def-be496f73875b6990": [
       "tests/benchmarks/fixtures/sample.rb"
     ],
     "def-985088881a34b2b7": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-ab459ee731456168": [
-      "src/atelier/gateway/cli/commands/admin.py"
+      "src/lemoncrow/gateway/cli/commands/admin.py"
     ],
     "def-a08ccf47cd706eb6": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-2280fde46c912df8": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-3441ef83fe1ecad6": [
-      "src/atelier/core/foundation/session_window.py"
+      "src/lemoncrow/core/foundation/session_window.py"
     ],
     "def-adb2662cb0907bc4": [
-      "src/atelier/core/capabilities/source_projection/compact.py"
+      "src/lemoncrow/core/capabilities/source_projection/compact.py"
     ],
     "def-41d569054e28df61": [
       "benchmarks/embedding/bench_pipeline.py",
@@ -8422,51 +8422,51 @@
       "scripts/uninstall_copilot.sh"
     ],
     "def-b1ce33d9d0de58ab": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-76d9a092a10b5dd8": [
-      "src/atelier/core/capabilities/code_context/search_verdict.py"
+      "src/lemoncrow/core/capabilities/code_context/search_verdict.py"
     ],
     "def-15a05c1bcfcb78b7": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-28b1a96e89751e17": [
-      "src/atelier/core/capabilities/tool_supervision/symbol_edit.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/symbol_edit.py"
     ],
     "def-2c419b6ffc6be192": [
-      "src/atelier/core/capabilities/tool_supervision/fuzzy_match.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/fuzzy_match.py"
     ],
     "def-cf45c817a15fd41f": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-1182c846c7ac7318": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "def-cf5c21cd67312778": [
-      "src/atelier/core/capabilities/context_dedup.py"
+      "src/lemoncrow/core/capabilities/context_dedup.py"
     ],
     "def-3c46f7d64e461823": [
       "frontend/src/api.ts",
-      "src/atelier/core/capabilities/code_context/engine.py",
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py",
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "def-8fe8c5c11ae327e3": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-d18ac3f1a6c84e30": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-528d246dcc424ad3": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "def-db5a971214007402": [
       "frontend/src/components/ui/button.tsx"
     ],
     "def-e1c879b101989234": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "def-5468e11553bdd6e7": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-0b14558ebc1c52ac": [
       "benchmarks/codebench/eval_cg_mrr.py",
@@ -8474,44 +8474,44 @@
       "docs-internal/benchmarks/v3-honest-savings.md"
     ],
     "def-9c26b624abb5bf57": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "def-ac5b1c41ca73a718": [
       "scripts/uninstall.sh"
     ],
     "def-f43f4bf5c6697d3f": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-d7b725b4ff3e237c": [
-      "src/atelier/infra/runtime/swarm_worktree.py",
+      "src/lemoncrow/infra/runtime/swarm_worktree.py",
       "tests/benchmarks/fixtures/Sample.kt"
     ],
     "def-6de0d1d1826bd160": [
-      "src/atelier/infra/code_intel/git_history/adapter.py"
+      "src/lemoncrow/infra/code_intel/git_history/adapter.py"
     ],
     "def-57fbc5927844eb3c": [
       "frontend/src/api.ts"
     ],
     "def-22c6d0e28b51d2eb": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-ec7f077bdf05853e": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-3732c099e1593a85": [
       "experiments/leansearch/patch_persona.py"
     ],
     "def-ab0a2425ed482c35": [
-      "src/atelier/core/capabilities/session_optimizer.py"
+      "src/lemoncrow/core/capabilities/session_optimizer.py"
     ],
     "def-ea7741bc38ea1152": [
-      "src/atelier/infra/runtime/swarm_worktree.py"
+      "src/lemoncrow/infra/runtime/swarm_worktree.py"
     ],
     "def-cfec50f556ed3f60": [
       ".astro/content.d.ts",
       "frontend/src/api.ts",
-      "src/atelier/core/capabilities/semantic_file_memory/treesitter_ast.py",
-      "src/atelier/infra/code_intel/lsp/client.py"
+      "src/lemoncrow/core/capabilities/semantic_file_memory/treesitter_ast.py",
+      "src/lemoncrow/infra/code_intel/lsp/client.py"
     ],
     "def-377cc80979b824f1": [
       "services/license-issuer/worker-configuration.d.ts"
@@ -8520,98 +8520,98 @@
       "benchmarks/wire_savings/report.py"
     ],
     "def-d3cc398cf1dc726a": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-c1bac9d7b5040886": [
-      "src/atelier/core/capabilities/savings_summary.py"
+      "src/lemoncrow/core/capabilities/savings_summary.py"
     ],
     "def-80bc9d41263b4ae9": [
       "frontend/src/api.ts"
     ],
     "def-002235f0a732b6fb": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-ad873f2480265843": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-b1c8885aead75d6b": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-9d10abc9664939bb": [
       "experiments/extract_all/extract_all_retrieval_data.py",
       "experiments/retrieval_symbol_vote/build_existing_dump_query_holdout.py",
       "experiments/retrieval_symbol_vote/build_real_retrieval_corpus.py",
       "experiments/retrieval_symbol_vote/sitecustomize.py",
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-6ce91de8a2910b1b": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-62966a8b68a78d5d": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-c62a330af4a1540a": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-304f44318c1e1657": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-8dd1c575942cc285": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-56c6e11ebe0a5c9b": [
-      "scripts/verify_atelier_service.sh"
+      "scripts/verify_lemoncrow_service.sh"
     ],
     "def-175215579d2e6489": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-2d5e7c11aa6a2c49": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-836d01e5d609cd88": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-abd70c729d9a183a": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-38e9be27cc56d866": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "def-167bfd8ca041af4c": [
-      "src/atelier/gateway/cli/commands/admin.py"
+      "src/lemoncrow/gateway/cli/commands/admin.py"
     ],
     "def-80839e209651517d": [
-      "src/atelier/core/capabilities/tool_supervision/rich_edit.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/rich_edit.py"
     ],
     "def-9f72bf152109b43b": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-4fc9ca5e28d1e342": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-61cec1fd24efbb7b": [
       "frontend/src/api.ts"
     ],
     "def-a0f2355f8f94fded": [
-      "src/atelier/core/capabilities/tool_supervision/native_search.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/native_search.py"
     ],
     "def-20387d6489496eb9": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-30b7e3104c1aadc7": [
-      "src/atelier/core/capabilities/source_projection/compact.py"
+      "src/lemoncrow/core/capabilities/source_projection/compact.py"
     ],
     "def-b441731c425ee438": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-85c0838aa85af8d9": [
       "examples/sdk/phase4_demo.py",
       "frontend/src/api.ts",
       "scripts/_ablation_ranking.py",
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "def-2693de13e34ee04d": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "def-a1811c887d412d5e": [
       "lib/matplotlib/ticker.py",
@@ -13205,9 +13205,9 @@
       "anchor": "v9.1.0",
       "base_commit": "v9.1.0"
     },
-    "atelier__atelier": {
-      "ws": "/tmp/idx_ws_atelier_dev",
-      "db": "/tmp/idx_isolated/atelier__atelier/code_context.sqlite",
+    "lemoncrow__lemoncrow": {
+      "ws": "/tmp/idx_ws_lemoncrow_dev",
+      "db": "/tmp/idx_isolated/lemoncrow__lemoncrow/code_context.sqlite",
       "anchor": "v0.3.9",
       "base_commit": "v0.3.9"
     },

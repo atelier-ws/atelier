@@ -7804,562 +7804,562 @@
     [
       "How to determine if a search query uses regex patterns or multiple words in Zoekt?",
       "haiku-9111cc11ef17",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the structure of an adapter decision model with host, mode, and result fields?",
       "haiku-31739ef87efa",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to process and validate raw statistics data into a structured dictionary format?",
       "haiku-1c100e7d902c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find code that identifies opportunities for cost savings by switching vendors when read tool costs exceed 30% across multiple sessions.",
       "haiku-1676163eb68f",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to determine the default AI model when no specific model is provided and environment variable is not set?",
       "haiku-98d65869877e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to save file data with content hash and timestamp in a persistent storage?",
       "haiku-e3e1d9442022",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Format and display command execution results with status, output, and error information.",
       "haiku-e15ec6813670",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to generate git commands to transplant accepted commits and apply patch files in a swarm run state?",
       "haiku-3a5e83b0272e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Initialize object with context store, root path, environment, and subprocess runner.",
       "haiku-c825c0fd34fa",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Create a hashable identifier from route operation attributes for training and inference matching.",
       "haiku-1afb367b46fc",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to add different prefixes to text based on model type and query flag?",
       "haiku-397362beaccc",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find the last savings block in a transcript file.",
       "haiku-004758d52560",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Initialize object with path and token budget for runtime context storage",
       "haiku-4848c496ca3c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Split code into chunks at function and class boundaries while preserving decorators and comments.",
       "haiku-6918e823c780",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to summarize a list of events into a single chunk with a paraphrased summary?",
       "haiku-64abcef689f3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to reduce text token count while preserving important lines?",
       "haiku-5fd5d26dc183",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find VSCode Copilot debug log directories across all platforms.",
       "haiku-081771b84d7b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to process and format verification results with conditional verdict assignment?",
       "haiku-bbfc6359c726",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to normalize error messages by replacing variables with placeholders?",
       "haiku-926c2aaced54",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to insert or update artifact data with JSON payload and conflict resolution in SQLite?",
       "haiku-11582541efe4",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find archival passages for an agent with optional tag filtering and date constraints.",
       "haiku-d7bc6321294a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to flatten nested code structure with optional metadata inclusion?",
       "haiku-2eae1b0d7f9e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to create and manage Git worktrees with synchronized changes in a repository?",
       "haiku-2c7630f32a42",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to extract nested dictionary values and count tokens recursively?",
       "haiku-ed695a5fd0d5",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Get configuration summary excluding the API key value.",
       "haiku-2babe667792d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Copy Cursor role rule files from source directory to workspace .cursor/rules folder.",
       "haiku-9e534def8b72",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to merge session identifiers from dictionary data when they exist.",
       "haiku-2410cb5e0614",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to run background subprocesses for code indexing in active workspaces?",
       "haiku-c4f9c4830c5e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to dynamically load a Python module from a file path using importlib?",
       "haiku-cd6b42041b95",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to retrieve user memory records with error handling and fallback options?",
       "haiku-fc8e4991d498",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to implement a time-based rolling counter with persistent state storage?",
       "haiku-0225fa991de8",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Create and update agent configuration files in a workspace directory.",
       "haiku-9d603fac745a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find repository files and build a token-budgeted overview map.",
       "haiku-4f446fe1c842",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to redact file paths and truncate long strings in nested data structures?",
       "haiku-bb6d7b73a28d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to structure benchmark test results with metadata and artifact references?",
       "haiku-94d37f6abd15",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the cost calculation for a subagent based on trace data and host name?",
       "haiku-af6d2595d2b3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Apply different types of optimization policies using command line options.",
       "haiku-cf22cda242af",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to fetch a list of traces with optional domain, status, and limit parameters?",
       "haiku-6f1a920bda03",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to count and summarize consecutive read operations in a workflow turn?",
       "haiku-7f5eb9411376",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Get all messages from a specific conversation session as a list.",
       "haiku-79d24a65d755",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to determine the runtime location for a zoekt service instance?",
       "haiku-8b04a5a2c73f",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the structure of a commit summary class with semantic analysis data?",
       "haiku-016209c675c1",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the structure of a route decision model with its fields and validation rules?",
       "haiku-19ec7d520a51",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Clear all global runtime caches and reset testing state variables",
       "haiku-07ed92c3c3d1",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to detect and respond to high context length in a conversation session?",
       "haiku-869e2d2f3069",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find code that defines a symbol extraction class with location and documentation metadata.",
       "haiku-ab7e06d3a2d3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Get summary statistics of active deprecated and quarantined store blocks.",
       "haiku-85f2e5dced4c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Convert object data to dictionary format with tool-specific and total statistics.",
       "haiku-9f4f2a43c32b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Fetch and process HTTP URL content with configurable formatting and limits",
       "haiku-9defc3c269ae",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Convert object collections to dictionary format with nested serialized data",
       "haiku-96e72f3cd731",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Check if a file path represents a text-based code file that should be processed.",
       "haiku-eb01bcfadf73",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Convert database row to archival passage object with embedding handling",
       "haiku-add99a24a2c6",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to check if a code index is ready and get warming status with fallback hint?",
       "haiku-80bc9c0f92f3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to export audit data with optional JSON output and directory specification?",
       "haiku-ad73ff0b615c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Aggregate costs by vendor and model from a list of API call records.",
       "haiku-c19448eaaae8",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What function determines the type of tool action based on tool name input?",
       "haiku-70da141a0ab6",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Generate unified diff output between two text versions for a given file.",
       "haiku-e809518b1f5b",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "When should history compaction run based on environment flag and context fill?",
       "haiku-cfc928992b14",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Remove duplicate strings from list while preserving order and handling empty values",
       "haiku-c50b4fab545e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to record test results with pass/fail status and details in a thread-safe manner?",
       "haiku-09c4220895af",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How many failed searches trigger a warning notice in the system?",
       "haiku-b4c6dac2cb6c",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Retrieve combined memory items with specific query and time constraints.",
       "haiku-1084565924e3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find symbol definition and call graph relationships in code index",
       "haiku-c4baad148df6",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to read and filter JSONL log files based on retention policy and date range?",
       "haiku-6da123ae1f0e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find target symbol and create cross-language edge with resolved IDs and file paths.",
       "haiku-96f4d91f9633",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to record agent execution duration and output type when an agent finishes running?",
       "haiku-a1b9557857f1",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to get all existing gold standard datasets for code retrieval evaluation?",
       "haiku-6f856cb835db",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to log command execution results and disable caching in a development tool?",
       "haiku-2e23233101df",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Initialize Postgres storage with database URL and vector search settings.",
       "haiku-ee7009e3c7eb",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Function that determines if text compression meets minimum savings threshold",
       "haiku-5e98f470ac75",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the confidence threshold for learned routing authorization?",
       "haiku-561226e5c0c4",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to remove all saved checkpoints associated with a specific session ID using command line interface?",
       "haiku-e053cf96b0b2",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What tools are classified as read/search work versus edit/write work?",
       "haiku-9a1c6272607a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find the main command name from a list of CLI arguments handling options with values.",
       "haiku-24a819a81441",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find token budget value from session state with multiple key fallbacks and type handling.",
       "haiku-2545e2250eb3",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to convert persisted verification data into outcome rows with success status and route features?",
       "haiku-0dc0da3cbc45",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to check if lexical frustration detection is enabled in telemetry settings?",
       "haiku-6997995fcf83",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to update recall settings including auto-index, embedder, and embedding model in a dictionary?",
       "haiku-7111b2040951",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to create a formatted labeled separator line with centered text in terminal output?",
       "haiku-7e5bfd911ac9",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Convert various data types to integer with boolean returning zero",
       "haiku-245dd3e9fa1a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Calculate cost based on token usage and model information from dictionary input.",
       "haiku-b460fc5c1c2a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to split camelCase text into tokens for search indexing?",
       "haiku-f19646e0440e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to get a secure temporary directory for storing program output and logs?",
       "haiku-30035d9a75c0",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to start background MCP server processes with tool discovery and error handling?",
       "haiku-90bbbc41bf33",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to distribute tokens among items while respecting budget constraints and essential fields?",
       "haiku-317dd35eed87",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Generate formatted savings summary string for status line display",
       "haiku-1273fddadadd",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to track and serialize tool usage with token consumption metrics?",
       "haiku-654459ad685e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to format and return different types of code documentation based on result mode and projection data?",
       "haiku-051bb82ae97e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find identifiers and terms in a query string while filtering out stop words and special characters.",
       "haiku-7cfe31fcbf93",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find top tool names from sources matching specific lever patterns and prefixes.",
       "haiku-a1ca98a18c18",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to save a dictionary with specific keys to a JSON file and handle potential errors?",
       "haiku-4cfbacd362e2",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to update telemetry configuration with lexical frustration setting in Python?",
       "haiku-898448b02e97",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to record and track operation calls with their details and timestamps?",
       "haiku-7d5aec05284a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to safely write data to a file with temporary backup in Python?",
       "haiku-fa96e0925538",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to save trace information with memory pointer in a dictionary format?",
       "haiku-db3eaca0aa7d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What is the structure for representing cross-language code symbol references with confidence scores?",
       "haiku-6c818cade41d",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to track and accumulate token usage and call counts for API interactions?",
       "haiku-e2650ebfc304",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to log tool usage with arguments and tags in a structured way?",
       "haiku-8e4e60489c83",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Create a finding report from rule match data with proper confidence and severity levels",
       "haiku-3e0cb308455e",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to add authenticated HTTP routes with JSON-RPC support to a FastAPI app?",
       "haiku-f36beea431be",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Calculate total trace cost from usage entries or fallback value",
       "haiku-417a5d18b362",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to initialize plugin settings and update host configuration during startup?",
       "haiku-65d712b17d5a",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Find cross-language code symbol relationships with their confidence scores.",
       "haiku-38e3554d48da",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to execute a command and extract numeric results from its output in Python?",
       "haiku-4707cbd21db2",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to send a POST request with JSON data to an endpoint and parse the response scores?",
       "haiku-75e1ce4b1521",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Check if a domain matches any configured high-risk patterns.",
       "haiku-7cb3956b2602",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Calculate cost savings and comparisons between consecutive operation calls.",
       "haiku-99e4be78acb8",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to retrieve relevant memory records by query and filters using an agent ID?",
       "haiku-1e0606107173",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to look up semantic memory context for a task with error handling and normalization?",
       "haiku-c1f699372e32",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Summarize step execution results including cache usage and dropped fields.",
       "haiku-4235f3c76e02",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "Check multiple conditions against session state and blocks to collect alert messages.",
       "haiku-20a785ab1676",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "How to automatically determine the number of jobs based on suite specifications and hard constraints?",
       "haiku-e62f804da404",
-      "atelier__atelier"
+      "lemoncrow__lemoncrow"
     ],
     [
       "What are the different HDMI audio coding type extensions defined in the CEA-861 standard?",
@@ -13688,340 +13688,340 @@
       "sphinx/builders/html/__init__.py"
     ],
     "haiku-9111cc11ef17": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-31739ef87efa": [
-      "src/atelier/gateway/adapters/adapter_base.py"
+      "src/lemoncrow/gateway/adapters/adapter_base.py"
     ],
     "haiku-1c100e7d902c": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-1676163eb68f": [
-      "src/atelier/infra/runtime/insights.py"
+      "src/lemoncrow/infra/runtime/insights.py"
     ],
     "haiku-98d65869877e": [
-      "src/atelier/infra/internal_llm/ollama_client.py"
+      "src/lemoncrow/infra/internal_llm/ollama_client.py"
     ],
     "haiku-e3e1d9442022": [
-      "src/atelier/core/capabilities/semantic_file_memory/indexer.py"
+      "src/lemoncrow/core/capabilities/semantic_file_memory/indexer.py"
     ],
     "haiku-e15ec6813670": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "haiku-3a5e83b0272e": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "haiku-c825c0fd34fa": [
-      "src/atelier/core/capabilities/lesson_promotion/pr_bot.py"
+      "src/lemoncrow/core/capabilities/lesson_promotion/pr_bot.py"
     ],
     "haiku-1afb367b46fc": [
-      "src/atelier/core/capabilities/model_routing/success_predictor.py"
+      "src/lemoncrow/core/capabilities/model_routing/success_predictor.py"
     ],
     "haiku-397362beaccc": [
-      "src/atelier/infra/embeddings/ollama_embedder.py"
+      "src/lemoncrow/infra/embeddings/ollama_embedder.py"
     ],
     "haiku-004758d52560": [
-      "src/atelier/core/capabilities/savings_summary.py"
+      "src/lemoncrow/core/capabilities/savings_summary.py"
     ],
     "haiku-4848c496ca3c": [
-      "src/atelier/infra/runtime/realtime_context.py"
+      "src/lemoncrow/infra/runtime/realtime_context.py"
     ],
     "haiku-6918e823c780": [
-      "src/atelier/core/capabilities/code_context/ppl_rank.py"
+      "src/lemoncrow/core/capabilities/code_context/ppl_rank.py"
     ],
     "haiku-64abcef689f3": [
-      "src/atelier/core/capabilities/context_compression/sleeptime.py"
+      "src/lemoncrow/core/capabilities/context_compression/sleeptime.py"
     ],
     "haiku-5fd5d26dc183": [
-      "src/atelier/core/capabilities/context_compression/perplexity_pruning.py"
+      "src/lemoncrow/core/capabilities/context_compression/perplexity_pruning.py"
     ],
     "haiku-081771b84d7b": [
-      "src/atelier/gateway/hosts/session_parsers/copilot.py"
+      "src/lemoncrow/gateway/hosts/session_parsers/copilot.py"
     ],
     "haiku-bbfc6359c726": [
-      "src/atelier/core/capabilities/live_reviewer/agentic.py"
+      "src/lemoncrow/core/capabilities/live_reviewer/agentic.py"
     ],
     "haiku-926c2aaced54": [
-      "src/atelier/core/capabilities/failure_analysis/capability.py"
+      "src/lemoncrow/core/capabilities/failure_analysis/capability.py"
     ],
     "haiku-11582541efe4": [
-      "src/atelier/core/foundation/store.py"
+      "src/lemoncrow/core/foundation/store.py"
     ],
     "haiku-d7bc6321294a": [
-      "src/atelier/infra/storage/sqlite_memory_store.py"
+      "src/lemoncrow/infra/storage/sqlite_memory_store.py"
     ],
     "haiku-2eae1b0d7f9e": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-2c7630f32a42": [
-      "src/atelier/infra/runtime/swarm_worktree.py"
+      "src/lemoncrow/infra/runtime/swarm_worktree.py"
     ],
     "haiku-ed695a5fd0d5": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-2babe667792d": [
-      "src/atelier/core/service/config.py"
+      "src/lemoncrow/core/service/config.py"
     ],
     "haiku-9e534def8b72": [
-      "src/atelier/core/capabilities/workspace_host_overrides.py"
+      "src/lemoncrow/core/capabilities/workspace_host_overrides.py"
     ],
     "haiku-2410cb5e0614": [
-      "src/atelier/core/foundation/savings_models.py"
+      "src/lemoncrow/core/foundation/savings_models.py"
     ],
     "haiku-c4f9c4830c5e": [
-      "src/atelier/core/service/code_warm.py"
+      "src/lemoncrow/core/service/code_warm.py"
     ],
     "haiku-cd6b42041b95": [
-      "src/atelier/gateway/cli/commands/benchmark.py"
+      "src/lemoncrow/gateway/cli/commands/benchmark.py"
     ],
     "haiku-fc8e4991d498": [
-      "src/atelier/infra/memory_bridges/openmemory.py"
+      "src/lemoncrow/infra/memory_bridges/openmemory.py"
     ],
     "haiku-0225fa991de8": [
-      "src/atelier/core/capabilities/savings_summary.py"
+      "src/lemoncrow/core/capabilities/savings_summary.py"
     ],
     "haiku-9d603fac745a": [
-      "src/atelier/core/capabilities/workspace_host_overrides.py"
+      "src/lemoncrow/core/capabilities/workspace_host_overrides.py"
     ],
     "haiku-4f446fe1c842": [
-      "src/atelier/core/capabilities/repo_map/builder.py"
+      "src/lemoncrow/core/capabilities/repo_map/builder.py"
     ],
     "haiku-bb6d7b73a28d": [
-      "src/atelier/core/capabilities/swarm/capability.py"
+      "src/lemoncrow/core/capabilities/swarm/capability.py"
     ],
     "haiku-94d37f6abd15": [
-      "src/atelier/core/capabilities/benchmark_evidence.py"
+      "src/lemoncrow/core/capabilities/benchmark_evidence.py"
     ],
     "haiku-af6d2595d2b3": [
-      "src/atelier/gateway/cli/commands/sessions.py"
+      "src/lemoncrow/gateway/cli/commands/sessions.py"
     ],
     "haiku-cf22cda242af": [
-      "src/atelier/gateway/cli/commands/savings.py"
+      "src/lemoncrow/gateway/cli/commands/savings.py"
     ],
     "haiku-6f1a920bda03": [
-      "src/atelier/gateway/sdk/remote.py"
+      "src/lemoncrow/gateway/sdk/remote.py"
     ],
     "haiku-7f5eb9411376": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-79d24a65d755": [
-      "src/atelier/gateway/cli/runtime.py"
+      "src/lemoncrow/gateway/cli/runtime.py"
     ],
     "haiku-8b04a5a2c73f": [
-      "src/atelier/infra/code_intel/zoekt/server.py"
+      "src/lemoncrow/infra/code_intel/zoekt/server.py"
     ],
     "haiku-016209c675c1": [
-      "src/atelier/infra/code_intel/git_history/models.py"
+      "src/lemoncrow/infra/code_intel/git_history/models.py"
     ],
     "haiku-19ec7d520a51": [
-      "src/atelier/core/foundation/routing_models.py"
+      "src/lemoncrow/core/foundation/routing_models.py"
     ],
     "haiku-07ed92c3c3d1": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "haiku-869e2d2f3069": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-ab7e06d3a2d3": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-85f2e5dced4c": [
-      "src/atelier/core/foundation/metrics.py"
+      "src/lemoncrow/core/foundation/metrics.py"
     ],
     "haiku-9f4f2a43c32b": [
-      "src/atelier/core/capabilities/tool_token_ledger.py"
+      "src/lemoncrow/core/capabilities/tool_token_ledger.py"
     ],
     "haiku-9defc3c269ae": [
-      "src/atelier/core/capabilities/web_fetch.py"
+      "src/lemoncrow/core/capabilities/web_fetch.py"
     ],
     "haiku-96e72f3cd731": [
-      "src/atelier/core/capabilities/default_definitions.py"
+      "src/lemoncrow/core/capabilities/default_definitions.py"
     ],
     "haiku-eb01bcfadf73": [
-      "src/atelier/core/capabilities/tool_supervision/native_search.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/native_search.py"
     ],
     "haiku-add99a24a2c6": [
-      "src/atelier/infra/storage/sqlite_memory_store.py"
+      "src/lemoncrow/infra/storage/sqlite_memory_store.py"
     ],
     "haiku-80bc9c0f92f3": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "haiku-ad73ff0b615c": [
-      "src/atelier/gateway/cli/commands/admin.py"
+      "src/lemoncrow/gateway/cli/commands/admin.py"
     ],
     "haiku-c19448eaaae8": [
-      "src/atelier/infra/runtime/insights.py"
+      "src/lemoncrow/infra/runtime/insights.py"
     ],
     "haiku-70da141a0ab6": [
-      "src/atelier/core/capabilities/counterfactual/capabilities.py"
+      "src/lemoncrow/core/capabilities/counterfactual/capabilities.py"
     ],
     "haiku-e809518b1f5b": [
-      "src/atelier/core/capabilities/lesson_promotion/pr_bot.py"
+      "src/lemoncrow/core/capabilities/lesson_promotion/pr_bot.py"
     ],
     "haiku-cfc928992b14": [
-      "src/atelier/core/runtime/engine.py"
+      "src/lemoncrow/core/runtime/engine.py"
     ],
     "haiku-c50b4fab545e": [
-      "src/atelier/infra/runtime/context_compressor.py"
+      "src/lemoncrow/infra/runtime/context_compressor.py"
     ],
     "haiku-09c4220895af": [
-      "src/atelier/infra/runtime/run_ledger.py"
+      "src/lemoncrow/infra/runtime/run_ledger.py"
     ],
     "haiku-b4c6dac2cb6c": [
-      "src/atelier/core/capabilities/code_context/search_verdict.py"
+      "src/lemoncrow/core/capabilities/code_context/search_verdict.py"
     ],
     "haiku-1084565924e3": [
-      "src/atelier/core/capabilities/archival_recall/symbol_recall.py"
+      "src/lemoncrow/core/capabilities/archival_recall/symbol_recall.py"
     ],
     "haiku-c4baad148df6": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-6da123ae1f0e": [
-      "src/atelier/core/capabilities/audit_export/exporter.py"
+      "src/lemoncrow/core/capabilities/audit_export/exporter.py"
     ],
     "haiku-96f4d91f9633": [
-      "src/atelier/infra/code_intel/cross_lang/runner.py"
+      "src/lemoncrow/infra/code_intel/cross_lang/runner.py"
     ],
     "haiku-a1b9557857f1": [
-      "src/atelier/sdk/openai_hooks.py"
+      "src/lemoncrow/sdk/openai_hooks.py"
     ],
     "haiku-6f856cb835db": [
-      "src/atelier/gateway/cli/commands/eval.py"
+      "src/lemoncrow/gateway/cli/commands/eval.py"
     ],
     "haiku-2e23233101df": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-ee7009e3c7eb": [
-      "src/atelier/infra/storage/postgres_store.py"
+      "src/lemoncrow/infra/storage/postgres_store.py"
     ],
     "haiku-5e98f470ac75": [
-      "src/atelier/core/capabilities/semantic_file_memory/capability.py"
+      "src/lemoncrow/core/capabilities/semantic_file_memory/capability.py"
     ],
     "haiku-561226e5c0c4": [
-      "src/atelier/core/capabilities/model_routing/success_predictor.py"
+      "src/lemoncrow/core/capabilities/model_routing/success_predictor.py"
     ],
     "haiku-e053cf96b0b2": [
-      "src/atelier/gateway/cli/commands/lessons.py"
+      "src/lemoncrow/gateway/cli/commands/lessons.py"
     ],
     "haiku-9a1c6272607a": [
-      "src/atelier/core/capabilities/model_routing/router.py"
+      "src/lemoncrow/core/capabilities/model_routing/router.py"
     ],
     "haiku-24a819a81441": [
-      "src/atelier/gateway/cli/app.py"
+      "src/lemoncrow/gateway/cli/app.py"
     ],
     "haiku-2545e2250eb3": [
-      "src/atelier/core/capabilities/cross_vendor_routing/router.py"
+      "src/lemoncrow/core/capabilities/cross_vendor_routing/router.py"
     ],
     "haiku-0dc0da3cbc45": [
-      "src/atelier/core/capabilities/model_routing/success_predictor.py"
+      "src/lemoncrow/core/capabilities/model_routing/success_predictor.py"
     ],
     "haiku-6997995fcf83": [
-      "src/atelier/gateway/cli/commands/telemetry.py"
+      "src/lemoncrow/gateway/cli/commands/telemetry.py"
     ],
     "haiku-7111b2040951": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-7e5bfd911ac9": [
-      "src/atelier/core/capabilities/reporting/dashboard.py"
+      "src/lemoncrow/core/capabilities/reporting/dashboard.py"
     ],
     "haiku-245dd3e9fa1a": [
-      "src/atelier/core/capabilities/model_routing/router.py"
+      "src/lemoncrow/core/capabilities/model_routing/router.py"
     ],
     "haiku-b460fc5c1c2a": [
-      "src/atelier/core/service/api.py"
+      "src/lemoncrow/core/service/api.py"
     ],
     "haiku-f19646e0440e": [
-      "src/atelier/core/capabilities/context_reuse/bm25.py"
+      "src/lemoncrow/core/capabilities/context_reuse/bm25.py"
     ],
     "haiku-30035d9a75c0": [
-      "src/atelier/core/capabilities/tool_supervision/tool_output_spill.py"
+      "src/lemoncrow/core/capabilities/tool_supervision/tool_output_spill.py"
     ],
     "haiku-90bbbc41bf33": [
-      "src/atelier/gateway/cli/runtime.py"
+      "src/lemoncrow/gateway/cli/runtime.py"
     ],
     "haiku-317dd35eed87": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-1273fddadadd": [
-      "src/atelier/core/capabilities/savings_summary.py"
+      "src/lemoncrow/core/capabilities/savings_summary.py"
     ],
     "haiku-654459ad685e": [
-      "src/atelier/core/capabilities/tool_token_ledger.py"
+      "src/lemoncrow/core/capabilities/tool_token_ledger.py"
     ],
     "haiku-051bb82ae97e": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "haiku-7cfe31fcbf93": [
-      "src/atelier/core/capabilities/code_context/engine.py"
+      "src/lemoncrow/core/capabilities/code_context/engine.py"
     ],
     "haiku-a1ca98a18c18": [
-      "src/atelier/core/service/api.py"
+      "src/lemoncrow/core/service/api.py"
     ],
     "haiku-4cfbacd362e2": [
-      "src/atelier/core/capabilities/live_reviewer/knowledge.py"
+      "src/lemoncrow/core/capabilities/live_reviewer/knowledge.py"
     ],
     "haiku-898448b02e97": [
-      "src/atelier/core/service/telemetry/config.py"
+      "src/lemoncrow/core/service/telemetry/config.py"
     ],
     "haiku-7d5aec05284a": [
-      "src/atelier/infra/runtime/cost_tracker.py"
+      "src/lemoncrow/infra/runtime/cost_tracker.py"
     ],
     "haiku-fa96e0925538": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-db3eaca0aa7d": [
-      "src/atelier/gateway/integrations/openmemory.py"
+      "src/lemoncrow/gateway/integrations/openmemory.py"
     ],
     "haiku-6c818cade41d": [
-      "src/atelier/core/capabilities/code_context/models.py"
+      "src/lemoncrow/core/capabilities/code_context/models.py"
     ],
     "haiku-e2650ebfc304": [
-      "src/atelier/core/capabilities/tool_token_ledger.py"
+      "src/lemoncrow/core/capabilities/tool_token_ledger.py"
     ],
     "haiku-8e4e60489c83": [
-      "src/atelier/infra/runtime/realtime_context.py"
+      "src/lemoncrow/infra/runtime/realtime_context.py"
     ],
     "haiku-3e0cb308455e": [
-      "src/atelier/core/capabilities/security/scanner.py"
+      "src/lemoncrow/core/capabilities/security/scanner.py"
     ],
     "haiku-f36beea431be": [
-      "src/atelier/gateway/adapters/mcp_http.py"
+      "src/lemoncrow/gateway/adapters/mcp_http.py"
     ],
     "haiku-417a5d18b362": [
-      "src/atelier/core/capabilities/optimization/optimizer.py"
+      "src/lemoncrow/core/capabilities/optimization/optimizer.py"
     ],
     "haiku-65d712b17d5a": [
-      "src/atelier/core/capabilities/plugin_runtime.py"
+      "src/lemoncrow/core/capabilities/plugin_runtime.py"
     ],
     "haiku-38e3554d48da": [
-      "src/atelier/infra/code_intel/cross_lang/edges.py"
+      "src/lemoncrow/infra/code_intel/cross_lang/edges.py"
     ],
     "haiku-4707cbd21db2": [
-      "src/atelier/core/capabilities/swarm/fitness.py"
+      "src/lemoncrow/core/capabilities/swarm/fitness.py"
     ],
     "haiku-75e1ce4b1521": [
-      "src/atelier/core/capabilities/code_context/rerank.py"
+      "src/lemoncrow/core/capabilities/code_context/rerank.py"
     ],
     "haiku-7cb3956b2602": [
-      "src/atelier/core/capabilities/quality_router/policy.py"
+      "src/lemoncrow/core/capabilities/quality_router/policy.py"
     ],
     "haiku-99e4be78acb8": [
-      "src/atelier/infra/runtime/cost_tracker.py"
+      "src/lemoncrow/infra/runtime/cost_tracker.py"
     ],
     "haiku-1e0606107173": [
-      "src/atelier/gateway/sdk/client.py"
+      "src/lemoncrow/gateway/sdk/client.py"
     ],
     "haiku-c1f699372e32": [
-      "src/atelier/gateway/integrations/openmemory.py"
+      "src/lemoncrow/gateway/integrations/openmemory.py"
     ],
     "haiku-4235f3c76e02": [
-      "src/atelier/gateway/adapters/mcp_server.py"
+      "src/lemoncrow/gateway/adapters/mcp_server.py"
     ],
     "haiku-20a785ab1676": [
-      "src/atelier/core/foundation/watchdogs.py"
+      "src/lemoncrow/core/foundation/watchdogs.py"
     ],
     "haiku-e62f804da404": [
-      "src/atelier/gateway/cli/commands/benchmark.py"
+      "src/lemoncrow/gateway/cli/commands/benchmark.py"
     ],
     "haiku-3da09a5d8878": [
       "include/linux/hdmi.h"
@@ -14487,9 +14487,9 @@
       "anchor": "v9.1.0",
       "base_commit": "v9.1.0"
     },
-    "atelier__atelier": {
-      "ws": "/tmp/idx_ws_atelier_dev",
-      "db": "/tmp/idx_isolated/atelier__atelier/code_context.sqlite",
+    "lemoncrow__lemoncrow": {
+      "ws": "/tmp/idx_ws_lemoncrow_dev",
+      "db": "/tmp/idx_isolated/lemoncrow__lemoncrow/code_context.sqlite",
       "anchor": "v0.3.9",
       "base_commit": "v0.3.9"
     },
