@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ML8fLoPfBRXQea6yzFuGZH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HWWhdqw3qej6Kcjee8HaHC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '100,305p' /app/university_graph.ttl"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "sed -n '100,305p' /app/university_graph.ttl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0174oBc6C5yn7qrsNL7ny3KA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"Student27\\|Student28\\|Student29\\|Student30\" /app/university_graph.ttl | grep isEnrolled"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "grep -n \"Student27\\|Student28\\|Student29\\|Student30\" /app/university_graph.ttl | grep isEnrolled"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0118gZciSEvJKtyrnTYsGKNN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"isEnrolledIn\" /app/university_graph.ttl | tail -20"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "grep -n \"isEnrolledIn\" /app/university_graph.ttl | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Kp4TWvSKXyNuZGVsn1wwSG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/solution.sparql",
             "new": "PREFIX uni: <http://university.org/ontology/>\nPREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n\nSELECT ?professorName (GROUP_CONCAT(DISTINCT ?country; separator=\", \") AS ?countries)\nWHERE {\n  # Criterion 1: full professors (role starts with \"Professor\", excludes \"Assistant\"/\"Associate Professor\")\n  ?professor a uni:Person ;\n             uni:hasName ?professorName ;\n             uni:role ?role .\n  FILTER(STRSTARTS(?role, \"Professor\"))\n\n  # All departments the professor works in and their country (for the output)\n  ?professor uni:worksIn ?dept .\n  ?dept uni:belongsTo ?univ .\n  ?univ uni:locatedInCountry ?country .\n\n  # Criterion 2: works in at least one department of a university in an EU country\n  {\n    SELECT DISTINCT ?professor WHERE {\n      ?professor uni:worksIn ?euDept .\n      ?euDept uni:belongsTo ?euUniv .\n      ?euUniv uni:locatedInCountry ?euCountry .\n      FILTER(?euCountry IN (\n        \"AT\",\"BE\",\"BG\",\"HR\",\"CY\",\"CZ\",\"DK\",\"EE\",\"FI\",\"FR\",\"DE\",\"GR\",\"HU\",\n        \"IE\",\"IT\",\"LV\",\"LT\",\"LU\",\"MT\",\"NL\",\"PL\",\"PT\",\"RO\",\"SK\",\"SI\",\"ES\",\"SE\"\n      ))\n    }\n  }\n\n  # Criterion 3: at least one department the professor works in has more than 10\n  # students currently enrolled (as of 2025-08-16) in any course taught there\n  {\n    SELECT DISTINCT ?professor WHERE {\n      ?professor uni:worksIn ?bigDept .\n      {\n        SELECT ?bigDept (COUNT(DISTINCT ?student) AS ?enrolledCount) WHERE {\n          ?course uni:isTaughtIn ?bigDept .\n          ?student uni:isEnrolledIn ?course ;\n                   uni:hasEnrollmentDate ?enrollDate .\n          FILTER(?enrollDate <= \"2025-08-16\"^^xsd:date)\n          OPTIONAL { ?student uni:hasGraduationDate ?gradDate }\n          FILTER(!BOUND(?gradDate) || ?gradDate > \"2025-08-16\"^^xsd:date)\n        }\n        GROUP BY ?bigDept\n      }\n      FILTER(?enrolledCount > 10)\n    }\n  }\n}\nGROUP BY ?professorName\n"
@@ -319,7 +319,7 @@
               "path": "/app/solution.sparql",
               "new": "PREFIX uni: <http://university.org/ontology/>\nPREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n\nSELECT ?professorName (GROUP_CONCAT(DISTINCT ?country; separator=\", \") AS ?countries)\nWHERE {\n  # Criterion 1: full professors (role starts with \"Professor\", excludes \"Assistant\"/\"Associate Professor\")\n  ?professor a uni:Person ;\n             uni:hasName ?professorName ;\n             uni:role ?role .\n  FILTER(STRSTARTS(?role, \"Professor\"))\n\n  # All departments the professor works in and their country (for the output)\n  ?professor uni:worksIn ?dept .\n  ?dept uni:belongsTo ?univ .\n  ?univ uni:locatedInCountry ?country .\n\n  # Criterion 2: works in at least one department of a university in an EU country\n  {\n    SELECT DISTINCT ?professor WHERE {\n      ?professor uni:worksIn ?euDept .\n      ?euDept uni:belongsTo ?euUniv .\n      ?euUniv uni:locatedInCountry ?euCountry .\n      FILTER(?euCountry IN (\n        \"AT\",\"BE\",\"BG\",\"HR\",\"CY\",\"CZ\",\"DK\",\"EE\",\"FI\",\"FR\",\"DE\",\"GR\",\"HU\",\n        \"IE\",\"IT\",\"LV\",\"LT\",\"LU\",\"MT\",\"NL\",\"PL\",\"PT\",\"RO\",\"SK\",\"SI\",\"ES\",\"SE\"\n      ))\n    }\n  }\n\n  # Criterion 3: at least one department the professor works in has more than 10\n  # students currently enrolled (as of 2025-08-16) in any course taught there\n  {\n    SELECT DISTINCT ?professor WHERE {\n      ?professor uni:worksIn ?bigDept .\n      {\n        SELECT ?bigDept (COUNT(DISTINCT ?student) AS ?enrolledCount) WHERE {\n          ?course uni:isTaughtIn ?bigDept .\n          ?student uni:isEnrolledIn ?course ;\n                   uni:hasEnrollmentDate ?enrollDate .\n          FILTER(?enrollDate <= \"2025-08-16\"^^xsd:date)\n          OPTIONAL { ?student uni:hasGraduationDate ?gradDate }\n          FILTER(!BOUND(?gradDate) || ?gradDate > \"2025-08-16\"^^xsd:date)\n        }\n        GROUP BY ?bigDept\n      }\n      FILTER(?enrolledCount > 10)\n    }\n  }\n}\nGROUP BY ?professorName\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -380,7 +380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XbAgM2i62SgyYEyJ83Fpgf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import rdflib\" 2>/dev/null && echo have || uv pip install --system --break-system-packages rdflib -q 2>&1 | tail -1"
           },
@@ -388,7 +388,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import rdflib\" 2>/dev/null && echo have || uv pip install --system --break-system-packages rdflib -q 2>&1 | tail -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -449,7 +449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AaVX21mBxuRmBEbo4AhKA4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import rdflib; print('have', rdflib.__version__)\" 2>&1 || (pip install --break-system-packages -q rdflib 2>&1 | tail -2)"
           },
@@ -457,7 +457,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import rdflib; print('have', rdflib.__version__)\" 2>&1 || (pip install --break-system-packages -q rdflib 2>&1 | tail -2)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -518,7 +518,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SkVT1qHqeEDWMQFE1apSVA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3)"
           },
@@ -526,7 +526,7 @@
             "raw_arguments": {
               "command": "python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -587,7 +587,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XPg2G2JjqpaeuTU5hEdsyp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv; ls /root/.local/bin 2>/dev/null; python3 -m ensurepip 2>&1 | tail -2"
           },
@@ -595,7 +595,7 @@
             "raw_arguments": {
               "command": "which uv; ls /root/.local/bin 2>/dev/null; python3 -m ensurepip 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -656,7 +656,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GwYDLLmv9W2FVSRLR7dFSV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq python3-rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\" 2>&1 | tail -2"
           },
@@ -664,7 +664,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq python3-rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -725,7 +725,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PGet79qxdw7CbXMNQfgsoG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport rdflib\ng=rdflib.Graph(); g.parse('university_graph.ttl',format='turtle')\nq=open('solution.sparql').read()\nfor r in g.query(q):\n    print(r.professorName, '|', r.countries)\n\""
           },
@@ -733,7 +733,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport rdflib\ng=rdflib.Graph(); g.parse('university_graph.ttl',format='turtle')\nq=open('solution.sparql').read()\nfor r in g.query(q):\n    print(r.professorName, '|', r.countries)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

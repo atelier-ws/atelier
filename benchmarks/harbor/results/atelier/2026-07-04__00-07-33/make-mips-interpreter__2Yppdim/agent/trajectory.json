@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DKTZGtRSxuWDv8XgGZw3E5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && echo \"---\" && ls -la /app/doomgeneric | head -50 && echo \"---FILE---\" && file /app/doomgeneric_mips"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app && echo \"---\" && ls -la /app/doomgeneric | head -50 && echo \"---FILE---\" && file /app/doomgeneric_mips"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_0135ALFpEBFszj2AvEu4Xh64",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "node --version; echo \"---\"; which mips-linux-gnu-objdump mipsel-linux-gnu-objdump objdump readelf 2>/dev/null"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "node --version; echo \"---\"; which mips-linux-gnu-objdump mipsel-linux-gnu-objdump objdump readelf 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -62,7 +62,7 @@
         "results": [
           {
             "source_call_id": "toolu_01DKTZGtRSxuWDv8XgGZw3E5",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 5624\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:11 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:10 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:11 .atelier\\n-rw-r--r-- 1 root root 4196020 Sep 13  2025 doom.wad\\ndrwxr-xr-x 1 root root    4096 Sep 13  2025 doomgeneric\\n-rwxr-xr-x 1 root root 1543608 Sep 13  2025 doomgeneric_mips\\n---\\ntotal 56\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:11 ..\\ndrwxr-xr-x 8 root root  4096 Sep 13  2025 .git\\n-rw-r--r-- 1 root root    71 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root 18092 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root  3868 Sep 13  2025 README.TXT\\n-rw-r--r-- 1 root root  2028 Sep 13  2025 README.md\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 doomgeneric\\n-rw-r--r-- 1 root root  1416 Sep 13  2025 doomgeneric.sln\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 screenshots\\n---FILE---\\n\\nbash: line 1: file: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 5624\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:11 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:10 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:11 .lemoncrow\\n-rw-r--r-- 1 root root 4196020 Sep 13  2025 doom.wad\\ndrwxr-xr-x 1 root root    4096 Sep 13  2025 doomgeneric\\n-rwxr-xr-x 1 root root 1543608 Sep 13  2025 doomgeneric_mips\\n---\\ntotal 56\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:11 ..\\ndrwxr-xr-x 8 root root  4096 Sep 13  2025 .git\\n-rw-r--r-- 1 root root    71 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root 18092 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root  3868 Sep 13  2025 README.TXT\\n-rw-r--r-- 1 root root  2028 Sep 13  2025 README.md\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 doomgeneric\\n-rw-r--r-- 1 root root  1416 Sep 13  2025 doomgeneric.sln\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 screenshots\\n---FILE---\\n\\nbash: line 1: file: command not found\"}"
           },
           {
             "source_call_id": "toolu_0135ALFpEBFszj2AvEu4Xh64",
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LyfSL7Gt3uTRLPgRHFbabw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "readelf -h /app/doomgeneric_mips; echo \"---PROGRAM HEADERS---\"; readelf -l /app/doomgeneric_mips"
           },
@@ -127,12 +127,12 @@
             "raw_arguments": {
               "command": "readelf -h /app/doomgeneric_mips; echo \"---PROGRAM HEADERS---\"; readelf -l /app/doomgeneric_mips"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01Q3nvgkjkmYH1kGUtHWG42S",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -R /app/doomgeneric/doomgeneric | head -80"
           },
@@ -140,7 +140,7 @@
             "raw_arguments": {
               "command": "ls -R /app/doomgeneric/doomgeneric | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -205,7 +205,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AkUmtwKroMPW6sbXvaitQA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/doomgeneric/doomgeneric/doomgeneric_mips /app/doomgeneric/doomgeneric/build 2>/dev/null; echo \"---MAP head---\"; head -40 /app/doomgeneric/doomgeneric/doomgeneric_mips.map; echo \"---MAKEFILE.soso---\"; head -60 /app/doomgeneric/doomgeneric/Makefile.soso"
           },
@@ -213,7 +213,7 @@
             "raw_arguments": {
               "command": "ls -la /app/doomgeneric/doomgeneric/doomgeneric_mips /app/doomgeneric/doomgeneric/build 2>/dev/null; echo \"---MAP head---\"; head -40 /app/doomgeneric/doomgeneric/doomgeneric_mips.map; echo \"---MAKEFILE.soso---\"; head -60 /app/doomgeneric/doomgeneric/Makefile.soso"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -274,7 +274,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SHzpLS7kp22cGLu5fSCue5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/doomgeneric/doomgeneric/build/asm; echo \"---\"; ls /app/doomgeneric/doomgeneric | grep -i mips"
           },
@@ -282,12 +282,12 @@
             "raw_arguments": {
               "command": "ls -la /app/doomgeneric/doomgeneric/build/asm; echo \"---\"; ls /app/doomgeneric/doomgeneric | grep -i mips"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01RCq3yCuFSjLkDnq6rYc6gT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rl -i \"mips\\|syscall\\|__NR\\|_start\\|SYS_\" /app/doomgeneric/doomgeneric/*.c /app/doomgeneric/doomgeneric/*.h 2>/dev/null | head; echo \"==MAKEFILE==\"; cat /app/doomgeneric/doomgeneric/Makefile"
           },
@@ -295,7 +295,7 @@
             "raw_arguments": {
               "command": "grep -rl -i \"mips\\|syscall\\|__NR\\|_start\\|SYS_\" /app/doomgeneric/doomgeneric/*.c /app/doomgeneric/doomgeneric/*.h 2>/dev/null | head; echo \"==MAKEFILE==\"; cat /app/doomgeneric/doomgeneric/Makefile"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -360,7 +360,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012p9gJpbBWAoQtD3mbBszrN",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/my_stdlib.h",
@@ -374,7 +374,7 @@
                 "/app/doomgeneric/doomgeneric/doomgeneric_img.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -435,7 +435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JQYSWsYyKXCaEqz3UNhpj5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/doomgeneric/doomgeneric/my_stdlib.c; echo \"---\"; grep -n \"syscall\\|__asm__\\|asm volatile\\|li \\$v0\\|v0\\|__NR\\|4004\\|4001\\|move\\|SYS_\" /app/doomgeneric/doomgeneric/my_stdlib.c | head -80"
           },
@@ -443,7 +443,7 @@
             "raw_arguments": {
               "command": "wc -l /app/doomgeneric/doomgeneric/my_stdlib.c; echo \"---\"; grep -n \"syscall\\|__asm__\\|asm volatile\\|li \\$v0\\|v0\\|__NR\\|4004\\|4001\\|move\\|SYS_\" /app/doomgeneric/doomgeneric/my_stdlib.c | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -504,7 +504,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vn8c6ews5yJz71ZiUcTC8x",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/my_stdlib.c:L1480-L1720"
@@ -516,7 +516,7 @@
                 "/app/doomgeneric/doomgeneric/my_stdlib.c:L1480-L1720"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -577,7 +577,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011XnvNeHQhL3mVvFJgrKf5J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"real_syscall6\\|SYS_read\\|SYS_write\\|SYS_open\\|SYS_close\\|SYS_lseek\\|SYS_mkdir\\|SYS_unlink\\|SYS_rename\\|SYS_fsync\\|__NR\\|4000\\|4001\\|4003\\|4004\\|4005\" /app/doomgeneric/doomgeneric/my_stdlib.c"
           },
@@ -585,7 +585,7 @@
             "raw_arguments": {
               "command": "grep -n \"real_syscall6\\|SYS_read\\|SYS_write\\|SYS_open\\|SYS_close\\|SYS_lseek\\|SYS_mkdir\\|SYS_unlink\\|SYS_rename\\|SYS_fsync\\|__NR\\|4000\\|4001\\|4003\\|4004\\|4005\" /app/doomgeneric/doomgeneric/my_stdlib.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -646,7 +646,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AMUF9eb6X1eSLKtHG1ZyRh",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/my_stdlib.c:L1-L120"
@@ -658,7 +658,7 @@
                 "/app/doomgeneric/doomgeneric/my_stdlib.c:L1-L120"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -719,7 +719,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013najJuLbF5L7oiw3VieFgU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rn \"USE_FS\\|define USE_FS\" /app/doomgeneric/doomgeneric/*.c /app/doomgeneric/doomgeneric/*.h /app/doomgeneric/doomgeneric/Makefile | head; echo \"==exit/brk/mmap in stdlib==\"; grep -n \"SYS_exit\\|SYS_brk\\|brk\\|mmap\\|SYS_mmap\\|_exit\\|void exit\\|nanosleep\\|gettimeofday\\|SYS_time\\b\" /app/doomgeneric/doomgeneric/my_stdlib.c"
           },
@@ -727,7 +727,7 @@
             "raw_arguments": {
               "command": "grep -rn \"USE_FS\\|define USE_FS\" /app/doomgeneric/doomgeneric/*.c /app/doomgeneric/doomgeneric/*.h /app/doomgeneric/doomgeneric/Makefile | head; echo \"==exit/brk/mmap in stdlib==\"; grep -n \"SYS_exit\\|SYS_brk\\|brk\\|mmap\\|SYS_mmap\\|_exit\\|void exit\\|nanosleep\\|gettimeofday\\|SYS_time\\b\" /app/doomgeneric/doomgeneric/my_stdlib.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -788,7 +788,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AeBRP19v8n54JzEbkBuD4Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rn \"USE_FS\" /app/doomgeneric/doomgeneric/Makefile /app/doomgeneric/doomgeneric/my_stdlib.c"
           },
@@ -796,12 +796,12 @@
             "raw_arguments": {
               "command": "grep -rn \"USE_FS\" /app/doomgeneric/doomgeneric/Makefile /app/doomgeneric/doomgeneric/my_stdlib.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01DDoNVSt2DngTg6MxqDcHHL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"SYS_exit\\|SYS_brk\\|mmap\\|_exit\\|void exit\\|nanosleep\\|gettimeofday\\|SYS_time\\|brk\\|sbrk\\|malloc\\|heap\" /app/doomgeneric/doomgeneric/my_stdlib.c"
           },
@@ -809,7 +809,7 @@
             "raw_arguments": {
               "command": "grep -n \"SYS_exit\\|SYS_brk\\|mmap\\|_exit\\|void exit\\|nanosleep\\|gettimeofday\\|SYS_time\\|brk\\|sbrk\\|malloc\\|heap\" /app/doomgeneric/doomgeneric/my_stdlib.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -874,7 +874,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011RcvgUc9CqFh8Wo1QLa5Gn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/my_stdlib.c:L124-L560"
@@ -886,7 +886,7 @@
                 "/app/doomgeneric/doomgeneric/my_stdlib.c:L124-L560"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -947,7 +947,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RXESLJ48XWS2YCZpSbnbDj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mips-linux-gnu-objdump -d doomgeneric_mips > /tmp/dis.txt 2>/dev/null; wc -l /tmp/dis.txt; echo \"=== distinct mnemonics ===\"; awk '{if ($1 ~ /^[0-9a-f]+:$/){print $3}}' /tmp/dis.txt | sort | uniq -c | sort -rn | head -120"
           },
@@ -955,7 +955,7 @@
             "raw_arguments": {
               "command": "cd /app && mips-linux-gnu-objdump -d doomgeneric_mips > /tmp/dis.txt 2>/dev/null; wc -l /tmp/dis.txt; echo \"=== distinct mnemonics ===\"; awk '{if ($1 ~ /^[0-9a-f]+:$/){print $3}}' /tmp/dis.txt | sort | uniq -c | sort -rn | head -120"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1016,7 +1016,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013rPveRSqNpKy7rkD8YL1zj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== entry/__start ===\"; mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x400110 --stop-address=0x400200 2>/dev/null; echo \"=== gp usage count ===\"; grep -c \"gp\" /tmp/dis.txt; echo \"=== sample gp lines ===\"; grep -n \"gp\" /tmp/dis.txt | head"
           },
@@ -1024,7 +1024,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== entry/__start ===\"; mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x400110 --stop-address=0x400200 2>/dev/null; echo \"=== gp usage count ===\"; grep -c \"gp\" /tmp/dis.txt; echo \"=== sample gp lines ===\"; grep -n \"gp\" /tmp/dis.txt | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1085,7 +1085,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017iodJPo9vzjQ2tzV1MSdvK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \" (root|fd_table|heap_pos|heap|drawk|s_KeyQueue|DG_ScreenBuffer)$\"; echo \"=== RESX/RESY ===\"; grep -rn \"DOOMGENERIC_RESX\\|DOOMGENERIC_RESY\\|RESX \\|RESY \" /app/doomgeneric/doomgeneric/doomgeneric.h"
           },
@@ -1093,7 +1093,7 @@
             "raw_arguments": {
               "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \" (root|fd_table|heap_pos|heap|drawk|s_KeyQueue|DG_ScreenBuffer)$\"; echo \"=== RESX/RESY ===\"; grep -rn \"DOOMGENERIC_RESX\\|DOOMGENERIC_RESY\\|RESX \\|RESY \" /app/doomgeneric/doomgeneric/doomgeneric.h"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1154,7 +1154,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018GH6P5ERsXoextsPBXga1j",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \"root|fd_table|_edata|_end|__bss\" ; echo \"=== zone base ===\"; grep -n \"mb_used\\|ZoneBase\\|DEFAULT\\|0x100000\\|zonesize\\|Z_Init\\|maxzone\" /app/doomgeneric/doomgeneric/i_system.c | head; echo \"=== z_zone default ===\"; grep -rn \"mb_used\\|zonesize\\|DEFAULT_RAM\\|min_zone\\|MB\\b\" /app/doomgeneric/doomgeneric/z_zone.c /app/doomgeneric/doomgeneric/i_system.c | head"
           },
@@ -1162,7 +1162,7 @@
             "raw_arguments": {
               "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \"root|fd_table|_edata|_end|__bss\" ; echo \"=== zone base ===\"; grep -n \"mb_used\\|ZoneBase\\|DEFAULT\\|0x100000\\|zonesize\\|Z_Init\\|maxzone\" /app/doomgeneric/doomgeneric/i_system.c | head; echo \"=== z_zone default ===\"; grep -rn \"mb_used\\|zonesize\\|DEFAULT_RAM\\|min_zone\\|MB\\b\" /app/doomgeneric/doomgeneric/z_zone.c /app/doomgeneric/doomgeneric/i_system.c | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1223,7 +1223,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MZnVpNtVdBj4Ku6wrpjE7J",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/my_stdlib.c:L2860-L3040"
@@ -1235,7 +1235,7 @@
                 "/app/doomgeneric/doomgeneric/my_stdlib.c:L2860-L3040"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1296,7 +1296,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SW3aSxNUrMnSmS3LvFHRST",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \" (DG_DrawFrame|doomgeneric_Tick|fclose|fwrite|writeBMPFile|DG_Init|main)$\"; echo \"=== DG_DrawFrame disasm ===\"; a=$(mips-linux-gnu-nm doomgeneric_mips | awk '/ DG_DrawFrame$/{print $1}'); mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x$a --stop-address=$((0x$a+0x120)) 2>/dev/null | tail -60"
           },
@@ -1304,7 +1304,7 @@
             "raw_arguments": {
               "command": "cd /app && mips-linux-gnu-nm doomgeneric_mips 2>/dev/null | grep -iE \" (DG_DrawFrame|doomgeneric_Tick|fclose|fwrite|writeBMPFile|DG_Init|main)$\"; echo \"=== DG_DrawFrame disasm ===\"; a=$(mips-linux-gnu-nm doomgeneric_mips | awk '/ DG_DrawFrame$/{print $1}'); mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x$a --stop-address=$((0x$a+0x120)) 2>/dev/null | tail -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1365,7 +1365,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AT4tBvKvPHjj3XSj4YoGGc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x439700 --stop-address=0x4397c0 2>/dev/null | tail -50"
           },
@@ -1373,7 +1373,7 @@
             "raw_arguments": {
               "command": "cd /app && mips-linux-gnu-objdump -d doomgeneric_mips --start-address=0x439700 --stop-address=0x4397c0 2>/dev/null | tail -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1434,7 +1434,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016nY5LtmHUK9LkP2sDp6RAC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && grep -nE \"mtc1|mfc1|mthc1|lwc1|swc1|ldc1|sdc1|cvt\\.|c\\.olt|div\\.s|mul\\.s|add\\.s|neg\\.|mov\\.|movt\\.|trunc\\.|bc1t|bc1f|abs\\.\" /tmp/dis.txt"
           },
@@ -1442,7 +1442,7 @@
             "raw_arguments": {
               "command": "cd /app && grep -nE \"mtc1|mfc1|mthc1|lwc1|swc1|ldc1|sdc1|cvt\\.|c\\.olt|div\\.s|mul\\.s|add\\.s|neg\\.|mov\\.|movt\\.|trunc\\.|bc1t|bc1f|abs\\.\" /tmp/dis.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1503,7 +1503,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SnB6b8iJfCGjfh3ucLFLoN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -lW doomgeneric_mips 2>/dev/null | awk '/LOAD/{print}'; echo \"=== bytes around string /tmp/frame.bmp ===\"; mips-linux-gnu-objdump -s -j .rodata doomgeneric_mips 2>/dev/null | grep -A1 \"frame\" | head"
           },
@@ -1511,7 +1511,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -lW doomgeneric_mips 2>/dev/null | awk '/LOAD/{print}'; echo \"=== bytes around string /tmp/frame.bmp ===\"; mips-linux-gnu-objdump -s -j .rodata doomgeneric_mips 2>/dev/null | grep -A1 \"frame\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1572,7 +1572,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K6XcSrv8g3ombhBwpuzZue",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1592,7 +1592,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1653,7 +1653,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CXdk3esUm61aNL59d9JuEt",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1703,7 +1703,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1764,7 +1764,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V9wzsQj1EM1CFr2Wa7mZc3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js 2>&1 | head -60; echo \"=== exit ${PIPESTATUS[0]} ===\"; ls -la /tmp/frame.bmp 2>/dev/null"
           },
@@ -1772,7 +1772,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js 2>&1 | head -60; echo \"=== exit ${PIPESTATUS[0]} ===\"; ls -la /tmp/frame.bmp 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1833,7 +1833,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q7pYaWyWwzSQ8bRus7LofS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js > /tmp/out.txt 2> /tmp/err.txt; echo \"exit=$?\"; echo \"=== STDERR (last 30) ===\"; tail -30 /tmp/err.txt; echo \"=== STDOUT (last 20) ===\"; tail -20 /tmp/out.txt; ls -la /tmp/frame.bmp 2>/dev/null"
           },
@@ -1841,7 +1841,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js > /tmp/out.txt 2> /tmp/err.txt; echo \"exit=$?\"; echo \"=== STDERR (last 30) ===\"; tail -30 /tmp/err.txt; echo \"=== STDOUT (last 20) ===\"; tail -20 /tmp/out.txt; ls -la /tmp/frame.bmp 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1902,7 +1902,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017rw2nFbTKyQqw92n8LmMaR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== full stdout ===\"; cat /tmp/out.txt | head -40"
           },
@@ -1910,7 +1910,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== full stdout ===\"; cat /tmp/out.txt | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1971,7 +1971,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DNvtaEaukRKTXc6MsCU1Ht",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1991,7 +1991,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2052,7 +2052,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GHRmMNaupCzd3KJ5LL5r8X",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js > /tmp/out.txt 2> /tmp/err.txt; echo \"exit=$?\"; echo \"=== STDERR tail ===\"; tail -8 /tmp/err.txt; echo \"=== STDOUT head ===\"; head -30 /tmp/out.txt; echo \"=== frame ===\"; ls -la /tmp/frame.bmp 2>/dev/null; xxd /tmp/frame.bmp 2>/dev/null | head -4"
           },
@@ -2060,7 +2060,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && timeout 300 node vm.js > /tmp/out.txt 2> /tmp/err.txt; echo \"exit=$?\"; echo \"=== STDERR tail ===\"; tail -8 /tmp/err.txt; echo \"=== STDOUT head ===\"; head -30 /tmp/out.txt; echo \"=== frame ===\"; ls -la /tmp/frame.bmp 2>/dev/null; xxd /tmp/frame.bmp 2>/dev/null | head -4"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2121,7 +2121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hkr5CmyWtvJ6gqEZzsxo4D",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /tmp/frame.bmp; echo \"=== header ===\"; xxd /tmp/frame.bmp | head -4; echo \"=== stdout size ===\"; wc -c /tmp/out.txt; head -5 /tmp/out.txt"
           },
@@ -2129,7 +2129,7 @@
             "raw_arguments": {
               "command": "ls -la /tmp/frame.bmp; echo \"=== header ===\"; xxd /tmp/frame.bmp | head -4; echo \"=== stdout size ===\"; wc -c /tmp/out.txt; head -5 /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2190,7 +2190,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0192UcFR8BENG3dghA8K76KF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== stdout ===\"; cat /tmp/out.txt; echo \"=== BMP header ===\"; od -A d -t x1 /tmp/frame.bmp | head -4"
           },
@@ -2198,7 +2198,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== stdout ===\"; cat /tmp/out.txt; echo \"=== BMP header ===\"; od -A d -t x1 /tmp/frame.bmp | head -4"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2259,7 +2259,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017nRfNutRJTWriF6tPRf2HE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -A d -t x1 /tmp/frame.bmp | head -5; echo \"=== stdout od ===\"; od -c /tmp/out.txt | head -20"
           },
@@ -2267,7 +2267,7 @@
             "raw_arguments": {
               "command": "od -A d -t x1 /tmp/frame.bmp | head -5; echo \"=== stdout od ===\"; od -c /tmp/out.txt | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2328,7 +2328,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HaeP5KuAMF5y7Rp7DDNQmN",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/doomgeneric/doomgeneric/doomgeneric.c"
@@ -2340,7 +2340,7 @@
                 "/app/doomgeneric/doomgeneric/doomgeneric.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2401,7 +2401,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mz5jbYKLCTjq6ayU9V12dy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/dbg.js <<'EOF'\nprocess.env.DBG='1';\nEOF\n# Patch: run a modified copy that logs DrawFrame entries and doesn't exit until 3 frames\nnode -e '\nconst src=require(\"fs\").readFileSync(\"/app/vm.js\",\"utf8\");\nlet s=src.replace(\"const INSTR_LIMIT = 5e9;\",\"const INSTR_LIMIT = 8e8;\");\ns=s.replace(/if \\(pc === FRAME_HOOK_PC\\) \\{[\\s\\S]*?process.exit\\(0\\);\\n    \\}/,\n`if (pc === 0x4395e4) { process.stderr.write(\"[dbg] DG_DrawFrame entry #\"+(++global.__df||(global.__df=1))+\" at instr \"+count+\"\\\\n\"); if(global.__df>=3) process.exit(0);} if (pc === FRAME_HOOK_PC) { saveFrame(reg[17]>>>0, FRAME_SIZE); }`);\nrequire(\"fs\").writeFileSync(\"/tmp/vm_dbg.js\",s);\n'\nrm -f /tmp/frame.bmp; timeout 200 node /tmp/vm_dbg.js >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"\necho \"=== stdout bytes ===\"; wc -c /tmp/out.txt\necho \"=== stdout tail ===\"; tail -c 1200 /tmp/out.txt | tr -d '\\000'\necho \"=== err tail ===\"; grep -a \"dbg\\|saved\" /tmp/err.txt | head"
           },
@@ -2409,7 +2409,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/dbg.js <<'EOF'\nprocess.env.DBG='1';\nEOF\n# Patch: run a modified copy that logs DrawFrame entries and doesn't exit until 3 frames\nnode -e '\nconst src=require(\"fs\").readFileSync(\"/app/vm.js\",\"utf8\");\nlet s=src.replace(\"const INSTR_LIMIT = 5e9;\",\"const INSTR_LIMIT = 8e8;\");\ns=s.replace(/if \\(pc === FRAME_HOOK_PC\\) \\{[\\s\\S]*?process.exit\\(0\\);\\n    \\}/,\n`if (pc === 0x4395e4) { process.stderr.write(\"[dbg] DG_DrawFrame entry #\"+(++global.__df||(global.__df=1))+\" at instr \"+count+\"\\\\n\"); if(global.__df>=3) process.exit(0);} if (pc === FRAME_HOOK_PC) { saveFrame(reg[17]>>>0, FRAME_SIZE); }`);\nrequire(\"fs\").writeFileSync(\"/tmp/vm_dbg.js\",s);\n'\nrm -f /tmp/frame.bmp; timeout 200 node /tmp/vm_dbg.js >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"\necho \"=== stdout bytes ===\"; wc -c /tmp/out.txt\necho \"=== stdout tail ===\"; tail -c 1200 /tmp/out.txt | tr -d '\\000'\necho \"=== err tail ===\"; grep -a \"dbg\\|saved\" /tmp/err.txt | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2470,7 +2470,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BVqd9wLSER72xzCGfQdgDz",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/vm.js:L170-L192"
@@ -2482,7 +2482,7 @@
                 "/app/vm.js:L170-L192"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2543,7 +2543,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H13UzHr5MJnwcxExDw3kn8",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2575,7 +2575,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2636,7 +2636,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T4YqRx3Mo2GX1zmuHgKGSg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame*.bmp && VMDEBUG=1 timeout 200 node vm.js >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"; echo \"=== stdout bytes ===\"; wc -c /tmp/out.txt; echo \"=== dbg lines ===\"; grep -a \"dbg\\|saved\" /tmp/err.txt; echo \"=== stdout tail ===\"; tail -c 900 /tmp/out.txt | tr -d '\\000'"
           },
@@ -2644,7 +2644,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame*.bmp && VMDEBUG=1 timeout 200 node vm.js >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"; echo \"=== stdout bytes ===\"; wc -c /tmp/out.txt; echo \"=== dbg lines ===\"; grep -a \"dbg\\|saved\" /tmp/err.txt; echo \"=== stdout tail ===\"; tail -c 900 /tmp/out.txt | tr -d '\\000'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2705,7 +2705,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017xQWmSyRNLzhMHPeq46S91",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && timeout 200 node vm.js >/dev/null 2>/tmp/err.txt; echo \"exit=$? $(tail -1 /tmp/err.txt)\"\nnode -e '\nconst fs=require(\"fs\");const b=fs.readFileSync(\"/tmp/frame.bmp\");\nconst w=b.readInt32LE(18),h=b.readInt32LE(22);console.log(\"w,h=\",w,h,\"bpp\",b.readUInt16LE(28));\nconst off=b.readUInt32LE(10);const H=Math.abs(h);\nconst colors=new Map();let nonzero=0;\nfor(let i=off;i+4<=b.length;i+=4){const px=b.readUInt32LE(i)&0xffffff;colors.set(px,(colors.get(px)||0)+1);if(px!==0)nonzero++;}\nconsole.log(\"distinct colors:\",colors.size,\"nonzero px:\",nonzero,\"/\",(b.length-off)/4);\nconst top=[...colors.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6).map(([c,n])=>c.toString(16).padStart(6,\"0\")+\":\"+n);\nconsole.log(\"top colors(bgr):\",top.join(\" \"));\n// crude rows: sample luminance of a few rows to see structure\nfor(const ry of [0,50,100,150,199]){let s=\"\";for(let x=0;x<64;x++){const i=off+(ry*w+x*(w/64|0))*4;const px=b.readUInt32LE(i);const lum=((px&0xff)+((px>>8)&0xff)+((px>>16)&0xff))/3;s+=lum>128?\"#\":lum>64?\"+\":lum>16?\".\":\" \";}console.log(String(ry).padStart(3),\"|\"+s+\"|\");}\n'"
           },
@@ -2713,7 +2713,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && timeout 200 node vm.js >/dev/null 2>/tmp/err.txt; echo \"exit=$? $(tail -1 /tmp/err.txt)\"\nnode -e '\nconst fs=require(\"fs\");const b=fs.readFileSync(\"/tmp/frame.bmp\");\nconst w=b.readInt32LE(18),h=b.readInt32LE(22);console.log(\"w,h=\",w,h,\"bpp\",b.readUInt16LE(28));\nconst off=b.readUInt32LE(10);const H=Math.abs(h);\nconst colors=new Map();let nonzero=0;\nfor(let i=off;i+4<=b.length;i+=4){const px=b.readUInt32LE(i)&0xffffff;colors.set(px,(colors.get(px)||0)+1);if(px!==0)nonzero++;}\nconsole.log(\"distinct colors:\",colors.size,\"nonzero px:\",nonzero,\"/\",(b.length-off)/4);\nconst top=[...colors.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6).map(([c,n])=>c.toString(16).padStart(6,\"0\")+\":\"+n);\nconsole.log(\"top colors(bgr):\",top.join(\" \"));\n// crude rows: sample luminance of a few rows to see structure\nfor(const ry of [0,50,100,150,199]){let s=\"\";for(let x=0;x<64;x++){const i=off+(ry*w+x*(w/64|0))*4;const px=b.readUInt32LE(i);const lum=((px&0xff)+((px>>8)&0xff)+((px>>16)&0xff))/3;s+=lum>128?\"#\":lum>64?\"+\":lum>16?\".\":\" \";}console.log(String(ry).padStart(3),\"|\"+s+\"|\");}\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2774,7 +2774,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0146KUBgPjJCZLkkGViweL5y",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2816,7 +2816,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2877,7 +2877,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WvZLVhPKxaJcs5WfFejdfi",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2897,7 +2897,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2958,7 +2958,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RvpaRdPVJDRCJtBxw7WFi9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && time timeout 200 node vm.js >/dev/null 2>/tmp/err.txt; echo \"exit=$?\"; tail -2 /tmp/err.txt\nnode -e 'const b=require(\"fs\").readFileSync(\"/tmp/frame.bmp\");console.log(\"size\",b.length,\"magic\",b.toString(\"ascii\",0,2),\"w\",b.readInt32LE(18),\"h\",b.readInt32LE(22),\"bpp\",b.readUInt16LE(28))'\necho \"=== SAVE_ALL: distinct first two frames? ===\"\nVM_SAVE_ALL=1 timeout 60 node -e '\nprocess.env.VM_SAVE_ALL=\"1\";\nconst cp=require(\"child_process\");\n' 2>/dev/null\n# quick check that consecutive frames differ (run debug multi-frame)\nnode -e '\nconst {execSync}=require(\"child_process\");\n' 2>/dev/null; echo ok"
           },
@@ -2966,7 +2966,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && time timeout 200 node vm.js >/dev/null 2>/tmp/err.txt; echo \"exit=$?\"; tail -2 /tmp/err.txt\nnode -e 'const b=require(\"fs\").readFileSync(\"/tmp/frame.bmp\");console.log(\"size\",b.length,\"magic\",b.toString(\"ascii\",0,2),\"w\",b.readInt32LE(18),\"h\",b.readInt32LE(22),\"bpp\",b.readUInt16LE(28))'\necho \"=== SAVE_ALL: distinct first two frames? ===\"\nVM_SAVE_ALL=1 timeout 60 node -e '\nprocess.env.VM_SAVE_ALL=\"1\";\nconst cp=require(\"child_process\");\n' 2>/dev/null\n# quick check that consecutive frames differ (run debug multi-frame)\nnode -e '\nconst {execSync}=require(\"child_process\");\n' 2>/dev/null; echo ok"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3027,7 +3027,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NhxAYGEfTGmCBdnQNz61ZL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && rm -f /tmp/frame.bmp && node /app/vm.js >/dev/null 2>/tmp/e.txt; echo \"exit=$? (cwd=/tmp)\"; tail -1 /tmp/e.txt; ls -la /tmp/frame.bmp; od -A d -t x1 /tmp/frame.bmp | head -1"
           },
@@ -3035,7 +3035,7 @@
             "raw_arguments": {
               "command": "cd /tmp && rm -f /tmp/frame.bmp && node /app/vm.js >/dev/null 2>/tmp/e.txt; echo \"exit=$? (cwd=/tmp)\"; tail -1 /tmp/e.txt; ls -la /tmp/frame.bmp; od -A d -t x1 /tmp/frame.bmp | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3151,7 +3151,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017RUUt9SxxghxBvmdgPu4Gr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/frame.bmp && node vm.js >/tmp/boot.txt 2>/tmp/err.txt; echo \"exit=$?\"; tail -1 /tmp/err.txt\necho \"=== boot reached graphics init? ===\"; grep -a -o \"I_InitGraphics: DOOM screen size: w x h: 320 x 200\" /tmp/boot.txt | head -1\nnode -e 'const b=require(\"fs\").readFileSync(\"/tmp/frame.bmp\");\nconst off=b.readUInt32LE(10);let colors=new Set(),nz=0;\nfor(let i=off;i+4<=b.length;i+=4){const p=b.readUInt32LE(i)&0xffffff;colors.add(p);if(p)nz++;}\nconsole.log(\"frame:\",b.toString(\"ascii\",0,2),\"len\",b.length,\"640x\"+(-b.readInt32LE(22)),b.readUInt16LE(28)+\"bpp\",\"distinctColors\",colors.size,\"nonzeroPx\",nz);\nif(b.toString(\"ascii\",0,2)===\"BM\"&&b.length===1024054&&colors.size>50&&nz>200000)console.log(\"PASS: booted + valid non-trivial first frame\");else{console.log(\"FAIL\");process.exit(1);}'"
           },
@@ -3159,7 +3159,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/frame.bmp && node vm.js >/tmp/boot.txt 2>/tmp/err.txt; echo \"exit=$?\"; tail -1 /tmp/err.txt\necho \"=== boot reached graphics init? ===\"; grep -a -o \"I_InitGraphics: DOOM screen size: w x h: 320 x 200\" /tmp/boot.txt | head -1\nnode -e 'const b=require(\"fs\").readFileSync(\"/tmp/frame.bmp\");\nconst off=b.readUInt32LE(10);let colors=new Set(),nz=0;\nfor(let i=off;i+4<=b.length;i+=4){const p=b.readUInt32LE(i)&0xffffff;colors.add(p);if(p)nz++;}\nconsole.log(\"frame:\",b.toString(\"ascii\",0,2),\"len\",b.length,\"640x\"+(-b.readInt32LE(22)),b.readUInt16LE(28)+\"bpp\",\"distinctColors\",colors.size,\"nonzeroPx\",nz);\nif(b.toString(\"ascii\",0,2)===\"BM\"&&b.length===1024054&&colors.size>50&&nz>200000)console.log(\"PASS: booted + valid non-trivial first frame\");else{console.log(\"FAIL\");process.exit(1);}'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014sYV3GQxGPEZc7EfZc2cDn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; echo \"---TEST---\"; ls -la test/"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la; echo \"---TEST---\"; ls -la test/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01WhSGLd9VW9dxc5EL15P2oY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "interp.py"
@@ -58,7 +58,7 @@
                 "interp.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HiS7j3gXVasbb46iBERvDF",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "test/README.md",
@@ -145,7 +145,7 @@
                 "test/10-advanced-features.scm"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -206,7 +206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AnX7FURWb8rMwEVn4Gj5sv",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "test/variadic_functions.scm",
@@ -238,7 +238,7 @@
                 "test/continuation_passing.scm"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -299,7 +299,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FDhMS6mrHhEGEZjTJNoitC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls test/*.scm | sort"
           },
@@ -307,7 +307,7 @@
             "raw_arguments": {
               "command": "ls test/*.scm | sort"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -368,7 +368,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KFgnbJMdi1jBJScsj1iEcD",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "test/02-fibonacci.scm",
@@ -410,7 +410,7 @@
                 "test/oeis_sequences3.scm"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -471,7 +471,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W33vTzeNs9Lbt8a3n4Tbhb",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -491,7 +491,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -552,7 +552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018kJxDoGkjjpyRbMjCtsWnc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root 2>/dev/null; ls / >/dev/null; pwd; echo \"sanity:\"; echo '(+ 7 8)' | python3 interp.py test/calculator.scm; echo \"===\"; echo -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm; echo \"===\"; echo -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
           },
@@ -560,7 +560,7 @@
             "raw_arguments": {
               "command": "cd /root 2>/dev/null; ls / >/dev/null; pwd; echo \"sanity:\"; echo '(+ 7 8)' | python3 interp.py test/calculator.scm; echo \"===\"; echo -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm; echo \"===\"; echo -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -621,7 +621,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BMoSuheWXY9gYgHpzMUXUV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name interp.py -not -path '*/proc/*' 2>/dev/null | head"
           },
@@ -629,7 +629,7 @@
             "raw_arguments": {
               "command": "find / -name interp.py -not -path '*/proc/*' 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -637,7 +637,7 @@
         "results": [
           {
             "source_call_id": "toolu_01BMoSuheWXY9gYgHpzMUXUV",
-            "content": "{\"type\": \"text\", \"text\": \"app/interp.py\\natelier/.venv-embed/lib/python3.13/site-packages/torch/utils/_sympy/interp.py\\natelier/.venv/lib/python3.13/site-packages/torch/utils/_sympy/interp.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"app/interp.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/torch/utils/_sympy/interp.py\\nlemoncrow/.venv/lib/python3.13/site-packages/torch/utils/_sympy/interp.py\"}"
           }
         ]
       },
@@ -690,7 +690,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EVdCGZBrgD9aBWBWXusJ9H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app | head; echo \"---\"; ls /app/eval.scm 2>/dev/null || echo \"no eval.scm in /app\""
           },
@@ -698,7 +698,7 @@
             "raw_arguments": {
               "command": "ls -la /app | head; echo \"---\"; ls /app/eval.scm 2>/dev/null || echo \"no eval.scm in /app\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -759,7 +759,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018BjHJ8mbsACRRxYc8opq5L",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; echo \"=1 direct=\"; echo '(+ 7 8)' | python3 interp.py test/calculator.scm; echo \"=2 eval=\"; echo -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm; echo \"=3 eval/eval=\"; echo -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
           },
@@ -767,7 +767,7 @@
             "raw_arguments": {
               "command": "cd /app; echo \"=1 direct=\"; echo '(+ 7 8)' | python3 interp.py test/calculator.scm; echo \"=2 eval=\"; echo -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm; echo \"=3 eval/eval=\"; echo -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -828,7 +828,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XY7zbcommAnkMV2sMPj2ob",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\n# stdin inputs for interactive tests\ndeclare -A IN\nIN[calculator]=$'(+ 7 8)'\nIN[test_read]=$'(hello world)'\nIN[06-interactive-io]=$'3\\n4\\n+'\npass=0; fail=0\nfor f in test/*.scm; do\n  name=$(basename \"$f\" .scm)\n  stdin=\"${IN[$name]:-}\"\n  direct=$(printf '%s' \"$stdin\" | python3 interp.py \"$f\" 2>&1)\n  viaeval=$(printf '%s\\n%s' \"$f\" \"$stdin\" | python3 interp.py eval.scm 2>&1)\n  if [ \"$direct\" == \"$viaeval\" ]; then\n    pass=$((pass+1));\n  else\n    fail=$((fail+1));\n    echo \"MISMATCH: $f\";\n    diff <(printf '%s' \"$direct\") <(printf '%s' \"$viaeval\") | head -20;\n    echo \"----\";\n  fi\ndone\necho \"PASS=$pass FAIL=$fail\""
           },
@@ -836,7 +836,7 @@
             "raw_arguments": {
               "command": "cd /app\n# stdin inputs for interactive tests\ndeclare -A IN\nIN[calculator]=$'(+ 7 8)'\nIN[test_read]=$'(hello world)'\nIN[06-interactive-io]=$'3\\n4\\n+'\npass=0; fail=0\nfor f in test/*.scm; do\n  name=$(basename \"$f\" .scm)\n  stdin=\"${IN[$name]:-}\"\n  direct=$(printf '%s' \"$stdin\" | python3 interp.py \"$f\" 2>&1)\n  viaeval=$(printf '%s\\n%s' \"$f\" \"$stdin\" | python3 interp.py eval.scm 2>&1)\n  if [ \"$direct\" == \"$viaeval\" ]; then\n    pass=$((pass+1));\n  else\n    fail=$((fail+1));\n    echo \"MISMATCH: $f\";\n    diff <(printf '%s' \"$direct\") <(printf '%s' \"$viaeval\") | head -20;\n    echo \"----\";\n  fi\ndone\necho \"PASS=$pass FAIL=$fail\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -897,7 +897,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015GzyWycWeTrWfpF57JhNCj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nfor t in 01-factorial 04-higher-order 09-mutual-recursion test_read; do\n  stdin=\"\"\n  [ \"$t\" == \"test_read\" ] && stdin=$'(hello world)'\n  direct=$(printf '%s' \"$stdin\" | python3 interp.py \"test/$t.scm\" 2>&1)\n  dbl=$(printf 'eval.scm\\ntest/%s.scm\\n%s' \"$t\" \"$stdin\" | timeout 120 python3 interp.py eval.scm 2>&1)\n  if [ \"$direct\" == \"$dbl\" ]; then echo \"OK double: $t\"; else echo \"DIFF double: $t\"; diff <(printf '%s' \"$direct\") <(printf '%s' \"$dbl\")|head; fi\ndone"
           },
@@ -905,7 +905,7 @@
             "raw_arguments": {
               "command": "cd /app\nfor t in 01-factorial 04-higher-order 09-mutual-recursion test_read; do\n  stdin=\"\"\n  [ \"$t\" == \"test_read\" ] && stdin=$'(hello world)'\n  direct=$(printf '%s' \"$stdin\" | python3 interp.py \"test/$t.scm\" 2>&1)\n  dbl=$(printf 'eval.scm\\ntest/%s.scm\\n%s' \"$t\" \"$stdin\" | timeout 120 python3 interp.py eval.scm 2>&1)\n  if [ \"$direct\" == \"$dbl\" ]; then echo \"OK double: $t\"; else echo \"DIFF double: $t\"; diff <(printf '%s' \"$direct\") <(printf '%s' \"$dbl\")|head; fi\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -966,7 +966,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TvKgP3qRVTnF3Pdvwc5tHL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\necho \"== test_read double ==\"\ndiff <(printf '(hello world)' | python3 interp.py test/test_read.scm 2>&1) \\\n     <(printf 'eval.scm\\ntest/test_read.scm\\n(hello world)' | python3 interp.py eval.scm 2>&1) && echo OK\necho \"== 05-simple-io double ==\"\ndiff <(python3 interp.py test/05-simple-io.scm 2>&1) \\\n     <(printf 'eval.scm\\ntest/05-simple-io.scm\\n' | python3 interp.py eval.scm 2>&1) && echo OK\necho \"== the 3 spec example commands ==\"\necho '(+ 7 8)' | python3 interp.py test/calculator.scm\necho ---\necho -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm\necho ---\necho -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
           },
@@ -974,7 +974,7 @@
             "raw_arguments": {
               "command": "cd /app\necho \"== test_read double ==\"\ndiff <(printf '(hello world)' | python3 interp.py test/test_read.scm 2>&1) \\\n     <(printf 'eval.scm\\ntest/test_read.scm\\n(hello world)' | python3 interp.py eval.scm 2>&1) && echo OK\necho \"== 05-simple-io double ==\"\ndiff <(python3 interp.py test/05-simple-io.scm 2>&1) \\\n     <(printf 'eval.scm\\ntest/05-simple-io.scm\\n' | python3 interp.py eval.scm 2>&1) && echo OK\necho \"== the 3 spec example commands ==\"\necho '(+ 7 8)' | python3 interp.py test/calculator.scm\necho ---\necho -e 'test/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm\necho ---\necho -e 'eval.scm\\ntest/calculator.scm\\n(+ 7 8)' | python3 interp.py eval.scm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

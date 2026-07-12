@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W2g4fQkGyjaaVBTurgkPmT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uname -a; cat /etc/os-release 2>/dev/null | head; which pmars apt-get dpkg curl wget 2>/dev/null; ls /app 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "uname -a; cat /etc/os-release 2>/dev/null | head; which pmars apt-get dpkg curl wget 2>/dev/null; ls /app 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0177HYUHDhDQV68qdYWVUw15",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/apt/sources.list 2>/dev/null; ls /etc/apt/sources.list.d/ 2>/dev/null; echo \"---\"; cat /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cat /etc/apt/sources.list 2>/dev/null; ls /etc/apt/sources.list.d/ 2>/dev/null; echo \"---\"; cat /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FW3cDakYayrZfmcesoWvGd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -5; echo \"EXIT ${PIPESTATUS[0]}\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -5; echo \"EXIT ${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LHKpaVcBpHY7qe6AEu5jiw",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -260,7 +260,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -268,7 +268,7 @@
         "results": [
           {
             "source_call_id": "toolu_01LHKpaVcBpHY7qe6AEu5jiw",
-            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or ATELIER_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/etc/apt/sources.list.d/debian-src.sources\\\"]}],\\\"rolled_back\\\":true}\"}"
+            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or LEMONCROW_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/etc/apt/sources.list.d/debian-src.sources\\\"]}],\\\"rolled_back\\\":true}\"}"
           }
         ]
       },
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Syi9mDZJ7cXy4PGcqPnrev",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf 'Types: deb-src\\nURIs: http://deb.debian.org/debian\\nSuites: trixie\\nComponents: main\\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\\n' > /etc/apt/sources.list.d/debian-src.sources && apt-get update -qq 2>&1 | tail; echo EXIT $?"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "printf 'Types: deb-src\\nURIs: http://deb.debian.org/debian\\nSuites: trixie\\nComponents: main\\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\\n' > /etc/apt/sources.list.d/debian-src.sources && apt-get update -qq 2>&1 | tail; echo EXIT $?"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LwamLfZacVqZvHADTJSDh2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get source --print-uris pmars 2>&1 | tail; echo \"---dsc---\"; apt-cache showsrc pmars 2>&1 | head -30"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "apt-get source --print-uris pmars 2>&1 | tail; echo \"---dsc---\"; apt-cache showsrc pmars 2>&1 | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EJrnJk3ZAe7yoiSRivKALL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && apt-get source pmars 2>&1 | tail -15; echo EXIT ${PIPESTATUS[0]}; ls -la /app"
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "cd /app && apt-get source pmars 2>&1 | tail -15; echo EXIT ${PIPESTATUS[0]}; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J69ueK4DCoqFiYt3rYrPC9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq dpkg-dev xz-utils 2>&1 | tail -3; echo EXIT ${PIPESTATUS[0]}; which dpkg-source"
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq dpkg-dev xz-utils 2>&1 | tail -3; echo EXIT ${PIPESTATUS[0]}; which dpkg-source"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016f8zSTzrNugbc7AQFZ8jV8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls *.dsc && dpkg-source --no-check -x pmars_0.9.4-1.dsc 2>&1 | tail; echo EXIT ${PIPESTATUS[0]}; ls -d /app/pmars-*"
           },
@@ -605,7 +605,7 @@
             "raw_arguments": {
               "command": "cd /app && ls *.dsc && dpkg-source --no-check -x pmars_0.9.4-1.dsc 2>&1 | tail; echo EXIT ${PIPESTATUS[0]}; ls -d /app/pmars-*"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -666,7 +666,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016rNg5CbVursGNUq1dKKQBC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pmars-0.9.4 && ls; echo \"---src---\"; ls src; echo \"---makefile options---\"; grep -n -i \"x11\\|xwin\\|GRAPHX\\|CONFIG\\|CFLAGS\" src/Makefile 2>/dev/null | head -40"
           },
@@ -674,7 +674,7 @@
             "raw_arguments": {
               "command": "cd /app/pmars-0.9.4 && ls; echo \"---src---\"; ls src; echo \"---makefile options---\"; grep -n -i \"x11\\|xwin\\|GRAPHX\\|CONFIG\\|CFLAGS\" src/Makefile 2>/dev/null | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -735,7 +735,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XqFwFfPXBdbcivr5hR2RGc",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pmars-0.9.4/src/Makefile"
@@ -747,7 +747,7 @@
                 "/app/pmars-0.9.4/src/Makefile"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -808,7 +808,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019gNSwzKy8qHwnm8ftQWNak",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -828,7 +828,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -901,7 +901,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019HJ1dmnvSiX5DyzLZK5eru",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "XWINGRAPHX CFLAGS LIB X11",
             "paths": "/app/pmars-0.9.4/src/Makefile"
@@ -911,7 +911,7 @@
               "query": "XWINGRAPHX CFLAGS LIB X11",
               "paths": "/app/pmars-0.9.4/src/Makefile"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -972,7 +972,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BFb8cRsPYJJg3SdT8KSGjE",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pmars-0.9.4/src/Makefile:L20-L25"
@@ -986,7 +986,7 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1047,7 +1047,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DnZHiHirGE6CSHQSQ7jubG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1067,7 +1067,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1128,7 +1128,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TambTYVQa7DEoXkBjKTNjS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pmars-0.9.4/src && make clean >/dev/null 2>&1; make 2>&1 | tail -20; echo EXIT ${PIPESTATUS[0]}"
           },
@@ -1136,7 +1136,7 @@
             "raw_arguments": {
               "command": "cd /app/pmars-0.9.4/src && make clean >/dev/null 2>&1; make 2>&1 | tail -20; echo EXIT ${PIPESTATUS[0]}"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1197,7 +1197,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L1m2niyWyVJoH7ZNEV9xxq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pmars-0.9.4/src && ldd pmars; echo \"---x11 check---\"; ldd pmars | grep -i x11 && echo \"HAS X11\" || echo \"NO X11\"; file pmars"
           },
@@ -1205,7 +1205,7 @@
             "raw_arguments": {
               "command": "cd /app/pmars-0.9.4/src && ldd pmars; echo \"---x11 check---\"; ldd pmars | grep -i x11 && echo \"HAS X11\" || echo \"NO X11\"; file pmars"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1266,7 +1266,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Qa5ZUqK6WfXJYUyEP51AG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /app/pmars-0.9.4/src/pmars /usr/local/bin/pmars && chmod 755 /usr/local/bin/pmars && which pmars && cd /app && pmars -b -r 50 -f flashpaper.red rave.red | tail -n 1"
           },
@@ -1274,7 +1274,7 @@
             "raw_arguments": {
               "command": "cp /app/pmars-0.9.4/src/pmars /usr/local/bin/pmars && chmod 755 /usr/local/bin/pmars && which pmars && cd /app && pmars -b -r 50 -f flashpaper.red rave.red | tail -n 1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1335,7 +1335,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L1gQEgBARwBANbavYHsCzN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf 'q\\n' | pmars -e -r 0 flashpaper.red 2>&1 | head -20; echo \"=== exit $? ===\""
           },
@@ -1343,7 +1343,7 @@
             "raw_arguments": {
               "command": "cd /app && printf 'q\\n' | pmars -e -r 0 flashpaper.red 2>&1 | head -20; echo \"=== exit $? ===\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1404,7 +1404,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WT7apx6LCiaM7T7QWpu21Z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && pmars 2>&1 | head -60 | grep -i -A1 -B1 \"debug\\|cdb\\|-e\\|-b\""
           },
@@ -1412,7 +1412,7 @@
             "raw_arguments": {
               "command": "cd /app && pmars 2>&1 | head -60 | grep -i -A1 -B1 \"debug\\|cdb\\|-e\\|-b\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1473,7 +1473,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XCJ2cfkgPPKYeDBMp8dDAC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf 'q\\n' | pmars -e -r 1 flashpaper.red rave.red 2>&1 | tail -30; echo \"=== exit ${PIPESTATUS[1]} ===\""
           },
@@ -1481,7 +1481,7 @@
             "raw_arguments": {
               "command": "cd /app && printf 'q\\n' | pmars -e -r 1 flashpaper.red rave.red 2>&1 | tail -30; echo \"=== exit ${PIPESTATUS[1]} ===\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1542,7 +1542,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BEbg423JSfWjMEibNoXtad",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf 's\\ns\\nr\\nq\\n' | pmars -e -b -r 1 flashpaper.red rave.red 2>&1 | tail -20"
           },
@@ -1550,7 +1550,7 @@
             "raw_arguments": {
               "command": "cd /app && printf 's\\ns\\nr\\nq\\n' | pmars -e -b -r 1 flashpaper.red rave.red 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1611,7 +1611,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QTunZwstEh6cHihcWuqzoL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== source tree ===\"; ls -d /app/pmars-0.9.4 && ls /app/pmars_0.9.4* ; echo \"=== binary ===\"; ls -l /usr/local/bin/pmars; echo \"=== X11 dep ===\"; ldd /usr/local/bin/pmars | grep -i x11 || echo \"NO X11 DEPS\"; echo \"=== test ===\"; cd /app && pmars -b -r 50 -f flashpaper.red rave.red | tail -n 1"
           },
@@ -1619,7 +1619,7 @@
             "raw_arguments": {
               "command": "echo \"=== source tree ===\"; ls -d /app/pmars-0.9.4 && ls /app/pmars_0.9.4* ; echo \"=== binary ===\"; ls -l /usr/local/bin/pmars; echo \"=== X11 dep ===\"; ldd /usr/local/bin/pmars | grep -i x11 || echo \"NO X11 DEPS\"; echo \"=== test ===\"; cd /app && pmars -b -r 50 -f flashpaper.red rave.red | tail -n 1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

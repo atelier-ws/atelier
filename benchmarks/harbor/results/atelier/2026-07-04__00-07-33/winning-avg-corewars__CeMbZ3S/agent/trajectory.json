@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rur59pkgLG6nJgcH4oug5h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls warriors/ && echo \"---\" && which pmars && pmars --help 2>&1 | head -20"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls warriors/ && echo \"---\" && which pmars && pmars --help 2>&1 | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01GZNEJCS7ahbSJKwJjJYou6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "warriors/stone.red",
@@ -66,7 +66,7 @@
                 "warriors/g2-clear.red"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -131,7 +131,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JLKEZF3VmrEhb7g23LAQwn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root 2>/dev/null; pwd; ls"
           },
@@ -139,7 +139,7 @@
             "raw_arguments": {
               "command": "cd /root 2>/dev/null; pwd; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -200,7 +200,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EJ55vNh67PZoG6UE437LDh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name \"stone.red\" 2>/dev/null"
           },
@@ -208,7 +208,7 @@
             "raw_arguments": {
               "command": "find / -name \"stone.red\" 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -269,7 +269,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016WBh6XsYyvreins82pjfTM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && echo \"---validate assemble---\" && cd /app && pmars -A warriors/stone.red 2>&1 | tail -5"
           },
@@ -277,7 +277,7 @@
             "raw_arguments": {
               "command": "ls -la /app && echo \"---validate assemble---\" && cd /app && pmars -A warriors/stone.red 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -285,7 +285,7 @@
         "results": [
           {
             "source_call_id": "toolu_016WBh6XsYyvreins82pjfTM",
-            "content": "{\"type\": \"text\", \"text\": \"total 172\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:44 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:44 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:44 .atelier\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:44 .git\\ndrwxr-xr-x 8 root root   4096 Sep  7  2025 pmars-0.9.4\\n-rw-r--r-- 1 root root   4100 Mar 21  2024 pmars_0.9.4-1.debian.tar.xz\\n-rw-r--r-- 1 root root   1891 Mar 21  2024 pmars_0.9.4-1.dsc\\n-rw-r--r-- 1 root root 136288 Mar 21  2024 pmars_0.9.4.orig.tar.xz\\ndrwxr-xr-x 2 root root   4096 Sep 13  2025 warriors\\n---validate assemble---\\n       ADD.AB #     4, $     3     \\n       MOV.I  $     2, @     2     \\n       JMP.B  $    -2, $     0     \\n       DAT.F  #     0, #     0     \\n       END\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 172\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:44 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:44 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:44 .lemoncrow\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:44 .git\\ndrwxr-xr-x 8 root root   4096 Sep  7  2025 pmars-0.9.4\\n-rw-r--r-- 1 root root   4100 Mar 21  2024 pmars_0.9.4-1.debian.tar.xz\\n-rw-r--r-- 1 root root   1891 Mar 21  2024 pmars_0.9.4-1.dsc\\n-rw-r--r-- 1 root root 136288 Mar 21  2024 pmars_0.9.4.orig.tar.xz\\ndrwxr-xr-x 2 root root   4096 Sep 13  2025 warriors\\n---validate assemble---\\n       ADD.AB #     4, $     3     \\n       MOV.I  $     2, @     2     \\n       JMP.B  $    -2, $     0     \\n       DAT.F  #     0, #     0     \\n       END\"}"
           }
         ]
       },
@@ -338,7 +338,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EQhwVzaynsgmduXSxPvf2v",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -358,7 +358,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -419,7 +419,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011QyrmtPGDHcNo7zYSHqwqu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f my_warrior.red warriors/$o.red 2>&1 | tr '\\n' ' '; echo; done"
           },
@@ -427,7 +427,7 @@
             "raw_arguments": {
               "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f my_warrior.red warriors/$o.red 2>&1 | tr '\\n' ' '; echo; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -488,7 +488,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NrqzwGmXR8WTvFC8BpLnjv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -508,7 +508,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -569,7 +569,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Uaurs3MY7ygC8JPDcvpRTJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_mice.red warriors/$o.red 2>&1 | grep Results; done"
           },
@@ -577,7 +577,7 @@
             "raw_arguments": {
               "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_mice.red warriors/$o.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -638,7 +638,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XrbgzmEX6regQxQ2wnY7C2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ws=(stone paper vampire snake g2-clear); for a in \"${ws[@]}\"; do for b in \"${ws[@]}\"; do if [ \"$a\" != \"$b\" ]; then printf \"%-9s vs %-9s \" \"$a\" \"$b\"; pmars -b -r 100 -f warriors/$a.red warriors/$b.red 2>&1 | grep Results; fi; done; done"
           },
@@ -646,7 +646,7 @@
             "raw_arguments": {
               "command": "cd /app && ws=(stone paper vampire snake g2-clear); for a in \"${ws[@]}\"; do for b in \"${ws[@]}\"; do if [ \"$a\" != \"$b\" ]; then printf \"%-9s vs %-9s \" \"$a\" \"$b\"; pmars -b -r 100 -f warriors/$a.red warriors/$b.red 2>&1 | grep Results; fi; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -707,7 +707,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013AYuGcK4GgCYXRd1WxyZhX",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -727,7 +727,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -788,7 +788,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XkAhfFH5h23xWA43p4bA4J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_clear.red warriors/$o.red 2>&1 | grep Results; done"
           },
@@ -796,7 +796,7 @@
             "raw_arguments": {
               "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_clear.red warriors/$o.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -857,7 +857,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FbBMRMpa8CHr257WgrAsZC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_clear.red warriors/$o.red 2>&1 | grep Results; done"
           },
@@ -865,7 +865,7 @@
             "raw_arguments": {
               "command": "cd /app && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f cand_clear.red warriors/$o.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -926,7 +926,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HPrg6KgyFHujLtXG78ci7x",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -946,7 +946,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1007,7 +1007,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FTGGuZJiYQ8DMmNd9dS5Hi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== V2 DAT-spread ===\" && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f v2.red warriors/$o.red 2>&1 | grep Results; done"
           },
@@ -1015,7 +1015,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== V2 DAT-spread ===\" && for o in stone paper vampire snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f v2.red warriors/$o.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1076,7 +1076,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017tqhbk1NUVBUATHBx9NDeb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for dec in 2000 2334 2667 3000 3200 3400; do sed \"s/dec     equ     2667/dec     equ     $dec/\" v2.red > t.red; printf \"dec=%-5s \" \"$dec\"; for o in stone paper vampire snake g2-clear; do r=$(pmars -b -r 100 -f t.red warriors/$o.red 2>&1 | grep Results | awk '{print $2}'); printf \"%s:%s \" \"$o\" \"$r\"; done; echo; done"
           },
@@ -1084,7 +1084,7 @@
             "raw_arguments": {
               "command": "cd /app && for dec in 2000 2334 2667 3000 3200 3400; do sed \"s/dec     equ     2667/dec     equ     $dec/\" v2.red > t.red; printf \"dec=%-5s \" \"$dec\"; for o in stone paper vampire snake g2-clear; do r=$(pmars -b -r 100 -f t.red warriors/$o.red 2>&1 | grep Results | awk '{print $2}'); printf \"%s:%s \" \"$o\" \"$r\"; done; echo; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1145,7 +1145,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P67AR6cJGMnoECFbdUP39i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for dec in 2450 2550 2667 2750 2850; do sed \"s/dec     equ     2667/dec     equ     $dec/\" v2.red > t.red; printf \"dec=%-5s \" \"$dec\"; min=999; for o in stone paper vampire snake g2-clear; do w=$(pmars -b -r 100 -f t.red warriors/$o.red 2>&1 | grep Results | awk '{print $2}'); thr=75; case $o in snake|g2-clear) thr=33;; esac; m=$((w-thr)); [ $m -lt $min ] && min=$m; printf \"%s:%s \" \"$o\" \"$w\"; done; echo \"  min_margin=$min\"; done"
           },
@@ -1153,7 +1153,7 @@
             "raw_arguments": {
               "command": "cd /app && for dec in 2450 2550 2667 2750 2850; do sed \"s/dec     equ     2667/dec     equ     $dec/\" v2.red > t.red; printf \"dec=%-5s \" \"$dec\"; min=999; for o in stone paper vampire snake g2-clear; do w=$(pmars -b -r 100 -f t.red warriors/$o.red 2>&1 | grep Results | awk '{print $2}'); thr=75; case $o in snake|g2-clear) thr=33;; esac; m=$((w-thr)); [ $m -lt $min ] && min=$m; printf \"%s:%s \" \"$o\" \"$w\"; done; echo \"  min_margin=$min\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1214,7 +1214,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FLtCKTQtfARGFmzaTwQSoR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1234,7 +1234,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1295,7 +1295,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WdKEHsGzVdaVd6ddC89XpW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f cand_mice.red cand_clear.red v2.red t.red; echo \"=== FINAL VERIFICATION (exact grader command) ===\"; for o in stone vampire paper snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f my_warrior.red warriors/$o.red 2>&1 | grep Results; done"
           },
@@ -1303,7 +1303,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f cand_mice.red cand_clear.red v2.red t.red; echo \"=== FINAL VERIFICATION (exact grader command) ===\"; for o in stone vampire paper snake g2-clear; do printf \"%-10s \" \"$o\"; pmars -b -r 100 -f my_warrior.red warriors/$o.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

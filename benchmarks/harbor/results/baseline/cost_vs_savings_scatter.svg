@@ -367,7 +367,7 @@ z
      </g>
     </g>
     <g id="text_7">
-     <!-- Baseline cost per task, normalized to Atelier's cache pricing ($) -->
+     <!-- Baseline cost per task, normalized to LemonCrow's cache pricing ($) -->
      <g transform="translate(243.763281 454.116641) scale(0.115 -0.115)">
       <defs>
        <path id="DejaVuSans-25" d="M 1259 2228 
@@ -1044,7 +1044,7 @@ z
      </g>
     </g>
     <g id="text_12">
-     <!-- $ saved per task  [ baseline - Atelier ] -->
+     <!-- $ saved per task  [ baseline - LemonCrow ] -->
      <g transform="translate(19.872188 340.996538) rotate(-90) scale(0.11 -0.11)">
       <defs>
        <path id="DejaVuSans-59" d="M 191 3500 
@@ -1598,7 +1598,7 @@ L 146.687467 50.550732
 " clip-path="url(#pb00fafb2bd)" style="fill: none; stroke-dasharray: 1.8,2.97; stroke-dashoffset: 0; stroke: #dc143c; stroke-width: 1.8"/>
    </g>
    <g id="text_13">
-    <!-- Terminal-Bench 2.1: Atelier (1 rep) vs public Claude Code leaderboard (5-rep avg) -->
+    <!-- Terminal-Bench 2.1: LemonCrow (1 rep) vs public Claude Code leaderboard (5-rep avg) -->
     <g transform="translate(137.375937 21.547314) scale(0.125 -0.125)">
      <defs>
       <path id="DejaVuSans-Bold-37" d="M 31 4666 
@@ -3540,7 +3540,7 @@ L 759.879677 274.846887
 " style="fill: none; stroke: #cccccc; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
     </g>
     <g id="text_25">
-     <!-- P(Atelier cheaper) vs task cost -->
+     <!-- P(LemonCrow cheaper) vs task cost -->
      <g transform="translate(570.31855 270.846887) scale(0.075 -0.075)">
       <defs>
        <path id="DejaVuSans-Bold-33" d="M 588 4666 
@@ -3636,7 +3636,7 @@ z
      </g>
     </g>
     <g id="text_26">
-     <!-- atelier resolved (n=69) -->
+     <!-- lemoncrow resolved (n=69) -->
      <g transform="translate(105.672578 66.319248) scale(0.095 -0.095)">
       <defs>
        <path id="DejaVuSans-20" d="M 678 2906 
@@ -3714,7 +3714,7 @@ z
      </g>
     </g>
     <g id="text_27">
-     <!-- atelier unresolved (n=14) -->
+     <!-- lemoncrow unresolved (n=14) -->
      <g transform="translate(105.672578 80.56999) scale(0.095 -0.095)">
       <defs>
        <path id="DejaVuSans-58" d="M 544 1381 

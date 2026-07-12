@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YMYNW5dByt7MsQtygUPcs4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which R Rscript || echo \"no R\"; ls /app 2>/dev/null || echo \"no app dir\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "which R Rscript || echo \"no R\"; ls /app 2>/dev/null || echo \"no app dir\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014XvWyQyvL8m869mPgQVzjM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; cat /etc/os-release | head -3"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; cat /etc/os-release | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KG1TUnF5D9AbPVi2Px2DUA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y -qq r-base-core 2>&1 | tail -5; echo \"EXIT:$?\"",
             "timeout": 600
@@ -181,7 +181,7 @@
               "command": "apt-get update -qq && apt-get install -y -qq r-base-core 2>&1 | tail -5; echo \"EXIT:$?\"",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -242,7 +242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016bpqfcMyDf2Hp1HfPRVDJc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript -e 'cat(R.version.string, \"\\n\")'"
           },
@@ -250,7 +250,7 @@
             "raw_arguments": {
               "command": "Rscript -e 'cat(R.version.string, \"\\n\")'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -311,7 +311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CwH7HS2wN4qz34NSqm9Uce",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -331,7 +331,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -392,7 +392,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017CTTyrfnoJ1UswB72D9Qb8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript ars.R 2>&1 | tail -40",
             "timeout": 600
@@ -402,7 +402,7 @@
               "command": "cd /app && Rscript ars.R 2>&1 | tail -40",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RTicYUmFr62fFDJPR2hhqi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"PASS|FAIL|SUMMARY\"; echo \"---files---\"; wc -l normal_samples.txt exponential_samples.txt; head -3 normal_samples.txt",
             "timeout": 600
@@ -473,7 +473,7 @@
               "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"PASS|FAIL|SUMMARY\"; echo \"---files---\"; wc -l normal_samples.txt exponential_samples.txt; head -3 normal_samples.txt",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -534,7 +534,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AWgUrCunXLjCncbo66p6ag",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"NORMAL|EXPON\"",
             "timeout": 600
@@ -544,7 +544,7 @@
               "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"NORMAL|EXPON\"",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -605,7 +605,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011sfZvmGnttvZasFwV8LT7h",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -625,7 +625,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -698,7 +698,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AncnQU41yDiDKbE5rdWxor",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/ars.R:L216-L232"
@@ -710,7 +710,7 @@
                 "/app/ars.R:L216-L232"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -771,7 +771,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0197MHBMyQrMYyML5ErjKfNY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/ars.R:L168-L182"
@@ -783,7 +783,7 @@
                 "/app/ars.R:L168-L182"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -844,7 +844,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S1sYCWf4zwipTis1thNB46",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/ars.R:L155-L167"
@@ -856,7 +856,7 @@
                 "/app/ars.R:L155-L167"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -917,7 +917,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019ewDLyNAvKZLw1Sukpm2PY",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -937,7 +937,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1010,7 +1010,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019Yv39hSSE67J1kGzfbuzRq",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "compute_hull tangent intersection z denom",
             "paths": "/app/ars.R"
@@ -1020,7 +1020,7 @@
               "query": "compute_hull tangent intersection z denom",
               "paths": "/app/ars.R"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1081,7 +1081,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NWvtvhUeihBXFkdZLkMm3G",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1101,7 +1101,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1174,7 +1174,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0112DQdH7jAtLoBmXMMCES4K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"denom <- hpx\" /app/ars.R"
           },
@@ -1182,7 +1182,7 @@
             "raw_arguments": {
               "command": "grep -n \"denom <- hpx\" /app/ars.R"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1243,7 +1243,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WKmw9Z1VW4PXyTcyCyr5Sn",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1263,7 +1263,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1336,7 +1336,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EPWe9R7u8emsj5ZQCuDsmV",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/ars.R:L155-L167"
@@ -1350,7 +1350,7 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1411,7 +1411,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LgsjQ6HREvaHGSgJ7Tgd6G",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1431,7 +1431,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1492,7 +1492,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QCzd6KLp7cv5FHSPjfxzWG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"PASS|FAIL|SUMMARY|ERROR\"",
             "timeout": 600
@@ -1502,7 +1502,7 @@
               "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"PASS|FAIL|SUMMARY|ERROR\"",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1563,7 +1563,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0196JU73L12KjABiFGRizKYj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"NORMAL|EXPON\"; echo \"---\"; ls -la /app/*.txt; echo \"---exp head---\"; head -3 exponential_samples.txt; wc -l normal_samples.txt exponential_samples.txt",
             "timeout": 600
@@ -1573,7 +1573,7 @@
               "command": "cd /app && Rscript ars.R 2>&1 | grep -E \"NORMAL|EXPON\"; echo \"---\"; ls -la /app/*.txt; echo \"---exp head---\"; head -3 exponential_samples.txt; wc -l normal_samples.txt exponential_samples.txt",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

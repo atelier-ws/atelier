@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BKvdbmaSTcPLo174Gjzciq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/src/program.cbl"
@@ -45,12 +45,12 @@
                 "/app/src/program.cbl"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_018mJe1mWMb95QVXgdYdov8E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/src /app/data; echo \"---INPUT---\"; od -c /app/src/INPUT.DAT | head -50"
           },
@@ -58,7 +58,7 @@
             "raw_arguments": {
               "command": "ls -la /app/src /app/data; echo \"---INPUT---\"; od -c /app/src/INPUT.DAT | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015dxXpJTamtMmJxa3jgJrYX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; echo \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS===\"; od -c data/BOOKS.DAT; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT; echo \"===INPUT size===\"; wc -c src/INPUT.DAT"
           },
@@ -131,7 +131,7 @@
             "raw_arguments": {
               "command": "cd /app; echo \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS===\"; od -c data/BOOKS.DAT; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT; echo \"===INPUT size===\"; wc -c src/INPUT.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UvGBhNycKfNcryTPiAXv9o",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which cobc; cobc --version 2>/dev/null | head -2"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "which cobc; cobc --version 2>/dev/null | head -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -261,7 +261,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JkoH5RzdHjrnJoiq71js5X",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; cp data/ACCOUNTS.DAT /tmp/A.bak; cp data/BOOKS.DAT /tmp/B.bak; cp data/TRANSACTIONS.DAT /tmp/T.bak; cobc -x -free -o /tmp/bookforum src/program.cbl 2>&1 | head; echo \"---run---\"; ./  2>/dev/null; /tmp/bookforum; echo \"exit=$?\"; echo \"===ACCOUNTS after===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS after===\"; od -c data/BOOKS.DAT; echo \"===TRANS after===\"; od -c data/TRANSACTIONS.DAT"
           },
@@ -269,7 +269,7 @@
             "raw_arguments": {
               "command": "cd /app; cp data/ACCOUNTS.DAT /tmp/A.bak; cp data/BOOKS.DAT /tmp/B.bak; cp data/TRANSACTIONS.DAT /tmp/T.bak; cobc -x -free -o /tmp/bookforum src/program.cbl 2>&1 | head; echo \"---run---\"; ./  2>/dev/null; /tmp/bookforum; echo \"exit=$?\"; echo \"===ACCOUNTS after===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS after===\"; od -c data/BOOKS.DAT; echo \"===TRANS after===\"; od -c data/TRANSACTIONS.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -330,7 +330,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SuUKPNXCbT7taToafQg6ea",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\nprintf 'U001U002B0010000000200' > /tmp/IN2.DAT; cp src/INPUT.DAT /tmp/IN.bak; cp /tmp/IN2.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS===\"; od -c data/BOOKS.DAT; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT"
           },
@@ -338,7 +338,7 @@
             "raw_arguments": {
               "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\nprintf 'U001U002B0010000000200' > /tmp/IN2.DAT; cp src/INPUT.DAT /tmp/IN.bak; cp /tmp/IN2.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT; echo \"===BOOKS===\"; od -c data/BOOKS.DAT; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -399,7 +399,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SGPh6qP79cFwaotjA2ozbW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\nprintf 'U001U002B001200' > src/INPUT.DAT; wc -c src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACC bal===\"; od -c data/ACCOUNTS.DAT | head; echo \"===TRANS tail===\"; od -c data/TRANSACTIONS.DAT | tail"
           },
@@ -407,7 +407,7 @@
             "raw_arguments": {
               "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\nprintf 'U001U002B001200' > src/INPUT.DAT; wc -c src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACC bal===\"; od -c data/ACCOUNTS.DAT | head; echo \"===TRANS tail===\"; od -c data/TRANSACTIONS.DAT | tail"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -468,7 +468,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0196Ey913CzYQLUmmhUZvRE1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -488,7 +488,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -549,7 +549,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PnauT8V61UuuiSCFAq3aqz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  # COBOL run\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT\n  /tmp/bookforum >/dev/null\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  # Python run\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null\n  echo \"[$name] ACCOUNTS: $(cmp -s /tmp/cob_A data/ACCOUNTS.DAT && echo OK || echo DIFF)  BOOKS: $(cmp -s /tmp/cob_B data/BOOKS.DAT && echo OK || echo DIFF)  TRANS: $(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT && echo OK || echo DIFF)\"\n}\n# original provided input (validation fail)\nrun_both /tmp/IN.bak \"orig(15B,fail)\"\n# valid full input\nrun_both /tmp/IN2.DAT \"valid(U001<-B001)\"\n# buyer==seller edge and different book B003 owned U002, buyer U003\nprintf 'U003U002B0030000000075' > /tmp/IN3.DAT; run_both /tmp/IN3.DAT \"buy=U003 book=B003 amt=75\"\n# large amount causing wrap negative buyer balance\nprintf 'U001U002B0019999999999' > /tmp/IN4.DAT; run_both /tmp/IN4.DAT \"wrap amt=9999999999\"\n# invalid owner (book B001 owned U002 but seller U003)\nprintf 'U001U003B0010000000010' > /tmp/IN5.DAT; run_both /tmp/IN5.DAT \"bad owner\""
           },
@@ -557,7 +557,7 @@
             "raw_arguments": {
               "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  # COBOL run\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT\n  /tmp/bookforum >/dev/null\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  # Python run\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null\n  echo \"[$name] ACCOUNTS: $(cmp -s /tmp/cob_A data/ACCOUNTS.DAT && echo OK || echo DIFF)  BOOKS: $(cmp -s /tmp/cob_B data/BOOKS.DAT && echo OK || echo DIFF)  TRANS: $(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT && echo OK || echo DIFF)\"\n}\n# original provided input (validation fail)\nrun_both /tmp/IN.bak \"orig(15B,fail)\"\n# valid full input\nrun_both /tmp/IN2.DAT \"valid(U001<-B001)\"\n# buyer==seller edge and different book B003 owned U002, buyer U003\nprintf 'U003U002B0030000000075' > /tmp/IN3.DAT; run_both /tmp/IN3.DAT \"buy=U003 book=B003 amt=75\"\n# large amount causing wrap negative buyer balance\nprintf 'U001U002B0019999999999' > /tmp/IN4.DAT; run_both /tmp/IN4.DAT \"wrap amt=9999999999\"\n# invalid owner (book B001 owned U002 but seller U003)\nprintf 'U001U003B0010000000010' > /tmp/IN5.DAT; run_both /tmp/IN5.DAT \"bad owner\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -618,7 +618,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C8hJkV498fQWBFfJdMtXSd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; echo \"COBOL:\"; od -c /tmp/cob_A | head -3; echo \"PY:\"; od -c data/ACCOUNTS.DAT | head -3"
           },
@@ -626,7 +626,7 @@
             "raw_arguments": {
               "command": "cd /app; echo \"COBOL:\"; od -c /tmp/cob_A | head -3; echo \"PY:\"; od -c data/ACCOUNTS.DAT | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -687,7 +687,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LNCx4vW71K1pxPEfYinkdd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN4.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT\necho \"===TRANS tail===\"; od -c data/TRANSACTIONS.DAT | tail -4"
           },
@@ -695,7 +695,7 @@
             "raw_arguments": {
               "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN4.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACCOUNTS===\"; od -c data/ACCOUNTS.DAT\necho \"===TRANS tail===\"; od -c data/TRANSACTIONS.DAT | tail -4"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -756,7 +756,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WJ5kniuf54UsQHY4TxirWo",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -776,7 +776,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -849,7 +849,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AU6ai5ACkRPgUUqMYenTBB",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/program.py:L96-L106"
@@ -861,7 +861,7 @@
                 "/app/program.py:L96-L106"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -922,7 +922,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YNjTRVQJ5FurvSjnzXfLUi",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -942,7 +942,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016GL2MMNtxCEq89PYio3rTb",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/program.py:L76-L90"
@@ -1027,7 +1027,7 @@
                 "/app/program.py:L76-L90"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1088,7 +1088,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BXw6X8d8NKfEuNCHrgqBFz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1108,7 +1108,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1169,7 +1169,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017SWahsWpZ4YtmqLGP3v6v1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT; /tmp/bookforum >/dev/null\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null\n  echo \"[$name] A:$(cmp -s /tmp/cob_A data/ACCOUNTS.DAT&&echo OK||echo DIFF) B:$(cmp -s /tmp/cob_B data/BOOKS.DAT&&echo OK||echo DIFF) T:$(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT&&echo OK||echo DIFF)\"\n}\nrun_both /tmp/IN.bak \"orig\"\nrun_both /tmp/IN2.DAT \"valid\"\nrun_both /tmp/IN3.DAT \"U003/B003\"\nrun_both /tmp/IN4.DAT \"wrap\"\nrun_both /tmp/IN5.DAT \"badowner\"\nprintf 'U002U002B0020000000030' > /tmp/IN6.DAT; run_both /tmp/IN6.DAT \"buyer==seller\"\nprintf 'U001U002B0020000000500' > /tmp/IN7.DAT; run_both /tmp/IN7.DAT \"B002\"\nprintf 'U009U002B0010000000010' > /tmp/IN8.DAT; run_both /tmp/IN8.DAT \"buyer missing\"\n# restore originals\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT\necho \"restored:\"; wc -c src/INPUT.DAT data/*.DAT"
           },
@@ -1177,7 +1177,7 @@
             "raw_arguments": {
               "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT; /tmp/bookforum >/dev/null\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null\n  echo \"[$name] A:$(cmp -s /tmp/cob_A data/ACCOUNTS.DAT&&echo OK||echo DIFF) B:$(cmp -s /tmp/cob_B data/BOOKS.DAT&&echo OK||echo DIFF) T:$(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT&&echo OK||echo DIFF)\"\n}\nrun_both /tmp/IN.bak \"orig\"\nrun_both /tmp/IN2.DAT \"valid\"\nrun_both /tmp/IN3.DAT \"U003/B003\"\nrun_both /tmp/IN4.DAT \"wrap\"\nrun_both /tmp/IN5.DAT \"badowner\"\nprintf 'U002U002B0020000000030' > /tmp/IN6.DAT; run_both /tmp/IN6.DAT \"buyer==seller\"\nprintf 'U001U002B0020000000500' > /tmp/IN7.DAT; run_both /tmp/IN7.DAT \"B002\"\nprintf 'U009U002B0010000000010' > /tmp/IN8.DAT; run_both /tmp/IN8.DAT \"buyer missing\"\n# restore originals\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT\necho \"restored:\"; wc -c src/INPUT.DAT data/*.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1238,7 +1238,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YJE2RTUr51LzrYfFrc2MJX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN6.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACC===\"; od -c data/ACCOUNTS.DAT | head -5; echo \"===BOOKS===\"; od -c data/BOOKS.DAT|head -3; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT|tail -3\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT"
           },
@@ -1246,7 +1246,7 @@
             "raw_arguments": {
               "command": "cd /app; cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN6.DAT src/INPUT.DAT\n/tmp/bookforum; echo \"exit=$?\"\necho \"===ACC===\"; od -c data/ACCOUNTS.DAT | head -5; echo \"===BOOKS===\"; od -c data/BOOKS.DAT|head -3; echo \"===TRANS===\"; od -c data/TRANSACTIONS.DAT|tail -3\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1307,7 +1307,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MY1am8LrBXU8LMivx3m1LH",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/program.py:L1-L20"
@@ -1319,7 +1319,7 @@
                 "/app/program.py:L1-L20"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1380,7 +1380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vywb1W6xJLqff34aEHh4Yf",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1410,7 +1410,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1471,7 +1471,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015FGqXsxnfr9ScQopdua2RD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1501,7 +1501,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1574,7 +1574,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0122Rex6PaugcE62hdLnHvkU",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/program.py:L88-L92"
@@ -1586,7 +1586,7 @@
                 "/app/program.py:L88-L92"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1647,7 +1647,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DtsXGu4UeMeUowu7WPreYV",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1677,7 +1677,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1750,7 +1750,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017yPy1US3RfXy2B1v7VLz1E",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/program.py:L16-L19",
@@ -1764,7 +1764,7 @@
                 "/app/program.py:L76-L91"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1825,7 +1825,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DycAFxoBcDQSWpwFixJb8H",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1855,7 +1855,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1916,7 +1916,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PJT2WMRxZiFi6RzCXTFpfu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT; /tmp/bookforum >/dev/null 2>&1; local ce=$?\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null 2>&1; local pe=$?\n  echo \"[$name] A:$(cmp -s /tmp/cob_A data/ACCOUNTS.DAT&&echo OK||echo DIFF) B:$(cmp -s /tmp/cob_B data/BOOKS.DAT&&echo OK||echo DIFF) T:$(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT&&echo OK||echo DIFF) exit(cob=$ce,py=$pe)\"\n}\nrun_both /tmp/IN.bak \"orig(fail)\"\nrun_both /tmp/IN2.DAT \"valid\"\nrun_both /tmp/IN3.DAT \"U003/B003\"\nrun_both /tmp/IN4.DAT \"wrap\"\nrun_both /tmp/IN5.DAT \"badowner\"\nrun_both /tmp/IN6.DAT \"buyer==seller\"\nrun_both /tmp/IN7.DAT \"B002\"\nrun_both /tmp/IN8.DAT \"buyer_missing\"\nprintf 'U002U001B0010000000999' > /tmp/IN9.DAT; run_both /tmp/IN9.DAT \"reverse dir\"\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT\necho \"restored\"; md5sum data/*.DAT src/INPUT.DAT"
           },
@@ -1924,7 +1924,7 @@
             "raw_arguments": {
               "command": "cd /app\nrun_both () {\n  local inp=\"$1\"; local name=\"$2\"\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  cp \"$inp\" src/INPUT.DAT; /tmp/bookforum >/dev/null 2>&1; local ce=$?\n  cp data/ACCOUNTS.DAT /tmp/cob_A; cp data/BOOKS.DAT /tmp/cob_B; cp data/TRANSACTIONS.DAT /tmp/cob_T\n  cp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\n  python3 program.py >/dev/null 2>&1; local pe=$?\n  echo \"[$name] A:$(cmp -s /tmp/cob_A data/ACCOUNTS.DAT&&echo OK||echo DIFF) B:$(cmp -s /tmp/cob_B data/BOOKS.DAT&&echo OK||echo DIFF) T:$(cmp -s /tmp/cob_T data/TRANSACTIONS.DAT&&echo OK||echo DIFF) exit(cob=$ce,py=$pe)\"\n}\nrun_both /tmp/IN.bak \"orig(fail)\"\nrun_both /tmp/IN2.DAT \"valid\"\nrun_both /tmp/IN3.DAT \"U003/B003\"\nrun_both /tmp/IN4.DAT \"wrap\"\nrun_both /tmp/IN5.DAT \"badowner\"\nrun_both /tmp/IN6.DAT \"buyer==seller\"\nrun_both /tmp/IN7.DAT \"B002\"\nrun_both /tmp/IN8.DAT \"buyer_missing\"\nprintf 'U002U001B0010000000999' > /tmp/IN9.DAT; run_both /tmp/IN9.DAT \"reverse dir\"\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT\necho \"restored\"; md5sum data/*.DAT src/INPUT.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2040,7 +2040,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0176faGZDpbjdNBcBBdi4his",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\n# Definitive test with the ACTUAL provided INPUT.DAT and initial data states.\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\ncp /tmp/IN.bak src/INPUT.DAT\ncobc -x -free -o /tmp/bookforum src/program.cbl 2>&1 | head\n/tmp/bookforum; echo \"cob exit=$?\"\nmd5sum data/*.DAT > /tmp/cob.md5\n# reset and run Python on identical initial state\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\npython3 program.py; echo \"py exit=$?\"\nmd5sum data/*.DAT > /tmp/py.md5\necho \"--- diff (empty = identical) ---\"; diff /tmp/cob.md5 /tmp/py.md5 && echo \"MATCH: all DAT files identical\"\n# restore pristine initial state\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT"
           },
@@ -2048,7 +2048,7 @@
             "raw_arguments": {
               "command": "cd /app\n# Definitive test with the ACTUAL provided INPUT.DAT and initial data states.\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\ncp /tmp/IN.bak src/INPUT.DAT\ncobc -x -free -o /tmp/bookforum src/program.cbl 2>&1 | head\n/tmp/bookforum; echo \"cob exit=$?\"\nmd5sum data/*.DAT > /tmp/cob.md5\n# reset and run Python on identical initial state\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT\npython3 program.py; echo \"py exit=$?\"\nmd5sum data/*.DAT > /tmp/py.md5\necho \"--- diff (empty = identical) ---\"; diff /tmp/cob.md5 /tmp/py.md5 && echo \"MATCH: all DAT files identical\"\n# restore pristine initial state\ncp /tmp/A.bak data/ACCOUNTS.DAT; cp /tmp/B.bak data/BOOKS.DAT; cp /tmp/T.bak data/TRANSACTIONS.DAT; cp /tmp/IN.bak src/INPUT.DAT"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

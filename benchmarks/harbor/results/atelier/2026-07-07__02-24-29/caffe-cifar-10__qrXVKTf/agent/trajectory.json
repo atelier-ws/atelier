@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AGiJK8Zp5u9asjB3mPB7f2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uname -a; cat /etc/os-release | head -5; nproc; free -h; ls /app 2>/dev/null; which git cmake make g++ python3; nvidia-smi 2>/dev/null | head -1 || echo \"no gpu\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "uname -a; cat /etc/os-release | head -5; nproc; free -h; ls /app 2>/dev/null; which git cmake make g++ python3; nvidia-smi 2>/dev/null | head -1 || echo \"no gpu\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q3f1owJwGrvPmxUkfTT5AE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -5; echo \"EXIT:$?\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -5; echo \"EXIT:$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ExrcPocAcDbZ7zDYFMKesY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential cmake git wget \\\n  libprotobuf-dev protobuf-compiler libgoogle-glog-dev libgflags-dev \\\n  libhdf5-serial-dev libleveldb-dev liblmdb-dev libsnappy-dev \\\n  libboost-all-dev libopenblas-dev 2>&1 | tail -15; echo \"EXIT:${PIPESTATUS[0]}\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential cmake git wget \\\n  libprotobuf-dev protobuf-compiler libgoogle-glog-dev libgflags-dev \\\n  libhdf5-serial-dev libleveldb-dev liblmdb-dev libsnappy-dev \\\n  libboost-all-dev libopenblas-dev 2>&1 | tail -15; echo \"EXIT:${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MQd4kqg43qgSjwApHoZn2T",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "protoc --version; dpkg -l | grep -i protobuf | head; ls -d /app/caffe 2>/dev/null; git config --global http.sslVerify true; echo done"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "protoc --version; dpkg -l | grep -i protobuf | head; ls -d /app/caffe 2>/dev/null; git config --global http.sslVerify true; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YX6xcUzkfMCvnfjtk4aKAG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && git clone --depth 1 --branch 1.0 https://github.com/BVLC/caffe.git caffe 2>&1 | tail -10; echo \"EXIT:${PIPESTATUS[0]}\"; ls /app/caffe | head"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && git clone --depth 1 --branch 1.0 https://github.com/BVLC/caffe.git caffe 2>&1 | tail -10; echo \"EXIT:${PIPESTATUS[0]}\"; ls /app/caffe | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KK3Q4eQd4nJHWcFUP7LYuL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && git log --oneline -1; git describe --tags 2>/dev/null; cat include/caffe/util/hdf5.hpp >/dev/null 2>&1; ls examples/cifar10"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe && git log --oneline -1; git describe --tags 2>/dev/null; cat include/caffe/util/hdf5.hpp >/dev/null 2>&1; ls examples/cifar10"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ScFiifhU999GY7C595dpCs",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/examples/cifar10/cifar10_quick_solver.prototxt",
@@ -465,7 +465,7 @@
                 "/app/caffe/examples/cifar10/cifar10_quick_train_test.prototxt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -526,7 +526,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TDEi42DnJhR4ucZtVJn1aN",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -576,7 +576,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -637,7 +637,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XkWHdHcRp2XSX3nHfR6P3v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && mkdir -p build && cd build && cmake .. \\\n  -DCPU_ONLY=ON -DUSE_OPENCV=OFF -DUSE_CUDNN=OFF -DBUILD_python=OFF \\\n  -DBUILD_python_layer=OFF -DBUILD_docs=OFF -DBLAS=open \\\n  -DUSE_LEVELDB=ON -DUSE_LMDB=ON -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -40; echo \"EXIT:${PIPESTATUS[0]}\""
           },
@@ -645,7 +645,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe && mkdir -p build && cd build && cmake .. \\\n  -DCPU_ONLY=ON -DUSE_OPENCV=OFF -DUSE_CUDNN=OFF -DBUILD_python=OFF \\\n  -DBUILD_python_layer=OFF -DBUILD_docs=OFF -DBLAS=open \\\n  -DUSE_LEVELDB=ON -DUSE_LMDB=ON -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -40; echo \"EXIT:${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -706,7 +706,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012pS91F3JU3cvFwqr2meyhS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/build && make -j4 2>&1 | tee /tmp/build.log | tail -40; echo \"EXIT:${PIPESTATUS[0]}\"",
             "timeout": 1800
@@ -716,7 +716,7 @@
               "command": "cd /app/caffe/build && make -j4 2>&1 | tee /tmp/build.log | tail -40; echo \"EXIT:${PIPESTATUS[0]}\"",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -777,7 +777,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C2DZPuvU1b7x5piUSWV2Ct",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/src/caffe/util/io.cpp:L50-L60"
@@ -789,7 +789,7 @@
                 "/app/caffe/src/caffe/util/io.cpp:L50-L60"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -850,7 +850,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015zHFKLoBRVo2tvg3mFR995",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -868,7 +868,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -929,7 +929,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015A5CerW62H8xeb3kfKBnuZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/build && make -j4 2>&1 | tee /tmp/build2.log | grep -iE \"error|Error\" | head -30; echo \"---TAIL---\"; tail -5 /tmp/build2.log; echo \"EXIT:${PIPESTATUS[0]}\"",
             "timeout": 1800
@@ -939,7 +939,7 @@
               "command": "cd /app/caffe/build && make -j4 2>&1 | tee /tmp/build2.log | grep -iE \"error|Error\" | head -30; echo \"---TAIL---\"; tail -5 /tmp/build2.log; echo \"EXIT:${PIPESTATUS[0]}\"",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1000,7 +1000,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016jEBiVgdVjEhATrcn65TM3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/caffe/build/tools/caffe /app/caffe/build/examples/cifar10/convert_cifar_data.bin; cat /app/caffe/data/cifar10/get_cifar10.sh"
           },
@@ -1008,7 +1008,7 @@
             "raw_arguments": {
               "command": "ls /app/caffe/build/tools/caffe /app/caffe/build/examples/cifar10/convert_cifar_data.bin; cat /app/caffe/data/cifar10/get_cifar10.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1069,7 +1069,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LW17ojmi4zJjrPJhdyPh4Z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/data/cifar10 && head -8 get_cifar10.sh; echo \"---try download---\"; timeout 120 wget -q https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz -O /tmp/c.tar.gz 2>&1; echo \"wget exit:$?\"; ls -la /tmp/c.tar.gz 2>/dev/null"
           },
@@ -1077,7 +1077,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe/data/cifar10 && head -8 get_cifar10.sh; echo \"---try download---\"; timeout 120 wget -q https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz -O /tmp/c.tar.gz 2>&1; echo \"wget exit:$?\"; ls -la /tmp/c.tar.gz 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1138,7 +1138,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E8W6xTbUthwVbdBkwCs8KW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -iname \"*cifar*\" 2>/dev/null | grep -v /app/caffe | head; echo \"---batches---\"; find / -iname \"*batch*.bin\" 2>/dev/null | head; find / -iname \"*.tar.gz\" 2>/dev/null | grep -i cifar | head; ls -la /app"
           },
@@ -1146,7 +1146,7 @@
             "raw_arguments": {
               "command": "find / -iname \"*cifar*\" 2>/dev/null | grep -v /app/caffe | head; echo \"---batches---\"; find / -iname \"*batch*.bin\" 2>/dev/null | head; find / -iname \"*.tar.gz\" 2>/dev/null | grep -i cifar | head; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1207,7 +1207,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PMBquaqgyzFCaeyy3SZT97",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for h in github.com raw.githubusercontent.com codeload.github.com objects.githubusercontent.com www.cs.toronto.edu ossci-datasets.s3.amazonaws.com huggingface.co pjreddie.com; do timeout 15 wget -q --spider \"https://$h\" 2>/dev/null && echo \"OK $h\" || echo \"FAIL $h\"; done"
           },
@@ -1215,7 +1215,7 @@
             "raw_arguments": {
               "command": "for h in github.com raw.githubusercontent.com codeload.github.com objects.githubusercontent.com www.cs.toronto.edu ossci-datasets.s3.amazonaws.com huggingface.co pjreddie.com; do timeout 15 wget -q --spider \"https://$h\" 2>/dev/null && echo \"OK $h\" || echo \"FAIL $h\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1276,7 +1276,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BNp3YyM88fBx8hE2CUpLht",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 300 wget --tries=3 --timeout=60 -O cifar.tar.gz https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz 2>&1 | tail -8; echo \"exit:${PIPESTATUS[0]}\"; ls -la /tmp/cifar.tar.gz"
           },
@@ -1284,7 +1284,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 300 wget --tries=3 --timeout=60 -O cifar.tar.gz https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz 2>&1 | tail -8; echo \"exit:${PIPESTATUS[0]}\"; ls -la /tmp/cifar.tar.gz"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1345,7 +1345,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y7t2yHJ9dc8Rks48sPkz6i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && for url in \\\n  \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-binary.tar.gz\" \\\n  \"https://ossci-datasets.s3.amazonaws.com/cifar-10-binary.tar.gz\"; do\n  echo \"== $url\"; timeout 300 wget -q --tries=2 --timeout=60 -O cifar.tar.gz \"$url\" && { echo OK; break; } || echo \"fail $?\"; done\nls -la /tmp/cifar.tar.gz; md5sum /tmp/cifar.tar.gz"
           },
@@ -1353,7 +1353,7 @@
             "raw_arguments": {
               "command": "cd /tmp && for url in \\\n  \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-binary.tar.gz\" \\\n  \"https://ossci-datasets.s3.amazonaws.com/cifar-10-binary.tar.gz\"; do\n  echo \"== $url\"; timeout 300 wget -q --tries=2 --timeout=60 -O cifar.tar.gz \"$url\" && { echo OK; break; } || echo \"fail $?\"; done\nls -la /tmp/cifar.tar.gz; md5sum /tmp/cifar.tar.gz"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1414,7 +1414,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VENE9stG4E1hHuoGDXJQrr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 60 wget -S --tries=1 --timeout=30 -O /dev/null \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-binary.tar.gz\" 2>&1 | head -20"
           },
@@ -1422,7 +1422,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 60 wget -S --tries=1 --timeout=30 -O /dev/null \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-binary.tar.gz\" 2>&1 | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1483,7 +1483,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xtv8XYmcnEkKMwPY2f24gH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -nE \"data_batch|test_batch|kCIFAR|batch\" /app/caffe/examples/cifar10/convert_cifar_data.cpp | head"
           },
@@ -1491,7 +1491,7 @@
             "raw_arguments": {
               "command": "grep -nE \"data_batch|test_batch|kCIFAR|batch\" /app/caffe/examples/cifar10/convert_cifar_data.cpp | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1552,7 +1552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y8AteeGPXhBaXS3rehwVCe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 300 wget -q --tries=3 --timeout=60 -O cifar-py.tar.gz \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-python.tar.gz\"; echo \"exit:$?\"; ls -la cifar-py.tar.gz; md5sum cifar-py.tar.gz"
           },
@@ -1560,7 +1560,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 300 wget -q --tries=3 --timeout=60 -O cifar-py.tar.gz \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-python.tar.gz\"; echo \"exit:$?\"; ls -la cifar-py.tar.gz; md5sum cifar-py.tar.gz"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1621,7 +1621,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JQcjGTNBfjC9DV7EJYB6AH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 60 wget -S --tries=1 --timeout=30 -O /dev/null \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-python.tar.gz\" 2>&1 | grep -iE \"HTTP|Length|Not Found\" | head"
           },
@@ -1629,7 +1629,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 60 wget -S --tries=1 --timeout=30 -O /dev/null \"https://ossci-datasets.s3.amazonaws.com/cifar-10/cifar-10-python.tar.gz\" 2>&1 | grep -iE \"HTTP|Length|Not Found\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1690,7 +1690,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018UdM7c19CSdW75y8oT7qot",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && for url in \\\n  \"http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz\" \\\n  \"http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\" \\\n  \"https://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\"; do\n  echo \"== $url\"; timeout 120 wget --no-check-certificate -q --tries=1 --timeout=40 -O cifar.tar.gz \"$url\" && { echo \"OK size=$(stat -c%s cifar.tar.gz)\"; break; } || echo \"fail $?\"; done"
           },
@@ -1698,7 +1698,7 @@
             "raw_arguments": {
               "command": "cd /tmp && for url in \\\n  \"http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz\" \\\n  \"http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\" \\\n  \"https://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\"; do\n  echo \"== $url\"; timeout 120 wget --no-check-certificate -q --tries=1 --timeout=40 -O cifar.tar.gz \"$url\" && { echo \"OK size=$(stat -c%s cifar.tar.gz)\"; break; } || echo \"fail $?\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1759,7 +1759,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VXD4BjzcfkQmuVVQSZ3Tm7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "env | grep -iE \"proxy\" ; echo \"---\"; cat /etc/wgetrc 2>/dev/null | grep -iv '^#' | grep -v '^$'; echo \"---apt proxy---\"; cat /etc/apt/apt.conf.d/*proxy* 2>/dev/null; ls /etc/apt/apt.conf.d/; echo \"---pip conf---\"; cat /etc/pip.conf 2>/dev/null; env | grep -iE \"index|pip|uv\" "
           },
@@ -1767,7 +1767,7 @@
             "raw_arguments": {
               "command": "env | grep -iE \"proxy\" ; echo \"---\"; cat /etc/wgetrc 2>/dev/null | grep -iv '^#' | grep -v '^$'; echo \"---apt proxy---\"; cat /etc/apt/apt.conf.d/*proxy* 2>/dev/null; ls /etc/apt/apt.conf.d/; echo \"---pip conf---\"; cat /etc/pip.conf 2>/dev/null; env | grep -iE \"index|pip|uv\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1775,7 +1775,7 @@
         "results": [
           {
             "source_call_id": "toolu_01VXD4BjzcfkQmuVVQSZ3Tm7",
-            "content": "{\"type\": \"text\", \"text\": \"---\\npassive_ftp = on\\n---apt proxy---\\n01-vendor-ubuntu\\n01autoremove\\n70debconf\\ndocker-autoremove-suggests\\ndocker-clean\\ndocker-disable-periodic-update\\ndocker-gzip-indexes\\ndocker-no-languages\\n---pip conf---\\nATELIER_INDEX_LOCK_TIMEOUT_S=300\"}"
+            "content": "{\"type\": \"text\", \"text\": \"---\\npassive_ftp = on\\n---apt proxy---\\n01-vendor-ubuntu\\n01autoremove\\n70debconf\\ndocker-autoremove-suggests\\ndocker-clean\\ndocker-disable-periodic-update\\ndocker-gzip-indexes\\ndocker-no-languages\\n---pip conf---\\nLEMONCROW_INDEX_LOCK_TIMEOUT_S=300\"}"
           }
         ]
       },
@@ -1828,7 +1828,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017JNbppFYQGe6Cwc527TCt4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\necho \"== pypi\"; timeout 60 wget -q -O pip.json \"https://pypi.org/pypi/numpy/json\" && echo \"pypi OK $(stat -c%s pip.json)\" || echo \"pypi fail $?\"\necho \"== hf api\"; timeout 60 wget -q -O hf.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10\" && echo \"hf OK $(stat -c%s hf.json)\" || echo \"hf fail $?\"\necho \"== raw github small\"; timeout 60 wget -q -O rg.txt \"https://raw.githubusercontent.com/BVLC/caffe/1.0/README.md\" && echo \"rawgh OK $(stat -c%s rg.txt)\" || echo \"rawgh fail $?\""
           },
@@ -1836,7 +1836,7 @@
             "raw_arguments": {
               "command": "cd /tmp\necho \"== pypi\"; timeout 60 wget -q -O pip.json \"https://pypi.org/pypi/numpy/json\" && echo \"pypi OK $(stat -c%s pip.json)\" || echo \"pypi fail $?\"\necho \"== hf api\"; timeout 60 wget -q -O hf.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10\" && echo \"hf OK $(stat -c%s hf.json)\" || echo \"hf fail $?\"\necho \"== raw github small\"; timeout 60 wget -q -O rg.txt \"https://raw.githubusercontent.com/BVLC/caffe/1.0/README.md\" && echo \"rawgh OK $(stat -c%s rg.txt)\" || echo \"rawgh fail $?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1897,7 +1897,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0141UyPtD66ukYcNnhYrsNWc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 60 wget -q -O tree.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10/tree/main/plain_text\" ; python3 -c \"import json;print(json.load(open('tree.json')))\" 2>/dev/null | head; echo \"=== root tree ===\"; timeout 60 wget -q -O tree2.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10/tree/main\" ; python3 -c \"import json;[print(x['path'],x.get('size')) for x in json.load(open('tree2.json'))]\""
           },
@@ -1905,7 +1905,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 60 wget -q -O tree.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10/tree/main/plain_text\" ; python3 -c \"import json;print(json.load(open('tree.json')))\" 2>/dev/null | head; echo \"=== root tree ===\"; timeout 60 wget -q -O tree2.json \"https://huggingface.co/api/datasets/uoft-cs/cifar10/tree/main\" ; python3 -c \"import json;[print(x['path'],x.get('size')) for x in json.load(open('tree2.json'))]\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1966,7 +1966,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018UN6DbABrEMabw19Q1H1WR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && for f in test-00000-of-00001 train-00000-of-00001; do\n  echo \"== $f\"; timeout 600 wget -q --tries=3 --timeout=120 -O $f.parquet \\\n   \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/$f.parquet\" \\\n   && echo \"OK size=$(stat -c%s $f.parquet)\" || echo \"fail $?\"; done"
           },
@@ -1974,7 +1974,7 @@
             "raw_arguments": {
               "command": "cd /tmp && for f in test-00000-of-00001 train-00000-of-00001; do\n  echo \"== $f\"; timeout 600 wget -q --tries=3 --timeout=120 -O $f.parquet \\\n   \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/$f.parquet\" \\\n   && echo \"OK size=$(stat -c%s $f.parquet)\" || echo \"fail $?\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2035,7 +2035,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Js9pn2xgk1fRfeLanboyhk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pyarrow pillow numpy 2>&1 | tail -3; python3 -c \"\nimport pyarrow.parquet as pq\nt=pq.read_table('/tmp/test-00000-of-00001.parquet')\nprint(t.schema)\nprint(t.num_rows)\nrow=t.slice(0,1).to_pylist()[0]\nprint(type(row['img']), list(row.keys()))\nimg=row['img']\nprint(img if not isinstance(img,dict) else list(img.keys()))\nprint('label', row['label'])\n\""
           },
@@ -2043,7 +2043,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pyarrow pillow numpy 2>&1 | tail -3; python3 -c \"\nimport pyarrow.parquet as pq\nt=pq.read_table('/tmp/test-00000-of-00001.parquet')\nprint(t.schema)\nprint(t.num_rows)\nrow=t.slice(0,1).to_pylist()[0]\nprint(type(row['img']), list(row.keys()))\nimg=row['img']\nprint(img if not isinstance(img,dict) else list(img.keys()))\nprint('label', row['label'])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2104,7 +2104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017yUprPpJeza22xZn6pCvrU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip pip3; pip3 install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; echo \"exit:$?\""
           },
@@ -2112,7 +2112,7 @@
             "raw_arguments": {
               "command": "which pip pip3; pip3 install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; echo \"exit:$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2173,7 +2173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MP7Y4RipsUE2FPAbu1CTua",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip --version 2>&1 | head -1; python3 -m ensurepip --version 2>&1 | head -1; echo \"---bootstrap---\"; apt-get install -y -qq python3-pip 2>&1 | tail -2; python3 -m pip --version 2>&1 | head -1"
           },
@@ -2181,7 +2181,7 @@
             "raw_arguments": {
               "command": "python3 -m pip --version 2>&1 | head -1; python3 -m ensurepip --version 2>&1 | head -1; echo \"---bootstrap---\"; apt-get install -y -qq python3-pip 2>&1 | tail -2; python3 -m pip --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2242,7 +2242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SQ2upSRGhwPGaEspPorKij",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; echo \"exit:${PIPESTATUS[0]}\"; python3 -c \"import pyarrow, PIL, numpy; print('ok')\""
           },
@@ -2250,7 +2250,7 @@
             "raw_arguments": {
               "command": "python3 -m pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; echo \"exit:${PIPESTATUS[0]}\"; python3 -c \"import pyarrow, PIL, numpy; print('ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2311,7 +2311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cn6WkEmfnzSXLVCKnRTFCX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport pyarrow.parquet as pq\nt=pq.read_table('/tmp/test-00000-of-00001.parquet')\nprint(t.schema); print('rows',t.num_rows)\nr=t.slice(0,1).to_pylist()[0]\nprint('keys',list(r.keys()),'imgtype',type(r['img']))\ni=r['img']\nprint('imgkeys', list(i.keys()) if isinstance(i,dict) else 'n/a')\nif isinstance(i,dict):\n  for k,v in i.items(): print(k, type(v), (len(v) if hasattr(v,'__len__') else v))\nprint('label',r['label'])\n\""
           },
@@ -2319,7 +2319,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport pyarrow.parquet as pq\nt=pq.read_table('/tmp/test-00000-of-00001.parquet')\nprint(t.schema); print('rows',t.num_rows)\nr=t.slice(0,1).to_pylist()[0]\nprint('keys',list(r.keys()),'imgtype',type(r['img']))\ni=r['img']\nprint('imgkeys', list(i.keys()) if isinstance(i,dict) else 'n/a')\nif isinstance(i,dict):\n  for k,v in i.items(): print(k, type(v), (len(v) if hasattr(v,'__len__') else v))\nprint('label',r['label'])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2380,7 +2380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AAzowF1xLny56SFjJrEh3k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >/tmp/mkbin.py <<'PY'\nimport pyarrow.parquet as pq, numpy as np, io\nfrom PIL import Image\nOUT=\"/app/caffe/data/cifar10\"\ndef to_bin(rows):\n    buf=bytearray()\n    for r in rows:\n        lbl=r['label']; im=Image.open(io.BytesIO(r['img']['bytes'])).convert('RGB')\n        a=np.asarray(im,dtype=np.uint8)          # H,W,C\n        planar=a.transpose(2,0,1).reshape(-1)     # C,H,W flatten -> R,G,B planes\n        buf.append(lbl & 0xff); buf.extend(planar.tobytes())\n    return bytes(buf)\n\n# test\nt=pq.read_table('/tmp/test-00000-of-00001.parquet').to_pylist()\nassert len(t)==10000\nopen(f\"{OUT}/test_batch.bin\",\"wb\").write(to_bin(t))\nprint(\"test_batch.bin done\", len(t))\n\n# train\ntr=pq.read_table('/tmp/train-00000-of-00001.parquet').to_pylist()\nassert len(tr)==50000, len(tr)\nfor b in range(5):\n    chunk=tr[b*10000:(b+1)*10000]\n    open(f\"{OUT}/data_batch_{b+1}.bin\",\"wb\").write(to_bin(chunk))\n    print(f\"data_batch_{b+1}.bin done\", len(chunk))\nPY\npython3 /tmp/mkbin.py; echo \"exit:$?\"; ls -la /app/caffe/data/cifar10/*.bin"
           },
@@ -2388,7 +2388,7 @@
             "raw_arguments": {
               "command": "cat >/tmp/mkbin.py <<'PY'\nimport pyarrow.parquet as pq, numpy as np, io\nfrom PIL import Image\nOUT=\"/app/caffe/data/cifar10\"\ndef to_bin(rows):\n    buf=bytearray()\n    for r in rows:\n        lbl=r['label']; im=Image.open(io.BytesIO(r['img']['bytes'])).convert('RGB')\n        a=np.asarray(im,dtype=np.uint8)          # H,W,C\n        planar=a.transpose(2,0,1).reshape(-1)     # C,H,W flatten -> R,G,B planes\n        buf.append(lbl & 0xff); buf.extend(planar.tobytes())\n    return bytes(buf)\n\n# test\nt=pq.read_table('/tmp/test-00000-of-00001.parquet').to_pylist()\nassert len(t)==10000\nopen(f\"{OUT}/test_batch.bin\",\"wb\").write(to_bin(t))\nprint(\"test_batch.bin done\", len(t))\n\n# train\ntr=pq.read_table('/tmp/train-00000-of-00001.parquet').to_pylist()\nassert len(tr)==50000, len(tr)\nfor b in range(5):\n    chunk=tr[b*10000:(b+1)*10000]\n    open(f\"{OUT}/data_batch_{b+1}.bin\",\"wb\").write(to_bin(chunk))\n    print(f\"data_batch_{b+1}.bin done\", len(chunk))\nPY\npython3 /tmp/mkbin.py; echo \"exit:$?\"; ls -la /app/caffe/data/cifar10/*.bin"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2449,7 +2449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NjNkNFsZdGsHz4rm7p8odd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && ls build/tools/compute_image_mean build/examples/cifar10/convert_cifar_data.bin && ./examples/cifar10/create_cifar10.sh 2>&1 | tail -15; echo \"EXIT:${PIPESTATUS[0]}\"; ls -la examples/cifar10/ | grep -E \"lmdb|binaryproto\""
           },
@@ -2457,7 +2457,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe && ls build/tools/compute_image_mean build/examples/cifar10/convert_cifar_data.bin && ./examples/cifar10/create_cifar10.sh 2>&1 | tail -15; echo \"EXIT:${PIPESTATUS[0]}\"; ls -la examples/cifar10/ | grep -E \"lmdb|binaryproto\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2518,7 +2518,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HVJTxZ3ERJEWPjKyaUEzgB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && python3 -m pip install --break-system-packages -q \"protobuf==3.20.3\" 2>&1 | tail -2\nmkdir -p /tmp/pb && protoc --proto_path=src/caffe/proto --python_out=/tmp/pb src/caffe/proto/caffe.proto && echo \"protoc ok\"; ls /tmp/pb"
           },
@@ -2526,7 +2526,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe && python3 -m pip install --break-system-packages -q \"protobuf==3.20.3\" 2>&1 | tail -2\nmkdir -p /tmp/pb && protoc --proto_path=src/caffe/proto --python_out=/tmp/pb src/caffe/proto/caffe.proto && echo \"protoc ok\"; ls /tmp/pb"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2587,7 +2587,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PvJqJmYygwLRf6yfWbLfob",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/pb && python3 -c \"import caffe_pb2; print('import ok')\" 2>&1 | tail -5"
           },
@@ -2595,7 +2595,7 @@
             "raw_arguments": {
               "command": "cd /tmp/pb && python3 -c \"import caffe_pb2; print('import ok')\" 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2656,7 +2656,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KG46rWHCmTDuPHY7dXfHqz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >/tmp/mkmean.py <<'PY'\nimport sys, numpy as np\nsys.path.insert(0,'/tmp/pb')\nimport caffe_pb2\nOUT=\"/app/caffe/data/cifar10\"\nacc=np.zeros(3072,dtype=np.float64); n=0\nfor b in range(1,6):\n    d=np.fromfile(f\"{OUT}/data_batch_{b}.bin\",dtype=np.uint8).reshape(10000,3073)\n    acc+=d[:,1:].sum(axis=0); n+=10000\nmean=(acc/n).astype(np.float32)   # length 3072, planar R,G,B 32x32\nblob=caffe_pb2.BlobProto()\n# use shape (modern) AND legacy dims for compatibility\nblob.num=1; blob.channels=3; blob.height=32; blob.width=32\nblob.data.extend(mean.tolist())\nopen(\"/app/caffe/examples/cifar10/mean.binaryproto\",\"wb\").write(blob.SerializeToString())\nprint(\"mean written, mean[:3]\",mean[:3], \"size\", mean.size)\nPY\npython3 /tmp/mkmean.py; echo \"exit:$?\"; ls -la /app/caffe/examples/cifar10/mean.binaryproto"
           },
@@ -2664,7 +2664,7 @@
             "raw_arguments": {
               "command": "cat >/tmp/mkmean.py <<'PY'\nimport sys, numpy as np\nsys.path.insert(0,'/tmp/pb')\nimport caffe_pb2\nOUT=\"/app/caffe/data/cifar10\"\nacc=np.zeros(3072,dtype=np.float64); n=0\nfor b in range(1,6):\n    d=np.fromfile(f\"{OUT}/data_batch_{b}.bin\",dtype=np.uint8).reshape(10000,3073)\n    acc+=d[:,1:].sum(axis=0); n+=10000\nmean=(acc/n).astype(np.float32)   # length 3072, planar R,G,B 32x32\nblob=caffe_pb2.BlobProto()\n# use shape (modern) AND legacy dims for compatibility\nblob.num=1; blob.channels=3; blob.height=32; blob.width=32\nblob.data.extend(mean.tolist())\nopen(\"/app/caffe/examples/cifar10/mean.binaryproto\",\"wb\").write(blob.SerializeToString())\nprint(\"mean written, mean[:3]\",mean[:3], \"size\", mean.size)\nPY\npython3 /tmp/mkmean.py; echo \"exit:$?\"; ls -la /app/caffe/examples/cifar10/mean.binaryproto"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2725,7 +2725,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011rAS5QKWAecrZNPvAbxKFc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && rm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate\nGLOG_logtostderr=1 ./build/tools/caffe train \\\n  --solver=examples/cifar10/cifar10_quick_solver.prototxt \\\n  > training_output.txt 2>&1\necho \"EXIT:$?\"; echo \"=== tail ===\"; tail -25 training_output.txt",
             "timeout": 1800
@@ -2735,7 +2735,7 @@
               "command": "cd /app/caffe && rm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate\nGLOG_logtostderr=1 ./build/tools/caffe train \\\n  --solver=examples/cifar10/cifar10_quick_solver.prototxt \\\n  > training_output.txt 2>&1\necho \"EXIT:$?\"; echo \"=== tail ===\"; tail -25 training_output.txt",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2796,7 +2796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014eNCPPt9prT3XxBGhY92Bt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe && ls -la examples/cifar10/cifar10_quick_iter_500.caffemodel training_output.txt\necho \"=== accuracy lines ===\"; grep -E \"Test net output #0: accuracy|Train net output #0: accuracy\" training_output.txt | tail -3\necho \"=== solver key settings ===\"; grep -E \"max_iter:|solver_mode:|snapshot:|test_iter:|test_interval:\" examples/cifar10/cifar10_quick_solver.prototxt"
           },
@@ -2804,7 +2804,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe && ls -la examples/cifar10/cifar10_quick_iter_500.caffemodel training_output.txt\necho \"=== accuracy lines ===\"; grep -E \"Test net output #0: accuracy|Train net output #0: accuracy\" training_output.txt | tail -3\necho \"=== solver key settings ===\"; grep -E \"max_iter:|solver_mode:|snapshot:|test_iter:|test_interval:\" examples/cifar10/cifar10_quick_solver.prototxt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

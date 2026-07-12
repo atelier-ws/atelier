@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NNpZmtTrzS6w3GSSWNYSga",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app /app/sqlite /app/vendor 2>&1; echo \"---\"; which gcc gcov make tclsh 2>&1; echo \"---\"; nproc"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app /app/sqlite /app/vendor 2>&1; echo \"---\"; which gcc gcov make tclsh 2>&1; echo \"---\"; nproc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QW3owfztaU713dDyEEDsYP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app /app/vendor 2>&1; echo \"--- tools ---\"; which gcc gcov make tclsh cc 2>&1; echo \"--- nproc ---\"; nproc"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /app /app/vendor 2>&1; echo \"--- tools ---\"; which gcc gcov make tclsh cc 2>&1; echo \"--- nproc ---\"; nproc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015HgMG7jhxxfRTJTyYRPUqH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/vendor && sha256sum -c sqlite-fossil-release.tar.gz.sha256 2>&1; cat sqlite-fossil-release.tar.gz.sha256; echo \"---list---\"; tar tzf sqlite-fossil-release.tar.gz | head -20"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/vendor && sha256sum -c sqlite-fossil-release.tar.gz.sha256 2>&1; cat sqlite-fossil-release.tar.gz.sha256; echo \"---list---\"; tar tzf sqlite-fossil-release.tar.gz | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018wfM1ecqF4BLB558TnrwJq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sha256sum -c vendor/sqlite-fossil-release.tar.gz.sha256 2>&1; echo \"---\"; tar tzf vendor/sqlite-fossil-release.tar.gz | head -20"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && sha256sum -c vendor/sqlite-fossil-release.tar.gz.sha256 2>&1; echo \"---\"; tar tzf vendor/sqlite-fossil-release.tar.gz | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PPVYCy35xoo6fLUGWR9qNn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && tar xzf vendor/sqlite-fossil-release.tar.gz && ls -d sqlite && cat sqlite/VERSION; echo \"--- check configure ---\"; ls sqlite/configure sqlite/Makefile.in 2>&1"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && tar xzf vendor/sqlite-fossil-release.tar.gz && ls -d sqlite && cat sqlite/VERSION; echo \"--- check configure ---\"; ls sqlite/configure sqlite/Makefile.in 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WtcxdZQi8c16C2gxteXHKc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y -qq build-essential tcl tcl-dev 2>&1 | tail -5; echo \"=== versions ===\"; gcc --version | head -1; gcov --version | head -1; make --version | head -1; echo 'puts [info patchlevel]' | tclsh 2>&1"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y -qq build-essential tcl tcl-dev 2>&1 | tail -5; echo \"=== versions ===\"; gcc --version | head -1; gcov --version | head -1; make --version | head -1; echo 'puts [info patchlevel]' | tclsh 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UhntoNcTujpVMQEgobL6ms",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && ./configure --help 2>&1 | grep -iE \"gcov|coverage|debug\" "
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && ./configure --help 2>&1 | grep -iE \"gcov|coverage|debug\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011AH49JpG2XCeukEfHz1ERA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && ./configure --gcov 2>&1 | tail -20"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && ./configure --gcov 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pw4RVtjxt6JiMUFtSeFSkt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && grep -iE \"gcov|coverage|profile\" Makefile | head; echo \"=== CFLAGS ===\"; grep -E \"^CFLAGS|^LDFLAGS|profile-arcs|test-coverage|--coverage\" Makefile | head"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && grep -iE \"gcov|coverage|profile\" Makefile | head; echo \"=== CFLAGS ===\"; grep -E \"^CFLAGS|^LDFLAGS|profile-arcs|test-coverage|--coverage\" Makefile | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EPLE9BkXBvnD3gNxszFDay",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && make -j$(nproc) sqlite3 2>&1 | tail -25"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && make -j$(nproc) sqlite3 2>&1 | tail -25"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -670,7 +670,7 @@
         "results": [
           {
             "source_call_id": "toolu_01EPLE9BkXBvnD3gNxszFDay",
-            "content": "{\"type\": \"text\", \"text\": \"ok: -Wl,-rpath,/usr/local/lib  -lm  -lz\\n... (25 output lines suppressed on success) ...\\n\\n[atelier: shrunk 5092→87; full: read /tmp/atelier-spill/bash-ce3fc8ec.txt]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"ok: -Wl,-rpath,/usr/local/lib  -lm  -lz\\n... (25 output lines suppressed on success) ...\\n\\n[lemoncrow: shrunk 5092→87; full: read /tmp/lemoncrow-spill/bash-ce3fc8ec.txt]\"}"
           }
         ]
       },
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KcSqgGq8tY6MEZS6HMcHQS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && ls -la sqlite3 sqlite3.o 2>&1; echo \"--- gcno present (gcov instrumentation) ---\"; ls *.gcno 2>&1 | head; echo \"--- run ---\"; ./sqlite3 --version; echo \"--- gcda generated after run? ---\"; ls *.gcda 2>&1 | head"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && ls -la sqlite3 sqlite3.o 2>&1; echo \"--- gcno present (gcov instrumentation) ---\"; ls *.gcno 2>&1 | head; echo \"--- run ---\"; ./sqlite3 --version; echo \"--- gcda generated after run? ---\"; ls *.gcda 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0197UJ4k3Dk8bQB8q52DtCnA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/sqlite && echo \"=== gcno files ===\"; ls *.gcno; echo \"=== run to produce gcda ===\"; ./sqlite3 :memory: \"create table t(a); insert into t values(1); select count(*) from t;\"; echo \"=== gcda files ===\"; ls *.gcda; echo \"=== gcov check ===\"; gcov -n sqlite3-shell.gcno 2>&1 | head -3"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app/sqlite && echo \"=== gcno files ===\"; ls *.gcno; echo \"=== run to produce gcda ===\"; ./sqlite3 :memory: \"create table t(a); insert into t values(1); select count(*) from t;\"; echo \"=== gcda files ===\"; ls *.gcda; echo \"=== gcov check ===\"; gcov -n sqlite3-shell.gcno 2>&1 | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015hkhwLLHLv8MQVGZyYjKoP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ln -sf /app/sqlite/sqlite3 /usr/local/bin/sqlite3; hash -r; echo \"PATH lookup:\"; which sqlite3; sqlite3 --version; echo \"--- cleanup scratch gcda ---\"; rm -f /app/sqlite/*.gcda; ls /app/sqlite/*.gcda 2>&1"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "ln -sf /app/sqlite/sqlite3 /usr/local/bin/sqlite3; hash -r; echo \"PATH lookup:\"; which sqlite3; sqlite3 --version; echo \"--- cleanup scratch gcda ---\"; rm -f /app/sqlite/*.gcda; ls /app/sqlite/*.gcda 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

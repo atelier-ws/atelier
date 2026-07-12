@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DykZXmyYLfXuboXUNn4YXJ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.c",
@@ -47,12 +47,12 @@
                 "/app/decrypt.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01UiNmRPrQc2ZM4RwJjA1P7v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt"
           },
@@ -60,7 +60,7 @@
             "raw_arguments": {
               "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01StjtBeHVKvrYXFhVs9nU1c",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pairs.txt",
@@ -139,7 +139,7 @@
                 "/app/ciphertexts.txt:head=3"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -200,7 +200,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W72XAmMC3TstM9vsDGXPtq",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -220,7 +220,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -281,7 +281,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UJ8P7Q2wFyLQj6Mk84cpUm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o solve solve.c && time ./solve"
           },
@@ -289,7 +289,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -O2 -o solve solve.c && time ./solve"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -350,7 +350,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015f3jkapLHJBNU3VJPxnNug",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && wc -l plaintexts.txt && head -3 plaintexts.txt && echo --- && cat > verify.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nstatic uint32_t expand(uint32_t k){return k^(k<<16)^(k*12345u);}\nstatic uint8_t rol2(uint8_t t){return (uint8_t)((t<<2)|(t>>6));}\nstatic uint8_t g(uint8_t a,uint8_t b,uint8_t x){return rol2((uint8_t)(a+b+x));}\nstatic uint32_t f(uint32_t v){uint8_t x0=v,x1=v>>8,x2=v>>16,x3=v>>24;uint8_t y2=g(x3^x2,x1^x0,1),y3=g(x3,y2,0),y1=g(x1^x0,y2,0),y0=g(x0,y1,1);return (uint32_t)y0|((uint32_t)y1<<8)|((uint32_t)y2<<16)|((uint32_t)y3<<24);}\nstatic uint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p;r^=l;for(int i=0;i<4;i++){uint32_t m=f(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t key[4]={0xb24dca68,0x0d14a358,0xa888fa20,0x5cc59c18};\n // check k1,k2 are valid expand outputs\n for(uint32_t s=0;s<(1u<<20);s++){if(expand(s)==key[1])printf(\"k1 seed=%05x\\n\",s);if(expand(s)==key[2])printf(\"k2 seed=%05x\\n\",s);}\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");char l1[128],l2[128];int n=0,bad=0;\n while(fgets(l1,128,a)&&fgets(l2,128,b)){unsigned long long p,c;sscanf(l1,\"%llu\",&p);sscanf(l2,\"%llu\",&c);if(enc(p,key)!=c)bad++;n++;}\n printf(\"checked %d, mismatches %d\\n\",n,bad);return 0;}\nEOF\ngcc -O2 -o verify verify.c && ./verify"
           },
@@ -358,7 +358,7 @@
             "raw_arguments": {
               "command": "cd /app && wc -l plaintexts.txt && head -3 plaintexts.txt && echo --- && cat > verify.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nstatic uint32_t expand(uint32_t k){return k^(k<<16)^(k*12345u);}\nstatic uint8_t rol2(uint8_t t){return (uint8_t)((t<<2)|(t>>6));}\nstatic uint8_t g(uint8_t a,uint8_t b,uint8_t x){return rol2((uint8_t)(a+b+x));}\nstatic uint32_t f(uint32_t v){uint8_t x0=v,x1=v>>8,x2=v>>16,x3=v>>24;uint8_t y2=g(x3^x2,x1^x0,1),y3=g(x3,y2,0),y1=g(x1^x0,y2,0),y0=g(x0,y1,1);return (uint32_t)y0|((uint32_t)y1<<8)|((uint32_t)y2<<16)|((uint32_t)y3<<24);}\nstatic uint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p;r^=l;for(int i=0;i<4;i++){uint32_t m=f(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t key[4]={0xb24dca68,0x0d14a358,0xa888fa20,0x5cc59c18};\n // check k1,k2 are valid expand outputs\n for(uint32_t s=0;s<(1u<<20);s++){if(expand(s)==key[1])printf(\"k1 seed=%05x\\n\",s);if(expand(s)==key[2])printf(\"k2 seed=%05x\\n\",s);}\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");char l1[128],l2[128];int n=0,bad=0;\n while(fgets(l1,128,a)&&fgets(l2,128,b)){unsigned long long p,c;sscanf(l1,\"%llu\",&p);sscanf(l2,\"%llu\",&c);if(enc(p,key)!=c)bad++;n++;}\n printf(\"checked %d, mismatches %d\\n\",n,bad);return 0;}\nEOF\ngcc -O2 -o verify verify.c && ./verify"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -474,7 +474,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YG1cJVedbm5xJmUVYyMMkE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_plain.txt && echo \"diff vs plaintexts.txt:\" && diff <(sort plaintexts.txt) <(sort ref_plain.txt) && echo \"IDENTICAL\"; wc -l ref_plain.txt plaintexts.txt"
           },
@@ -482,7 +482,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_plain.txt && echo \"diff vs plaintexts.txt:\" && diff <(sort plaintexts.txt) <(sort ref_plain.txt) && echo \"IDENTICAL\"; wc -l ref_plain.txt plaintexts.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

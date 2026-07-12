@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ErCJKD6kkCX4cKF3mGryqW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; file /app/code.png"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; file /app/code.png"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01ErCJKD6kkCX4cKF3mGryqW",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 108\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:43 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:43 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 23:43 .atelier\\n-rw-r--r-- 1 root root 95041 Sep 13  2025 code.png\\n\\nbash: line 1: file: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 108\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:43 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 23:43 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 23:43 .lemoncrow\\n-rw-r--r-- 1 root root 95041 Sep 13  2025 code.png\\n\\nbash: line 1: file: command not found\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XM6wF8f8wbzyJDWq1hu9XY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/code.png"
@@ -114,7 +114,7 @@
                 "/app/code.png"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SaikfewRTZfRfSVKtrEoa9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport hashlib\nSALT=b\"0000TBENCH-SALT\"\nimg=open(\"/app/code.png\",\"rb\").read()\nh0=hashlib.sha256(img).digest()\nH=hashlib.sha256(h0+h0[:10]+SALT).hexdigest()\nprint(H)\nopen(\"/app/output.txt\",\"w\").write(H)\nEOF\ncat /app/output.txt"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport hashlib\nSALT=b\"0000TBENCH-SALT\"\nimg=open(\"/app/code.png\",\"rb\").read()\nh0=hashlib.sha256(img).digest()\nH=hashlib.sha256(h0+h0[:10]+SALT).hexdigest()\nprint(H)\nopen(\"/app/output.txt\",\"w\").write(H)\nEOF\ncat /app/output.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

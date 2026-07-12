@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01611YLvqMTFormeP4GSAcCq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/climate_analyzer/analyze_climate.py",
@@ -49,7 +49,7 @@
                 "/app/climate_analyzer/sample_data/climate_data.csv"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -110,7 +110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EzFo8vEgaqiAz4XkL1J7TG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -140,7 +140,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -201,7 +201,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4SrSuvYVTzGsHyA6oshNz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas, numpy\" 2>&1 || uv pip install --system --break-system-packages numpy pandas 2>&1 | tail -3; python3 /app/analyze_climate_modern.py"
           },
@@ -209,7 +209,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas, numpy\" 2>&1 || uv pip install --system --break-system-packages numpy pandas 2>&1 | tail -3; python3 /app/analyze_climate_modern.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018eFmAgCWU6eiJ1nSEJcZDN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app; echo \"---\"; find /app -name '*test*' -not -path '*/node_modules/*' 2>/dev/null | head"
           },
@@ -333,7 +333,7 @@
             "raw_arguments": {
               "command": "ls /app; echo \"---\"; find /app -name '*test*' -not -path '*/node_modules/*' 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -394,7 +394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012taWA4LCnhcH9gsiyohdDL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>&1; echo \"===\"; find / -maxdepth 3 -name 'analyze_climate_modern.py' 2>/dev/null"
           },
@@ -402,7 +402,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>&1; echo \"===\"; find / -maxdepth 3 -name 'analyze_climate_modern.py' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WgsHcWSoNVcNH25dr98JZE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import numpy, pandas, matplotlib, scipy; print('deps OK', numpy.__version__, pandas.__version__)\" && python3 analyze_climate_modern.py"
           },
@@ -471,7 +471,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import numpy, pandas, matplotlib, scipy; print('deps OK', numpy.__version__, pandas.__version__)\" && python3 analyze_climate_modern.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

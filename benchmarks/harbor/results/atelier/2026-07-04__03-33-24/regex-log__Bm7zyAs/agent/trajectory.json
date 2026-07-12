@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0166PzNfXSVeeee5q9yCAp4c",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bea8GoyQBF7Xr7DqmNPUwT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport re\npat = open(\"regex.txt\").read().strip()\nlog = \"\"\"\\\n2024-01-01 login from 192.168.1.10 at 2024-02-29 done\nno ip here 2024-03-15\n1.2.3.4 fake user 1134-12-1234 nothing\nserver 10.0.0.1 event 2024-13-01 real 2024-11-30 end\nbad ip 256.1.1.1 with date 2020-06-30\nlead zero 010.0.0.1 date 2020-06-30\nalnum date x2024-05-05 ip 8.8.8.8\nfeb 2024-02-30 invalid 5.5.5.5 keep 2024-02-28\nip 172.16.0.1 date2024-07-07 glued\nday31 apr 2021-04-31 ip 9.9.9.9 ok 2021-04-30\n\"\"\"\nfor line in log.splitlines():\n    m = re.findall(pat, line, re.MULTILINE)\n    print(repr(line), \"->\", m)\nprint(\"ALL:\", re.findall(pat, log, re.MULTILINE))\nEOF"
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport re\npat = open(\"regex.txt\").read().strip()\nlog = \"\"\"\\\n2024-01-01 login from 192.168.1.10 at 2024-02-29 done\nno ip here 2024-03-15\n1.2.3.4 fake user 1134-12-1234 nothing\nserver 10.0.0.1 event 2024-13-01 real 2024-11-30 end\nbad ip 256.1.1.1 with date 2020-06-30\nlead zero 010.0.0.1 date 2020-06-30\nalnum date x2024-05-05 ip 8.8.8.8\nfeb 2024-02-30 invalid 5.5.5.5 keep 2024-02-28\nip 172.16.0.1 date2024-07-07 glued\nday31 apr 2021-04-31 ip 9.9.9.9 ok 2021-04-30\n\"\"\"\nfor line in log.splitlines():\n    m = re.findall(pat, line, re.MULTILINE)\n    print(repr(line), \"->\", m)\nprint(\"ALL:\", re.findall(pat, log, re.MULTILINE))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UqtQnm6yLBZ3W2Vo2JPkUH",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/filter.py",
@@ -47,7 +47,7 @@
                 "/app/test_outputs.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015MH1SFUspMZimKNvDDGawq",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -128,7 +128,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -189,7 +189,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LBNdCYN6EbuohAesKKVdDv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /app/out.html /tmp/t.html && python /app/filter.py /tmp/t.html && echo \"---FILTERED---\" && cat /tmp/t.html"
           },
@@ -197,7 +197,7 @@
             "raw_arguments": {
               "command": "cp /app/out.html /tmp/t.html && python /app/filter.py /tmp/t.html && echo \"---FILTERED---\" && cat /tmp/t.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -258,7 +258,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XLXGLydjxbcMtNYZhPYBzj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /tests/ 2>/dev/null; python -c \"import selenium; print('selenium ok')\" 2>&1 | tail -1; ls /usr/bin/chromium /usr/bin/chromedriver 2>&1"
           },
@@ -266,7 +266,7 @@
             "raw_arguments": {
               "command": "ls /tests/ 2>/dev/null; python -c \"import selenium; print('selenium ok')\" 2>&1 | tail -1; ls /usr/bin/chromium /usr/bin/chromedriver 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -327,7 +327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ty1TjBDUyvx7Gd6TvZEgej",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/check.py <<'EOF'\nimport tempfile, subprocess\nfrom pathlib import Path\nfrom selenium import webdriver\nfrom selenium.common.exceptions import TimeoutException\nfrom selenium.webdriver.chrome.options import Options\nfrom selenium.webdriver.chrome.service import Service\nfrom selenium.webdriver.support import expected_conditions as EC\nfrom selenium.webdriver.support.ui import WebDriverWait\n\nout = Path(\"/app/out.html\")\nwith tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".html\", delete=False) as f:\n    f.write(out.read_text()); fp = Path(f.name)\nsubprocess.run([\"python\",\"/app/filter.py\",str(fp)],check=True)\no=Options()\nfor a in [\"--headless\",\"--no-sandbox\",\"--disable-dev-shm-usage\",\"--disable-gpu\",\"--window-size=1920,1080\"]:\n    o.add_argument(a)\no.binary_location=\"/usr/bin/chromium\"\nd=webdriver.Chrome(service=Service(\"/usr/bin/chromedriver\"),options=o)\nd.get(f\"file://{fp.absolute()}\")\ntry:\n    WebDriverWait(d,5).until(EC.alert_is_present())\n    print(\"ALERT:\",d.switch_to.alert.text); d.switch_to.alert.accept()\nexcept TimeoutException:\n    print(\"NO ALERT\")\nd.quit()\nEOF\npython /tmp/check.py"
           },
@@ -335,7 +335,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/check.py <<'EOF'\nimport tempfile, subprocess\nfrom pathlib import Path\nfrom selenium import webdriver\nfrom selenium.common.exceptions import TimeoutException\nfrom selenium.webdriver.chrome.options import Options\nfrom selenium.webdriver.chrome.service import Service\nfrom selenium.webdriver.support import expected_conditions as EC\nfrom selenium.webdriver.support.ui import WebDriverWait\n\nout = Path(\"/app/out.html\")\nwith tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".html\", delete=False) as f:\n    f.write(out.read_text()); fp = Path(f.name)\nsubprocess.run([\"python\",\"/app/filter.py\",str(fp)],check=True)\no=Options()\nfor a in [\"--headless\",\"--no-sandbox\",\"--disable-dev-shm-usage\",\"--disable-gpu\",\"--window-size=1920,1080\"]:\n    o.add_argument(a)\no.binary_location=\"/usr/bin/chromium\"\nd=webdriver.Chrome(service=Service(\"/usr/bin/chromedriver\"),options=o)\nd.get(f\"file://{fp.absolute()}\")\ntry:\n    WebDriverWait(d,5).until(EC.alert_is_present())\n    print(\"ALERT:\",d.switch_to.alert.text); d.switch_to.alert.accept()\nexcept TimeoutException:\n    print(\"NO ALERT\")\nd.quit()\nEOF\npython /tmp/check.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

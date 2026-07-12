@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XdaRUNwa4XEqJu6gxvxHF2",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/main.cpp",
@@ -47,7 +47,7 @@
                 "/app/user.cpp"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0129eGT1ERg8jQzuX2Vk1K87",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/user.h"
@@ -120,7 +120,7 @@
                 "/app/user.h"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -181,7 +181,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dy6bUg38vrSwzdRVaj6duc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -std=c++17 -o /app/release main.cpp user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm 2>&1 | head; g++ -std=c++17 -o /app/debug main.cpp user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm 2>&1 | head; echo done"
           },
@@ -189,7 +189,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -std=c++17 -o /app/release main.cpp user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm 2>&1 | head; g++ -std=c++17 -o /app/debug main.cpp user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm 2>&1 | head; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -250,7 +250,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LrcbtnYF2yjDq3jrcEHUka",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== RELEASE ===\"; ./release; echo \"exit=$?\"; echo \"=== DEBUG ===\"; ./debug; echo \"exit=$?\""
           },
@@ -258,7 +258,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== RELEASE ===\"; ./release; echo \"exit=$?\"; echo \"=== DEBUG ===\"; ./debug; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -319,7 +319,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W6UEa7NRvvTgPnafsUKH9X",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && valgrind --error-exitcode=99 ./release 2>&1 | tail -40"
           },
@@ -327,7 +327,7 @@
             "raw_arguments": {
               "command": "cd /app && valgrind --error-exitcode=99 ./release 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -388,7 +388,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VY2teBVG82HD8UaQhzotMX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release 2>&1 | sed -n '1,40p'; echo \"rc=${PIPESTATUS[0]}\""
           },
@@ -396,7 +396,7 @@
             "raw_arguments": {
               "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release 2>&1 | sed -n '1,40p'; echo \"rc=${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -457,7 +457,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RfYEmyHSPBRWuqBj8HPBso",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release 2>&1 | grep -iE \"leak|lost|reachable|suppressed|blocks|bytes\" | head -40; echo \"rc=${PIPESTATUS[0]}\""
           },
@@ -465,7 +465,7 @@
             "raw_arguments": {
               "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release 2>&1 | grep -iE \"leak|lost|reachable|suppressed|blocks|bytes\" | head -40; echo \"rc=${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -526,7 +526,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BCapoYzkH9ekuUu8dvTKg8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && valgrind --leak-check=full ./release 2>&1 | grep -A8 \"LEAK SUMMARY\""
           },
@@ -534,7 +534,7 @@
             "raw_arguments": {
               "command": "cd /app && valgrind --leak-check=full ./release 2>&1 | grep -A8 \"LEAK SUMMARY\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -595,7 +595,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SDwU8AYrko2FEyfLuw6aVU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gdb -batch -ex run -ex bt ./release 2>&1 | tail -30"
           },
@@ -603,7 +603,7 @@
             "raw_arguments": {
               "command": "cd /app && gdb -batch -ex run -ex bt ./release 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -664,7 +664,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SCMRuchvDc1KPWAxFph7wu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gdb -batch -ex run -ex bt -ex 'info registers rip' ./release 2>&1 | grep -A30 \"Program received\\|Program terminated\\|#0\\|#1\\|#2\""
           },
@@ -672,7 +672,7 @@
             "raw_arguments": {
               "command": "cd /app && gdb -batch -ex run -ex bt -ex 'info registers rip' ./release 2>&1 | grep -A30 \"Program received\\|Program terminated\\|#0\\|#1\\|#2\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -733,7 +733,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ejyu7NLzfTpGuZwVoyXuKL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '280,340p' /build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc 2>/dev/null || find /build -name locale_init.cc 2>/dev/null"
           },
@@ -741,7 +741,7 @@
             "raw_arguments": {
               "command": "sed -n '280,340p' /build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc 2>/dev/null || find /build -name locale_init.cc 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -802,7 +802,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JsKXUvLyRVP4DeqcdPH8eU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /build && sed -n '290,340p' gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc"
           },
@@ -810,7 +810,7 @@
             "raw_arguments": {
               "command": "cd /build && sed -n '290,340p' gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -871,7 +871,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TAU3ZLdDQ6Q8s8HvBb8TWp",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc:L290-L340"
@@ -883,7 +883,7 @@
                 "/build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc:L290-L340"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -944,7 +944,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017RdvywKaRc8bhxsm7xM47S",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc:L240-L292",
@@ -958,7 +958,7 @@
                 "/build/gcc-13.2.0/libstdc++-v3/src/c++98/locale_init.cc:L340-L420"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1019,7 +1019,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TL9iPNXWkPa8AFkwzYQEsW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /build && grep -rn \"_Facet_Register\" gcc-13.2.0/libstdc++-v3/ | grep -v locale_init.cc | head"
           },
@@ -1027,7 +1027,7 @@
             "raw_arguments": {
               "command": "cd /build && grep -rn \"_Facet_Register\" gcc-13.2.0/libstdc++-v3/ | grep -v locale_init.cc | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1088,7 +1088,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GjQKXhdjmCRiNWUvoGNMx3",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/build/gcc-13.2.0/libstdc++-v3/include/bits/locale_classes.tcc:L80-L140"
@@ -1100,7 +1100,7 @@
                 "/build/gcc-13.2.0/libstdc++-v3/include/bits/locale_classes.tcc:L80-L140"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1161,7 +1161,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014CFaHHGEyk8e7zwuTLjxJL",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1181,7 +1181,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1242,7 +1242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NpbnkHFVTGBKAKPtoCXKyt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -std=c++17 -o /app/release main.cpp user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && g++ -std=c++17 -o /app/debug main.cpp user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo BUILT\n./release >/dev/null; echo \"release_rc=$?\"\n./debug >/dev/null; echo \"debug_rc=$?\""
           },
@@ -1250,7 +1250,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -std=c++17 -o /app/release main.cpp user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && g++ -std=c++17 -o /app/debug main.cpp user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo BUILT\n./release >/dev/null; echo \"release_rc=$?\"\n./debug >/dev/null; echo \"debug_rc=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1311,7 +1311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012bHApMW4mSAdgcLh8grRqn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release >/dev/null 2>val.txt; echo \"valgrind_rc=$?\"; grep -E \"definitely lost|indirectly lost|possibly lost|ERROR SUMMARY\" val.txt; rm -f val.txt"
           },
@@ -1319,7 +1319,7 @@
             "raw_arguments": {
               "command": "cd /app && valgrind --leak-check=full --error-exitcode=99 ./release >/dev/null 2>val.txt; echo \"valgrind_rc=$?\"; grep -E \"definitely lost|indirectly lost|possibly lost|ERROR SUMMARY\" val.txt; rm -f val.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1435,7 +1435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CBrzb397JJgeHLzXquKkYD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; find /app -name '*test*' 2>/dev/null"
           },
@@ -1443,7 +1443,7 @@
             "raw_arguments": {
               "command": "ls -la /app; find /app -name '*test*' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1504,7 +1504,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T19sseSVw1JgWBrK7jtcv7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/"
           },
@@ -1512,7 +1512,7 @@
             "raw_arguments": {
               "command": "ls -la /app/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1520,7 +1520,7 @@
         "results": [
           {
             "source_call_id": "toolu_01T19sseSVw1JgWBrK7jtcv7",
-            "content": "{\"type\": \"text\", \"text\": \"total 16072\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:45 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:42 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:43 .atelier\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:43 .git\\n-rwxr-xr-x 1 root root 7184592 Jul  3 23:45 debug\\n-rw-r--r-- 1 root root    4654 Oct 28  2025 main.cpp\\n-rwxr-xr-x 1 root root 9234808 Jul  3 23:45 release\\n-rw-r--r-- 1 root root    1183 Oct 28  2025 user.cpp\\n-rw-r--r-- 1 root root     278 Oct 28  2025 user.h\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 16072\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:45 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:42 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:43 .lemoncrow\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:43 .git\\n-rwxr-xr-x 1 root root 7184592 Jul  3 23:45 debug\\n-rw-r--r-- 1 root root    4654 Oct 28  2025 main.cpp\\n-rwxr-xr-x 1 root root 9234808 Jul  3 23:45 release\\n-rw-r--r-- 1 root root    1183 Oct 28  2025 user.cpp\\n-rw-r--r-- 1 root root     278 Oct 28  2025 user.h\"}"
           }
         ]
       },
@@ -1573,7 +1573,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B8bc2Rz19voMFFSxff34GS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f release debug\ng++ -std=c++17 -o /app/release /app/main.cpp /app/user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo \"RELEASE_BUILD_OK\"\ng++ -std=c++17 -o /app/debug /app/main.cpp /app/user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo \"DEBUG_BUILD_OK\"\necho \"--- release run ---\"; ./release | tail -2; echo \"release_rc=${PIPESTATUS[0]}\"\necho \"--- debug run ---\"; ./debug | tail -2; echo \"debug_rc=${PIPESTATUS[0]}\"\necho \"--- valgrind release ---\"; valgrind --leak-check=full --error-exitcode=99 ./release >/dev/null 2>vg.txt; echo \"valgrind_rc=$?\"; grep -E \"definitely lost|indirectly lost|possibly lost|ERROR SUMMARY|SIGSEGV\" vg.txt; rm -f vg.txt"
           },
@@ -1581,7 +1581,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f release debug\ng++ -std=c++17 -o /app/release /app/main.cpp /app/user.cpp -O2 -DNDEBUG -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo \"RELEASE_BUILD_OK\"\ng++ -std=c++17 -o /app/debug /app/main.cpp /app/user.cpp -g -O0 -L/usr/local/gcc-custom-debug/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm && echo \"DEBUG_BUILD_OK\"\necho \"--- release run ---\"; ./release | tail -2; echo \"release_rc=${PIPESTATUS[0]}\"\necho \"--- debug run ---\"; ./debug | tail -2; echo \"debug_rc=${PIPESTATUS[0]}\"\necho \"--- valgrind release ---\"; valgrind --leak-check=full --error-exitcode=99 ./release >/dev/null 2>vg.txt; echo \"valgrind_rc=$?\"; grep -E \"definitely lost|indirectly lost|possibly lost|ERROR SUMMARY|SIGSEGV\" vg.txt; rm -f vg.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1642,7 +1642,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GtLMAiNmHywupsQYzaiQed",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ./release >/dev/null; echo \"release_rc=$?\"; ./debug >/dev/null; echo \"debug_rc=$?\""
           },
@@ -1650,7 +1650,7 @@
             "raw_arguments": {
               "command": "cd /app && ./release >/dev/null; echo \"release_rc=$?\"; ./debug >/dev/null; echo \"debug_rc=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

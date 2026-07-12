@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01USeyqxtqj3T8K5Ji3rSZFu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la",
             "cwd": "/root"
@@ -43,12 +43,12 @@
               "command": "ls -la",
               "cwd": "/root"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01GaR2WE3oz8SwfmB1tfPary",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name portfolio_baseline.py 2>/dev/null; find / -name portfolio_optimized.* 2>/dev/null; find / -name setup.py -path '*portfolio*' 2>/dev/null"
           },
@@ -56,7 +56,7 @@
             "raw_arguments": {
               "command": "find / -name portfolio_baseline.py 2>/dev/null; find / -name portfolio_optimized.* 2>/dev/null; find / -name setup.py -path '*portfolio*' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -64,7 +64,7 @@
         "results": [
           {
             "source_call_id": "toolu_01USeyqxtqj3T8K5Ji3rSZFu",
-            "content": "{\"type\": \"text\", \"text\": \"total 44\\ndrwx------ 1 root root 4096 Jul  3 23:52 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 ..\\ndrwxr-xr-x 8 root root 4096 Jul  3 23:52 .atelier\\n-rw-r--r-- 1 root root  571 Apr 10  2021 .bashrc\\ndrwxr-xr-x 4 root root 4096 Jul  3 23:52 .cache\\ndrwxr-xr-x 7 root root 4096 Jul  3 23:52 .claude-bench\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:52 .config\\ndrwxr-xr-x 4 root root 4096 Jul  3 23:52 .npm\\n-rw------- 1 root root   16 Jul  3 23:52 .npmrc\\n-rw-r--r-- 1 root root  161 Jul  9  2019 .profile\\n-rw-r--r-- 1 root root  169 Aug 15  2025 .wget-hsts\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 44\\ndrwx------ 1 root root 4096 Jul  3 23:52 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 ..\\ndrwxr-xr-x 8 root root 4096 Jul  3 23:52 .lemoncrow\\n-rw-r--r-- 1 root root  571 Apr 10  2021 .bashrc\\ndrwxr-xr-x 4 root root 4096 Jul  3 23:52 .cache\\ndrwxr-xr-x 7 root root 4096 Jul  3 23:52 .claude-bench\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:52 .config\\ndrwxr-xr-x 4 root root 4096 Jul  3 23:52 .npm\\n-rw------- 1 root root   16 Jul  3 23:52 .npmrc\\n-rw-r--r-- 1 root root  161 Jul  9  2019 .profile\\n-rw-r--r-- 1 root root  169 Aug 15  2025 .wget-hsts\"}"
           },
           {
             "source_call_id": "toolu_01GaR2WE3oz8SwfmB1tfPary",
@@ -121,7 +121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XPLyByNVgqrTMCvhbXaEJk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; echo ---; find / -path '*app*portfolio*' 2>/dev/null",
             "cwd": "/app"
@@ -131,7 +131,7 @@
               "command": "ls -la; echo ---; find / -path '*app*portfolio*' 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -139,7 +139,7 @@
         "results": [
           {
             "source_call_id": "toolu_01XPLyByNVgqrTMCvhbXaEJk",
-            "content": "{\"type\": \"text\", \"text\": \"total 36\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:52 .atelier\\n-rw-r--r-- 1 root root 4266 Oct 24  2025 benchmark.py\\n-rw-r--r-- 1 root root 2331 Oct 24  2025 portfolio_baseline.py\\n-rw-r--r-- 1 root root 1843 Oct 24  2025 portfolio_optimized.c\\n-rw-r--r-- 1 root root  994 Oct 24  2025 portfolio_optimized.py\\n-rw-r--r-- 1 root root  350 Oct 24  2025 setup.py\\n---\\n/app/portfolio_optimized.py\\n/app/portfolio_optimized.c\\n/app/portfolio_baseline.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 36\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:52 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:52 .lemoncrow\\n-rw-r--r-- 1 root root 4266 Oct 24  2025 benchmark.py\\n-rw-r--r-- 1 root root 2331 Oct 24  2025 portfolio_baseline.py\\n-rw-r--r-- 1 root root 1843 Oct 24  2025 portfolio_optimized.c\\n-rw-r--r-- 1 root root  994 Oct 24  2025 portfolio_optimized.py\\n-rw-r--r-- 1 root root  350 Oct 24  2025 setup.py\\n---\\n/app/portfolio_optimized.py\\n/app/portfolio_optimized.c\\n/app/portfolio_baseline.py\"}"
           }
         ]
       },
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015B18p8iCGrwjQt3zhi74zg",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/portfolio_baseline.py",
@@ -212,7 +212,7 @@
                 "/app/benchmark.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XeVTgwan3n11AdVPX6E17m",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -333,7 +333,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -394,7 +394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FLSUXM4ta7wshnntpsHvvg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy\" 2>&1; python3 setup.py build_ext --inplace 2>&1 | tail -20",
             "cwd": "/app"
@@ -404,7 +404,7 @@
               "command": "python3 -c \"import numpy\" 2>&1; python3 setup.py build_ext --inplace 2>&1 | tail -20",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -465,7 +465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XLF4NxWYzay8T3UvA1R5nM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1 | tail -30",
             "cwd": "/app"
@@ -475,7 +475,7 @@
               "command": "python3 benchmark.py 2>&1 | tail -30",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -591,7 +591,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011sBm48SCJ4bpiM1N4qL9bS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1 | tail -30",
             "cwd": "/app"
@@ -601,7 +601,7 @@
               "command": "python3 benchmark.py 2>&1 | tail -30",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -662,7 +662,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ahn2iJEzVq1m8UdzBUAPWD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1",
             "cwd": "/app"
@@ -672,7 +672,7 @@
               "command": "python3 benchmark.py 2>&1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -733,7 +733,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W6CCkiWgKbfAktURSMLfpa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport time, numpy as np\nfrom portfolio_baseline import generate_test_data\nw,cov,r = generate_test_data(5000)\nt=time.perf_counter(); a=np.ascontiguousarray(cov,dtype=np.float64); print('convert cov', (time.perf_counter()-t)*1000,'ms')\nt=time.perf_counter(); ww=np.ascontiguousarray(w,dtype=np.float64); print('convert w', (time.perf_counter()-t)*1000,'ms')\nimport portfolio_optimized_c as m\nt=time.perf_counter(); m.portfolio_risk_c(ww,a); print('c risk only', (time.perf_counter()-t)*1000,'ms')\n\"",
             "cwd": "/app"
@@ -743,7 +743,7 @@
               "command": "python3 -c \"\nimport time, numpy as np\nfrom portfolio_baseline import generate_test_data\nw,cov,r = generate_test_data(5000)\nt=time.perf_counter(); a=np.ascontiguousarray(cov,dtype=np.float64); print('convert cov', (time.perf_counter()-t)*1000,'ms')\nt=time.perf_counter(); ww=np.ascontiguousarray(w,dtype=np.float64); print('convert w', (time.perf_counter()-t)*1000,'ms')\nimport portfolio_optimized_c as m\nt=time.perf_counter(); m.portfolio_risk_c(ww,a); print('c risk only', (time.perf_counter()-t)*1000,'ms')\n\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -804,7 +804,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LUF1TjTttTvWWr5VPqP1kQ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/portfolio_optimized.c"
@@ -816,7 +816,7 @@
                 "/app/portfolio_optimized.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -877,7 +877,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QuYRsrLHVwQxyT2Bu2ZEZA",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -907,7 +907,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -968,7 +968,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XPn7jnpc3ZUjgTFgXBkzZy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 setup.py build_ext --inplace 2>&1 | tail -5 && echo \"=== BUILD OK ===\" && python3 benchmark.py 2>&1",
             "cwd": "/app"
@@ -978,7 +978,7 @@
               "command": "python3 setup.py build_ext --inplace 2>&1 | tail -5 && echo \"=== BUILD OK ===\" && python3 benchmark.py 2>&1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1039,7 +1039,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CFZ1rYhqx4DgvKQiuvKC5i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 setup.py build_ext --inplace 2>&1 | tail -20",
             "cwd": "/app"
@@ -1049,7 +1049,7 @@
               "command": "python3 setup.py build_ext --inplace 2>&1 | tail -20",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1110,7 +1110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TeKUBdxonv4Fi5gnBtYFn6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf build *.so; python3 setup.py build_ext --inplace 2>&1",
             "cwd": "/app"
@@ -1120,7 +1120,7 @@
               "command": "rm -rf build *.so; python3 setup.py build_ext --inplace 2>&1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1181,7 +1181,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015G47Qt2SdjCUJC6VdMAYcF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 setup.py build_ext --inplace 2>&1 | grep -iE \"error|warning|portfolio_optimized.c\" | head -30",
             "cwd": "/app"
@@ -1191,7 +1191,7 @@
               "command": "python3 setup.py build_ext --inplace 2>&1 | grep -iE \"error|warning|portfolio_optimized.c\" | head -30",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1252,7 +1252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PEujLgHTXJm3kHFu6DTSpj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1 | head -40",
             "cwd": "/app"
@@ -1262,7 +1262,7 @@
               "command": "python3 benchmark.py 2>&1 | head -40",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1323,7 +1323,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FP4ptoYaZFyefYhTPqXj2k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nfrom portfolio_baseline import generate_test_data\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nw,cov,r=generate_test_data(10)\nprint(portfolio_risk_c(w,cov))\nprint(portfolio_return_c(w,r))\n\"",
             "cwd": "/app"
@@ -1333,7 +1333,7 @@
               "command": "python3 -c \"\nfrom portfolio_baseline import generate_test_data\nfrom portfolio_optimized import portfolio_risk_c, portfolio_return_c\nw,cov,r=generate_test_data(10)\nprint(portfolio_risk_c(w,cov))\nprint(portfolio_return_c(w,r))\n\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1394,7 +1394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018HKmhbiHrFCG6SpxcSdf9j",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 setup.py build_ext --inplace --force 2>&1 | grep -iE \"gcc|error|warning\" | head; echo \"=== TEST ===\"; python3 benchmark.py 2>&1",
             "cwd": "/app"
@@ -1404,7 +1404,7 @@
               "command": "python3 setup.py build_ext --inplace --force 2>&1 | grep -iE \"gcc|error|warning\" | head; echo \"=== TEST ===\"; python3 benchmark.py 2>&1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1465,7 +1465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YCiFuKGz1bFFUeCFp5FgRn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for i in 1 2 3; do python3 benchmark.py 2>&1 | grep -E \"Speedup|PASSED|FAILED\"; echo \"---\"; done",
             "cwd": "/app"
@@ -1475,7 +1475,7 @@
               "command": "for i in 1 2 3; do python3 benchmark.py 2>&1 | grep -E \"Speedup|PASSED|FAILED\"; echo \"---\"; done",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

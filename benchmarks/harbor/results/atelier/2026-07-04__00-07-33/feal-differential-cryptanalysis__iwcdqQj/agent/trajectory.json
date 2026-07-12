@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015M6WQoTnRQhfYqHRGxr8sw",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.py"
@@ -45,7 +45,7 @@
                 "/app/feal.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -106,7 +106,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GfKAwnNECdmASZWTbx4rca",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -126,7 +126,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -187,7 +187,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011mMTCAhXrMFjHW5j1zT1kL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for i in 1 2 3 4 5; do python3 -c \"import time,feal,attack; feal.create_random_keys(); t=time.time(); r=attack.attack(feal.encrypt); print(hex(r), hex(feal.key[5]), 'OK' if r==feal.key[5] else 'FAIL', round(time.time()-t,2),'s')\"; done",
             "cwd": "/app"
@@ -197,7 +197,7 @@
               "command": "for i in 1 2 3 4 5; do python3 -c \"import time,feal,attack; feal.create_random_keys(); t=time.time(); r=attack.attack(feal.encrypt); print(hex(r), hex(feal.key[5]), 'OK' if r==feal.key[5] else 'FAIL', round(time.time()-t,2),'s')\"; done",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017N5HUTAFwqBwFtewf6W6em",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo '---'; ls /app/tests 2>/dev/null; find /app -name '*test*' -maxdepth 3 2>/dev/null",
             "cwd": "/app"
@@ -323,7 +323,7 @@
               "command": "ls -la /app; echo '---'; ls /app/tests 2>/dev/null; find /app -name '*test*' -maxdepth 3 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -384,7 +384,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PzXEPBCmnVX5g4abHVizb1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app"
           },
@@ -392,7 +392,7 @@
             "raw_arguments": {
               "command": "ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -400,7 +400,7 @@
         "results": [
           {
             "source_call_id": "toolu_01PzXEPBCmnVX5g4abHVizb1",
-            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:09 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:06 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:07 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:07 .git\\ndrwxr-xr-x 2 root root 4096 Jul  3 23:09 __pycache__\\n-rw------- 1 root root 2865 Jul  3 23:09 attack.py\\n-rw-r--r-- 1 root root 1951 Sep 13  2025 feal.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:09 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:06 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:07 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:07 .git\\ndrwxr-xr-x 2 root root 4096 Jul  3 23:09 __pycache__\\n-rw------- 1 root root 2865 Jul  3 23:09 attack.py\\n-rw-r--r-- 1 root root 1951 Sep 13  2025 feal.py\"}"
           }
         ]
       },
@@ -453,7 +453,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017BkbCr1YqMtCfyHxFVUAgh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 attack.py; echo '--- batch ---'; for i in $(seq 1 20); do python3 -c \"import time,feal,attack; feal.create_random_keys(); t=time.time(); r=attack.attack(feal.encrypt); assert r==feal.key[5], (hex(r),hex(feal.key[5])); print('OK', hex(r), round(time.time()-t,2),'s')\"; done",
             "cwd": "/app"
@@ -463,7 +463,7 @@
               "command": "python3 attack.py; echo '--- batch ---'; for i in $(seq 1 20); do python3 -c \"import time,feal,attack; feal.create_random_keys(); t=time.time(); r=attack.attack(feal.encrypt); assert r==feal.key[5], (hex(r),hex(feal.key[5])); print('OK', hex(r), round(time.time()-t,2),'s')\"; done",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

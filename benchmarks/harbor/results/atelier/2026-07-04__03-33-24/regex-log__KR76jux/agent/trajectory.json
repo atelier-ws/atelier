@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T8FNWTZrhvrawSjhWPxEDD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FoAZifDZQcyoZMpeF5kWb3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -134,7 +134,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -195,7 +195,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D765Ttn3gzSj6jaFKTcbRb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/test_regex.py"
           },
@@ -203,7 +203,7 @@
             "raw_arguments": {
               "command": "python3 /app/test_regex.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -264,7 +264,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014DcoYm7CQ1y28ZZ7qUjker",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm /app/test_regex.py; echo \"---regex.txt---\"; cat /app/regex.txt"
           },
@@ -272,7 +272,7 @@
             "raw_arguments": {
               "command": "rm /app/test_regex.py; echo \"---regex.txt---\"; cat /app/regex.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -388,7 +388,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dj2reuipha9Wza5LLSsh9p",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PY'\nimport re\npattern = open(\"regex.txt\").read().strip()\nlog = \"\"\"\\\n2020-01-01 request from 1.2.3.4 at 2021-02-29 done\nno ip here 2020-05-15\n1.2.3.4 only ip no date\nuser 1134-12-1234 with 10.0.0.1 present\nmultiple 2019-03-03 and 2019-04-31 with 8.8.8.8\nfeb 255.255.255.255 date 2020-02-30 invalid then 2020-02-28 valid\nbadip 256.1.1.1 date 2022-07-07\ntrailing 9.9.9.9x date 2022-08-08\ngood 192.168.1.10 event 2023-11-30 end\nversion 1.2.3 not ip 2023-06-15\nleadingzero 01.2.3.4 date 2024-10-10\nembedded x2024-10-10 no ip 1.1.1.1\n\"\"\"\ngot = re.findall(pattern, log, re.MULTILINE)\nexpected = ['2021-02-29', '2019-03-03', '2020-02-28', '2023-11-30']\nprint(\"got     :\", got)\nprint(\"expected:\", expected)\nprint(\"PASS\" if got == expected else \"FAIL\")\nPY"
           },
@@ -396,7 +396,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PY'\nimport re\npattern = open(\"regex.txt\").read().strip()\nlog = \"\"\"\\\n2020-01-01 request from 1.2.3.4 at 2021-02-29 done\nno ip here 2020-05-15\n1.2.3.4 only ip no date\nuser 1134-12-1234 with 10.0.0.1 present\nmultiple 2019-03-03 and 2019-04-31 with 8.8.8.8\nfeb 255.255.255.255 date 2020-02-30 invalid then 2020-02-28 valid\nbadip 256.1.1.1 date 2022-07-07\ntrailing 9.9.9.9x date 2022-08-08\ngood 192.168.1.10 event 2023-11-30 end\nversion 1.2.3 not ip 2023-06-15\nleadingzero 01.2.3.4 date 2024-10-10\nembedded x2024-10-10 no ip 1.1.1.1\n\"\"\"\ngot = re.findall(pattern, log, re.MULTILINE)\nexpected = ['2021-02-29', '2019-03-03', '2020-02-28', '2023-11-30']\nprint(\"got     :\", got)\nprint(\"expected:\", expected)\nprint(\"PASS\" if got == expected else \"FAIL\")\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

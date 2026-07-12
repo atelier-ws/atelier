@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018rwEKbXvMZ6Cj6cvihAAs4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && echo \"---\" && python3 -c \"import numpy; print(numpy.__version__)\""
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app && echo \"---\" && python3 -c \"import numpy; print(numpy.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_017NnmwmapXrDCNgMWVQYuo9",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/forward.py"
@@ -58,7 +58,7 @@
                 "/app/forward.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0119AWQ9s6VeU3nccfYz6JVh",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -143,7 +143,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -204,7 +204,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D6PgX5xLWPK5C2Ryxud7D4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 steal.py 2>&1 | tail -30"
           },
@@ -212,7 +212,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 steal.py 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012jGe3r4ZTPX1htNJN7BewZ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -303,7 +303,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TbnvNXykdaiMVE8xnxL2t1",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L40-L48"
@@ -388,7 +388,7 @@
                 "/app/steal.py:L40-L48"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -449,7 +449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PvS3FnGTDMeAshL6zDbJXz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -479,7 +479,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -552,7 +552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mbbe1Be29ghX5sT14SRbAx",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L38-L38",
@@ -566,7 +566,7 @@
                 "/app/steal.py:L118-L126"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -627,7 +627,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017q49DYwwCacmg7h6RnepCx",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L37-L37",
@@ -641,7 +641,7 @@
                 "/app/steal.py:L104-L112"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -702,7 +702,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01847qBRcutztcALoB36YrzX",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -732,7 +732,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -805,7 +805,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Aeatu9PVSfDUZ51MsJ5Sdn",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "find_kinks recover directions stagnant",
             "paths": "/app/steal.py"
@@ -815,7 +815,7 @@
               "query": "find_kinks recover directions stagnant",
               "paths": "/app/steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -876,7 +876,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015TXNncM9sb12Z4eNXLWfF3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -906,7 +906,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -979,7 +979,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E5pE5ximTUWcRrNndRGRpF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -999,7 +999,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1072,7 +1072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EMqpptotWmewGLJ8fUYVC5",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:expand"
@@ -1084,7 +1084,7 @@
                 "/app/steal.py:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1145,7 +1145,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GCaEZHpEMydHitNrxMnUzR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1175,7 +1175,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1248,7 +1248,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T7tKL1P5Vt55XQ6JBZEFRa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /app/steal.py && ls /app"
           },
@@ -1256,7 +1256,7 @@
             "raw_arguments": {
               "command": "rm -f /app/steal.py && ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1317,7 +1317,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011eutm3yKCwVGexBudjfV6x",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1337,7 +1337,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1398,7 +1398,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Wjwc7JMM1X2QMqgKmyS5BZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 steal.py 2>&1 | head -3"
           },
@@ -1406,7 +1406,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 steal.py 2>&1 | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1467,7 +1467,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JkpKAJc3bkUFTXXZdnNh5j",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1487,7 +1487,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1548,7 +1548,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014LSNVzt7ESEnAEaUu4CyQJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 check.py"
           },
@@ -1556,7 +1556,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 check.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1617,7 +1617,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mf2ht88DRDaa95hnLjNZyN",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1637,7 +1637,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1698,7 +1698,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QsLUMKSkQciRsvnDF6UrF1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 probe.py"
           },
@@ -1706,7 +1706,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 probe.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1767,7 +1767,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013braXdbW1zNgykN8jcvJHJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /app/steal.py"
           },
@@ -1775,7 +1775,7 @@
             "raw_arguments": {
               "command": "rm -f /app/steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1836,7 +1836,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ux3WeTo8q7yakznLe2nM3D",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1856,7 +1856,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1917,7 +1917,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013ME56QrqJqm1y3maSaKV4s",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 steal.py 2>&1 | head -2 && echo \"=== CHECK ===\" && python3 check.py"
           },
@@ -1925,7 +1925,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 steal.py 2>&1 | head -2 && echo \"=== CHECK ===\" && python3 check.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1986,7 +1986,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G3A8YhXy5Px5i8cXH5cGJz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f check.py probe.py && rm -rf __pycache__ && python3 -c \"import numpy as np; a=np.load('stolen_A1.npy'); print('stolen_A1.npy', a.shape, a.dtype)\" && ls"
           },
@@ -1994,7 +1994,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f check.py probe.py && rm -rf __pycache__ && python3 -c \"import numpy as np; a=np.load('stolen_A1.npy'); print('stolen_A1.npy', a.shape, a.dtype)\" && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2055,7 +2055,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ULyusMwSxZXNnoFYhu691H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f check.py probe.py __pycache__/*.pyc && rmdir __pycache__ 2>/dev/null; python3 -c \"import numpy as np; a=np.load('stolen_A1.npy'); print('stolen_A1.npy', a.shape, a.dtype)\" && ls"
           },
@@ -2063,7 +2063,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f check.py probe.py __pycache__/*.pyc && rmdir __pycache__ 2>/dev/null; python3 -c \"import numpy as np; a=np.load('stolen_A1.npy'); print('stolen_A1.npy', a.shape, a.dtype)\" && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2179,7 +2179,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WUmWAhAUvbkc9rtFJr9rWC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 steal.py >/dev/null && python3 - <<'PY'\nimport numpy as np\nfrom forward import A1 as T\nR=np.load('/app/stolen_A1.npy')\nTn=T/np.linalg.norm(T,axis=1,keepdims=True)\nRn=R/np.linalg.norm(R,axis=1,keepdims=True)\nC=np.abs(Rn@Tn.T)\nprint('recovered',R.shape,'true',T.shape)\nprint('per-true best cos min',round(float(C.max(0).min()),6))\nprint('per-recovered best cos min',round(float(C.max(1).min()),6))\n# bijection check via greedy one-to-one\nimport numpy as np\nused=set(); ok=0\nfor i in range(R.shape[0]):\n    j=int(np.argmax(C[i]));\n    if j not in used and C[i,j]>0.999: used.add(j); ok+=1\nprint('one-to-one matches >0.999:',ok,'/',T.shape[0])\nPY"
           },
@@ -2187,7 +2187,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 steal.py >/dev/null && python3 - <<'PY'\nimport numpy as np\nfrom forward import A1 as T\nR=np.load('/app/stolen_A1.npy')\nTn=T/np.linalg.norm(T,axis=1,keepdims=True)\nRn=R/np.linalg.norm(R,axis=1,keepdims=True)\nC=np.abs(Rn@Tn.T)\nprint('recovered',R.shape,'true',T.shape)\nprint('per-true best cos min',round(float(C.max(0).min()),6))\nprint('per-recovered best cos min',round(float(C.max(1).min()),6))\n# bijection check via greedy one-to-one\nimport numpy as np\nused=set(); ok=0\nfor i in range(R.shape[0]):\n    j=int(np.argmax(C[i]));\n    if j not in used and C[i,j]>0.999: used.add(j); ok+=1\nprint('one-to-one matches >0.999:',ok,'/',T.shape[0])\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

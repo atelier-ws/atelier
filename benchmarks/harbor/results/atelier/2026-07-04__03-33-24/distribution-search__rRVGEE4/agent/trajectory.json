@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RrDsgJNPcnGD2nW5AxBgRT",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/solve.py",
             "new": "import numpy as np\nfrom scipy.optimize import fsolve\n\nN = 150000\nlogN = np.log(N)\nTARGET = 10.0\n\n# Three probability levels with fixed integer counts.\nn1, n2 = 6, 3\nn3 = N - n1 - n2\ncounts = np.array([n1, n2, n3], dtype=float)\n\n\ndef equations(x):\n    # x = log-probabilities of the three levels (ensures positivity)\n    p = np.exp(x)\n    # eq1: normalization\n    e1 = np.sum(counts * p) - 1.0\n    # forward KL(P||U) = logN - H,  H = -sum n_i p_i log p_i\n    fwd = logN + np.sum(counts * p * x)\n    e2 = fwd - TARGET\n    # backward KL(U||P) = -logN - (1/N) sum_i log P(i)\n    bwd = -logN - np.sum(counts * x) / N\n    e3 = bwd - TARGET\n    return [e1, e2, e3]\n\n\n# initial guess from analysis: heavy ~1/7, light ~ e^-22, mid in between\nguess = [np.log(0.15), -12.0, -22.0]\nsol = fsolve(equations, guess, full_output=True)\nx = sol[0]\nprint(\"converged:\", sol[2], sol[3])\n\np = np.exp(x)\nprint(\"levels:\", p, \"counts:\", counts)\n\n# Build full distribution\ndist = np.empty(N, dtype=np.float64)\ndist[:n1] = p[0]\ndist[n1:n1 + n2] = p[1]\ndist[n1 + n2:] = p[2]\n\n# Renormalize defensively (tiny numerical drift), then report actual metrics\ndist = dist / dist.sum()\n\nU = 1.0 / N\nfwd = np.sum(dist * np.log(dist / U))\nbwd = np.sum(U * np.log(U / dist))\nprint(\"sum:\", dist.sum())\nprint(\"forward KL:\", fwd, \"err:\", abs(fwd - TARGET))\nprint(\"backward KL:\", bwd, \"err:\", abs(bwd - TARGET))\n\nassert abs(fwd - TARGET) <= 1e-3, fwd\nassert abs(bwd - TARGET) <= 1e-3, bwd\nassert np.all(dist > 0)\nassert abs(dist.sum() - 1.0) < 1e-9\n\nnp.save(\"/app/dist.npy\", dist)\nprint(\"saved /app/dist.npy\")\n"
@@ -43,7 +43,7 @@
               "path": "/app/solve.py",
               "new": "import numpy as np\nfrom scipy.optimize import fsolve\n\nN = 150000\nlogN = np.log(N)\nTARGET = 10.0\n\n# Three probability levels with fixed integer counts.\nn1, n2 = 6, 3\nn3 = N - n1 - n2\ncounts = np.array([n1, n2, n3], dtype=float)\n\n\ndef equations(x):\n    # x = log-probabilities of the three levels (ensures positivity)\n    p = np.exp(x)\n    # eq1: normalization\n    e1 = np.sum(counts * p) - 1.0\n    # forward KL(P||U) = logN - H,  H = -sum n_i p_i log p_i\n    fwd = logN + np.sum(counts * p * x)\n    e2 = fwd - TARGET\n    # backward KL(U||P) = -logN - (1/N) sum_i log P(i)\n    bwd = -logN - np.sum(counts * x) / N\n    e3 = bwd - TARGET\n    return [e1, e2, e3]\n\n\n# initial guess from analysis: heavy ~1/7, light ~ e^-22, mid in between\nguess = [np.log(0.15), -12.0, -22.0]\nsol = fsolve(equations, guess, full_output=True)\nx = sol[0]\nprint(\"converged:\", sol[2], sol[3])\n\np = np.exp(x)\nprint(\"levels:\", p, \"counts:\", counts)\n\n# Build full distribution\ndist = np.empty(N, dtype=np.float64)\ndist[:n1] = p[0]\ndist[n1:n1 + n2] = p[1]\ndist[n1 + n2:] = p[2]\n\n# Renormalize defensively (tiny numerical drift), then report actual metrics\ndist = dist / dist.sum()\n\nU = 1.0 / N\nfwd = np.sum(dist * np.log(dist / U))\nbwd = np.sum(U * np.log(U / dist))\nprint(\"sum:\", dist.sum())\nprint(\"forward KL:\", fwd, \"err:\", abs(fwd - TARGET))\nprint(\"backward KL:\", bwd, \"err:\", abs(bwd - TARGET))\n\nassert abs(fwd - TARGET) <= 1e-3, fwd\nassert abs(bwd - TARGET) <= 1e-3, bwd\nassert np.all(dist > 0)\nassert abs(dist.sum() - 1.0) < 1e-9\n\nnp.save(\"/app/dist.npy\", dist)\nprint(\"saved /app/dist.npy\")\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -104,7 +104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mk7LFHJ4kGLqWmfwbnJ4zN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py"
           },
@@ -112,7 +112,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -173,7 +173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RJfu7UWYpSrusEpy7RoLeF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=d.size; U=1.0/N\nprint('shape',d.shape,'dtype',d.dtype)\nprint('valid: sum=%.12f min>0=%s'%(d.sum(), bool((d>0).all())))\nprint('fwd KL(P||U)=',float((d*np.log(d/U)).sum()))\nprint('bwd KL(U||P)=',float((U*np.log(U/d)).sum()))\n\""
           },
@@ -181,7 +181,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=d.size; U=1.0/N\nprint('shape',d.shape,'dtype',d.dtype)\nprint('valid: sum=%.12f min>0=%s'%(d.sum(), bool((d>0).all())))\nprint('fwd KL(P||U)=',float((d*np.log(d/U)).sum()))\nprint('bwd KL(U||P)=',float((U*np.log(U/d)).sum()))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -297,7 +297,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T9DY8W8872bF6iFmAAJxTu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && find . -name 'test*' -o -name '*test*' 2>/dev/null | head"
           },
@@ -305,7 +305,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && find . -name 'test*' -o -name '*test*' 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -366,7 +366,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AAfXiiZbzxNxRrby89iAfc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; find / -path /proc -prune -o \\( -name 'test_*.py' -o -name '*_test.py' -o -name 'conftest.py' \\) -print 2>/dev/null | grep -v site-packages | head"
           },
@@ -374,7 +374,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; find / -path /proc -prune -o \\( -name 'test_*.py' -o -name '*_test.py' -o -name 'conftest.py' \\) -print 2>/dev/null | grep -v site-packages | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
         "results": [
           {
             "source_call_id": "toolu_01AAfXiiZbzxNxRrby89iAfc",
-            "content": "{\"type\": \"text\", \"text\": \"total 1188\\ndrwxr-xr-x 1 root root    4096 Jul  4 03:12 .\\ndrwxr-xr-x 1 root root    4096 Jul  4 03:11 ..\\ndrwxr-xr-x 3 root root    4096 Jul  4 03:12 .git\\n-rw-r--r-- 1 root root 1200128 Jul  4 03:12 dist.npy\\n-rw------- 1 root root    1567 Jul  4 03:12 solve.py\\n---\\n/usr/lib/python3.11/test/test_support.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/atelier/.claude/worktrees/agent-a82f164b3e29472c3/tests/docs/test_no_hardcoded_savings_yaml.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 1188\\ndrwxr-xr-x 1 root root    4096 Jul  4 03:12 .\\ndrwxr-xr-x 1 root root    4096 Jul  4 03:11 ..\\ndrwxr-xr-x 3 root root    4096 Jul  4 03:12 .git\\n-rw-r--r-- 1 root root 1200128 Jul  4 03:12 dist.npy\\n-rw------- 1 root root    1567 Jul  4 03:12 solve.py\\n---\\n/usr/lib/python3.11/test/test_support.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/tests/docs/test_no_hardcoded_savings_yaml.py\"}"
           }
         ]
       },
@@ -435,7 +435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019o9o4oPw8PRTYJdQ1ZfV3h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd = np.load('/app/dist.npy')\nN = d.size; U = 1.0/N\nfwd = float((d*np.log(d/U)).sum())\nbwd = float((U*np.log(U/d)).sum())\nchecks = {\n  'vocab size == 150000': d.shape == (150000,),\n  'valid dist (>0)': bool((d>0).all()),\n  'sums to 1': abs(d.sum()-1.0) < 1e-9,\n  'forward KL within 0.001 of 10': abs(fwd-10.0) <= 1e-3,\n  'backward KL within 0.001 of 10': abs(bwd-10.0) <= 1e-3,\n}\nfor k,v in checks.items():\n    print(('PASS' if v else 'FAIL'), '-', k)\nassert all(checks.values()), 'ACCEPTANCE FAILED'\nprint('ALL ACCEPTANCE CHECKS PASSED  fwd=%.9f bwd=%.9f'%(fwd,bwd))\n\""
           },
@@ -443,7 +443,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd = np.load('/app/dist.npy')\nN = d.size; U = 1.0/N\nfwd = float((d*np.log(d/U)).sum())\nbwd = float((U*np.log(U/d)).sum())\nchecks = {\n  'vocab size == 150000': d.shape == (150000,),\n  'valid dist (>0)': bool((d>0).all()),\n  'sums to 1': abs(d.sum()-1.0) < 1e-9,\n  'forward KL within 0.001 of 10': abs(fwd-10.0) <= 1e-3,\n  'backward KL within 0.001 of 10': abs(bwd-10.0) <= 1e-3,\n}\nfor k,v in checks.items():\n    print(('PASS' if v else 'FAIL'), '-', k)\nassert all(checks.values()), 'ACCEPTANCE FAILED'\nprint('ALL ACCEPTANCE CHECKS PASSED  fwd=%.9f bwd=%.9f'%(fwd,bwd))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

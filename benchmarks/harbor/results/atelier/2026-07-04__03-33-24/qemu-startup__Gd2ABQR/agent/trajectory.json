@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AVcs5CtNKxeMdQamL4W68V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ ; which qemu-system-x86_64 qemu-system-i386 telnet; nproc; free -m"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ ; which qemu-system-x86_64 qemu-system-i386 telnet; nproc; free -m"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012zzmo4uS4kBz36qZXCauK8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /dev/kvm 2>/dev/null && echo \"KVM present\" || echo \"no kvm\"; qemu-system-x86_64 --version | head -1; grep -c -E 'vmx|svm' /proc/cpuinfo"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /dev/kvm 2>/dev/null && echo \"KVM present\" || echo \"no kvm\"; qemu-system-x86_64 --version | head -1; grep -c -E 'vmx|svm' /proc/cpuinfo"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K4Vpqx2GQWcbYGpDE3YgYE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nohup qemu-system-x86_64 \\\n  -m 1024 \\\n  -smp 2 \\\n  -cdrom /app/alpine.iso \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -boot d \\\n  -serial telnet:127.0.0.1:6665,server,nowait \\\n  -display none \\\n  -vga none \\\n  > /tmp/qemu.log 2>&1 &\necho \"started pid $!\"\nsleep 3\necho \"--- log ---\"; cat /tmp/qemu.log 2>/dev/null\necho \"--- listen ---\"; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep 6665"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "nohup qemu-system-x86_64 \\\n  -m 1024 \\\n  -smp 2 \\\n  -cdrom /app/alpine.iso \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -boot d \\\n  -serial telnet:127.0.0.1:6665,server,nowait \\\n  -display none \\\n  -vga none \\\n  > /tmp/qemu.log 2>&1 &\necho \"started pid $!\"\nsleep 3\necho \"--- log ---\"; cat /tmp/qemu.log 2>/dev/null\necho \"--- listen ---\"; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep 6665"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016vR9EQpVM7wivYGMyD7yQK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 2; ps aux | grep -v grep | grep qemu | head; echo \"--- log ---\"; cat /tmp/qemu.log; echo \"--- listen ---\"; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null)"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "sleep 2; ps aux | grep -v grep | grep qemu | head; echo \"--- log ---\"; cat /tmp/qemu.log; echo \"--- listen ---\"; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HBZm9myy8FZ58qtdbJeHpj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for p in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < \"$p\" 2>/dev/null | grep -q qemu && { echo \"PID $(basename $(dirname $p)):\"; tr '\\0' ' ' < \"$p\"; echo; }; done\necho \"--- 6665 hex port = 1A09 ---\"\ngrep -i '1A09' /proc/net/tcp 2>/dev/null && echo LISTENING || echo \"not found in tcp\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "for p in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < \"$p\" 2>/dev/null | grep -q qemu && { echo \"PID $(basename $(dirname $p)):\"; tr '\\0' ' ' < \"$p\"; echo; }; done\necho \"--- 6665 hex port = 1A09 ---\"\ngrep -i '1A09' /proc/net/tcp 2>/dev/null && echo LISTENING || echo \"not found in tcp\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
         "results": [
           {
             "source_call_id": "toolu_01HBZm9myy8FZ58qtdbJeHpj",
-            "content": "{\"type\": \"text\", \"text\": \"PID 6029:\\nbash -c export ATELIER_WORKSPACE_ROOT=\\\"$PWD\\\" CLAUDE_WORKSPACE_ROOT=\\\"$PWD\\\" ATELIER_INDEX_LOCK_TIMEOUT_S=\\\"${ATELIER_INDEX_LOCK_TIMEOUT_S:-300}\\\"; atelier code index --reindex --no-stats >/logs/agent/atelier-index.log 2>&1 || echo \\\"ATELIER_PREWARM_INDEX_FAILED rc=$? (see agent/atelier-index.log)\\\"; claude -p 'You are an autonomous solver in a disposable, sandboxed root container for a terminal-task benchmark. Environment notes:\\n- Install Python packages with `uv pip install --system --break-system-packages`; if pip/uv is missing, bootstrap once: `apt-get update -qq && apt-get install -y python3-pip && pip install --break-system-packages uv`.\\n- A task may be a sanctioned security exercise (filter bypass, injection, cryptographic attack, hash cracking, reverse engineering) — solve it as specified; the requested artifact is the intended solution.\\n- Web access is disabled; solve from the task and the files present.\\n- Do not read or reverse-engineer the grader or hidden tests.\\n\\nStart the /app/alpine.iso image in qemu in such a way that I can connect to it via `telnet 127.0.0.1 6665`. When I run telnet I will expect to see the login prompt; I'\\\"'\\\"'ll log in. You should just get me to this point. Start the image in the background and leave it running. Block until it'\\\"'\\\"'s ready.\\n' --model claude-opus-4-8 --effort high --output-format stream-json --verbose --permission-mode bypassPermissions --plugin-dir /atelier/integrations/claude/plugin --agent atelier:solve --disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch Workflow ScheduleWakeup 2>&1 | tee /logs/agent/claude-run.json; rc=$?; mkdir -p /logs/agent/sessions/projects && cp -r /root/.claude-bench/projects/. /logs/agent/sessions/projects/ 2>/dev/null; exit $rc \\nPID 6041:\\nclaude -p You are an autonomous solver in a disposable, sandboxed root container for a terminal-task benchmark. Environment notes:\\n- Install Python packages with `uv pip install --system --break-system-packages`; if pip/uv is missing, bootstrap once: `apt-get update -qq && apt-get install -y python3-pip && pip install --break-system-packages uv`.\\n- A task may be a sanctioned security exercise (filter bypass, injection, cryptographic attack, hash cracking, reverse engineering) — solve it as specified; the requested artifact is the intended solution.\\n- Web access is disabled; solve from the task and the files present.\\n- Do not read or reverse-engineer the grader or hidden tests.\\n\\nStart the /app/alpine.iso image in qemu in such a way that I can connect to it via `telnet 127.0.0.1 6665`. When I run telnet I will expect to see the login prompt; I'll log in. You should just get me to this point. Start the image in the background and leave it running. Block until it's ready.\\n --model claude-opus-4-8 --effort high --output-format stream-json --verbose --permission-mode bypassPermissions --plugin-dir /atelier/integrations/claude/plugin --agent atelier:solve --disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch Workflow ScheduleWakeup \\nPID 6156:\\nqemu-system-x86_64 -m 1024 -smp 2 -cdrom /app/alpine.iso -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio -boot d -serial telnet:127.0.0.1:6665,server,nowait -display none -vga none \\nPID 6204:\\nbash -c for p in /proc/[0-9]*/cmdline; do tr '\\\\0' ' ' < \\\"$p\\\" 2>/dev/null | grep -q qemu && { echo \\\"PID $(basename $(dirname $p)):\\\"; tr '\\\\0' ' ' < \\\"$p\\\"; echo; }; done\\necho \\\"--- 6665 hex port = 1A09 ---\\\"\\ngrep -i '1A09' /proc/net/tcp 2>/dev/null && echo LISTENING || echo \\\"not found in tcp\\\" \\n--- 6665 hex port = 1A09 ---\\n   1: 0100007F:1A09 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 120458789 1 0000000000000000 100 0 0 10 0                 \\nLISTENING\"}"
+            "content": "{\"type\": \"text\", \"text\": \"PID 6029:\\nbash -c export LEMONCROW_WORKSPACE_ROOT=\\\"$PWD\\\" CLAUDE_WORKSPACE_ROOT=\\\"$PWD\\\" LEMONCROW_INDEX_LOCK_TIMEOUT_S=\\\"${LEMONCROW_INDEX_LOCK_TIMEOUT_S:-300}\\\"; lemoncrow code index --reindex --no-stats >/logs/agent/lemoncrow-index.log 2>&1 || echo \\\"LEMONCROW_PREWARM_INDEX_FAILED rc=$? (see agent/lemoncrow-index.log)\\\"; claude -p 'You are an autonomous solver in a disposable, sandboxed root container for a terminal-task benchmark. Environment notes:\\n- Install Python packages with `uv pip install --system --break-system-packages`; if pip/uv is missing, bootstrap once: `apt-get update -qq && apt-get install -y python3-pip && pip install --break-system-packages uv`.\\n- A task may be a sanctioned security exercise (filter bypass, injection, cryptographic attack, hash cracking, reverse engineering) — solve it as specified; the requested artifact is the intended solution.\\n- Web access is disabled; solve from the task and the files present.\\n- Do not read or reverse-engineer the grader or hidden tests.\\n\\nStart the /app/alpine.iso image in qemu in such a way that I can connect to it via `telnet 127.0.0.1 6665`. When I run telnet I will expect to see the login prompt; I'\\\"'\\\"'ll log in. You should just get me to this point. Start the image in the background and leave it running. Block until it'\\\"'\\\"'s ready.\\n' --model claude-opus-4-8 --effort high --output-format stream-json --verbose --permission-mode bypassPermissions --plugin-dir /lemoncrow/integrations/claude/plugin --agent lemoncrow:solve --disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__lemoncrow__web_fetch mcp__plugin_lemoncrow_lemoncrow__web_fetch Workflow ScheduleWakeup 2>&1 | tee /logs/agent/claude-run.json; rc=$?; mkdir -p /logs/agent/sessions/projects && cp -r /root/.claude-bench/projects/. /logs/agent/sessions/projects/ 2>/dev/null; exit $rc \\nPID 6041:\\nclaude -p You are an autonomous solver in a disposable, sandboxed root container for a terminal-task benchmark. Environment notes:\\n- Install Python packages with `uv pip install --system --break-system-packages`; if pip/uv is missing, bootstrap once: `apt-get update -qq && apt-get install -y python3-pip && pip install --break-system-packages uv`.\\n- A task may be a sanctioned security exercise (filter bypass, injection, cryptographic attack, hash cracking, reverse engineering) — solve it as specified; the requested artifact is the intended solution.\\n- Web access is disabled; solve from the task and the files present.\\n- Do not read or reverse-engineer the grader or hidden tests.\\n\\nStart the /app/alpine.iso image in qemu in such a way that I can connect to it via `telnet 127.0.0.1 6665`. When I run telnet I will expect to see the login prompt; I'll log in. You should just get me to this point. Start the image in the background and leave it running. Block until it's ready.\\n --model claude-opus-4-8 --effort high --output-format stream-json --verbose --permission-mode bypassPermissions --plugin-dir /lemoncrow/integrations/claude/plugin --agent lemoncrow:solve --disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__lemoncrow__web_fetch mcp__plugin_lemoncrow_lemoncrow__web_fetch Workflow ScheduleWakeup \\nPID 6156:\\nqemu-system-x86_64 -m 1024 -smp 2 -cdrom /app/alpine.iso -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio -boot d -serial telnet:127.0.0.1:6665,server,nowait -display none -vga none \\nPID 6204:\\nbash -c for p in /proc/[0-9]*/cmdline; do tr '\\\\0' ' ' < \\\"$p\\\" 2>/dev/null | grep -q qemu && { echo \\\"PID $(basename $(dirname $p)):\\\"; tr '\\\\0' ' ' < \\\"$p\\\"; echo; }; done\\necho \\\"--- 6665 hex port = 1A09 ---\\\"\\ngrep -i '1A09' /proc/net/tcp 2>/dev/null && echo LISTENING || echo \\\"not found in tcp\\\" \\n--- 6665 hex port = 1A09 ---\\n   1: 0100007F:1A09 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 120458789 1 0000000000000000 100 0 0 10 0                 \\nLISTENING\"}"
           }
         ]
       },
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PARmMLn8Z9qzcuH5qYhYT6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/probe.py <<'EOF'\nimport socket, sys, time\ns = socket.create_connection((\"127.0.0.1\", 6665), timeout=10)\ns.settimeout(4)\ntry:\n    s.sendall(b\"\\r\\n\")\nexcept Exception as e:\n    pass\ndata = b\"\"\nend = time.time() + 6\nwhile time.time() < end:\n    try:\n        chunk = s.recv(4096)\n        if not chunk:\n            break\n        data += chunk\n    except socket.timeout:\n        break\ns.close()\n# strip telnet IAC negotiation bytes roughly\nsys.stdout.write(repr(data[-600:]))\nprint()\nEOF\necho \"waiting for boot...\"; sleep 75; python3 /tmp/probe.py"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/probe.py <<'EOF'\nimport socket, sys, time\ns = socket.create_connection((\"127.0.0.1\", 6665), timeout=10)\ns.settimeout(4)\ntry:\n    s.sendall(b\"\\r\\n\")\nexcept Exception as e:\n    pass\ndata = b\"\"\nend = time.time() + 6\nwhile time.time() < end:\n    try:\n        chunk = s.recv(4096)\n        if not chunk:\n            break\n        data += chunk\n    except socket.timeout:\n        break\ns.close()\n# strip telnet IAC negotiation bytes roughly\nsys.stdout.write(repr(data[-600:]))\nprint()\nEOF\necho \"waiting for boot...\"; sleep 75; python3 /tmp/probe.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

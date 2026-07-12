@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AKjXFfzdrfYSJUDCQw2z9h",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sim.c",
@@ -47,7 +47,7 @@
                 "/app/gates.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LrHPFU5tgx6db7cyVcFURv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && head -5 /app/gates.txt && wc -l /app/gates.txt"
           },
@@ -116,7 +116,7 @@
             "raw_arguments": {
               "command": "ls -la /app && head -5 /app/gates.txt && wc -l /app/gates.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -177,7 +177,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0145k3SebK8pRbanB9Sms1iw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/sim 2>/dev/null; which gcc cc; cd /app && gcc -O2 -o sim sim.c 2>&1 | head; echo done; ./sim 208; ./sim 20000"
           },
@@ -185,7 +185,7 @@
             "raw_arguments": {
               "command": "ls -la /app/sim 2>/dev/null; which gcc cc; cd /app && gcc -O2 -o sim sim.c 2>&1 | head; echo done; ./sim 208; ./sim 20000"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -246,7 +246,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C83QLWkKJ93Rakh4zm7o6W",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -266,7 +266,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -327,7 +327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0176tn9zaztWi7gqTgMCy8Bh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 gen.py && wc -l gates.txt && ./sim 208 && ./sim 20000"
           },
@@ -335,7 +335,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 gen.py && wc -l gates.txt && ./sim 208 && ./sim 20000"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -396,7 +396,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FPnKGQdX51cC6aH5fanf6H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > ref.py <<'EOF'\nimport subprocess, math, sys, random\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,(a+b)&0xFFFFFFFF\n    return a\ndef ref(N):\n    k=math.isqrt(N)\n    return fib(k)&0xFFFFFFFF\ntests=[0,1,2,3,4,8,15,16,24,25,208,20000,1000000,4294967295,4294836225,4294836224,65535,65536,2**31,2**32-1]\ntests+= [x*x for x in [0,1,100,255,256,65535]]\ntests+= [random.randint(0,2**32-1) for _ in range(20)]\nbad=0\nfor N in tests:\n    out=int(subprocess.run([\"./sim\",str(N)],capture_output=True,text=True).stdout)\n    exp=ref(N)\n    if out!=exp:\n        print(\"FAIL\",N,\"got\",out,\"exp\",exp,\"isqrt\",math.isqrt(N)); bad+=1\nprint(\"done, failures=\",bad)\nEOF\npython3 ref.py"
           },
@@ -404,7 +404,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > ref.py <<'EOF'\nimport subprocess, math, sys, random\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,(a+b)&0xFFFFFFFF\n    return a\ndef ref(N):\n    k=math.isqrt(N)\n    return fib(k)&0xFFFFFFFF\ntests=[0,1,2,3,4,8,15,16,24,25,208,20000,1000000,4294967295,4294836225,4294836224,65535,65536,2**31,2**32-1]\ntests+= [x*x for x in [0,1,100,255,256,65535]]\ntests+= [random.randint(0,2**32-1) for _ in range(20)]\nbad=0\nfor N in tests:\n    out=int(subprocess.run([\"./sim\",str(N)],capture_output=True,text=True).stdout)\n    exp=ref(N)\n    if out!=exp:\n        print(\"FAIL\",N,\"got\",out,\"exp\",exp,\"isqrt\",math.isqrt(N)); bad+=1\nprint(\"done, failures=\",bad)\nEOF\npython3 ref.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -465,7 +465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HwZCpYWVh8LLgqQm8qtnzF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f ref.py && wc -l gates.txt && ls"
           },
@@ -473,7 +473,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f ref.py && wc -l gates.txt && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PKYa5Xagd4sYg8ytpVr6Bu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 gen.py && cat > /tmp/ref.py <<'EOF'\nimport subprocess, math, random\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,(a+b)&0xFFFFFFFF\n    return a\ntests=[0,1,2,3,4,8,15,16,24,25,208,20000,1000000,4294967295,4294836225,4294836224,65535,65536,2**31,2**32-1]\ntests+=[x*x for x in [0,1,100,255,256,65535]]\nrandom.seed(1); tests+=[random.randint(0,2**32-1) for _ in range(30)]\nbad=0\nfor N in tests:\n    out=int(subprocess.run([\"./sim\",str(N)],capture_output=True,text=True).stdout)\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if out!=exp: print(\"FAIL\",N,\"got\",out,\"exp\",exp); bad+=1\nprint(\"cases=\",len(tests),\"failures=\",bad)\nEOF\npython3 /tmp/ref.py && rm -f /tmp/ref.py"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 gen.py && cat > /tmp/ref.py <<'EOF'\nimport subprocess, math, random\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,(a+b)&0xFFFFFFFF\n    return a\ntests=[0,1,2,3,4,8,15,16,24,25,208,20000,1000000,4294967295,4294836225,4294836224,65535,65536,2**31,2**32-1]\ntests+=[x*x for x in [0,1,100,255,256,65535]]\nrandom.seed(1); tests+=[random.randint(0,2**32-1) for _ in range(30)]\nbad=0\nfor N in tests:\n    out=int(subprocess.run([\"./sim\",str(N)],capture_output=True,text=True).stdout)\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if out!=exp: print(\"FAIL\",N,\"got\",out,\"exp\",exp); bad+=1\nprint(\"cases=\",len(tests),\"failures=\",bad)\nEOF\npython3 /tmp/ref.py && rm -f /tmp/ref.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

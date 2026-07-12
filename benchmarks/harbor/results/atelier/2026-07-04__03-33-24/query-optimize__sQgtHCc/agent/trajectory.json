@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LqLVKWd8jwKUZ8D4L9U18T",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/my-sql-query.sql"
@@ -45,12 +45,12 @@
                 "/app/my-sql-query.sql"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_017JW75r1nPmaoFv2Yeyo3AK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/oewn.sqlite \".tables\""
           },
@@ -58,7 +58,7 @@
             "raw_arguments": {
               "command": "sqlite3 /app/oewn.sqlite \".tables\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FxAC587KvKfLd4CQn462yQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/oewn.sqlite \".schema senses\" \".schema synsets\" \".schema words\""
           },
@@ -131,12 +131,12 @@
             "raw_arguments": {
               "command": "sqlite3 /app/oewn.sqlite \".schema senses\" \".schema synsets\" \".schema words\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_012GEasshD2GeRL3hcGsbirv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/oewn.sqlite \"SELECT count(*) FROM senses; SELECT count(*) FROM words; SELECT count(*) FROM synsets;\""
           },
@@ -144,7 +144,7 @@
             "raw_arguments": {
               "command": "sqlite3 /app/oewn.sqlite \"SELECT count(*) FROM senses; SELECT count(*) FROM words; SELECT count(*) FROM synsets;\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UpeWGtxB8iM6qJHX8JHyuk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/oewn.sqlite \"SELECT name,tbl_name,sql FROM sqlite_master WHERE type='index';\""
           },
@@ -217,7 +217,7 @@
             "raw_arguments": {
               "command": "sqlite3 /app/oewn.sqlite \"SELECT name,tbl_name,sql FROM sqlite_master WHERE type='index';\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -278,7 +278,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QDCtvkGru46agboNG5n84H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/oewn.sqlite \"SELECT count(*),count(DISTINCT wordid) FROM words; SELECT count(*) FROM senses s LEFT JOIN synsets sy ON s.synsetid=sy.synsetid WHERE sy.synsetid IS NULL; SELECT count(*) FROM senses s LEFT JOIN words w ON s.wordid=w.wordid WHERE w.wordid IS NULL;\""
           },
@@ -286,7 +286,7 @@
             "raw_arguments": {
               "command": "sqlite3 /app/oewn.sqlite \"SELECT count(*),count(DISTINCT wordid) FROM words; SELECT count(*) FROM senses s LEFT JOIN synsets sy ON s.synsetid=sy.synsetid WHERE sy.synsetid IS NULL; SELECT count(*) FROM senses s LEFT JOIN words w ON s.wordid=w.wordid WHERE w.wordid IS NULL;\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -347,7 +347,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Wf2S2vUT3iML4iGy7K5K3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -367,7 +367,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -428,7 +428,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cf5N6kUJmxJ7Ahn2RrRR6a",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; sqlite3 oewn.sqlite -cmd \".timer on\" < my-sql-query.sql > out_orig.txt; echo \"---\"; sqlite3 oewn.sqlite -cmd \".timer on\" < sol.sql > out_sol.txt; echo \"diff:\"; diff out_orig.txt out_sol.txt && echo IDENTICAL"
           },
@@ -436,7 +436,7 @@
             "raw_arguments": {
               "command": "cd /app; sqlite3 oewn.sqlite -cmd \".timer on\" < my-sql-query.sql > out_orig.txt; echo \"---\"; sqlite3 oewn.sqlite -cmd \".timer on\" < sol.sql > out_sol.txt; echo \"diff:\"; diff out_orig.txt out_sol.txt && echo IDENTICAL"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -497,7 +497,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HQhruAUHEnTa4dgNBGRxYw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; sqlite3 oewn.sqlite < my-sql-query.sql > a.txt; sqlite3 oewn.sqlite < sol.sql > b.txt; wc -l a.txt b.txt; diff a.txt b.txt && echo IDENTICAL"
           },
@@ -505,7 +505,7 @@
             "raw_arguments": {
               "command": "cd /app; sqlite3 oewn.sqlite < my-sql-query.sql > a.txt; sqlite3 oewn.sqlite < sol.sql > b.txt; wc -l a.txt b.txt; diff a.txt b.txt && echo IDENTICAL"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

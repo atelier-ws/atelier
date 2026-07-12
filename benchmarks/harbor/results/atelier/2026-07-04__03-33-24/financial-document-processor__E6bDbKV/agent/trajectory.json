@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016HUy6a22WemQUQL7KNHubv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/documents/ && echo \"---\" && ls -la /app/ && python3 --version && which tesseract pdftotext pdfinfo 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/documents/ && echo \"---\" && ls -la /app/ && python3 --version && which tesseract pdftotext pdfinfo 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018yquXe6jUcAoyTQaacjx8i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pdftotext tesseract 2>&1; echo \"===\"; pip list 2>/dev/null | grep -iE \"pdf|pillow|pytesseract|ocr\" ; echo \"===\"; head -c 300 /app/documents/GFAlpKoFg81H.pdf"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "which pdftotext tesseract 2>&1; echo \"===\"; pip list 2>/dev/null | grep -iE \"pdf|pillow|pytesseract|ocr\" ; echo \"===\"; head -c 300 /app/documents/GFAlpKoFg81H.pdf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015xuYPGto8UPNCshoUnzeqY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -c 2000 /app/documents/GFAlpKoFg81H.pdf; echo; echo \"======T0r6===\"; head -c 2000 /app/documents/T0r6Ou8zvqTA.pdf"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "head -c 2000 /app/documents/GFAlpKoFg81H.pdf; echo; echo \"======T0r6===\"; head -c 2000 /app/documents/T0r6Ou8zvqTA.pdf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VeheLkHXHU7EF9v4asew3B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for f in GFAlpKoFg81H T0r6Ou8zvqTA UsN9tVTKskms dvkRkFVFhHga dx0AWchV01ZJ wIQEB5nR79b2; do echo \"=== $f ===\"; strings /app/documents/$f.pdf | grep -iE \"total|vat|tax|gst|amount|invoice|due|BT|Tj|stream\" | head -40; done"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "for f in GFAlpKoFg81H T0r6Ou8zvqTA UsN9tVTKskms dvkRkFVFhHga dx0AWchV01ZJ wIQEB5nR79b2; do echo \"=== $f ===\"; strings /app/documents/$f.pdf | grep -iE \"total|vat|tax|gst|amount|invoice|due|BT|Tj|stream\" | head -40; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SiET2bSTSTAeV3e3PBmFmh",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/documents/GFAlpKoFg81H.pdf",
@@ -323,7 +323,7 @@
                 "/app/documents/T0r6Ou8zvqTA.pdf"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -384,7 +384,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018a22VH6cxUd6AgGgDRZ9PA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pdfplumber\" 2>&1; python3 -c \"import pypdf\" 2>&1; python3 -c \"import fitz; print('fitz ok')\" 2>&1; python3 -c \"import PIL; print('PIL ok')\" 2>&1; python3 -c \"import pytesseract; print('pyt ok')\" 2>&1; echo \"--- uv ---\"; which uv pip 2>&1"
           },
@@ -392,7 +392,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pdfplumber\" 2>&1; python3 -c \"import pypdf\" 2>&1; python3 -c \"import fitz; print('fitz ok')\" 2>&1; python3 -c \"import PIL; print('PIL ok')\" 2>&1; python3 -c \"import pytesseract; print('pyt ok')\" 2>&1; echo \"--- uv ---\"; which uv pip 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -453,7 +453,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018CREyB7F9gqec8THdtF4cS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv pip pip3 2>&1; echo \"---try install pypdf---\"; uv pip install --system --break-system-packages pypdf 2>&1 | tail -5"
           },
@@ -461,7 +461,7 @@
             "raw_arguments": {
               "command": "which uv pip pip3 2>&1; echo \"---try install pypdf---\"; uv pip install --system --break-system-packages pypdf 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -522,7 +522,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01At9c9SDthDBanVZaHbdNPQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom pypdf import PdfReader\nimport glob\nfor f in sorted(glob.glob('documents/*.pdf')):\n    print('=====', f, '=====')\n    try:\n        r=PdfReader(f)\n        for p in r.pages:\n            print(p.extract_text())\n    except Exception as e:\n        print('ERR', e)\n\""
           },
@@ -530,7 +530,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom pypdf import PdfReader\nimport glob\nfor f in sorted(glob.glob('documents/*.pdf')):\n    print('=====', f, '=====')\n    try:\n        r=PdfReader(f)\n        for p in r.pages:\n            print(p.extract_text())\n    except Exception as e:\n        print('ERR', e)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -591,7 +591,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016kXoKHPmMTu2KsnC91CQNm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y tesseract-ocr 2>&1 | tail -3; echo \"===\"; which tesseract 2>&1"
           },
@@ -599,7 +599,7 @@
             "raw_arguments": {
               "command": "apt-get install -y tesseract-ocr 2>&1 | tail -3; echo \"===\"; which tesseract 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -660,7 +660,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QpG7wuCFN882kbiE1G3rcn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pytesseract pillow 2>&1 | tail -3"
           },
@@ -668,7 +668,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pytesseract pillow 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -729,7 +729,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C9vGs4VHuoVJEwEorKCvMZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pytesseract, glob\nfrom PIL import Image\nfor f in sorted(glob.glob('documents/*.jpg')):\n    print('==========', f, '==========')\n    try:\n        print(pytesseract.image_to_string(Image.open(f)))\n    except Exception as e:\n        print('ERR', e)\n\""
           },
@@ -737,7 +737,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pytesseract, glob\nfrom PIL import Image\nfor f in sorted(glob.glob('documents/*.jpg')):\n    print('==========', f, '==========')\n    try:\n        print(pytesseract.image_to_string(Image.open(f)))\n    except Exception as e:\n        print('ERR', e)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -745,7 +745,7 @@
         "results": [
           {
             "source_call_id": "toolu_01C9vGs4VHuoVJEwEorKCvMZ",
-            "content": "{\"type\": \"text\", \"text\": \"========== documents/2lgKzDuI4E4g.jpg ==========\\nInvoice\\n\\nInvoice number 976987\\nDate of issue Oct. 3, 2023\\nDate due Nov. 30, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\nBill to\\n\\nCMCOM\\n\\n$4382 USD due Nov. 30, 2023\\n\\nPay online\\nDescription Quantity\\nGreen Belting Teflon 100-10S 10\\nGreen Belting Teflon 100-10S\\nDevcon 15050 Flexane FastCure ,\\nDevcon 15050 Flexane FastCure\\n3M #74 Scrubbing Sponge 20/cs 3\\n3M #74 Scrubbing Sponge 20/cs\\n3M #468MP Transfer Tape 1 1/2\\\" 5\\n3M #468MP Transfer Tape 1 1/2\\\"\\n3M PPS MIX RATIO INSERT 10\\n3M PPS MIX RATIO INSERT\\nLoctite 5600 Sil. Res. Black 3\\nLoctite 5600 Sil. Res. Black\\n3M SJ3519FR Scotchmate Fast HK ,\\n3M SJ3519FR Scotchmate Fast HK\\nSubTotal:\\nTotal:\\n\\nAmount due:\\n\\nunit_price\\n\\n$35\\n\\n$40\\n\\n$40\\n\\n$16\\n\\n$36\\n\\n$764\\n\\n$107\\n... (561 lines omitted) ...\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n========== documents/vvK89XK847m3.jpg ==========\\nInvoice no: 51109338\\n\\nDate of issue: 04/13/2013\\n\\nSeller: Client:\\n\\nAndrews, Kirby and Valdez Becker Ltd\\n\\n58861 Gonzalez Prairie 8012 Stewart Summit Apt. 455\\nLake Daniellefurt, IN 57228 North Douglas, AZ 95355\\n\\nTax Id: 945-82-2137 Tax Id: 942-80-0517\\n\\nIBAN: GB75MCRL06841367619257\\n\\nITEMS\\nNo. Description Qty UM Net price Net worth VAT [%] Gross\\nworth\\nil CLEARANCE! Fast Dell Desktop 3,00 each 209,00 627,00 10% 689,70\\nComputer PC DUAL CORE\\nWINDOWS 10 4/8/16GB RAM\\n2. HP T520 Thin Client Computer 5,00 each 37,75 188,75 10% 207,63\\nAMD GX-212JC 1.2GHz 4GB RAM\\nTESTED !!READ BELOW!!\\n3: gaming pc desktop computer 1,00 each 400,00 400,00 10% 440,00\\n4. 12-Core Gaming Computer 3,00 each 464,89 1 394,67 10% 1 534,14\\nDesktop PC Tower Affordable\\nGAMING PC 8GB AMD Vega RGB\\n5) Custom Build Dell Optiplex 9020 5,00 each 221,99 1 109,95 10% 1 220,95\\nMT i5-4570 3.20GHz Desktop\\nComputer PC\\n6. Dell Optiplex 990 MT Computer 4,00 each 269,95 1 079,80 10% 1 187,78\\nPC Quad Core i7 3.4GHz 16GB\\n2TB HD Windows 10 Pro\\nUs Dell Core 2 Duo Desktop 5,00 each 168,00 840,00 10% 924,00\\nComputer | Windows XP Pro |\\n4GB | 500GB\\nSUMMARY\\nVAT [%] Net worth VAT Gross worth\\n10% 5 640,17 564,02 6 204,19\\n\\nTotal $ 5 640,17 $ 564,02 $ 6 204,19\\n\\n========== documents/w0i40MJP2Dzm.jpg ==========\\nInvoice no: 19471831\\n\\nDate of issue:\\n\\nSeller:\\n\\nPalmer Ltd\\n9790 Bauer Hills Apt. 146\\nSouth Patriciaton, SD 32497\\n\\nTax Id: 924-71-1106\\nIBAN: GBO5YUTG50853913677557\\n\\nITEMS\\n\\nNo. Description\\n\\n1 15\\\"x15\\\" White Decorative\\nCoffee Table Top Lapis Lazuli\\nMarquetery Patio Décor\\n\\n2. 4'x2' Marble Dining Table Top\\nPietra Dura Birds Inlay Art\\nFurniture Decors B444\\n\\n3: 60 Inches Marble Dinning Table\\n\\nTop Hand Inlaid Garden Table\\nwith Gemstones\\n\\nSUMMARY\\n\\nTotal\\n\\n04/09/2014\\n\\nQty uM\\n3,00 each\\n5,00 each\\n5,00 each\\n\\nVAT [%]\\n\\n10%\\n\\nClient:\\n\\nNet price\\n\\n645,77\\n\\n1 840,10\\n\\n5 908,00\\n\\nNet worth\\n40 677,81\\n\\n$ 40 677,81\\n\\nRios, Oneill and Rowe\\n3571 Tina Trafficway\\nBuckleyland, LA 97688\\n\\nTax Id: 922-72-5979\\n\\nNet worth VAT [%]\\n\\n1937/31 10%\\n9 200,50 10%\\n29 540,00 10%\\n\\nVAT\\n\\n4 067,78\\n\\n$ 4 067,78\\n\\nGross\\nworth\\n\\n2 131,04\\n\\n10 120,55\\n\\n32 494,00\\n\\nGross worth\\n44 745,59\\n\\n$ 44 745,59\\n\\n\\n[output truncated: 561 lines omitted; full output (10746B) spilled to /tmp/atelier-spill/original-bash-1783140739422-a8df254e.txt; read /tmp/atelier-spill/original-bash-1783140739422-a8df254e.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"========== documents/2lgKzDuI4E4g.jpg ==========\\nInvoice\\n\\nInvoice number 976987\\nDate of issue Oct. 3, 2023\\nDate due Nov. 30, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\nBill to\\n\\nCMCOM\\n\\n$4382 USD due Nov. 30, 2023\\n\\nPay online\\nDescription Quantity\\nGreen Belting Teflon 100-10S 10\\nGreen Belting Teflon 100-10S\\nDevcon 15050 Flexane FastCure ,\\nDevcon 15050 Flexane FastCure\\n3M #74 Scrubbing Sponge 20/cs 3\\n3M #74 Scrubbing Sponge 20/cs\\n3M #468MP Transfer Tape 1 1/2\\\" 5\\n3M #468MP Transfer Tape 1 1/2\\\"\\n3M PPS MIX RATIO INSERT 10\\n3M PPS MIX RATIO INSERT\\nLoctite 5600 Sil. Res. Black 3\\nLoctite 5600 Sil. Res. Black\\n3M SJ3519FR Scotchmate Fast HK ,\\n3M SJ3519FR Scotchmate Fast HK\\nSubTotal:\\nTotal:\\n\\nAmount due:\\n\\nunit_price\\n\\n$35\\n\\n$40\\n\\n$40\\n\\n$16\\n\\n$36\\n\\n$764\\n\\n$107\\n... (561 lines omitted) ...\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n========== documents/vvK89XK847m3.jpg ==========\\nInvoice no: 51109338\\n\\nDate of issue: 04/13/2013\\n\\nSeller: Client:\\n\\nAndrews, Kirby and Valdez Becker Ltd\\n\\n58861 Gonzalez Prairie 8012 Stewart Summit Apt. 455\\nLake Daniellefurt, IN 57228 North Douglas, AZ 95355\\n\\nTax Id: 945-82-2137 Tax Id: 942-80-0517\\n\\nIBAN: GB75MCRL06841367619257\\n\\nITEMS\\nNo. Description Qty UM Net price Net worth VAT [%] Gross\\nworth\\nil CLEARANCE! Fast Dell Desktop 3,00 each 209,00 627,00 10% 689,70\\nComputer PC DUAL CORE\\nWINDOWS 10 4/8/16GB RAM\\n2. HP T520 Thin Client Computer 5,00 each 37,75 188,75 10% 207,63\\nAMD GX-212JC 1.2GHz 4GB RAM\\nTESTED !!READ BELOW!!\\n3: gaming pc desktop computer 1,00 each 400,00 400,00 10% 440,00\\n4. 12-Core Gaming Computer 3,00 each 464,89 1 394,67 10% 1 534,14\\nDesktop PC Tower Affordable\\nGAMING PC 8GB AMD Vega RGB\\n5) Custom Build Dell Optiplex 9020 5,00 each 221,99 1 109,95 10% 1 220,95\\nMT i5-4570 3.20GHz Desktop\\nComputer PC\\n6. Dell Optiplex 990 MT Computer 4,00 each 269,95 1 079,80 10% 1 187,78\\nPC Quad Core i7 3.4GHz 16GB\\n2TB HD Windows 10 Pro\\nUs Dell Core 2 Duo Desktop 5,00 each 168,00 840,00 10% 924,00\\nComputer | Windows XP Pro |\\n4GB | 500GB\\nSUMMARY\\nVAT [%] Net worth VAT Gross worth\\n10% 5 640,17 564,02 6 204,19\\n\\nTotal $ 5 640,17 $ 564,02 $ 6 204,19\\n\\n========== documents/w0i40MJP2Dzm.jpg ==========\\nInvoice no: 19471831\\n\\nDate of issue:\\n\\nSeller:\\n\\nPalmer Ltd\\n9790 Bauer Hills Apt. 146\\nSouth Patriciaton, SD 32497\\n\\nTax Id: 924-71-1106\\nIBAN: GBO5YUTG50853913677557\\n\\nITEMS\\n\\nNo. Description\\n\\n1 15\\\"x15\\\" White Decorative\\nCoffee Table Top Lapis Lazuli\\nMarquetery Patio Décor\\n\\n2. 4'x2' Marble Dining Table Top\\nPietra Dura Birds Inlay Art\\nFurniture Decors B444\\n\\n3: 60 Inches Marble Dinning Table\\n\\nTop Hand Inlaid Garden Table\\nwith Gemstones\\n\\nSUMMARY\\n\\nTotal\\n\\n04/09/2014\\n\\nQty uM\\n3,00 each\\n5,00 each\\n5,00 each\\n\\nVAT [%]\\n\\n10%\\n\\nClient:\\n\\nNet price\\n\\n645,77\\n\\n1 840,10\\n\\n5 908,00\\n\\nNet worth\\n40 677,81\\n\\n$ 40 677,81\\n\\nRios, Oneill and Rowe\\n3571 Tina Trafficway\\nBuckleyland, LA 97688\\n\\nTax Id: 922-72-5979\\n\\nNet worth VAT [%]\\n\\n1937/31 10%\\n9 200,50 10%\\n29 540,00 10%\\n\\nVAT\\n\\n4 067,78\\n\\n$ 4 067,78\\n\\nGross\\nworth\\n\\n2 131,04\\n\\n10 120,55\\n\\n32 494,00\\n\\nGross worth\\n44 745,59\\n\\n$ 44 745,59\\n\\n\\n[output truncated: 561 lines omitted; full output (10746B) spilled to /tmp/lemoncrow-spill/original-bash-1783140739422-a8df254e.txt; read /tmp/lemoncrow-spill/original-bash-1783140739422-a8df254e.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -798,7 +798,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QNgg5ACDntHuENqZ9uMywN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pytesseract, glob\nfrom PIL import Image\nfor f in sorted(glob.glob('documents/*.jpg')):\n    print('==========', f, '==========')\n    try:\n        print(pytesseract.image_to_string(Image.open(f)))\n    except Exception as e:\n        print('ERR', e)\n\" > /tmp/ocr.txt 2>&1; wc -l /tmp/ocr.txt"
           },
@@ -806,7 +806,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pytesseract, glob\nfrom PIL import Image\nfor f in sorted(glob.glob('documents/*.jpg')):\n    print('==========', f, '==========')\n    try:\n        print(pytesseract.image_to_string(Image.open(f)))\n    except Exception as e:\n        print('ERR', e)\n\" > /tmp/ocr.txt 2>&1; wc -l /tmp/ocr.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -867,7 +867,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015b4VBYpGVnSkv7CQCaeNBD",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/ocr.txt:expand"
@@ -879,7 +879,7 @@
                 "/tmp/ocr.txt:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -940,7 +940,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SYGdwkZ9UQM2eUKPMomHi7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mkdir -p invoices other && python3 << 'EOF'\nimport shutil, csv, os\n\n# (filename, total_amount, vat_amount)\ninvoices = [\n    (\"2lgKzDuI4E4g.jpg\", 6558, 0),      # Total $6558 vs Amount due $4382 -> use Total; no VAT\n    (\"JOiylq2_7S18.jpg\", 6860.45, 623.68),\n    (\"KrJiw0OZx7jf.jpg\", 9963, 0),      # Total $9963 vs Amount due $7139 -> use Total; no VAT\n    (\"T0r6Ou8zvqTA.pdf\", 4031.0, 0),\n    (\"UsN9tVTKskms.pdf\", 896.0, 0),\n    (\"ivE2mt3HwvEO.jpg\", 819.06, 74.46),\n    (\"lxtL9XrYRsVG.jpg\", 797.91, 72.54),\n    (\"vvK89XK847m3.jpg\", 6204.19, 564.02),\n    (\"w0i40MJP2Dzm.jpg\", 44745.59, 4067.78),\n    (\"wIQEB5nR79b2.pdf\", 440.0, 0),\n]\nothers = [\n    \"6NVuAIhTV4KB.jpg\", \"F0oZMhSUm2dO.jpg\", \"QOoA_j33PD_E.jpg\",\n    \"WqWMArQQlSMv.jpg\", \"GFAlpKoFg81H.pdf\", \"dvkRkFVFhHga.pdf\",\n    \"dx0AWchV01ZJ.pdf\",\n]\n\ndef fmt(v):\n    if isinstance(v, float) and v.is_integer():\n        v = int(v)\n    return v\n\n# move invoices\nfor fn, t, v in invoices:\n    shutil.move(f\"documents/{fn}\", f\"invoices/{fn}\")\nfor fn in others:\n    shutil.move(f\"documents/{fn}\", f\"other/{fn}\")\n\ntot_sum = round(sum(t for _, t, _ in invoices), 2)\nvat_sum = round(sum(v for _, _, v in invoices), 2)\n\nwith open(\"invoices/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"filename\", \"total_amount\", \"vat_amount\"])\n    for fn, t, v in invoices:\n        w.writerow([fn, fmt(t), fmt(v)])\n    w.writerow([\"total\", fmt(tot_sum), fmt(vat_sum)])\n\nprint(\"remaining in documents:\", os.listdir(\"documents\"))\nprint(\"invoices:\", sorted(os.listdir(\"invoices\")))\nprint(\"other:\", sorted(os.listdir(\"other\")))\nprint(\"totals:\", tot_sum, vat_sum)\nEOF\necho \"=== summary.csv ===\"; cat /app/invoices/summary.csv"
           },
@@ -948,7 +948,7 @@
             "raw_arguments": {
               "command": "cd /app && mkdir -p invoices other && python3 << 'EOF'\nimport shutil, csv, os\n\n# (filename, total_amount, vat_amount)\ninvoices = [\n    (\"2lgKzDuI4E4g.jpg\", 6558, 0),      # Total $6558 vs Amount due $4382 -> use Total; no VAT\n    (\"JOiylq2_7S18.jpg\", 6860.45, 623.68),\n    (\"KrJiw0OZx7jf.jpg\", 9963, 0),      # Total $9963 vs Amount due $7139 -> use Total; no VAT\n    (\"T0r6Ou8zvqTA.pdf\", 4031.0, 0),\n    (\"UsN9tVTKskms.pdf\", 896.0, 0),\n    (\"ivE2mt3HwvEO.jpg\", 819.06, 74.46),\n    (\"lxtL9XrYRsVG.jpg\", 797.91, 72.54),\n    (\"vvK89XK847m3.jpg\", 6204.19, 564.02),\n    (\"w0i40MJP2Dzm.jpg\", 44745.59, 4067.78),\n    (\"wIQEB5nR79b2.pdf\", 440.0, 0),\n]\nothers = [\n    \"6NVuAIhTV4KB.jpg\", \"F0oZMhSUm2dO.jpg\", \"QOoA_j33PD_E.jpg\",\n    \"WqWMArQQlSMv.jpg\", \"GFAlpKoFg81H.pdf\", \"dvkRkFVFhHga.pdf\",\n    \"dx0AWchV01ZJ.pdf\",\n]\n\ndef fmt(v):\n    if isinstance(v, float) and v.is_integer():\n        v = int(v)\n    return v\n\n# move invoices\nfor fn, t, v in invoices:\n    shutil.move(f\"documents/{fn}\", f\"invoices/{fn}\")\nfor fn in others:\n    shutil.move(f\"documents/{fn}\", f\"other/{fn}\")\n\ntot_sum = round(sum(t for _, t, _ in invoices), 2)\nvat_sum = round(sum(v for _, _, v in invoices), 2)\n\nwith open(\"invoices/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"filename\", \"total_amount\", \"vat_amount\"])\n    for fn, t, v in invoices:\n        w.writerow([fn, fmt(t), fmt(v)])\n    w.writerow([\"total\", fmt(tot_sum), fmt(vat_sum)])\n\nprint(\"remaining in documents:\", os.listdir(\"documents\"))\nprint(\"invoices:\", sorted(os.listdir(\"invoices\")))\nprint(\"other:\", sorted(os.listdir(\"other\")))\nprint(\"totals:\", tot_sum, vat_sum)\nEOF\necho \"=== summary.csv ===\"; cat /app/invoices/summary.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

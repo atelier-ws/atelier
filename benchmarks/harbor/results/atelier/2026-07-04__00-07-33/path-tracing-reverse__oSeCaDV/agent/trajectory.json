@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011aGAawvyLaPNrp6rnBqFvD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file mystery && ./mystery; echo \"EXIT=$?\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file mystery && ./mystery; echo \"EXIT=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_011aGAawvyLaPNrp6rnBqFvD",
-            "content": "{\"type\": \"text\", \"text\": \"total 784\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:31 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:30 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:31 .atelier\\n-rwxr-xr-x 1 root root 790376 Oct 28  2025 mystery\\nEXIT=127\\n\\nstderr:\\nbash: line 1: file: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 784\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:31 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:30 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:31 .lemoncrow\\n-rwxr-xr-x 1 root root 790376 Oct 28  2025 mystery\\nEXIT=127\\n\\nstderr:\\nbash: line 1: file: command not found\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y9qREDmdmMLqMvqXyPKZTy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ./mystery </dev/null; echo \"EXIT=$?\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && ./mystery </dev/null; echo \"EXIT=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -118,7 +118,7 @@
         "results": [
           {
             "source_call_id": "toolu_01Y9qREDmdmMLqMvqXyPKZTy",
-            "content": "{\"type\": \"text\", \"text\": \"EXIT=0\\n\\nstderr:\\nCreating high-resolution image: 800x600\\nThis will be downsampled with ffmpeg after rendering\\nRendering high-resolution image...\\n\\nProgress: 0.0%\\nProgress: 0.2%\\nProgress: 0.3%\\nProgress: 0.5%\\nProgress: 0.7%\\nProgress: 0.8%\\nProgress: 1.0%\\nProgress: 1.2%\\nProgress: 1.3%\\nProgress: 1.5%\\nProgress: 1.7%\\nProgress: 1.8%\\nProgress: 2.0%\\nProgress: 2.2%\\nProgress: 2.3%\\nProgress: 2.5%\\nProgress: 2.7%\\nProgress: 2.8%\\nProgress: 3.0%\\nProgress: 3.2%\\nProgress: 3.3%\\nProgress: 3.5%\\nProgress: 3.7%\\nProgress: 3.8%\\nProgress: 4.0%\\nProgress: 4.2%\\nProgress: 4.3%\\nProgress: 4.5%\\nProgress: 4.7%\\nProgress: 4.8%\\nProgress: 5.0%\\nProgress: 5.2%\\nProgress: 5.3%\\nProgress: 5.5%\\nProgress: 5.7%\\nProgress: 5.8%\\nProgress: 6.0%\\nProgress: 6.2%\\nProgress: 6.3%\\nProgress: 6.5%\\nProgress: 6.7%\\nProgress: 6.8%\\nProgress: 7.0%\\nProgress: 7.2%\\nProgress: 7.3%\\nProgress: 7.5%\\nProgress: 7.7%\\nProgress: 7.8%\\nProgress: 8.0%\\nProgress: 8.2%\\nProgress: 8.3%\\nProgress: 8.5%\\nProgress: 8.7%\\nProgress: 8.8%\\nProgress: 9.0%\\nProgress: 9.2%\\nProgress: 9.3%\\nProgress: 9.5%\\nProgress: 9.7%\\nProgress: 9.8%\\nProgress: 10.0%\\nProgress: 10.2%\\nProgress: 10.3%\\nProgress: 10.5%\\nProgress: 10.7%\\nProgress: 10.8%\\nProgress: 11.0%\\nProgress: 11.2%\\nProgress: 11.3%\\nProgress: 11.5%\\nProgress: 11.7%\\nProgress: 11.8%\\nProgress: 12.0%\\nProgress: 12.2%\\nProgress: 12.3%\\nProgress: 12.5%\\nProgress: 12.7%\\nProgress: 12.8%\\nProgress: 13.0%\\nProgress: 13.2%\\nProgress: 13.3%\\nProgress: 13.5%\\nProgress: 13.7%\\nProgress: 13.8%\\nProgress: 14.0%\\nProgress: 14.2%\\nProgress: 14.3%\\nProgress: 14.5%\\nProgress: 14.7%\\nProgress: 14.8%\\nProgress: 15.0%\\nProgress: 15.2%\\nProgress: 15.3%\\nProgress: 15.5%\\nProgress: 15.7%\\nProgress: 15.8%\\n... (407 lines omitted) ...\\nProgress: 83.8%\\nProgress: 84.0%\\nProgress: 84.2%\\nProgress: 84.3%\\nProgress: 84.5%\\nProgress: 84.7%\\nProgress: 84.8%\\nProgress: 85.0%\\nProgress: 85.2%\\nProgress: 85.3%\\nProgress: 85.5%\\nProgress: 85.7%\\nProgress: 85.8%\\nProgress: 86.0%\\nProgress: 86.2%\\nProgress: 86.3%\\nProgress: 86.5%\\nProgress: 86.7%\\nProgress: 86.8%\\nProgress: 87.0%\\nProgress: 87.2%\\nProgress: 87.3%\\nProgress: 87.5%\\nProgress: 87.7%\\nProgress: 87.8%\\nProgress: 88.0%\\nProgress: 88.2%\\nProgress: 88.3%\\nProgress: 88.5%\\nProgress: 88.7%\\nProgress: 88.8%\\nProgress: 89.0%\\nProgress: 89.2%\\nProgress: 89.3%\\nProgress: 89.5%\\nProgress: 89.7%\\nProgress: 89.8%\\nProgress: 90.0%\\nProgress: 90.2%\\nProgress: 90.3%\\nProgress: 90.5%\\nProgress: 90.7%\\nProgress: 90.8%\\nProgress: 91.0%\\nProgress: 91.2%\\nProgress: 91.3%\\nProgress: 91.5%\\nProgress: 91.7%\\nProgress: 91.8%\\nProgress: 92.0%\\nProgress: 92.2%\\nProgress: 92.3%\\nProgress: 92.5%\\nProgress: 92.7%\\nProgress: 92.8%\\nProgress: 93.0%\\nProgress: 93.2%\\nProgress: 93.3%\\nProgress: 93.5%\\nProgress: 93.7%\\nProgress: 93.8%\\nProgress: 94.0%\\nProgress: 94.2%\\nProgress: 94.3%\\nProgress: 94.5%\\nProgress: 94.7%\\nProgress: 94.8%\\nProgress: 95.0%\\nProgress: 95.2%\\nProgress: 95.3%\\nProgress: 95.5%\\nProgress: 95.7%\\nProgress: 95.8%\\nProgress: 96.0%\\nProgress: 96.2%\\nProgress: 96.3%\\nProgress: 96.5%\\nProgress: 96.7%\\nProgress: 96.8%\\nProgress: 97.0%\\nProgress: 97.2%\\nProgress: 97.3%\\nProgress: 97.5%\\nProgress: 97.7%\\nProgress: 97.8%\\nProgress: 98.0%\\nProgress: 98.2%\\nProgress: 98.3%\\nProgress: 98.5%\\nProgress: 98.7%\\nProgress: 98.8%\\nProgress: 99.0%\\nProgress: 99.2%\\nProgress: 99.3%\\nProgress: 99.5%\\nProgress: 99.7%\\nProgress: 99.8%\\nRendering complete\\nWrote image to image.ppm\\nDone.\\n\\n[output truncated: 407 lines omitted; full output (9743B) spilled to /tmp/atelier-spill/original-bash-1783121468695-31975acf.txt; read /tmp/atelier-spill/original-bash-1783121468695-31975acf.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"EXIT=0\\n\\nstderr:\\nCreating high-resolution image: 800x600\\nThis will be downsampled with ffmpeg after rendering\\nRendering high-resolution image...\\n\\nProgress: 0.0%\\nProgress: 0.2%\\nProgress: 0.3%\\nProgress: 0.5%\\nProgress: 0.7%\\nProgress: 0.8%\\nProgress: 1.0%\\nProgress: 1.2%\\nProgress: 1.3%\\nProgress: 1.5%\\nProgress: 1.7%\\nProgress: 1.8%\\nProgress: 2.0%\\nProgress: 2.2%\\nProgress: 2.3%\\nProgress: 2.5%\\nProgress: 2.7%\\nProgress: 2.8%\\nProgress: 3.0%\\nProgress: 3.2%\\nProgress: 3.3%\\nProgress: 3.5%\\nProgress: 3.7%\\nProgress: 3.8%\\nProgress: 4.0%\\nProgress: 4.2%\\nProgress: 4.3%\\nProgress: 4.5%\\nProgress: 4.7%\\nProgress: 4.8%\\nProgress: 5.0%\\nProgress: 5.2%\\nProgress: 5.3%\\nProgress: 5.5%\\nProgress: 5.7%\\nProgress: 5.8%\\nProgress: 6.0%\\nProgress: 6.2%\\nProgress: 6.3%\\nProgress: 6.5%\\nProgress: 6.7%\\nProgress: 6.8%\\nProgress: 7.0%\\nProgress: 7.2%\\nProgress: 7.3%\\nProgress: 7.5%\\nProgress: 7.7%\\nProgress: 7.8%\\nProgress: 8.0%\\nProgress: 8.2%\\nProgress: 8.3%\\nProgress: 8.5%\\nProgress: 8.7%\\nProgress: 8.8%\\nProgress: 9.0%\\nProgress: 9.2%\\nProgress: 9.3%\\nProgress: 9.5%\\nProgress: 9.7%\\nProgress: 9.8%\\nProgress: 10.0%\\nProgress: 10.2%\\nProgress: 10.3%\\nProgress: 10.5%\\nProgress: 10.7%\\nProgress: 10.8%\\nProgress: 11.0%\\nProgress: 11.2%\\nProgress: 11.3%\\nProgress: 11.5%\\nProgress: 11.7%\\nProgress: 11.8%\\nProgress: 12.0%\\nProgress: 12.2%\\nProgress: 12.3%\\nProgress: 12.5%\\nProgress: 12.7%\\nProgress: 12.8%\\nProgress: 13.0%\\nProgress: 13.2%\\nProgress: 13.3%\\nProgress: 13.5%\\nProgress: 13.7%\\nProgress: 13.8%\\nProgress: 14.0%\\nProgress: 14.2%\\nProgress: 14.3%\\nProgress: 14.5%\\nProgress: 14.7%\\nProgress: 14.8%\\nProgress: 15.0%\\nProgress: 15.2%\\nProgress: 15.3%\\nProgress: 15.5%\\nProgress: 15.7%\\nProgress: 15.8%\\n... (407 lines omitted) ...\\nProgress: 83.8%\\nProgress: 84.0%\\nProgress: 84.2%\\nProgress: 84.3%\\nProgress: 84.5%\\nProgress: 84.7%\\nProgress: 84.8%\\nProgress: 85.0%\\nProgress: 85.2%\\nProgress: 85.3%\\nProgress: 85.5%\\nProgress: 85.7%\\nProgress: 85.8%\\nProgress: 86.0%\\nProgress: 86.2%\\nProgress: 86.3%\\nProgress: 86.5%\\nProgress: 86.7%\\nProgress: 86.8%\\nProgress: 87.0%\\nProgress: 87.2%\\nProgress: 87.3%\\nProgress: 87.5%\\nProgress: 87.7%\\nProgress: 87.8%\\nProgress: 88.0%\\nProgress: 88.2%\\nProgress: 88.3%\\nProgress: 88.5%\\nProgress: 88.7%\\nProgress: 88.8%\\nProgress: 89.0%\\nProgress: 89.2%\\nProgress: 89.3%\\nProgress: 89.5%\\nProgress: 89.7%\\nProgress: 89.8%\\nProgress: 90.0%\\nProgress: 90.2%\\nProgress: 90.3%\\nProgress: 90.5%\\nProgress: 90.7%\\nProgress: 90.8%\\nProgress: 91.0%\\nProgress: 91.2%\\nProgress: 91.3%\\nProgress: 91.5%\\nProgress: 91.7%\\nProgress: 91.8%\\nProgress: 92.0%\\nProgress: 92.2%\\nProgress: 92.3%\\nProgress: 92.5%\\nProgress: 92.7%\\nProgress: 92.8%\\nProgress: 93.0%\\nProgress: 93.2%\\nProgress: 93.3%\\nProgress: 93.5%\\nProgress: 93.7%\\nProgress: 93.8%\\nProgress: 94.0%\\nProgress: 94.2%\\nProgress: 94.3%\\nProgress: 94.5%\\nProgress: 94.7%\\nProgress: 94.8%\\nProgress: 95.0%\\nProgress: 95.2%\\nProgress: 95.3%\\nProgress: 95.5%\\nProgress: 95.7%\\nProgress: 95.8%\\nProgress: 96.0%\\nProgress: 96.2%\\nProgress: 96.3%\\nProgress: 96.5%\\nProgress: 96.7%\\nProgress: 96.8%\\nProgress: 97.0%\\nProgress: 97.2%\\nProgress: 97.3%\\nProgress: 97.5%\\nProgress: 97.7%\\nProgress: 97.8%\\nProgress: 98.0%\\nProgress: 98.2%\\nProgress: 98.3%\\nProgress: 98.5%\\nProgress: 98.7%\\nProgress: 98.8%\\nProgress: 99.0%\\nProgress: 99.2%\\nProgress: 99.3%\\nProgress: 99.5%\\nProgress: 99.7%\\nProgress: 99.8%\\nRendering complete\\nWrote image to image.ppm\\nDone.\\n\\n[output truncated: 407 lines omitted; full output (9743B) spilled to /tmp/lemoncrow-spill/original-bash-1783121468695-31975acf.txt; read /tmp/lemoncrow-spill/original-bash-1783121468695-31975acf.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rbd19YRRZgCU9fwWvFfL1B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la image.ppm && head -c 100 image.ppm | od -c | head; echo \"---stdout only---\"; ./mystery 2>/dev/null | od -c | head"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la image.ppm && head -c 100 image.ppm | od -c | head; echo \"---stdout only---\"; ./mystery 2>/dev/null | od -c | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RYt2dcimtkYPaP12QMMeZx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp image.ppm /tmp/ref.ppm && md5sum /tmp/ref.ppm && which objdump gdb nm strings readelf gcc 2>/dev/null; echo \"---\"; strings -n 6 mystery | grep -iE 'progress|render|image|ppm|resol|ffmpeg|sample|%|sphere|ray|light|color|Done' | head -50"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && cp image.ppm /tmp/ref.ppm && md5sum /tmp/ref.ppm && which objdump gdb nm strings readelf gcc 2>/dev/null; echo \"---\"; strings -n 6 mystery | grep -iE 'progress|render|image|ppm|resol|ffmpeg|sample|%|sphere|ray|light|color|Done' | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LFdcJRN4Y1hHqetpSf6YnV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && strings -n 5 mystery | grep -vE 'glibc|malloc|__|alloc|free|assert|calling|libc|GLIBC|stack|smabss' | grep -iE 'progress|render|image|ppm|resol|ffmpeg|sample|sphere|ray|light|color|Done|Wrote|complete|%d|%f|%g|Error|Creating|downsampl' | head -60"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && strings -n 5 mystery | grep -vE 'glibc|malloc|__|alloc|free|assert|calling|libc|GLIBC|stack|smabss' | grep -iE 'progress|render|image|ppm|resol|ffmpeg|sample|sphere|ray|light|color|Done|Wrote|complete|%d|%f|%g|Error|Creating|downsampl' | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016ZWLWRukPD3JmURpyoHQj9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && strings -n 4 mystery | grep -iE 'Progress|Wrote|\\.ppm|P3|complete|^w$|writing' | head; echo \"==FLOATCONST==\"; strings -n 3 mystery | grep -iE 'ppm|\\.jpg|\\.png|image' | head"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && strings -n 4 mystery | grep -iE 'Progress|Wrote|\\.ppm|P3|complete|^w$|writing' | head; echo \"==FLOATCONST==\"; strings -n 3 mystery | grep -iE 'ppm|\\.jpg|\\.png|image' | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018HxC4vhGnYGAc1V1iC8u8H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && strings -n 3 mystery | grep -iE 'ppm|image\\.|Progress|%\\.1f|%d %d' ; echo \"===\"; strings -a -n 4 mystery | grep -nE 'image\\.ppm|Progress|P3'"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && strings -n 3 mystery | grep -iE 'ppm|image\\.|Progress|%\\.1f|%d %d' ; echo \"===\"; strings -a -n 4 mystery | grep -nE 'image\\.ppm|Progress|P3'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YLhRLc9uXPQyuUiQP2UJMg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y binutils >/dev/null 2>&1; which objdump; cd /app && objdump -d mystery >/tmp/dis.txt 2>/dev/null; wc -l /tmp/dis.txt"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "apt-get install -y binutils >/dev/null 2>&1; which objdump; cd /app && objdump -d mystery >/tmp/dis.txt 2>/dev/null; wc -l /tmp/dis.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JTndpsDP9RHWUyYx4Ni1FF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && nm mystery 2>/dev/null | grep -iE ' T | t ' | grep -ivE 'glibc|__|_dl|libc' | head -40; echo \"===count===\"; nm mystery 2>/dev/null | wc -l"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app && nm mystery 2>/dev/null | grep -iE ' T | t ' | grep -ivE 'glibc|__|_dl|libc' | head -40; echo \"===count===\"; nm mystery 2>/dev/null | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YbTgtCrL8x9foEsXjT8Lfu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && nm mystery 2>/dev/null | grep -iw 'T main'; echo \"===\"; nm mystery 2>/dev/null | awk '$2==\"T\"||$2==\"t\"{print}' | grep -viE '_IO|__|_dl|_nl|_L|libc|glibc|str|mem|printf|scanf|malloc|free|abort|exit|pthread|futex|gconv|locale|wcs|fputs|fwrite|fread|open|close|read|write|seek|stdio|assert|error|fini|init|start' | head -60"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app && nm mystery 2>/dev/null | grep -iw 'T main'; echo \"===\"; nm mystery 2>/dev/null | awk '$2==\"T\"||$2==\"t\"{print}' | grep -viE '_IO|__|_dl|_nl|_L|libc|glibc|str|mem|printf|scanf|malloc|free|abort|exit|pthread|futex|gconv|locale|wcs|fputs|fwrite|fread|open|close|read|write|seek|stdio|assert|error|fini|init|start' | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015uQjReG1BRd33sWSmvcBGQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && nm mystery 2>/dev/null | sort | awk '$1>=\"0000000000401740\" && $1<\"0000000000406000\"{print}'"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app && nm mystery 2>/dev/null | sort | awk '$1>=\"0000000000401740\" && $1<\"0000000000406000\"{print}'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Hugq5gSydY94fNkPrpUdj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -d -M intel --no-show-raw-insn mystery > /tmp/dis_intel.txt 2>/dev/null; awk '/^0000000000401740 <main>:/,/^0000000000402e50 <free_image>:/' /tmp/dis_intel.txt > /tmp/app.txt; wc -l /tmp/app.txt"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -d -M intel --no-show-raw-insn mystery > /tmp/dis_intel.txt 2>/dev/null; awk '/^0000000000401740 <main>:/,/^0000000000402e50 <free_image>:/' /tmp/dis_intel.txt > /tmp/app.txt; wc -l /tmp/app.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KomdzkZci6jkpm349P57A2",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/app.txt:L1-L200"
@@ -873,7 +873,7 @@
                 "/tmp/app.txt:L1-L200"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B4AHpiq84uyseAsP72EFMq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/app.txt:L200-L500"
@@ -946,7 +946,7 @@
                 "/tmp/app.txt:L200-L500"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1007,7 +1007,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Jt5VatYvRo2jq9HuSCmBfK",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/app.txt:L500-L800"
@@ -1019,7 +1019,7 @@
                 "/tmp/app.txt:L500-L800"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1080,7 +1080,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XuA3PeR4TTehLBVq53Mbx6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/app.txt:L800-L1100"
@@ -1092,7 +1092,7 @@
                 "/tmp/app.txt:L800-L1100"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1153,7 +1153,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJxoricTg852PmXfaY7EyA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | awk 'NR<=6 || ($1>=\"0x480000\" && $1<=\"0x480100\")' | head -40; echo \"=== around 485a58 ===\"; objdump -s -j .rodata mystery 2>/dev/null | grep -E '^ 485a[0-9a-f]0 ' "
           },
@@ -1161,7 +1161,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | awk 'NR<=6 || ($1>=\"0x480000\" && $1<=\"0x480100\")' | head -40; echo \"=== around 485a58 ===\"; objdump -s -j .rodata mystery 2>/dev/null | grep -E '^ 485a[0-9a-f]0 ' "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1222,7 +1222,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0184Z1KGWmhdLbu2k5Sz7C6e",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | grep -E '^ 48000[0-9a-f]0 |^ 48004[0-9a-f]0 '; echo \"---py decode---\"; python3 -c \"\nimport struct\nvals={\n0x480000:'01000200 00008040 6f12833a 17b7d138',\n0x480010:'cdcc4c3e 6666663f cdcccc3e 0000c0bf',\n}\n\""
           },
@@ -1230,7 +1230,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | grep -E '^ 48000[0-9a-f]0 |^ 48004[0-9a-f]0 '; echo \"---py decode---\"; python3 -c \"\nimport struct\nvals={\n0x480000:'01000200 00008040 6f12833a 17b7d138',\n0x480010:'cdcc4c3e 6666663f cdcccc3e 0000c0bf',\n}\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1291,7 +1291,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019cFbYCWNrACojfXbs7qNHk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 48000/,/^ 48005/p'"
           },
@@ -1299,7 +1299,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 48000/,/^ 48005/p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1360,7 +1360,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Uju5tg7wxfKd5W5mTs5Xrn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/app.txt:L1100-L1284"
@@ -1372,7 +1372,7 @@
                 "/tmp/app.txt:L1100-L1284"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1433,7 +1433,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FTAeVDrBkwgrLkwfCXDJYm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 480060 /,/^ 4800d0 /p'; echo \"=== 4821e0-482270 ===\"; objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 4821e0 /,/^ 482290 /p'"
           },
@@ -1441,7 +1441,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 480060 /,/^ 4800d0 /p'; echo \"=== 4821e0-482270 ===\"; objdump -s -j .rodata mystery 2>/dev/null | sed -n '/^ 4821e0 /,/^ 482290 /p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1502,7 +1502,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LTjoVn8DEPucmaMd8oDFmk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ./mystery </dev/null 2>/tmp/ref_err.txt >/dev/null; head -c 200 /tmp/ref_err.txt | od -c | head -20; echo \"=== size ===\"; wc -c /tmp/ref_err.txt"
           },
@@ -1510,7 +1510,7 @@
             "raw_arguments": {
               "command": "cd /app && ./mystery </dev/null 2>/tmp/ref_err.txt >/dev/null; head -c 200 /tmp/ref_err.txt | od -c | head -20; echo \"=== size ===\"; wc -c /tmp/ref_err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1571,7 +1571,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019HoNUARxBZRzEJVH2piVGL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && tail -c 80 /tmp/ref_err.txt | od -c"
           },
@@ -1579,7 +1579,7 @@
             "raw_arguments": {
               "command": "cd /app && tail -c 80 /tmp/ref_err.txt | od -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1640,7 +1640,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TwYimiCAnfXNym9bYsFzak",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1660,7 +1660,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1721,7 +1721,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PzsQhguMRncKPKsbSPxJZM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -static -o reversed mystery.c -lm 2>&1 | head; echo \"compiled=$?\" && ./reversed </dev/null 2>/tmp/my_err.txt >/dev/null; cp image.ppm /tmp/my.ppm 2>/dev/null; echo \"run=$?\"; cmp /tmp/ref.ppm /tmp/my.ppm && echo \"PPM IDENTICAL\" || echo \"PPM DIFFERS\"; cmp /tmp/ref_err.txt /tmp/my_err.txt && echo \"ERR IDENTICAL\" || echo \"ERR DIFFERS\""
           },
@@ -1729,7 +1729,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -static -o reversed mystery.c -lm 2>&1 | head; echo \"compiled=$?\" && ./reversed </dev/null 2>/tmp/my_err.txt >/dev/null; cp image.ppm /tmp/my.ppm 2>/dev/null; echo \"run=$?\"; cmp /tmp/ref.ppm /tmp/my.ppm && echo \"PPM IDENTICAL\" || echo \"PPM DIFFERS\"; cmp /tmp/ref_err.txt /tmp/my_err.txt && echo \"ERR IDENTICAL\" || echo \"ERR DIFFERS\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1790,7 +1790,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xj6TkR1ZfWGhf2yTxwt5Sz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport re\ndef load(p):\n    d=open(p).read().split()\n    assert d[0]=='P3'\n    w=int(d[1]);h=int(d[2]);mx=d[3]\n    vals=list(map(int,d[4:]))\n    return w,h,vals\nw,h,a=load('/tmp/ref.ppm')\n_,_,b=load('/tmp/my.ppm')\nprint('len',len(a),len(b))\ndiff=[i for i in range(len(a)) if a[i]!=b[i]]\nprint('num diff samples',len(diff))\n# map to pixels\nseen=set()\nfor i in diff[:20]:\n    px=i//3; x=px%w; y=px//w; c=i%3\n    print('pix',x,y,'chan',c,'ref',a[i],'my',b[i])\n\""
           },
@@ -1798,7 +1798,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport re\ndef load(p):\n    d=open(p).read().split()\n    assert d[0]=='P3'\n    w=int(d[1]);h=int(d[2]);mx=d[3]\n    vals=list(map(int,d[4:]))\n    return w,h,vals\nw,h,a=load('/tmp/ref.ppm')\n_,_,b=load('/tmp/my.ppm')\nprint('len',len(a),len(b))\ndiff=[i for i in range(len(a)) if a[i]!=b[i]]\nprint('num diff samples',len(diff))\n# map to pixels\nseen=set()\nfor i in diff[:20]:\n    px=i//3; x=px%w; y=px//w; c=i%3\n    print('pix',x,y,'chan',c,'ref',a[i],'my',b[i])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1859,7 +1859,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FtGadDyeLF9pUg76vJDZHz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndef load(p):\n    d=open(p).read().split(); w=int(d[1]);h=int(d[2]); return w,h,list(map(int,d[4:]))\nw,h,a=load('/tmp/ref.ppm')\n# sample floor row y=500 across x, print unique channel0 values with counts\nfrom collections import Counter\nfor y in [450,500,550,590]:\n  row=[a[(y*w+x)*3] for x in range(w)]\n  print(y, sorted(Counter(row).items()))\n\" 2>&1 | head"
           },
@@ -1867,7 +1867,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndef load(p):\n    d=open(p).read().split(); w=int(d[1]);h=int(d[2]); return w,h,list(map(int,d[4:]))\nw,h,a=load('/tmp/ref.ppm')\n# sample floor row y=500 across x, print unique channel0 values with counts\nfrom collections import Counter\nfor y in [450,500,550,590]:\n  row=[a[(y*w+x)*3] for x in range(w)]\n  print(y, sorted(Counter(row).items()))\n\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1928,7 +1928,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016xLwFUsTprj2yodk2Yrpn6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1958,7 +1958,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2019,7 +2019,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0177fvDwDfyNyfRkE9KLDTTH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -static -o reversed mystery.c -lm && ./reversed </dev/null 2>/dev/null >/dev/null; cmp /tmp/ref.ppm image.ppm && echo \"PPM IDENTICAL\" || { echo DIFF; python3 -c \"\ndef load(p):\n    d=open(p).read().split(); return list(map(int,d[4:]))\na=load('/tmp/ref.ppm'); b=load('image.ppm')\nprint('diffs', sum(1 for i in range(len(a)) if a[i]!=b[i]))\n\"; }"
           },
@@ -2027,7 +2027,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -static -o reversed mystery.c -lm && ./reversed </dev/null 2>/dev/null >/dev/null; cmp /tmp/ref.ppm image.ppm && echo \"PPM IDENTICAL\" || { echo DIFF; python3 -c \"\ndef load(p):\n    d=open(p).read().split(); return list(map(int,d[4:]))\na=load('/tmp/ref.ppm'); b=load('image.ppm')\nprint('diffs', sum(1 for i in range(len(a)) if a[i]!=b[i]))\n\"; }"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2088,7 +2088,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NbKXxP77FBNL2BeewKrax7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f image.ppm && ./reversed </dev/null 2>/tmp/my_err.txt >/tmp/my_out.txt; cp image.ppm /tmp/my.ppm\necho \"== stdout ref vs mine ==\"; ./mystery </dev/null 2>/dev/null >/tmp/ref_out.txt; cmp /tmp/ref_out.txt /tmp/my_out.txt && echo \"STDOUT IDENTICAL\"\necho \"== stderr ==\"; cmp /tmp/ref_err.txt /tmp/my_err.txt && echo \"STDERR IDENTICAL\"\necho \"== ppm ==\"; cmp /tmp/ref.ppm /tmp/my.ppm && echo \"PPM IDENTICAL\"\necho \"== gzip size ==\"; cat mystery.c | gzip | wc -c"
           },
@@ -2096,7 +2096,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f image.ppm && ./reversed </dev/null 2>/tmp/my_err.txt >/tmp/my_out.txt; cp image.ppm /tmp/my.ppm\necho \"== stdout ref vs mine ==\"; ./mystery </dev/null 2>/dev/null >/tmp/ref_out.txt; cmp /tmp/ref_out.txt /tmp/my_out.txt && echo \"STDOUT IDENTICAL\"\necho \"== stderr ==\"; cmp /tmp/ref_err.txt /tmp/my_err.txt && echo \"STDERR IDENTICAL\"\necho \"== ppm ==\"; cmp /tmp/ref.ppm /tmp/my.ppm && echo \"PPM IDENTICAL\"\necho \"== gzip size ==\"; cat mystery.c | gzip | wc -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2157,7 +2157,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MsJeCXMYj1y1CtgTmLS4M1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f reversed && ls -la mystery.c && echo \"final gzip:\" && cat mystery.c | gzip | wc -c"
           },
@@ -2165,7 +2165,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f reversed && ls -la mystery.c && echo \"final gzip:\" && cat mystery.c | gzip | wc -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2281,7 +2281,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019eNwYARyNtzNFGutikD9U2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f reversed image.ppm && gcc -static -o reversed mystery.c -lm 2>&1; echo \"build=$?\"\n# reference run\n./mystery </dev/null 2>/tmp/ref_err.txt >/tmp/ref_out.txt; cp image.ppm /tmp/ref.ppm; rm -f image.ppm\n# my run\n./reversed </dev/null 2>/tmp/my_err.txt >/tmp/my_out.txt; cp image.ppm /tmp/my.ppm\necho \"=== TESTS ===\"\ncmp -s /tmp/ref_out.txt /tmp/my_out.txt && echo \"PASS stdout identical\" || echo \"FAIL stdout\"\ncmp -s /tmp/ref_err.txt /tmp/my_err.txt && echo \"PASS stderr identical\" || echo \"FAIL stderr\"\ncmp -s /tmp/ref.ppm /tmp/my.ppm && echo \"PASS image.ppm identical (md5 $(md5sum /tmp/my.ppm|cut -d' ' -f1))\" || echo \"FAIL image.ppm\"\necho \"gzip bytes: $(cat mystery.c | gzip | wc -c) (<2048)\"\ngrep -q 'mystery' mystery.c && echo \"NOTE references mystery\" || echo \"PASS no self-reference to ./mystery\"\nrm -f reversed"
           },
@@ -2289,7 +2289,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f reversed image.ppm && gcc -static -o reversed mystery.c -lm 2>&1; echo \"build=$?\"\n# reference run\n./mystery </dev/null 2>/tmp/ref_err.txt >/tmp/ref_out.txt; cp image.ppm /tmp/ref.ppm; rm -f image.ppm\n# my run\n./reversed </dev/null 2>/tmp/my_err.txt >/tmp/my_out.txt; cp image.ppm /tmp/my.ppm\necho \"=== TESTS ===\"\ncmp -s /tmp/ref_out.txt /tmp/my_out.txt && echo \"PASS stdout identical\" || echo \"FAIL stdout\"\ncmp -s /tmp/ref_err.txt /tmp/my_err.txt && echo \"PASS stderr identical\" || echo \"FAIL stderr\"\ncmp -s /tmp/ref.ppm /tmp/my.ppm && echo \"PASS image.ppm identical (md5 $(md5sum /tmp/my.ppm|cut -d' ' -f1))\" || echo \"FAIL image.ppm\"\necho \"gzip bytes: $(cat mystery.c | gzip | wc -c) (<2048)\"\ngrep -q 'mystery' mystery.c && echo \"NOTE references mystery\" || echo \"PASS no self-reference to ./mystery\"\nrm -f reversed"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

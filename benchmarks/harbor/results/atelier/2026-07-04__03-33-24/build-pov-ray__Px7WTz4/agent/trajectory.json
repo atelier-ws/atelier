@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VBSKWAUSMLxQ9r8X2uGCac",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app /app/deps 2>&1; echo \"---\"; ls -la /app/povray-2.2 2>&1; echo \"---\"; which povray gcc cc make 2>&1; echo \"---\"; uname -a; cat /etc/os-release 2>/dev/null | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app /app/deps 2>&1; echo \"---\"; ls -la /app/povray-2.2 2>&1; echo \"---\"; which povray gcc cc make 2>&1; echo \"---\"; uname -a; cat /etc/os-release 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017QYoQ1Xi7f6N2ZycdM7H2u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== /app ===\"; ls -la /app; echo \"=== deps ===\"; ls -la /app/deps; echo \"=== tools ===\"; which gcc cc make wget curl tar gzip zip unzip 2>&1; echo \"=== os ===\"; cat /etc/os-release 2>/dev/null | head -3"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "echo \"=== /app ===\"; ls -la /app; echo \"=== deps ===\"; ls -la /app/deps; echo \"=== tools ===\"; which gcc cc make wget curl tar gzip zip unzip 2>&1; echo \"=== os ===\"; cat /etc/os-release 2>/dev/null | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K9QaWoMQwYsCuC5wFa42uE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== find povray archives ===\"; find / -iname '*povray*' 2>/dev/null; find / -iname '*povuni*' 2>/dev/null; find / -iname '*pov*2*' 2>/dev/null | grep -iv proc | head; echo \"=== curl test ===\"; curl -sI --max-time 8 http://www.povray.org/ 2>&1 | head -5; echo \"exit=$?\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "echo \"=== find povray archives ===\"; find / -iname '*povray*' 2>/dev/null; find / -iname '*povuni*' 2>/dev/null; find / -iname '*pov*2*' 2>/dev/null | grep -iv proc | head; echo \"=== curl test ===\"; curl -sI --max-time 8 http://www.povray.org/ 2>&1 | head -5; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KZwZnasBDGhcZVUf6wAWBh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== curl http ===\"; curl -sI --max-time 10 http://www.povray.org/ 2>&1 | head; echo \"exit=$?\"; echo \"=== curl https ===\"; curl -sI --max-time 10 https://www.povray.org/ 2>&1 | head; echo \"exit=$?\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "echo \"=== curl http ===\"; curl -sI --max-time 10 http://www.povray.org/ 2>&1 | head; echo \"exit=$?\"; echo \"=== curl https ===\"; curl -sI --max-time 10 https://www.povray.org/ 2>&1 | head; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016C2nN9zXNVhj5Y9jMJ7PDm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for u in \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/Unix/povuni_s.tgz\" \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/Unix/povuni_d.tgz\" \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/\" ; do\n  echo \"== $u ==\"; curl -sI --max-time 15 \"$u\" 2>&1 | head -4\ndone"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "for u in \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/Unix/povuni_s.tgz\" \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/Unix/povuni_d.tgz\" \\\n  \"https://www.povray.org/ftp/pub/povray/Old-Versions/\" ; do\n  echo \"== $u ==\"; curl -sI --max-time 15 \"$u\" 2>&1 | head -4\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016pCxzp4eTZjw1YFt6Y3HJQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s --max-time 20 \"https://www.povray.org/ftp/pub/povray/Old-Versions/\" 2>&1 | grep -ioE 'href=\"[^\"]*\"' | head -40"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "curl -s --max-time 20 \"https://www.povray.org/ftp/pub/povray/Old-Versions/\" 2>&1 | grep -ioE 'href=\"[^\"]*\"' | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012R67EugxtqVuPJgwg2d55t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s --max-time 20 \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/\" 2>&1 | grep -ioE 'href=\"[^\"]*\"'"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "curl -s --max-time 20 \"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2/\" 2>&1 | grep -ioE 'href=\"[^\"]*\"'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PLaaSMQDQhNaC5d2D3JKBe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && B=\"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2\"\nfor f in POVSRC.TAR.Z POVDOC.TAR.Z POVSCN.TAR.Z README2.2; do\n  curl -s --max-time 60 -O \"$B/$f\" && echo \"got $f $(ls -l $f | awk '{print $5}')\"\ndone; ls -la"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /tmp && B=\"https://www.povray.org/ftp/pub/povray/Old-Versions/Official-2.2\"\nfor f in POVSRC.TAR.Z POVDOC.TAR.Z POVSCN.TAR.Z README2.2; do\n  curl -s --max-time 60 -O \"$B/$f\" && echo \"got $f $(ls -l $f | awk '{print $5}')\"\ndone; ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011mkj3ekSgXcz1AAWokVMQA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /tmp/README2.2; echo \"=== list contents ===\"; cd /tmp && for f in POVSRC POVDOC POVSCN; do echo \"--- $f ---\"; zcat $f.TAR.Z 2>/dev/null | tar tf - 2>/dev/null | head -20; done"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cat /tmp/README2.2; echo \"=== list contents ===\"; cd /tmp && for f in POVSRC POVDOC POVSCN; do echo \"--- $f ---\"; zcat $f.TAR.Z 2>/dev/null | tar tf - 2>/dev/null | head -20; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012umwKpzH4SouLZcEZrMJKg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/povray-2.2 && cd /app/povray-2.2\nfor f in POVSRC POVDOC POVSCN; do zcat /tmp/$f.TAR.Z | tar xf -; done\necho \"=== top ===\"; ls -la; echo \"=== source ===\"; ls source | head -80"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/povray-2.2 && cd /app/povray-2.2\nfor f in POVSRC POVDOC POVSCN; do zcat /tmp/$f.TAR.Z | tar xf -; done\necho \"=== top ===\"; ls -la; echo \"=== source ===\"; ls source | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q2vfi4fkjJKTLAL4fPQvAq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2; echo \"=== machine ===\"; ls -R machine | head -60; echo \"=== povdoc ===\"; ls povdoc"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2; echo \"=== machine ===\"; ls -R machine | head -60; echo \"=== povdoc ===\"; ls povdoc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018U2WKQQnbMFFHaJFUJ9ZgB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/machine/unix; ls -la; echo \"=== unix.c head ===\"; head -30 unix*.h 2>/dev/null; echo \"=== makefiles ===\"; for f in *ake* *.mak Makefile*; do echo \"### $f\"; done 2>/dev/null"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/machine/unix; ls -la; echo \"=== unix.c head ===\"; head -30 unix*.h 2>/dev/null; echo \"=== makefiles ===\"; for f in *ake* *.mak Makefile*; do echo \"### $f\"; done 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q9LcugtovCkwvEEaAZWcU3",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/povray-2.2/machine/unix/unix.mak"
@@ -873,7 +873,7 @@
                 "/app/povray-2.2/machine/unix/unix.mak"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014AYvHGZnnagw6s2vAajEyK",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/povray-2.2/machine/unix/unix.doc"
@@ -946,7 +946,7 @@
                 "/app/povray-2.2/machine/unix/unix.doc"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1007,7 +1007,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C7v4zQxYQzqBX2an2atSTX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq build-essential >/dev/null 2>&1; echo \"install exit=$?\"; which gcc cc make; gcc --version | head -1"
           },
@@ -1015,7 +1015,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq build-essential >/dev/null 2>&1; echo \"install exit=$?\"; which gcc cc make; gcc --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1076,7 +1076,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011YtzSJWdHNHyZ6Rb27DVjz",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/povray-2.2/machine/unix/gccconf.h",
@@ -1090,7 +1090,7 @@
                 "/app/povray-2.2/machine/unix/unixconf.h"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1151,7 +1151,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ECKebi98NqwXTosfbtKeH9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2 && rm -rf build && mkdir build && cp source/* build/ && cp machine/unix/* build/ && cd build && cp gccconf.h config.h && cp unix.mak makefile && ls | head; echo \"=== try compile one file to gauge errors ===\"; gcc -c -O -w povray.c 2>&1 | head -40"
           },
@@ -1159,7 +1159,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2 && rm -rf build && mkdir build && cp source/* build/ && cp machine/unix/* build/ && cd build && cp gccconf.h config.h && cp unix.mak makefile && ls | head; echo \"=== try compile one file to gauge errors ===\"; gcc -c -O -w povray.c 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1220,7 +1220,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JN47DUcxeC3QKxWVBxsc65",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2 && mkdir -p build && cp source/* build/ && cp machine/unix/* build/ && cd build && cp gccconf.h config.h && cp unix.mak makefile && echo \"=== compile povray.c ===\"; gcc -c -O -w povray.c 2>&1 | head -40; echo \"exit=${PIPESTATUS[0]}\""
           },
@@ -1228,7 +1228,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2 && mkdir -p build && cp source/* build/ && cp machine/unix/* build/ && cd build && cp gccconf.h config.h && cp unix.mak makefile && echo \"=== compile povray.c ===\"; gcc -c -O -w povray.c 2>&1 | head -40; echo \"exit=${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1289,7 +1289,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SoZ3o1e6YU3hguJpFTkpsf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/build && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -40; echo \"exit=${PIPESTATUS[0]}\"; ls -la povray 2>&1"
           },
@@ -1297,7 +1297,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/build && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -40; echo \"exit=${PIPESTATUS[0]}\"; ls -la povray 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1358,7 +1358,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NnQZ125HPMqHwJ3udPbZ7Z",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/povray-2.2/machine/unix/unix.c"
@@ -1370,7 +1370,7 @@
                 "/app/povray-2.2/machine/unix/unix.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1431,7 +1431,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018nkGb3eQcwLQom1UJC26a2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/build && sed -i 's/unix_init_povray/unix_init_POVRAY/' config.h && grep STARTUP_POVRAY config.h && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -8; echo \"exit=${PIPESTATUS[0]}\"; ls -la povray"
           },
@@ -1439,7 +1439,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/build && sed -i 's/unix_init_povray/unix_init_POVRAY/' config.h && grep STARTUP_POVRAY config.h && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -8; echo \"exit=${PIPESTATUS[0]}\"; ls -la povray"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1500,7 +1500,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xci9VpaAeYAPs2xw34oLbp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /app/povray-2.2/build/povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V 2>&1 | tail -40; echo \"exit=${PIPESTATUS[0]}\""
           },
@@ -1508,7 +1508,7 @@
             "raw_arguments": {
               "command": "cp /app/povray-2.2/build/povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V 2>&1 | tail -40; echo \"exit=${PIPESTATUS[0]}\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1569,7 +1569,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018889MQYcWGLXRChPtCrg5T",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -3 /tmp/out.txt"
           },
@@ -1577,7 +1577,7 @@
             "raw_arguments": {
               "command": "cd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -3 /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1638,7 +1638,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GqSu4VYKg21DC57M1fdDKL",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "main function end exit return povray.c closing statistics",
             "paths": "/app/povray-2.2/source/povray.c"
@@ -1648,7 +1648,7 @@
               "query": "main function end exit return povray.c closing statistics",
               "paths": "/app/povray-2.2/source/povray.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1709,7 +1709,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YFXY2GtPikPw2je2PUJqjh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/source && grep -n 'exit\\|closedown\\|FINISH_POVRAY\\|return\\|void main\\|int main\\|^main\\| main(' povray.c | head -50"
           },
@@ -1717,7 +1717,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/source && grep -n 'exit\\|closedown\\|FINISH_POVRAY\\|return\\|void main\\|int main\\|^main\\| main(' povray.c | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1778,7 +1778,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T5fh9hPfmRnrGaSvWnk915",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/povray-2.2/source/povray.c:L104-L135",
@@ -1792,7 +1792,7 @@
                 "/app/povray-2.2/source/povray.c:L300-L330"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1853,7 +1853,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BxWNpDBLfi7FiKPMYp3hfP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/source && grep -rn 'MAIN_RETURN_TYPE\\|FINISH_POVRAY' frame.h povproto.h; echo \"=== config ===\"; grep -n 'MAIN_RETURN_TYPE\\|FINISH_POVRAY' /app/povray-2.2/build/config.h"
           },
@@ -1861,7 +1861,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/source && grep -rn 'MAIN_RETURN_TYPE\\|FINISH_POVRAY' frame.h povproto.h; echo \"=== config ===\"; grep -n 'MAIN_RETURN_TYPE\\|FINISH_POVRAY' /app/povray-2.2/build/config.h"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1922,7 +1922,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018UPP8qC2Lz8j4xGjcj2Cqk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/build && grep -n 'STARTUP_POVRAY unix' config.h"
           },
@@ -1930,7 +1930,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/build && grep -n 'STARTUP_POVRAY unix' config.h"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1991,7 +1991,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013Yso8t1PycDhM7L9SCW3EE",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2011,7 +2011,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2072,7 +2072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LmHqjytYPEnu6PoDSGH2TY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/build && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -3; cp povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray\ncd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -4 /tmp/out.txt"
           },
@@ -2080,7 +2080,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/build && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -3; cp povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray\ncd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -4 /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2141,7 +2141,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SoEDCzrZxJoLYQrGGfYvT8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/povray-2.2/build && rm -f povray.o povray && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -3; cp povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray\ncd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -3 /tmp/out.txt"
           },
@@ -2149,7 +2149,7 @@
             "raw_arguments": {
               "command": "cd /app/povray-2.2/build && rm -f povray.o povray && make CC=\"gcc\" CFLAGS=\"-c -O -w\" 2>&1 | tail -3; cp povray /usr/local/bin/povray && chmod 755 /usr/local/bin/povray\ncd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +O/dev/null +P -V >/tmp/out.txt 2>&1; echo \"exit=$?\"; tail -3 /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2210,7 +2210,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S4B7aHPKYVyZWxKAKwj9qf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +Oillum1.tga +ft +P >/tmp/o2.txt 2>&1; echo \"exit=$?\"; ls -l illum1.tga; head -c 18 illum1.tga | xxd | head; echo \"=== also dump default ===\"; /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +Oillum1.dis +P >/tmp/o3.txt 2>&1; echo \"exit=$?\"; ls -l illum1.dis"
           },
@@ -2218,7 +2218,7 @@
             "raw_arguments": {
               "command": "cd /tmp && /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +Oillum1.tga +ft +P >/tmp/o2.txt 2>&1; echo \"exit=$?\"; ls -l illum1.tga; head -c 18 illum1.tga | xxd | head; echo \"=== also dump default ===\"; /usr/local/bin/povray +L/app/povray-2.2/povdoc/include +I/app/deps/illum1.pov +Oillum1.dis +P >/tmp/o3.txt 2>&1; echo \"exit=$?\"; ls -l illum1.dis"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2279,7 +2279,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UMmFfKhWQhcZktNpiAxo4K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && od -An -tu1 illum1.tga | tr ' ' '\\n' | grep -v '^$' | sort -n | uniq -c | tail -5; echo \"=== distinct byte values ===\"; od -An -tu1 illum1.tga | tr ' ' '\\n' | grep -v '^$' | sort -nu | wc -l"
           },
@@ -2287,7 +2287,7 @@
             "raw_arguments": {
               "command": "cd /tmp && od -An -tu1 illum1.tga | tr ' ' '\\n' | grep -v '^$' | sort -n | uniq -c | tail -5; echo \"=== distinct byte values ===\"; od -An -tu1 illum1.tga | tr ' ' '\\n' | grep -v '^$' | sort -nu | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

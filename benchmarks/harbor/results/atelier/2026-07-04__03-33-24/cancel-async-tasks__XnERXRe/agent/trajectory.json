@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ty4wUCD9aWsiU8Tm9nkjVJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; ls /app 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 --version; ls /app 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0187bJTSfu7C9fCQd5HvDrzA",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RJTPfZnU2GNhhz5o535t32",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/t.py <<'PY'\nimport asyncio\nfrom run import run_tasks\n\n# 1) concurrency limit + all complete\npeak = 0\ncur = 0\ndone = []\ndef mk(i):\n    async def job():\n        global cur, peak\n        cur += 1; peak = max(peak, cur)\n        try:\n            await asyncio.sleep(0.05)\n            done.append(i)\n        finally:\n            cur -= 1\n    return job\n\nasyncio.run(run_tasks([mk(i) for i in range(10)], 3))\nassert peak == 3, peak\nassert sorted(done) == list(range(10)), done\nprint(\"test1 ok peak\", peak)\n\n# 2) cleanup runs on cancellation (KeyboardInterrupt path)\ncleaned = []\ndef mkc(i):\n    async def job():\n        try:\n            await asyncio.sleep(10)\n        finally:\n            cleaned.append(i)\n    return job\n\nasync def main():\n    t = asyncio.ensure_future(run_tasks([mkc(i) for i in range(5)], 2))\n    await asyncio.sleep(0.05)  # let 2 start\n    t.cancel()\n    try:\n        await t\n    except asyncio.CancelledError:\n        pass\n\nasyncio.run(main())\nassert sorted(cleaned) == [0, 1], cleaned  # only the 2 that started\nprint(\"test2 ok cleaned\", sorted(cleaned))\n\n# 3) exception in one task cancels others, cleanup runs, exc propagates\nc2 = []\ndef mkfail():\n    async def job():\n        raise ValueError(\"boom\")\n    return job\ndef mkslow(i):\n    async def job():\n        try:\n            await asyncio.sleep(10)\n        finally:\n            c2.append(i)\n    return job\n\nasync def main3():\n    try:\n        await run_tasks([mkfail(), mkslow(0), mkslow(1)], 3)\n    except ValueError as e:\n        print(\"test3 ok propagated\", e, \"cleaned\", sorted(c2))\n    else:\n        raise SystemExit(\"expected ValueError\")\n\nasyncio.run(main3())\nPY\ncd /app && python3 /tmp/t.py"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/t.py <<'PY'\nimport asyncio\nfrom run import run_tasks\n\n# 1) concurrency limit + all complete\npeak = 0\ncur = 0\ndone = []\ndef mk(i):\n    async def job():\n        global cur, peak\n        cur += 1; peak = max(peak, cur)\n        try:\n            await asyncio.sleep(0.05)\n            done.append(i)\n        finally:\n            cur -= 1\n    return job\n\nasyncio.run(run_tasks([mk(i) for i in range(10)], 3))\nassert peak == 3, peak\nassert sorted(done) == list(range(10)), done\nprint(\"test1 ok peak\", peak)\n\n# 2) cleanup runs on cancellation (KeyboardInterrupt path)\ncleaned = []\ndef mkc(i):\n    async def job():\n        try:\n            await asyncio.sleep(10)\n        finally:\n            cleaned.append(i)\n    return job\n\nasync def main():\n    t = asyncio.ensure_future(run_tasks([mkc(i) for i in range(5)], 2))\n    await asyncio.sleep(0.05)  # let 2 start\n    t.cancel()\n    try:\n        await t\n    except asyncio.CancelledError:\n        pass\n\nasyncio.run(main())\nassert sorted(cleaned) == [0, 1], cleaned  # only the 2 that started\nprint(\"test2 ok cleaned\", sorted(cleaned))\n\n# 3) exception in one task cancels others, cleanup runs, exc propagates\nc2 = []\ndef mkfail():\n    async def job():\n        raise ValueError(\"boom\")\n    return job\ndef mkslow(i):\n    async def job():\n        try:\n            await asyncio.sleep(10)\n        finally:\n            c2.append(i)\n    return job\n\nasync def main3():\n    try:\n        await run_tasks([mkfail(), mkslow(0), mkslow(1)], 3)\n    except ValueError as e:\n        print(\"test3 ok propagated\", e, \"cleaned\", sorted(c2))\n    else:\n        raise SystemExit(\"expected ValueError\")\n\nasyncio.run(main3())\nPY\ncd /app && python3 /tmp/t.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XEyKcDocEqD65cDjrHYLAa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/app python3 /tmp/t.py"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/app python3 /tmp/t.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B4DHfD1zcQJwPrB2mFbX7T",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/app python3 /tmp/t.py"
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/app python3 /tmp/t.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

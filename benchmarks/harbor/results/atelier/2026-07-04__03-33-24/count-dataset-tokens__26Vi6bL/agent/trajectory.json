@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011Xt5jHvNc5LxCeUwtDS2F4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; ls ~/.cache/huggingface 2>/dev/null; echo \"---net---\"; python3 -c \"import urllib.request; urllib.request.urlopen('https://huggingface.co', timeout=5); print('net ok')\" 2>&1 | tail -3"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; ls ~/.cache/huggingface 2>/dev/null; echo \"---net---\"; python3 -c \"import urllib.request; urllib.request.urlopen('https://huggingface.co', timeout=5); print('net ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KHNndBevqhkK2LP4JswaG4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import datasets, transformers; print(datasets.__version__, transformers.__version__)\" 2>&1 | tail -5; echo \"---\"; python3 -c \"import urllib.request,json; r=urllib.request.urlopen('https://huggingface.co/api/datasets/ryanmarten/OpenThoughts-1k-sample', timeout=10); print(r.read()[:500])\" 2>&1 | tail -5"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import datasets, transformers; print(datasets.__version__, transformers.__version__)\" 2>&1 | tail -5; echo \"---\"; python3 -c \"import urllib.request,json; r=urllib.request.urlopen('https://huggingface.co/api/datasets/ryanmarten/OpenThoughts-1k-sample', timeout=10); print(r.read()[:500])\" 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vu8eDsCXQceDYQhZ4uqN1p",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import urllib.request,json; r=urllib.request.urlopen('https://huggingface.co/api/datasets/ryanmarten/OpenThoughts-1k-sample', timeout=10); print(r.read()[:800])\" 2>&1 | tail -8"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import urllib.request,json; r=urllib.request.urlopen('https://huggingface.co/api/datasets/ryanmarten/OpenThoughts-1k-sample', timeout=10); print(r.read()[:800])\" 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PahBn3eT2PZGepW2RDDy9n",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import urllib.request; print(urllib.request.urlopen('https://huggingface.co/datasets/ryanmarten/OpenThoughts-1k-sample/raw/main/README.md', timeout=15).read().decode())\" 2>&1 | head -120"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import urllib.request; print(urllib.request.urlopen('https://huggingface.co/datasets/ryanmarten/OpenThoughts-1k-sample/raw/main/README.md', timeout=15).read().decode())\" 2>&1 | head -120"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JQmMfnsExVLwtwVXo71hfd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q datasets transformers 2>&1 | tail -5 || uv pip install --system --break-system-packages -q datasets transformers 2>&1 | tail -5"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q datasets transformers 2>&1 | tail -5 || uv pip install --system --break-system-packages -q datasets transformers 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CqyE5Kq9Mcad3fDiLmkXxF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom datasets import load_dataset\nds = load_dataset('ryanmarten/OpenThoughts-1k-sample','metadata',split='train')\nprint(ds)\nprint(set(ds['domain']))\nimport collections\nprint(collections.Counter(ds['domain']))\n\" 2>&1 | tail -20"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom datasets import load_dataset\nds = load_dataset('ryanmarten/OpenThoughts-1k-sample','metadata',split='train')\nprint(ds)\nprint(set(ds['domain']))\nimport collections\nprint(collections.Counter(ds['domain']))\n\" 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012xumugChskUdMPMFAf7df4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom datasets import load_dataset\nfrom transformers import AutoTokenizer\nds = load_dataset('ryanmarten/OpenThoughts-1k-sample','metadata',split='train')\nsci = {'physics','chemistry','biology'}\ntok = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')\nrows = [r for r in ds if r['domain'] in sci]\nprint('num science rows', len(rows))\nreason = sum(len(tok(r['deepseek_reasoning'],add_special_tokens=False)['input_ids']) for r in rows)\nsol = sum(len(tok(r['deepseek_solution'],add_special_tokens=False)['input_ids']) for r in rows)\nprint('reasoning tokens', reason)\nprint('solution tokens', sol)\nprint('combined', reason+sol)\n\" 2>&1 | tail -10"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom datasets import load_dataset\nfrom transformers import AutoTokenizer\nds = load_dataset('ryanmarten/OpenThoughts-1k-sample','metadata',split='train')\nsci = {'physics','chemistry','biology'}\ntok = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-1.5B-Instruct')\nrows = [r for r in ds if r['domain'] in sci]\nprint('num science rows', len(rows))\nreason = sum(len(tok(r['deepseek_reasoning'],add_special_tokens=False)['input_ids']) for r in rows)\nsol = sum(len(tok(r['deepseek_solution'],add_special_tokens=False)['input_ids']) for r in rows)\nprint('reasoning tokens', reason)\nprint('solution tokens', sol)\nprint('combined', reason+sol)\n\" 2>&1 | tail -10"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T1wAbRojwFoMGJ6FoHPvJf",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -536,7 +536,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],

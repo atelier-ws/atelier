@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012BuqkpUpLCkTUSokuYeDXo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file a.out && readelf -l a.out 2>/dev/null | head -60"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file a.out && readelf -l a.out 2>/dev/null | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CvU5T6RBDb6ipeiGSmH3f2",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/hi.c"
@@ -114,12 +114,12 @@
                 "/app/hi.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_019teUDdoinBD7L1eM8JqPVT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -l a.out 2>/dev/null; echo \"===SECTIONS===\"; readelf -S a.out 2>/dev/null; echo \"===node===\"; node --version"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -l a.out 2>/dev/null; echo \"===SECTIONS===\"; readelf -S a.out 2>/dev/null; echo \"===node===\"; node --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E3sTmLuGTqzKBuoqcoRti2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node -e '\nfunction d(n){let b=Buffer.alloc(4);b.writeUInt32LE(n>>>0);return JSON.stringify(b.toString(\"latin1\"))+\" hex=\"+b.toString(\"hex\")}\nconsole.log(1784774249, d(1784774249));\nconsole.log(1718378344, d(1718378344));\n'"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "cd /app && node -e '\nfunction d(n){let b=Buffer.alloc(4);b.writeUInt32LE(n>>>0);return JSON.stringify(b.toString(\"latin1\"))+\" hex=\"+b.toString(\"hex\")}\nconsole.log(1784774249, d(1784774249));\nconsole.log(1718378344, d(1718378344));\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -261,7 +261,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SxM8NUPoYaVWKJwuC5VtKz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -h a.out 2>/dev/null | grep -E \"Type|Class|Data\""
           },
@@ -269,7 +269,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -h a.out 2>/dev/null | grep -E \"Type|Class|Data\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -330,7 +330,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015EkNecB5jMCvEBGvEZcq69",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -350,7 +350,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -411,7 +411,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017SJdwb6c2wWfGUBCQcDJYc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst o=require(\"/app/out.json\");\nconst k=Object.keys(o);\nconsole.log(\"count\",k.length);\nconsole.log(\"first\",k.slice(0,4).map(x=>[x,o[x]]));\nconsole.log(\"min\",Math.min(...k.map(Number)),\"max\",Math.max(...k.map(Number)));\n'"
           },
@@ -419,7 +419,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst o=require(\"/app/out.json\");\nconst k=Object.keys(o);\nconsole.log(\"count\",k.length);\nconsole.log(\"first\",k.slice(0,4).map(x=>[x,o[x]]));\nconsole.log(\"min\",Math.min(...k.map(Number)),\"max\",Math.max(...k.map(Number)));\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -535,7 +535,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PJYmiqWYr7tCr9S6PXsnfZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst fs=require(\"fs\");\nconst txt=fs.readFileSync(\"/app/out.json\",\"utf8\");\nconst o=JSON.parse(txt);            // valid JSON\nconst buf=fs.readFileSync(\"/app/a.out\");\n// independent cross-check: verify every entry against a fresh vaddr->fileoffset map\n// build PT_LOAD map\nconst phoff=Number(buf.readBigUInt64LE(32)), phes=buf.readUInt16LE(54), phn=buf.readUInt16LE(56);\nconst base=0x400000, segs=[];\nfor(let i=0;i<phn;i++){const ph=phoff+i*phes; if(buf.readUInt32LE(ph)!==1)continue;\n  segs.push({off:Number(buf.readBigUInt64LE(ph+8)),va:Number(buf.readBigUInt64LE(ph+16)),fs:Number(buf.readBigUInt64LE(ph+32))});}\nlet bad=0, nonint=0;\nfor(const [k,v] of Object.entries(o)){\n  if(!Number.isInteger(v)||v<0||v>0xffffffff)nonint++;\n  const addr=Number(k)-base;\n  const s=segs.find(s=>addr>=s.va&&addr+4<=s.va+s.fs);\n  if(!s){bad++;continue;}\n  const fileVal=buf.readUInt32LE(s.off+(addr-s.va));\n  if(fileVal!==v)bad++;\n}\nconsole.log(\"entries\",Object.keys(o).length,\"mismatches\",bad,\"non-int\",nonint);\nconsole.log(\"JSON parse OK, all keys stringified, values numeric\");\n'"
           },
@@ -543,7 +543,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst fs=require(\"fs\");\nconst txt=fs.readFileSync(\"/app/out.json\",\"utf8\");\nconst o=JSON.parse(txt);            // valid JSON\nconst buf=fs.readFileSync(\"/app/a.out\");\n// independent cross-check: verify every entry against a fresh vaddr->fileoffset map\n// build PT_LOAD map\nconst phoff=Number(buf.readBigUInt64LE(32)), phes=buf.readUInt16LE(54), phn=buf.readUInt16LE(56);\nconst base=0x400000, segs=[];\nfor(let i=0;i<phn;i++){const ph=phoff+i*phes; if(buf.readUInt32LE(ph)!==1)continue;\n  segs.push({off:Number(buf.readBigUInt64LE(ph+8)),va:Number(buf.readBigUInt64LE(ph+16)),fs:Number(buf.readBigUInt64LE(ph+32))});}\nlet bad=0, nonint=0;\nfor(const [k,v] of Object.entries(o)){\n  if(!Number.isInteger(v)||v<0||v>0xffffffff)nonint++;\n  const addr=Number(k)-base;\n  const s=segs.find(s=>addr>=s.va&&addr+4<=s.va+s.fs);\n  if(!s){bad++;continue;}\n  const fileVal=buf.readUInt32LE(s.off+(addr-s.va));\n  if(fileVal!==v)bad++;\n}\nconsole.log(\"entries\",Object.keys(o).length,\"mismatches\",bad,\"non-int\",nonint);\nconsole.log(\"JSON parse OK, all keys stringified, values numeric\");\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

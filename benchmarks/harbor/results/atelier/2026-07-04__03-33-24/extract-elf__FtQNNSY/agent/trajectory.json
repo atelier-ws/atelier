@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01URaE2ZMFpG78o6TRRPdF4W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file a.out && readelf -l a.out 2>/dev/null | head -60"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file a.out && readelf -l a.out 2>/dev/null | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bwe65K5JsS12YAm5oAQKyX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && read hi.c 2>/dev/null; echo \"----\"; readelf -l a.out 2>/dev/null | head -80; echo \"===readelf missing?\"; which readelf objdump node"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && read hi.c 2>/dev/null; echo \"----\"; readelf -l a.out 2>/dev/null | head -80; echo \"===readelf missing?\"; which readelf objdump node"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KZmN7KuGCLyH4qzE5LRepi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node -e '\nfor (const v of [1784774249,1718378344]) {\n  const b=Buffer.alloc(4); b.writeUInt32LE(v>>>0,0);\n  console.log(v, \"hex\",b.toString(\"hex\"), \"ascii\", JSON.stringify(b.toString(\"latin1\")));\n}\n'\necho \"---- hi.c ----\"\n"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && node -e '\nfor (const v of [1784774249,1718378344]) {\n  const b=Buffer.alloc(4); b.writeUInt32LE(v>>>0,0);\n  console.log(v, \"hex\",b.toString(\"hex\"), \"ascii\", JSON.stringify(b.toString(\"latin1\")));\n}\n'\necho \"---- hi.c ----\"\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C6mJRa2cN7v9rWcwKL1FYW",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/hi.c"
@@ -252,7 +252,7 @@
                 "/app/hi.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0131sU4nQm3hbbt5jjZTKj48",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -h a.out | egrep 'Class|Data|Machine|program headers|size of program'"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -h a.out | egrep 'Class|Data|Machine|program headers|size of program'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011ACQy1fDvTi2beQv9YmuMP",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -402,7 +402,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BnKHnKb3vmNsFG9goHPJsR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst o=require(\"./out.json\");\nconst keys=Object.keys(o);\nconsole.log(\"count\",keys.length);\nconsole.log(\"first5\", keys.slice(0,5).map(k=>[k,o[k]]));\nconsole.log(\"min\",Math.min(...keys.map(Number)),\"max\",Math.max(...keys.map(Number)));\n// verify a value against objdump-independent check: word at vaddr0 offset0 == ELF magic\nconsole.log(\"v0\", o[0], \"expect\", 0x464c457f);\n'"
           },
@@ -471,7 +471,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && node -e '\nconst o=require(\"./out.json\");\nconst keys=Object.keys(o);\nconsole.log(\"count\",keys.length);\nconsole.log(\"first5\", keys.slice(0,5).map(k=>[k,o[k]]));\nconsole.log(\"min\",Math.min(...keys.map(Number)),\"max\",Math.max(...keys.map(Number)));\n// verify a value against objdump-independent check: word at vaddr0 offset0 == ELF magic\nconsole.log(\"v0\", o[0], \"expect\", 0x464c457f);\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -532,7 +532,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VjVf21opVt5ZzuvgyaRTfJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .text a.out 2>/dev/null | sed -n '5,7p' && node -e '\nconst o=require(\"./out.json\");\n// .text starts at 0x1060 (entry). check a word\nfor (const a of [0x1060,0x1064,0x2000,0x3db8]) console.log(a.toString(16), o[a]!==undefined?o[a].toString(16):\"MISSING\");\n'"
           },
@@ -540,7 +540,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .text a.out 2>/dev/null | sed -n '5,7p' && node -e '\nconst o=require(\"./out.json\");\n// .text starts at 0x1060 (entry). check a word\nfor (const a of [0x1060,0x1064,0x2000,0x3db8]) console.log(a.toString(16), o[a]!==undefined?o[a].toString(16):\"MISSING\");\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -601,7 +601,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bn4TmLjwyu6kPah2XChy7T",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && objdump -s -j .text a.out 2>/dev/null | awk 'NR>=5 && NR<=6'"
           },
@@ -609,7 +609,7 @@
             "raw_arguments": {
               "command": "cd /app && objdump -s -j .text a.out 2>/dev/null | awk 'NR>=5 && NR<=6'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -670,7 +670,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Eo5MctBd7vyj3GqYx4i82",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node -e '\nconst o=require(\"./out.json\");\n// objdump shows bytes at 0x1060: f3 0f 1e fa -> LE uint32 = 0xfa1e0ff3\nconsole.log(\"0x1060\", o[0x1060].toString(16), \"expect fa1e0ff3\");\nconsole.log(\"0x1064\", o[0x1064].toString(16), \"expect (31 ed 49 89)->8949ed31\");\n'"
           },
@@ -678,7 +678,7 @@
             "raw_arguments": {
               "command": "cd /app && node -e '\nconst o=require(\"./out.json\");\n// objdump shows bytes at 0x1060: f3 0f 1e fa -> LE uint32 = 0xfa1e0ff3\nconsole.log(\"0x1060\", o[0x1060].toString(16), \"expect fa1e0ff3\");\nconsole.log(\"0x1064\", o[0x1064].toString(16), \"expect (31 ed 49 89)->8949ed31\");\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -794,7 +794,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017THrqxvE4BwZHKjBs8wPNY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json; echo \"exit=$?\"; node -e '\nconst fs=require(\"fs\");\nconst raw=fs.readFileSync(\"out.json\",\"utf8\");\nconst o=JSON.parse(raw);\nconst keys=Object.keys(o);\nlet bad=0;\nfor(const k of keys){\n  if(!Number.isInteger(o[k])) bad++;\n  if(o[k]<0||o[k]>0xffffffff) bad++;\n  if(!/^\\d+$/.test(k)) bad++;\n}\n// cross-check every emitted word directly against the raw ELF file bytes\nconst buf=fs.readFileSync(\"/app/a.out\");\nconst e_phoff=Number(buf.readBigUInt64LE(0x20)),e_phnum=buf.readUInt16LE(0x38),e_phentsize=buf.readUInt16LE(0x36);\nconst expected={};\nfor(let i=0;i<e_phnum;i++){const ph=e_phoff+i*e_phentsize;if(buf.readUInt32LE(ph)!==1)continue;\n  const off=Number(buf.readBigUInt64LE(ph+8)),va=Number(buf.readBigUInt64LE(ph+16)),fs2=Number(buf.readBigUInt64LE(ph+32));\n  for(let o2=0;o2+4<=fs2;o2+=4) expected[va+o2]=buf.readUInt32LE(off+o2);\n}\nlet mism=0;for(const k of keys) if(expected[k]!==o[k]) mism++;\nconsole.log(\"keys\",keys.length,\"badFormat\",bad,\"valueMismatch\",mism,\"validJSON=true\");\n'"
           },
@@ -802,7 +802,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json; echo \"exit=$?\"; node -e '\nconst fs=require(\"fs\");\nconst raw=fs.readFileSync(\"out.json\",\"utf8\");\nconst o=JSON.parse(raw);\nconst keys=Object.keys(o);\nlet bad=0;\nfor(const k of keys){\n  if(!Number.isInteger(o[k])) bad++;\n  if(o[k]<0||o[k]>0xffffffff) bad++;\n  if(!/^\\d+$/.test(k)) bad++;\n}\n// cross-check every emitted word directly against the raw ELF file bytes\nconst buf=fs.readFileSync(\"/app/a.out\");\nconst e_phoff=Number(buf.readBigUInt64LE(0x20)),e_phnum=buf.readUInt16LE(0x38),e_phentsize=buf.readUInt16LE(0x36);\nconst expected={};\nfor(let i=0;i<e_phnum;i++){const ph=e_phoff+i*e_phentsize;if(buf.readUInt32LE(ph)!==1)continue;\n  const off=Number(buf.readBigUInt64LE(ph+8)),va=Number(buf.readBigUInt64LE(ph+16)),fs2=Number(buf.readBigUInt64LE(ph+32));\n  for(let o2=0;o2+4<=fs2;o2+=4) expected[va+o2]=buf.readUInt32LE(off+o2);\n}\nlet mism=0;for(const k of keys) if(expected[k]!==o[k]) mism++;\nconsole.log(\"keys\",keys.length,\"badFormat\",bad,\"valueMismatch\",mism,\"validJSON=true\");\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

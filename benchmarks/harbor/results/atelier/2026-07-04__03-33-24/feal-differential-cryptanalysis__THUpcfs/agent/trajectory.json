@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JQQNNGxNFCqYYmCiVdgKRF",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.py"
@@ -45,7 +45,7 @@
                 "/app/feal.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -106,7 +106,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RAg9Dk2fy3cA67g4TgcfvP",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -126,7 +126,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -187,7 +187,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SzL5DMsfJC6XCE6VvwC1QF",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/attack.py:tail=6"
@@ -199,7 +199,7 @@
                 "/app/attack.py:tail=6"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -260,7 +260,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0175ocYWdqCc5MQ5CJiamX1Z",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -280,7 +280,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -353,7 +353,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016wgz2Q1CKRKHpPzPKP8GCq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/attack.py:L100-L108"
@@ -365,7 +365,7 @@
                 "/app/attack.py:L100-L108"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -426,7 +426,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0136GgcrmX1FmnSk4CfMjAQC",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -446,7 +446,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -507,7 +507,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0171cXv8hiqFL5r7Wm8gzC6H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 attack.py"
           },
@@ -515,7 +515,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 attack.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -576,7 +576,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VCTrMb6h1iAMtP1bLeh9im",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport feal, attack, random\nrandom.seed()\nok=0\nfor i in range(50):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    ok += (r==feal.key[5])\nprint('passed', ok, '/ 50')\n\""
           },
@@ -584,7 +584,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport feal, attack, random\nrandom.seed()\nok=0\nfor i in range(50):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    ok += (r==feal.key[5])\nprint('passed', ok, '/ 50')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -700,7 +700,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XvYtvvtazkvSqwpmx3KKKb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport feal, attack, random\nrandom.seed(12345)\nok=0\nfor i in range(100):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    ok += (r==feal.key[5])\nprint('passed', ok, '/ 100')\nassert ok==100\n\" && python3 attack.py"
           },
@@ -708,7 +708,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport feal, attack, random\nrandom.seed(12345)\nok=0\nfor i in range(100):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    ok += (r==feal.key[5])\nprint('passed', ok, '/ 100')\nassert ok==100\n\" && python3 attack.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

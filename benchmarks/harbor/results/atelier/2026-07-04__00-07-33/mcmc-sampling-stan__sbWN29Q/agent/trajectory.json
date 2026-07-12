@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R8xnGfkLrqFtRWJMG2STXH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/data.csv; echo \"---\"; R --version 2>/dev/null | head -1; echo \"---\"; which Rscript"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "cat /app/data.csv; echo \"---\"; R --version 2>/dev/null | head -1; echo \"---\"; which Rscript"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01U9C6WgeVnUQeo3NUroVMkZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---os---\"; cat /etc/os-release | head -3"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---os---\"; cat /etc/os-release | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -66,7 +66,7 @@
           },
           {
             "source_call_id": "toolu_01U9C6WgeVnUQeo3NUroVMkZ",
-            "content": "{\"type\": \"text\", \"text\": \"total 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:34 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:33 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:34 .atelier\\n-rw-r--r-- 1 root root  351 Oct 24  2025 data.csv\\n---os---\\nPRETTY_NAME=\\\"Ubuntu 24.04.3 LTS\\\"\\nNAME=\\\"Ubuntu\\\"\\nVERSION_ID=\\\"24.04\\\"\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:34 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:33 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:34 .lemoncrow\\n-rw-r--r-- 1 root root  351 Oct 24  2025 data.csv\\n---os---\\nPRETTY_NAME=\\\"Ubuntu 24.04.3 LTS\\\"\\nNAME=\\\"Ubuntu\\\"\\nVERSION_ID=\\\"24.04\\\"\"}"
           }
         ]
       },
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011V6qSFmeLFP82hS2s1NQoc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript -e 'cat(as.character(packageVersion(\"rstan\")))' 2>&1 | head -5; echo \"===\"; which g++ gcc make"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "Rscript -e 'cat(as.character(packageVersion(\"rstan\")))' 2>&1 | head -5; echo \"===\"; which g++ gcc make"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0114HXY3YWpaJCHC8bWYmQ3G",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which g++ gcc make gfortran; echo \"===\"; ls /usr/lib/R/library | tr '\\n' ' '"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "which g++ gcc make gfortran; echo \"===\"; ls /usr/lib/R/library | tr '\\n' ' '"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JhLHsJe8tnNqz3EM7ZUg9E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which gfortran; echo \"===\"; ls /root/.R 2>/dev/null; ls ~/.cache 2>/dev/null; echo \"---pip---\"; ls /tmp/*.tar.gz /opt 2>/dev/null; echo \"---try cran---\"; timeout 20 Rscript -e 'options(timeout=15); r<-tryCatch(available.packages(repos=\"https://cloud.r-project.org\")[\"rstan\",\"Version\"], error=function(e) conditionMessage(e)); cat(r,\"\\n\")' 2>&1 | tail -5"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "which gfortran; echo \"===\"; ls /root/.R 2>/dev/null; ls ~/.cache 2>/dev/null; echo \"---pip---\"; ls /tmp/*.tar.gz /opt 2>/dev/null; echo \"---try cran---\"; timeout 20 Rscript -e 'options(timeout=15); r<-tryCatch(available.packages(repos=\"https://cloud.r-project.org\")[\"rstan\",\"Version\"], error=function(e) conditionMessage(e)); cat(r,\"\\n\")' 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -273,7 +273,7 @@
         "results": [
           {
             "source_call_id": "toolu_01JhLHsJe8tnNqz3EM7ZUg9E",
-            "content": "{\"type\": \"text\", \"text\": \"===\\nclaude-cli-nodejs\\n---pip---\\n/opt:\\natelier-venv\\nuvpy\\n---try cran---\\n2.32.7\"}"
+            "content": "{\"type\": \"text\", \"text\": \"===\\nclaude-cli-nodejs\\n---pip---\\n/opt:\\nlemoncrow-venv\\nuvpy\\n---try cran---\\n2.32.7\"}"
           }
         ]
       },
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CqBF6TwwMzVSDeuGWKgNfo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y gfortran >/tmp/apt.log 2>&1; tail -2 /tmp/apt.log; which gfortran"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "apt-get install -y gfortran >/tmp/apt.log 2>&1; tail -2 /tmp/apt.log; which gfortran"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018qQBr3hRLjc33ZR2Fs5k8F",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nproc; free -g | head -2"
           },
@@ -403,12 +403,12 @@
             "raw_arguments": {
               "command": "nproc; free -g | head -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01Vn65wkDUEUVsLKanDazwpa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p ~/.R; printf 'MAKEFLAGS = -j4\\nCXX14FLAGS = -O2 -fPIC\\nCXX17FLAGS = -O2 -fPIC\\n' > ~/.R/Makevars; cat ~/.R/Makevars"
           },
@@ -416,7 +416,7 @@
             "raw_arguments": {
               "command": "mkdir -p ~/.R; printf 'MAKEFLAGS = -j4\\nCXX14FLAGS = -O2 -fPIC\\nCXX17FLAGS = -O2 -fPIC\\n' > ~/.R/Makevars; cat ~/.R/Makevars"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -481,7 +481,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012wC56VzQaf97PuPQaFPez4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; Rscript -e 'options(timeout=3600, Ncpus=8); install.packages(\"rstan\", repos=\"https://cloud.r-project.org\")' >/tmp/rstan_install.log 2>&1; echo \"EXIT=$?\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")))'",
             "background": true
@@ -491,7 +491,7 @@
               "command": "cd /app; Rscript -e 'options(timeout=3600, Ncpus=8); install.packages(\"rstan\", repos=\"https://cloud.r-project.org\")' >/tmp/rstan_install.log 2>&1; echo \"EXIT=$?\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")))'",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -552,7 +552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MB6Mx11fv2dTZfCPZyzaQG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -582,7 +582,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -643,7 +643,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018s4iGo2Xzsddyq9r5AyXCm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "status",
             "session_id": "b7d8fdc1a83d456e8126a7a8b50bd920"
@@ -653,7 +653,7 @@
               "action": "status",
               "session_id": "b7d8fdc1a83d456e8126a7a8b50bd920"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -714,7 +714,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GKxYtc5s2aNTZfZuqCK3uB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "poll",
             "session_id": "b7d8fdc1a83d456e8126a7a8b50bd920",
@@ -726,7 +726,7 @@
               "session_id": "b7d8fdc1a83d456e8126a7a8b50bd920",
               "timeout": 1500
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -787,7 +787,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SMNn6BjHczjXgXP7uX9Gmz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "tail -40 /tmp/rstan_install.log"
           },
@@ -795,7 +795,7 @@
             "raw_arguments": {
               "command": "tail -40 /tmp/rstan_install.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -803,7 +803,7 @@
         "results": [
           {
             "source_call_id": "toolu_01SMNn6BjHczjXgXP7uX9Gmz",
-            "content": "{\"type\": \"text\", \"text\": \"../inst/include/Eigen/src/Core/AssignEvaluator.h:858:27:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&, const Func&, typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type) [with Dst = Eigen::Matrix<double, -1, 1>; Src = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; Func = assign_op<double, double>; typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type = void*; typename evaluator_traits<SrcXprType>::Shape = Eigen::DenseShape]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:836:18:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&) [with Dst = Eigen::Matrix<double, -1, 1>; Src = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >]’\\n../inst/include/Eigen/src/Core/PlainObjectBase.h:779:32:   required from ‘Derived& Eigen::PlainObjectBase<Derived>::_set(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; Derived = Eigen::Matrix<double, -1, 1>]’\\n../inst/include/Eigen/src/Core/Matrix.h:225:24:   required from ‘Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; _Scalar = double; int _Rows = -1; int _Cols = 1; int _Options = 0; int _MaxRows = -1; int _MaxCols = 1]’\\nfastLm.cpp:127:46:   required from here\\n../inst/include/Eigen/src/Core/DenseCoeffsBase.h:654:74: warning: ignoring attributes on template argument ‘Eigen::internal::packet_traits<double>::type’ {aka ‘__m128d’} [-Wignored-attributes]\\n  654 |   return internal::first_aligned<int(unpacket_traits<DefaultPacketType>::alignment),Derived>(m);\\n      |                                                                          ^~~~~~~~~\\n../inst/include/Eigen/src/Core/CoreEvaluators.h: In instantiation of ‘struct Eigen::internal::evaluator<Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false> >’:\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:780:20:   required from ‘void Eigen::internal::call_dense_assignment_loop(DstXprType&, const SrcXprType&, const Functor&) [with DstXprType = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; SrcXprType = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Functor = add_assign_op<double, double>]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:954:31:   required from ‘static void Eigen::internal::Assignment<DstXprType, SrcXprType, Functor, Eigen::internal::Dense2Dense, Weak>::run(DstXprType&, const SrcXprType&, const Functor&) [with DstXprType = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; SrcXprType = Eigen::CwiseBinaryOp<Eigen::internal::scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<Eigen::internal::scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Functor = Eigen::internal::add_assign_op<double, double>; Weak = void]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:890:49:   required from ‘void Eigen::internal::call_assignment_no_alias(Dst&, const Src&, const Func&) [with Dst = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; Src = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Func = add_assign_op<double, double>]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:858:27:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&, const Func&, typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type) [with Dst = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; Src = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Func = add_assign_op<double, double>; typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type = void*; typename evaluator_traits<SrcXprType>::Shape = Eigen::DenseShape]’\\n../inst/include/Eigen/src/Core/CwiseBinaryOp.h:177:18:   required from ‘Derived& Eigen::MatrixBase<Derived>::operator+=(const Eigen::MatrixBase<OtherDerived>&) [with OtherDerived = Eigen::CwiseBinaryOp<Eigen::internal::scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<Eigen::internal::scalar_constant_op<doub\\n...[summary clipped; full output is in spill]...\\nrived = Eigen::Product<Eigen::Product<Eigen::Product<Eigen::Matrix<double, -1, -1>, Eigen::Transpose<const Eigen::Matrix<double, -1, -1> >, 0>, Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, 0>, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0>; Derived = Eigen::Matrix<double, -1, 1>]’\\n../inst/include/Eigen/src/Core/Matrix.h:225:24:   required from ‘Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Product<Eigen::Product<Eigen::Product<Eigen::Matrix<double, -1, -1>, Eigen::Transpose<const Eigen::Matrix<double, -1, -1> >, 0>, Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, 0>, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0>; _Scalar = double; int _Rows = -1; int _Cols = 1; int _Options = 0; int _MaxRows = -1; int _MaxCols = 1]’\\nfastLm.cpp:183:55:   required from here\\n../inst/include/Eigen/src/Core/CoreEvaluators.h:1071:54: warning: ignoring attributes on template argument ‘Eigen::internal::packet_traits<double>::type’ {aka ‘__m128d’} [-Wignored-attributes]\\n 1071 |     PacketAlignment = unpacket_traits<PacketScalar>::alignment,\\n      |                                                      ^~~~~~~~~\\ng++ -std=gnu++17 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions -flto=auto -ffat-lto-objects -Wl,-z,relro -o RcppEigen.so RcppEigen.o RcppExports.o fastLm.o -llapack -lblas -lgfortran -lm -lquadmath -L/usr/lib/R/lib -lR\\n/usr/bin/ld: cannot find -llapack: No such file or directory\\n/usr/bin/ld: cannot find -lblas: No such file or directory\\ncollect2: error: ld returned 1 exit status\\nmake[1]: *** [/usr/share/R/share/make/shlib.mk:10: RcppEigen.so] Error 1\\nmake[1]: Leaving directory '/tmp/Rtmp2BLVfv/R.INSTALL24e57755bbdf/RcppEigen/src'\\nERROR: compilation failed for package ‘RcppEigen’\\n* removing ‘/usr/local/lib/R/site-library/RcppEigen’\\ncat: StanHeaders.out: No such file or directory\\ncat: rstan.out: No such file or directory\\n\\nThe downloaded source packages are in\\n\\t‘/tmp/Rtmp1eLIPx/downloaded_packages’\\nWarning message:\\nIn install.packages(\\\"rstan\\\", repos = \\\"https://cloud.r-project.org\\\") :\\n  installation of 3 packages failed:  ‘RcppEigen’, ‘StanHeaders’, ‘rstan’\\n\\n[full output (10345B) spilled to /tmp/atelier-spill/tool_output-bash-1783118179386-ce6cca07.txt; read /tmp/atelier-spill/tool_output-bash-1783118179386-ce6cca07.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"../inst/include/Eigen/src/Core/AssignEvaluator.h:858:27:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&, const Func&, typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type) [with Dst = Eigen::Matrix<double, -1, 1>; Src = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; Func = assign_op<double, double>; typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type = void*; typename evaluator_traits<SrcXprType>::Shape = Eigen::DenseShape]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:836:18:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&) [with Dst = Eigen::Matrix<double, -1, 1>; Src = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >]’\\n../inst/include/Eigen/src/Core/PlainObjectBase.h:779:32:   required from ‘Derived& Eigen::PlainObjectBase<Derived>::_set(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; Derived = Eigen::Matrix<double, -1, 1>]’\\n../inst/include/Eigen/src/Core/Matrix.h:225:24:   required from ‘Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Solve<Eigen::LLT<Eigen::Matrix<double, -1, -1>, 1>, Eigen::Product<Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0> >; _Scalar = double; int _Rows = -1; int _Cols = 1; int _Options = 0; int _MaxRows = -1; int _MaxCols = 1]’\\nfastLm.cpp:127:46:   required from here\\n../inst/include/Eigen/src/Core/DenseCoeffsBase.h:654:74: warning: ignoring attributes on template argument ‘Eigen::internal::packet_traits<double>::type’ {aka ‘__m128d’} [-Wignored-attributes]\\n  654 |   return internal::first_aligned<int(unpacket_traits<DefaultPacketType>::alignment),Derived>(m);\\n      |                                                                          ^~~~~~~~~\\n../inst/include/Eigen/src/Core/CoreEvaluators.h: In instantiation of ‘struct Eigen::internal::evaluator<Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false> >’:\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:780:20:   required from ‘void Eigen::internal::call_dense_assignment_loop(DstXprType&, const SrcXprType&, const Functor&) [with DstXprType = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; SrcXprType = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Functor = add_assign_op<double, double>]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:954:31:   required from ‘static void Eigen::internal::Assignment<DstXprType, SrcXprType, Functor, Eigen::internal::Dense2Dense, Weak>::run(DstXprType&, const SrcXprType&, const Functor&) [with DstXprType = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; SrcXprType = Eigen::CwiseBinaryOp<Eigen::internal::scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<Eigen::internal::scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Functor = Eigen::internal::add_assign_op<double, double>; Weak = void]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:890:49:   required from ‘void Eigen::internal::call_assignment_no_alias(Dst&, const Src&, const Func&) [with Dst = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; Src = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Func = add_assign_op<double, double>]’\\n../inst/include/Eigen/src/Core/AssignEvaluator.h:858:27:   required from ‘void Eigen::internal::call_assignment(Dst&, const Src&, const Func&, typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type) [with Dst = Eigen::Block<Eigen::Matrix<double, -1, -1, 1, -1, -1>, -1, 1, false>; Src = Eigen::CwiseBinaryOp<scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<scalar_constant_op<double>, const Eigen::Matrix<double, -1, 1> >, const Eigen::Map<Eigen::Matrix<double, -1, 1>, 2, Eigen::Stride<0, 0> > >; Func = add_assign_op<double, double>; typename enable_if<(! evaluator_assume_aliasing<Src>::value), void*>::type = void*; typename evaluator_traits<SrcXprType>::Shape = Eigen::DenseShape]’\\n../inst/include/Eigen/src/Core/CwiseBinaryOp.h:177:18:   required from ‘Derived& Eigen::MatrixBase<Derived>::operator+=(const Eigen::MatrixBase<OtherDerived>&) [with OtherDerived = Eigen::CwiseBinaryOp<Eigen::internal::scalar_product_op<double, double>, const Eigen::CwiseNullaryOp<Eigen::internal::scalar_constant_op<doub\\n...[summary clipped; full output is in spill]...\\nrived = Eigen::Product<Eigen::Product<Eigen::Product<Eigen::Matrix<double, -1, -1>, Eigen::Transpose<const Eigen::Matrix<double, -1, -1> >, 0>, Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, 0>, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0>; Derived = Eigen::Matrix<double, -1, 1>]’\\n../inst/include/Eigen/src/Core/Matrix.h:225:24:   required from ‘Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Product<Eigen::Product<Eigen::Product<Eigen::Matrix<double, -1, -1>, Eigen::Transpose<const Eigen::Matrix<double, -1, -1> >, 0>, Eigen::Transpose<const Eigen::Map<Eigen::Matrix<double, -1, -1>, 0, Eigen::Stride<0, 0> > >, 0>, Eigen::Map<Eigen::Matrix<double, -1, 1>, 0, Eigen::Stride<0, 0> >, 0>; _Scalar = double; int _Rows = -1; int _Cols = 1; int _Options = 0; int _MaxRows = -1; int _MaxCols = 1]’\\nfastLm.cpp:183:55:   required from here\\n../inst/include/Eigen/src/Core/CoreEvaluators.h:1071:54: warning: ignoring attributes on template argument ‘Eigen::internal::packet_traits<double>::type’ {aka ‘__m128d’} [-Wignored-attributes]\\n 1071 |     PacketAlignment = unpacket_traits<PacketScalar>::alignment,\\n      |                                                      ^~~~~~~~~\\ng++ -std=gnu++17 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions -flto=auto -ffat-lto-objects -Wl,-z,relro -o RcppEigen.so RcppEigen.o RcppExports.o fastLm.o -llapack -lblas -lgfortran -lm -lquadmath -L/usr/lib/R/lib -lR\\n/usr/bin/ld: cannot find -llapack: No such file or directory\\n/usr/bin/ld: cannot find -lblas: No such file or directory\\ncollect2: error: ld returned 1 exit status\\nmake[1]: *** [/usr/share/R/share/make/shlib.mk:10: RcppEigen.so] Error 1\\nmake[1]: Leaving directory '/tmp/Rtmp2BLVfv/R.INSTALL24e57755bbdf/RcppEigen/src'\\nERROR: compilation failed for package ‘RcppEigen’\\n* removing ‘/usr/local/lib/R/site-library/RcppEigen’\\ncat: StanHeaders.out: No such file or directory\\ncat: rstan.out: No such file or directory\\n\\nThe downloaded source packages are in\\n\\t‘/tmp/Rtmp1eLIPx/downloaded_packages’\\nWarning message:\\nIn install.packages(\\\"rstan\\\", repos = \\\"https://cloud.r-project.org\\\") :\\n  installation of 3 packages failed:  ‘RcppEigen’, ‘StanHeaders’, ‘rstan’\\n\\n[full output (10345B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783118179386-ce6cca07.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783118179386-ce6cca07.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -856,7 +856,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FaurxRsfuuTv2bGa5bvorH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y liblapack-dev libblas-dev >/tmp/apt2.log 2>&1; echo \"EXIT=$?\"; tail -2 /tmp/apt2.log; ls -la /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 2>&1"
           },
@@ -864,7 +864,7 @@
             "raw_arguments": {
               "command": "apt-get install -y liblapack-dev libblas-dev >/tmp/apt2.log 2>&1; echo \"EXIT=$?\"; tail -2 /tmp/apt2.log; ls -la /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -925,7 +925,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TtXmRpQLPvwLsZVMEXQyBC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; Rscript -e 'options(timeout=3600, Ncpus=8); install.packages(c(\"RcppEigen\",\"StanHeaders\",\"rstan\"), repos=\"https://cloud.r-project.org\")' >/tmp/rstan_install2.log 2>&1; echo \"EXIT=$?\"; Rscript -e 'cat(\"rstan:\", as.character(packageVersion(\"rstan\")),\"\\n\")'",
             "background": true
@@ -935,7 +935,7 @@
               "command": "cd /app; Rscript -e 'options(timeout=3600, Ncpus=8); install.packages(c(\"RcppEigen\",\"StanHeaders\",\"rstan\"), repos=\"https://cloud.r-project.org\")' >/tmp/rstan_install2.log 2>&1; echo \"EXIT=$?\"; Rscript -e 'cat(\"rstan:\", as.character(packageVersion(\"rstan\")),\"\\n\")'",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -996,7 +996,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XsKQrAeD6xTUWkzXbEWJbg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "poll",
             "session_id": "d7182b01d85c4653af53f2136ef41ac5",
@@ -1008,7 +1008,7 @@
               "session_id": "d7182b01d85c4653af53f2136ef41ac5",
               "timeout": 1700
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1069,7 +1069,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WAdXhJSHuDBNyVG2Vak4Ha",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; Rscript -e '\nlibrary(rstan)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d),y=as.integer(d$y),n=as.integer(d$n))\nm<-stan_model(file=\"/app/hierarchical_model.stan\")\nf<-sampling(m,data=sd,chains=1,iter=2000,seed=1,refresh=0)\np<-rstan::extract(f)\ncat(\"alpha\",mean(p$alpha),\"beta\",mean(p$beta),\"\\n\")\n' 2>&1 | tail -20"
           },
@@ -1077,7 +1077,7 @@
             "raw_arguments": {
               "command": "cd /app; Rscript -e '\nlibrary(rstan)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d),y=as.integer(d$y),n=as.integer(d$n))\nm<-stan_model(file=\"/app/hierarchical_model.stan\")\nf<-sampling(m,data=sd,chains=1,iter=2000,seed=1,refresh=0)\np<-rstan::extract(f)\ncat(\"alpha\",mean(p$alpha),\"beta\",mean(p$beta),\"\\n\")\n' 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1138,7 +1138,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013HoYhfQvxGbo19kq5B87Jz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; Rscript /app/analysis.R >/tmp/analysis.log 2>&1; echo \"EXIT=$?\"",
             "background": true
@@ -1148,7 +1148,7 @@
               "command": "cd /app; Rscript /app/analysis.R >/tmp/analysis.log 2>&1; echo \"EXIT=$?\"",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1209,7 +1209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R1So9tnnEkUsTai2ZF9bRG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "poll",
             "session_id": "e4a20008222f4a34b47a11bda366fdc8",
@@ -1221,7 +1221,7 @@
               "session_id": "e4a20008222f4a34b47a11bda366fdc8",
               "timeout": 1700
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1282,7 +1282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AJEgDJDXHNnTPxtrnBtde3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "tail -6 /tmp/analysis.log; echo \"=== FILES ===\"; echo \"alpha: $(cat /app/posterior_alpha_mean.txt)\"; echo \"beta:  $(cat /app/posterior_beta_mean.txt)\"; ls -la /app/*.stan /app/*.R /app/*.txt"
           },
@@ -1290,7 +1290,7 @@
             "raw_arguments": {
               "command": "tail -6 /tmp/analysis.log; echo \"=== FILES ===\"; echo \"alpha: $(cat /app/posterior_alpha_mean.txt)\"; echo \"beta:  $(cat /app/posterior_beta_mean.txt)\"; ls -la /app/*.stan /app/*.R /app/*.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

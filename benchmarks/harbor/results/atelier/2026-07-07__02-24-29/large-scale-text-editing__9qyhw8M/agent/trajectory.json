@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X65GCXXLYmZwYBedzWua9r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/input.csv; echo \"---\"; head -5 /app/expected.csv; echo \"===\"; wc -l /app/input.csv /app/expected.csv"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "head -5 /app/input.csv; echo \"---\"; head -5 /app/expected.csv; echo \"===\"; wc -l /app/input.csv /app/expected.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UmZ4LmJhkpUxgEnk8CFVFt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && head -20 /app/input.csv > t.csv && head -20 /app/expected.csv > exp.csv\ncat > /tmp/m.vim <<'EOF'\ncall setreg('a', \"gUU\")\ncall setreg('b', \":s/^ *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *$/\\\\3;\\\\2;\\\\1/\\<CR>\")\ncall setreg('c', \"A;OK\\<Esc>\")\n:%normal! @a\n:%normal! @b\n:%normal! @c\n:wq\nEOF\ncp t.csv work.csv\nvim -Nu NONE -n -Es work.csv -S /tmp/m.vim\ndiff work.csv exp.csv && echo MATCH"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /tmp && head -20 /app/input.csv > t.csv && head -20 /app/expected.csv > exp.csv\ncat > /tmp/m.vim <<'EOF'\ncall setreg('a', \"gUU\")\ncall setreg('b', \":s/^ *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *$/\\\\3;\\\\2;\\\\1/\\<CR>\")\ncall setreg('c', \"A;OK\\<Esc>\")\n:%normal! @a\n:%normal! @b\n:%normal! @c\n:wq\nEOF\ncp t.csv work.csv\nvim -Nu NONE -n -Es work.csv -S /tmp/m.vim\ndiff work.csv exp.csv && echo MATCH"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R2CaZGPMddkx17Co8m4X5o",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/apply_macros.vim",
             "new": "call setreg('a', \"gUU\")\ncall setreg('b', \":s/^ *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *$/\\\\3;\\\\2;\\\\1/\\<CR>\")\ncall setreg('c', \"A;OK\\<Esc>\")\n:%normal! @a\n:%normal! @b\n:%normal! @c\n:wq\n",
@@ -183,7 +183,7 @@
               "new": "call setreg('a', \"gUU\")\ncall setreg('b', \":s/^ *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *, *\\\\(\\\\S*\\\\) *$/\\\\3;\\\\2;\\\\1/\\<CR>\")\ncall setreg('c', \"A;OK\\<Esc>\")\n:%normal! @a\n:%normal! @b\n:%normal! @c\n:wq\n",
               "replace": "true"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014ko42ZQvABossoMx3t2YGb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp input.csv /tmp/orig.csv\ntime vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim\necho \"exit=$?\"\ncmp input.csv expected.csv && echo BYTEMATCH\ncp /tmp/orig.csv /app/input.csv"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "cd /app && cp input.csv /tmp/orig.csv\ntime vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim\necho \"exit=$?\"\ncmp input.csv expected.csv && echo BYTEMATCH\ncp /tmp/orig.csv /app/input.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

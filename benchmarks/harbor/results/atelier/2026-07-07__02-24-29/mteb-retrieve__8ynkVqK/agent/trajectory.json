@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GBtLCRTVzYFZRfmJuMe7KY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/data.txt; head -3 /app/data.txt; python3 -c \"import mteb; print(mteb.__version__)\"; ls /app"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/data.txt; head -3 /app/data.txt; python3 -c \"import mteb; print(mteb.__version__)\"; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HuJWK6RGSSjH95kTLPU32W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -iname \"*bge-small-zh*\" 2>/dev/null | head; ls ~/.cache/huggingface 2>/dev/null; find / -path \"*huggingface*\" -name \"*.safetensors\" 2>/dev/null | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "find / -iname \"*bge-small-zh*\" 2>/dev/null | head; ls ~/.cache/huggingface 2>/dev/null; find / -path \"*huggingface*\" -name \"*.safetensors\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GzfHrWnc2gbthJq6VUsykD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -iname \"*.safetensors\" 2>/dev/null | head; find / -iname \"pytorch_model.bin\" 2>/dev/null | head; ls /root /app -la 2>/dev/null; env | grep -i hf"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "find / -iname \"*.safetensors\" 2>/dev/null | head; find / -iname \"pytorch_model.bin\" 2>/dev/null | head; ls /root /app -la 2>/dev/null; env | grep -i hf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DCcAwXCGepgjvu3A91U51h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "env | grep -iE \"hf|hugging|proxy|endpoint\"; python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; pip list 2>/dev/null | grep -iE \"sentence|transformers|torch|mteb\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "env | grep -iE \"hf|hugging|proxy|endpoint\"; python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; pip list 2>/dev/null | grep -iE \"sentence|transformers|torch|mteb\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R1NbmANi797mkZ3yhA8n4K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 120 python3 2>&1 <<'EOF' | tail -30\nimport mteb\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\nprint(\"loaded\", type(m))\nEOF"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 120 python3 2>&1 <<'EOF' | tail -30\nimport mteb\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\nprint(\"loaded\", type(m))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Li24iXMzR6FdPfSwgu37Kn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ndocs = m.encode(lines)\nq = m.encode([\"terminal-bench\"])\ndocs = np.asarray(docs); q = np.asarray(q)\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ndocs = m.encode(lines)\nq = m.encode([\"terminal-bench\"])\ndocs = np.asarray(docs); q = np.asarray(q)\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ua1adCD4QsiWtPr8Byv5e7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ndocs = np.asarray(m.encode(lines, task_name=\"STS\"))\nq = np.asarray(m.encode([\"terminal-bench\"], task_name=\"STS\"))\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ndocs = np.asarray(m.encode(lines, task_name=\"STS\"))\nq = np.asarray(m.encode([\"terminal-bench\"], task_name=\"STS\"))\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AfD7825Gb2CcAygHyRwZCH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ntask = mteb.get_task(\"STS22\")\nkw = dict(task_name=task.metadata.name)\ndocs = np.asarray(m.encode(lines, **kw))\nq = np.asarray(m.encode([\"terminal-bench\"], **kw))\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 300 python3 2>&1 <<'EOF' | tail -40\nimport mteb, numpy as np\nlines = [l.rstrip(\"\\n\") for l in open(\"data.txt\")]\nm = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=\"7999e1d3359715c523056ef9478215996d62a620\")\ntask = mteb.get_task(\"STS22\")\nkw = dict(task_name=task.metadata.name)\ndocs = np.asarray(m.encode(lines, **kw))\nq = np.asarray(m.encode([\"terminal-bench\"], **kw))\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nsims = (norm(docs) @ norm(q).T).ravel()\norder = np.argsort(-sims)\nfor r,i in enumerate(order[:8]):\n    print(r+1, round(float(sims[i]),4), lines[i][:60])\nfifth = order[4]\nopen(\"result.txt\",\"w\").write(lines[fifth]+\"\\n\")\nprint(\"WROTE:\", lines[fifth])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CvRqymAaQgA1n4kG8tLDgG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/result.txt; grep -Fxq \"$(cat /app/result.txt)\" /app/data.txt && echo MATCH"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cat /app/result.txt; grep -Fxq \"$(cat /app/result.txt)\" /app/data.txt && echo MATCH"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TBGqXeB7yPK1ZPxirbvdyk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && python3 -c \"from PIL import Image; im=Image.open('chess_board.png'); print(im.size, im.mode)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && python3 -c \"from PIL import Image; im=Image.open('chess_board.png'); print(im.size, im.mode)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F6VY2U7KwiAzivsdnCkncB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB'))\nprint(im.shape)\n# sample corner squares background colors\nfor r in [0,1,2,3,4,5,6,7]:\n  row=[]\n  for c in range(8):\n    y=r*80+5; x=c*80+5\n    row.append(tuple(im[y,x]))\n  print(r,row)\n\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB'))\nprint(im.shape)\n# sample corner squares background colors\nfor r in [0,1,2,3,4,5,6,7]:\n  row=[]\n  for c in range(8):\n    y=r*80+5; x=c*80+5\n    row.append(tuple(im[y,x]))\n  print(r,row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hmac2z2K7HGd4j83UfDZnF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv pip install --system --break-system-packages numpy >/dev/null 2>&1; python3 -c \"import numpy; print('ok')\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && uv pip install --system --break-system-packages numpy >/dev/null 2>&1; python3 -c \"import numpy; print('ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QRoS6rkG4GebzSFUhu74iX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv pip install --system --break-system-packages numpy 2>&1 | tail -5"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && uv pip install --system --break-system-packages numpy 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UVZgGtdSLwWGUxbZTwLnXN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages numpy 2>&1 | tail -5 || pip3 install --break-system-packages numpy 2>&1 | tail -5"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages numpy 2>&1 | tail -5 || pip3 install --break-system-packages numpy 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J4aUCUmME8oqGFMntF2Cy3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB'))\nprint(im.shape)\nfor r in range(8):\n  row=[]\n  for c in range(8):\n    y=r*80+5; x=c*80+5\n    row.append(tuple(int(v) for v in im[y,x]))\n  print(r,row)\n\""
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB'))\nprint(im.shape)\nfor r in range(8):\n  row=[]\n  for c in range(8):\n    y=r*80+5; x=c*80+5\n    row.append(tuple(int(v) for v in im[y,x]))\n  print(r,row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VBReQHkrqQgoB9ZhQfe6ST",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nfor r in range(8):\n  cells=[]\n  for c in range(8):\n    sq=im[r*80:r*80+80, c*80:c*80+80]\n    dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n    mask=(dl>60)&(dd>60)\n    n=mask.sum()\n    if n>50:\n      pix=sq[mask]\n      bright=pix.mean(1)\n      wh=(bright>150).sum(); bl=(bright<100).sum()\n      col='W' if wh>bl else 'B'\n      cells.append(col+str(n))\n    else:\n      cells.append('..')\n  print(r,cells)\n\""
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nfor r in range(8):\n  cells=[]\n  for c in range(8):\n    sq=im[r*80:r*80+80, c*80:c*80+80]\n    dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n    mask=(dl>60)&(dd>60)\n    n=mask.sum()\n    if n>50:\n      pix=sq[mask]\n      bright=pix.mean(1)\n      wh=(bright>150).sum(); bl=(bright<100).sum()\n      col='W' if wh>bl else 'B'\n      cells.append(col+str(n))\n    else:\n      cells.append('..')\n  print(r,cells)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A644kEJKMTMtQUR68e5cFn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nfor (r,c) in occ:\n  sq=im[r*80:r*80+80, c*80:c*80+80]\n  dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n  mask=(dl>60)&(dd>60)\n  # downsample to 24x24\n  s=''\n  print('=== '+files[c]+str(8-r)+' ===')\n  for yy in range(0,80,4):\n    line=''\n    for xx in range(0,80,4):\n      block=mask[yy:yy+4,xx:xx+4]\n      if block.sum()>=8:\n        # determine color\n        pb=sq[yy:yy+4,xx:xx+4][block].mean()\n        line+= '#' if pb>150 else '@'\n      else:\n        line+=' '\n    print(line)\n\" 2>&1 | head -120"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nfor (r,c) in occ:\n  sq=im[r*80:r*80+80, c*80:c*80+80]\n  dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n  mask=(dl>60)&(dd>60)\n  # downsample to 24x24\n  s=''\n  print('=== '+files[c]+str(8-r)+' ===')\n  for yy in range(0,80,4):\n    line=''\n    for xx in range(0,80,4):\n      block=mask[yy:yy+4,xx:xx+4]\n      if block.sum()>=8:\n        # determine color\n        pb=sq[yy:yy+4,xx:xx+4][block].mean()\n        line+= '#' if pb>150 else '@'\n      else:\n        line+=' '\n    print(line)\n\" 2>&1 | head -120"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RZW7vmWUzpnQWDaPsnbhnB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nout=[]\nfor (r,c) in occ:\n  sq=im[r*80:r*80+80, c*80:c*80+80]\n  dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n  mask=(dl>50)&(dd>50)\n  out.append('=== '+files[c]+str(8-r)+' ===')\n  for yy in range(8,78,2):\n    line=''\n    for xx in range(8,72,2):\n      block=mask[yy:yy+2,xx:xx+2]\n      if block.sum()>=2:\n        pb=sq[yy:yy+2,xx:xx+2][block].mean()\n        line+= '.' if pb>150 else '#'\n      else:\n        line+=' '\n    out.append(line)\nopen('art.txt','w').write('\\n'.join(out))\nprint('done')\n\""
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=np.array(Image.open('chess_board.png').convert('RGB')).astype(int)\nlight=np.array([240,217,181]); dark=np.array([181,136,99])\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nout=[]\nfor (r,c) in occ:\n  sq=im[r*80:r*80+80, c*80:c*80+80]\n  dl=np.abs(sq-light).sum(2); dd=np.abs(sq-dark).sum(2)\n  mask=(dl>50)&(dd>50)\n  out.append('=== '+files[c]+str(8-r)+' ===')\n  for yy in range(8,78,2):\n    line=''\n    for xx in range(8,72,2):\n      block=mask[yy:yy+2,xx:xx+2]\n      if block.sum()>=2:\n        pb=sq[yy:yy+2,xx:xx+2][block].mean()\n        line+= '.' if pb>150 else '#'\n      else:\n        line+=' '\n    out.append(line)\nopen('art.txt','w').write('\\n'.join(out))\nprint('done')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UF49hjSmwNfxKQopTvr6dp",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/art.txt"
@@ -666,7 +666,7 @@
                 "/app/art.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019mNQRuqF1eB7CbuiW38CKe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages chess 2>&1 | tail -3; which stockfish; apt-get install -y stockfish 2>&1 | tail -3"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages chess 2>&1 | tail -3; which stockfish; apt-get install -y stockfish 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V7zVdmEX9JUHG2vSSJqCSn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\nprint(b)\nprint('valid:', b.is_valid())\nprint('turn white:', b.turn)\nprint(b.status())\n\""
           },
@@ -804,7 +804,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\nprint(b)\nprint('valid:', b.is_valid())\nprint('turn white:', b.turn)\nprint(b.status())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -865,7 +865,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FrQZge1QsdXUxdgj1zCRF9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/an.py <<'EOF'\nimport chess, chess.engine\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\neng=chess.engine.SimpleEngine.popen_uci('stockfish')\ninfo=eng.analyse(b, chess.engine.Limit(time=5.0), multipv=5)\nfor i in info:\n    print(i['score'].white(), i['pv'][0].uci(), ' '.join(m.uci() for m in i['pv'][:6]))\neng.quit()\nEOF\npython3 /tmp/an.py"
           },
@@ -873,7 +873,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/an.py <<'EOF'\nimport chess, chess.engine\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\neng=chess.engine.SimpleEngine.popen_uci('stockfish')\ninfo=eng.analyse(b, chess.engine.Limit(time=5.0), multipv=5)\nfor i in info:\n    print(i['score'].white(), i['pv'][0].uci(), ' '.join(m.uci() for m in i['pv'][:6]))\neng.quit()\nEOF\npython3 /tmp/an.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q9qbBcP9DAkXTN9GMYhDDA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /usr/games/stockfish /usr/bin/stockfish 2>&1; dpkg -L stockfish | grep bin"
           },
@@ -942,7 +942,7 @@
             "raw_arguments": {
               "command": "ls -la /usr/games/stockfish /usr/bin/stockfish 2>&1; dpkg -L stockfish | grep bin"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1003,7 +1003,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F4SWXcGxbDrnvVDFfYa2on",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -i \"s#'stockfish'#'/usr/games/stockfish'#\" /tmp/an.py && python3 /tmp/an.py"
           },
@@ -1011,7 +1011,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -i \"s#'stockfish'#'/usr/games/stockfish'#\" /tmp/an.py && python3 /tmp/an.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1072,7 +1072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CyXV4wMFeaEXfKpwxmfymS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess\nb=chess.Board('r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1')\nmates=[]\nfor m in b.legal_moves:\n    b.push(m)\n    if b.is_checkmate(): mates.append(m.uci())\n    b.pop()\nprint(mates)\n\""
           },
@@ -1080,7 +1080,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess\nb=chess.Board('r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1')\nmates=[]\nfor m in b.legal_moves:\n    b.push(m)\n    if b.is_checkmate(): mates.append(m.uci())\n    b.pop()\nprint(mates)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1141,7 +1141,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TKNkKG9FBLkfDAGo9EypxG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf 'e2e4\\ng2g4\\n' > move.txt && cat move.txt"
           },
@@ -1149,7 +1149,7 @@
             "raw_arguments": {
               "command": "cd /app && printf 'e2e4\\ng2g4\\n' > move.txt && cat move.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

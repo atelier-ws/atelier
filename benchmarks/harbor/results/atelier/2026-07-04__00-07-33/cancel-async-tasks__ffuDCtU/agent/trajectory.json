@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KY3MC9zPmXqEddyDDeKxzn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; ls -la /app 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 --version; ls -la /app 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01KY3MC9zPmXqEddyDDeKxzn",
-            "content": "{\"type\": \"text\", \"text\": \"Python 3.13.7\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:20 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:19 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:20 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:20 .git\"}"
+            "content": "{\"type\": \"text\", \"text\": \"Python 3.13.7\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:20 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:19 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:20 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:20 .git\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KnPf365KXnNFtxqLb6AS8w",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Nud7tUyis1X3qWWEtF1xNA",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -203,7 +203,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -264,7 +264,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WjxHgAk6BMzDQcBQwyJjtT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 _test_run.py"
           },
@@ -272,7 +272,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 _test_run.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -333,7 +333,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EJDxzhqyJpZBcLQfypD5Xo",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -353,7 +353,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -414,7 +414,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W3wMJfhKYwnzWiZ45d5Wm8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -u _sigint_child.py & PID=$!; sleep 1.2; kill -INT $PID; wait $PID; echo \"exit=$?\""
           },
@@ -422,7 +422,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -u _sigint_child.py & PID=$!; sleep 1.2; kill -INT $PID; wait $PID; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -483,7 +483,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dut2x3tdoMaZY4jByBoMVU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f _test_run.py _sigint_child.py && ls"
           },
@@ -491,7 +491,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f _test_run.py _sigint_child.py && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -607,7 +607,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fm3vshznpS1df3AFBvZnzj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/_verify.py <<'PY'\nimport asyncio\nfrom run import run_tasks\n\ndef test_concurrency():\n    running=0; peak=0; done=[]\n    def make(i):\n        async def job():\n            nonlocal running,peak\n            running+=1; peak=max(peak,running)\n            await asyncio.sleep(0.02); done.append(i); running-=1\n        return job\n    asyncio.run(run_tasks([make(i) for i in range(10)],3))\n    assert peak<=3,peak\n    assert sorted(done)==list(range(10))\n    print(\"concurrency ok peak=\",peak)\n\ndef test_cleanup():\n    cleaned=[]\n    def make(i):\n        async def job():\n            try: await asyncio.sleep(10)\n            finally: cleaned.append(i)\n        return job\n    async def main():\n        r=asyncio.ensure_future(run_tasks([make(i) for i in range(5)],3))\n        await asyncio.sleep(0.05); r.cancel()\n        try: await r\n        except asyncio.CancelledError: pass\n    asyncio.run(main())\n    assert sorted(cleaned)==[0,1,2],cleaned\n    print(\"cleanup ok cleaned=\",cleaned)\n\ntest_concurrency(); test_cleanup(); print(\"ALL OK\")\nPY\npython3 /tmp/_verify.py"
           },
@@ -615,7 +615,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/_verify.py <<'PY'\nimport asyncio\nfrom run import run_tasks\n\ndef test_concurrency():\n    running=0; peak=0; done=[]\n    def make(i):\n        async def job():\n            nonlocal running,peak\n            running+=1; peak=max(peak,running)\n            await asyncio.sleep(0.02); done.append(i); running-=1\n        return job\n    asyncio.run(run_tasks([make(i) for i in range(10)],3))\n    assert peak<=3,peak\n    assert sorted(done)==list(range(10))\n    print(\"concurrency ok peak=\",peak)\n\ndef test_cleanup():\n    cleaned=[]\n    def make(i):\n        async def job():\n            try: await asyncio.sleep(10)\n            finally: cleaned.append(i)\n        return job\n    async def main():\n        r=asyncio.ensure_future(run_tasks([make(i) for i in range(5)],3))\n        await asyncio.sleep(0.05); r.cancel()\n        try: await r\n        except asyncio.CancelledError: pass\n    asyncio.run(main())\n    assert sorted(cleaned)==[0,1,2],cleaned\n    print(\"cleanup ok cleaned=\",cleaned)\n\ntest_concurrency(); test_cleanup(); print(\"ALL OK\")\nPY\npython3 /tmp/_verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -676,7 +676,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AV8qkybqSLL5TFanKHbePv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/_verify.py"
           },
@@ -684,7 +684,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/_verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -745,7 +745,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R11UErfZM6JRDSV2EUZ9WN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/app python3 /tmp/_verify.py"
           },
@@ -753,7 +753,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/app python3 /tmp/_verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

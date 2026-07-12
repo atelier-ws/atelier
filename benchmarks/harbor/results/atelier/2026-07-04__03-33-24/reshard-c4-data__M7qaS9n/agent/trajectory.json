@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rkf36NZfNNaSbkErT65L5J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; ls -la /app/c4_sample | head -50; echo \"---\"; du -sh /app/c4_sample"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; ls -la /app/c4_sample | head -50; echo \"---\"; du -sh /app/c4_sample"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RkQd7cNTpvjyqsxCaRDcTV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/c4_sample; ls | wc -l; echo \"--- total dirs?\"; find . -type d | wc -l; echo \"--- largest files\"; ls -la | sort -k5 -n | tail -5; echo \"--- smallest\"; ls -la | sort -k5 -n | head -5; echo \"--- head of one file\"; head -c 500 c4-mini-00000-of-10000.jsonl"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/c4_sample; ls | wc -l; echo \"--- total dirs?\"; find . -type d | wc -l; echo \"--- largest files\"; ls -la | sort -k5 -n | tail -5; echo \"--- smallest\"; ls -la | sort -k5 -n | head -5; echo \"--- head of one file\"; head -c 500 c4-mini-00000-of-10000.jsonl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NmDemcPQAW4w4xztaLi9iA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv python3; uv --version 2>&1; echo \"---files total\"; find /app/c4_sample -type f | wc -l; echo \"--- any subdirs?\"; find /app/c4_sample -mindepth 1 -type d | head"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "which uv python3; uv --version 2>&1; echo \"---files total\"; find /app/c4_sample -type f | wc -l; echo \"--- any subdirs?\"; find /app/c4_sample -mindepth 1 -type d | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017AKw2Tr9fAz5sN6xs5cJ4R",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -260,7 +260,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019nj7Wh96X3BNs6rfptL18E",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -351,7 +351,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -412,7 +412,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019XMrmL7vP7jEwVZ6VHSVh1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -442,7 +442,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -503,7 +503,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HayJ5Bp2xdPkkKfFbwA9Vz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -523,7 +523,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -596,7 +596,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F2ScbU37ZaSF1T5HjMctE5",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/README.md"
@@ -608,7 +608,7 @@
                 "/app/README.md"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -669,7 +669,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YBPGhf69P1SS8RWxgfJHKr",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -689,7 +689,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -762,7 +762,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NJFceFxhXnSfERGKcenoff",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -782,7 +782,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -855,7 +855,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Wy6waoZW15TTyNUvET6ee8",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "reshard README uv run",
             "paths": "/app/README.md"
@@ -865,7 +865,7 @@
               "query": "reshard README uv run",
               "paths": "/app/README.md"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -926,7 +926,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PtT4UtTaxdU3nfAaR4Ej2r",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -946,7 +946,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1019,7 +1019,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QjLEfSKMcpXGBQVRsXYhvZ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/README.md:L1-L17"
@@ -1031,7 +1031,7 @@
                 "/app/README.md:L1-L17"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1092,7 +1092,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RRb2p4VMD2XPj2f39DgfhG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1112,7 +1112,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1173,7 +1173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XUQE4QJWQxSto8fWmEPzHJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv sync 2>&1 | tail -20"
           },
@@ -1181,7 +1181,7 @@
             "raw_arguments": {
               "command": "cd /app && uv sync 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1242,7 +1242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016NtrkeHW3FzanWjGNbpw7E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -rf /tmp/out && time uv run python /app/compress.py /app/c4_sample /tmp/out 2>&1 | tail; echo \"=== EXIT ${PIPESTATUS[0]}\"; echo \"--- top of out\"; ls -la /tmp/out; echo \"--- index.json\"; cat /tmp/out/index.json"
           },
@@ -1250,7 +1250,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -rf /tmp/out && time uv run python /app/compress.py /app/c4_sample /tmp/out 2>&1 | tail; echo \"=== EXIT ${PIPESTATUS[0]}\"; echo \"--- top of out\"; ls -la /tmp/out; echo \"--- index.json\"; cat /tmp/out/index.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1311,7 +1311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gn62yXPG1MbbWQyXHojxpu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/out\necho \"=== max entries per dir ===\"\nfind . -type d | while read d; do echo \"$(ls -A \"$d\" | wc -l) $d\"; done | sort -rn | head -5\necho \"=== max file size (bytes) ===\"\nfind . -type f -printf '%s\\n' | sort -n | tail -1\necho \"=== 15MB limit ===\"; python3 -c \"print(15*1024*1024, 15*1000*1000)\"\necho \"=== depth check: any dir with >30 ===\"\nfind . -type d -exec sh -c 'c=$(ls -A \"$1\"|wc -l); [ \"$c\" -gt 30 ] && echo \"OVER $c $1\"' _ {} \\; ; echo done"
           },
@@ -1319,7 +1319,7 @@
             "raw_arguments": {
               "command": "cd /tmp/out\necho \"=== max entries per dir ===\"\nfind . -type d | while read d; do echo \"$(ls -A \"$d\" | wc -l) $d\"; done | sort -rn | head -5\necho \"=== max file size (bytes) ===\"\nfind . -type f -printf '%s\\n' | sort -n | tail -1\necho \"=== 15MB limit ===\"; python3 -c \"print(15*1024*1024, 15*1000*1000)\"\necho \"=== depth check: any dir with >30 ===\"\nfind . -type d -exec sh -c 'c=$(ls -A \"$1\"|wc -l); [ \"$c\" -gt 30 ] && echo \"OVER $c $1\"' _ {} \\; ; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1380,7 +1380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ap7GMJHeVqeNjuVwuE94j3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf /tmp/work && cp -r /tmp/out /tmp/work\ncd /app && time uv run python /app/decompress.py /tmp/work 2>&1 | tail; echo \"=== EXIT ${PIPESTATUS[0]}\"\necho \"--- residual artifacts (should be none):\"; ls -A /tmp/work | grep -E 'index.json|shards' || echo \"clean\"\necho \"--- file count:\"; find /tmp/work -type f | wc -l\necho \"=== diff against original ===\"\ndiff -r /app/c4_sample /tmp/work && echo \"IDENTICAL\""
           },
@@ -1388,7 +1388,7 @@
             "raw_arguments": {
               "command": "rm -rf /tmp/work && cp -r /tmp/out /tmp/work\ncd /app && time uv run python /app/decompress.py /tmp/work 2>&1 | tail; echo \"=== EXIT ${PIPESTATUS[0]}\"\necho \"--- residual artifacts (should be none):\"; ls -A /tmp/work | grep -E 'index.json|shards' || echo \"clean\"\necho \"--- file count:\"; find /tmp/work -type f | wc -l\necho \"=== diff against original ===\"\ndiff -r /app/c4_sample /tmp/work && echo \"IDENTICAL\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1449,7 +1449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SnEGmEPf35tn3isotH8G2H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\nrm -rf /tmp/gen /tmp/genout /tmp/genwork\nmkdir -p /tmp/gen/a/b/c /tmp/gen/empty_dir /tmp/gen/d\n# empty file\n: > /tmp/gen/a/empty.txt\n# small text\necho -n \"hello world\" > /tmp/gen/a/b/hi.txt\n# binary random 20MB (>15MB single file -> must split across blobs)\nhead -c 20000000 /dev/urandom > /tmp/gen/big.bin\n# a few normal files\nfor i in 1 2 3; do head -c 100000 /dev/urandom > /tmp/gen/d/f$i.dat; done\n# filename with spaces & unicode\nprintf 'x' > \"/tmp/gen/a/b/c/wei rd ünïcodé.txt\"\ncd /app\nuv run python /app/compress.py /tmp/gen /tmp/genout; echo \"compress exit $?\"\n# verify constraints\necho \"max entries:\"; find /tmp/genout -type d -exec sh -c 'echo \"$(ls -A \"$1\"|wc -l)\"' _ {} \\; | sort -rn | head -1\necho \"max filesize:\"; find /tmp/genout -type f -printf '%s\\n' | sort -n | tail -1\ncp -r /tmp/genout /tmp/genwork\nuv run python /app/decompress.py /tmp/genwork; echo \"decompress exit $?\"\ndiff -r /tmp/gen /tmp/genwork && echo \"IDENTICAL\"\necho \"empty_dir present:\"; test -d /tmp/genwork/empty_dir && echo yes\necho \"sha check big:\"; sha256sum /tmp/gen/big.bin /tmp/genwork/big.bin"
           },
@@ -1457,7 +1457,7 @@
             "raw_arguments": {
               "command": "set -e\nrm -rf /tmp/gen /tmp/genout /tmp/genwork\nmkdir -p /tmp/gen/a/b/c /tmp/gen/empty_dir /tmp/gen/d\n# empty file\n: > /tmp/gen/a/empty.txt\n# small text\necho -n \"hello world\" > /tmp/gen/a/b/hi.txt\n# binary random 20MB (>15MB single file -> must split across blobs)\nhead -c 20000000 /dev/urandom > /tmp/gen/big.bin\n# a few normal files\nfor i in 1 2 3; do head -c 100000 /dev/urandom > /tmp/gen/d/f$i.dat; done\n# filename with spaces & unicode\nprintf 'x' > \"/tmp/gen/a/b/c/wei rd ünïcodé.txt\"\ncd /app\nuv run python /app/compress.py /tmp/gen /tmp/genout; echo \"compress exit $?\"\n# verify constraints\necho \"max entries:\"; find /tmp/genout -type d -exec sh -c 'echo \"$(ls -A \"$1\"|wc -l)\"' _ {} \\; | sort -rn | head -1\necho \"max filesize:\"; find /tmp/genout -type f -printf '%s\\n' | sort -n | tail -1\ncp -r /tmp/genout /tmp/genwork\nuv run python /app/decompress.py /tmp/genwork; echo \"decompress exit $?\"\ndiff -r /tmp/gen /tmp/genwork && echo \"IDENTICAL\"\necho \"empty_dir present:\"; test -d /tmp/genwork/empty_dir && echo yes\necho \"sha check big:\"; sha256sum /tmp/gen/big.bin /tmp/genwork/big.bin"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1518,7 +1518,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PtkMvD8iXVeqB25VUU2QLk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -a; echo \"--- run from unrelated cwd ---\"\nrm -rf /tmp/o2 /tmp/w2 && cd /tmp && uv run --project /app python /app/compress.py /tmp/gen /tmp/o2 && cp -r /tmp/o2 /tmp/w2 && uv run --project /app python /app/decompress.py /tmp/w2 && diff -r /tmp/gen /tmp/w2 && echo OK_FROM_TMP"
           },
@@ -1526,7 +1526,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -a; echo \"--- run from unrelated cwd ---\"\nrm -rf /tmp/o2 /tmp/w2 && cd /tmp && uv run --project /app python /app/compress.py /tmp/gen /tmp/o2 && cp -r /tmp/o2 /tmp/w2 && uv run --project /app python /app/decompress.py /tmp/w2 && diff -r /tmp/gen /tmp/w2 && echo OK_FROM_TMP"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1642,7 +1642,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KYxDLG1YtKprs5ZGU9qEbv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nrm -rf /tmp/out /tmp/work\nuv run python /app/compress.py /app/c4_sample /tmp/out && cp -r /tmp/out /tmp/work && uv run python /app/decompress.py /tmp/work\necho \"=== constraints ===\"\necho -n \"max dir entries: \"; find /tmp/out -type d -exec sh -c 'ls -A \"$1\"|wc -l' _ {} \\; | sort -rn | head -1\necho -n \"max file bytes:  \"; find /tmp/out -type f -printf '%s\\n' | sort -n | tail -1\necho \"=== round-trip ===\"\ndiff -r /app/c4_sample /tmp/work && echo \"IDENTICAL ($(find /tmp/work -type f|wc -l) files)\"\necho \"=== artifacts removed ===\"; ls -A /tmp/work | grep -E 'index.json|shards' || echo clean"
           },
@@ -1650,7 +1650,7 @@
             "raw_arguments": {
               "command": "cd /app\nrm -rf /tmp/out /tmp/work\nuv run python /app/compress.py /app/c4_sample /tmp/out && cp -r /tmp/out /tmp/work && uv run python /app/decompress.py /tmp/work\necho \"=== constraints ===\"\necho -n \"max dir entries: \"; find /tmp/out -type d -exec sh -c 'ls -A \"$1\"|wc -l' _ {} \\; | sort -rn | head -1\necho -n \"max file bytes:  \"; find /tmp/out -type f -printf '%s\\n' | sort -n | tail -1\necho \"=== round-trip ===\"\ndiff -r /app/c4_sample /tmp/work && echo \"IDENTICAL ($(find /tmp/work -type f|wc -l) files)\"\necho \"=== artifacts removed ===\"; ls -A /tmp/work | grep -E 'index.json|shards' || echo clean"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

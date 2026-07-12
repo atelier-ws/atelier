@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RkmahWBXSGRwaYK5tATffA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && head -5 /app/demo_metadata.csv && echo \"---\" && python3 -c \"import mobile_sam; print(mobile_sam.__file__)\" 2>&1 | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ && head -5 /app/demo_metadata.csv && echo \"---\" && python3 -c \"import mobile_sam; print(mobile_sam.__file__)\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MVrXiCt8iCydFW9UWdV6en",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/; echo \"===\"; head -1 /app/demo_metadata.csv; echo \"===\"; wc -l /app/demo_metadata.csv; echo \"===\"; python3 -c \"from PIL import Image; print(Image.open('/app/demo_rgb.png').size)\"; echo \"===\"; pip list 2>/dev/null | grep -iE \"torch|numpy|pandas|opencv|pillow|tqdm|mobile|timm\"; echo \"===\"; find / -iname \"*mobile_sam*\" 2>/dev/null | head; find / -iname \"*.pt\" 2>/dev/null | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /app/; echo \"===\"; head -1 /app/demo_metadata.csv; echo \"===\"; wc -l /app/demo_metadata.csv; echo \"===\"; python3 -c \"from PIL import Image; print(Image.open('/app/demo_rgb.png').size)\"; echo \"===\"; pip list 2>/dev/null | grep -iE \"torch|numpy|pandas|opencv|pillow|tqdm|mobile|timm\"; echo \"===\"; find / -iname \"*mobile_sam*\" 2>/dev/null | head; find / -iname \"*.pt\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y1woYM1ZC6hMzawvbyELoF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ 2>&1; echo \"===\"; cat /app/demo_metadata.csv 2>&1 | head -1; echo \"===\"; wc -l /app/demo_metadata.csv 2>&1"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ 2>&1; echo \"===\"; cat /app/demo_metadata.csv 2>&1 | head -1; echo \"===\"; wc -l /app/demo_metadata.csv 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012K2KRKb5rcXLixcWtmdm9u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint(df.columns.tolist())\nprint(df['type'].value_counts())\nprint(df.head(3).to_string())\nfrom PIL import Image\nprint('img',Image.open('demo_rgb.png').size)\nprint(df[['xmin','ymin','xmax','ymax']].describe())\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint(df.columns.tolist())\nprint(df['type'].value_counts())\nprint(df.head(3).to_string())\nfrom PIL import Image\nprint('img',Image.open('demo_rgb.png').size)\nprint(df[['xmin','ymin','xmax','ymax']].describe())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LwSapECB7nvjzBb4nRkKmB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip uv python3; pip --version 2>&1 | head -1; uv --version 2>&1 | head -1"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "which pip uv python3; pip --version 2>&1 | head -1; uv --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017aehSBMA7uJFzE68n7wVg4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages uv 2>&1 | tail -2; echo done"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages uv 2>&1 | tail -2; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JPRVS6abde8eSFDwsEGTA3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -15"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EDzDVKNsJg6DWyLc1wAtX3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages \"git+https://github.com/ChaoningZhang/MobileSAM.git\" 2>&1 | tail -8"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages \"git+https://github.com/ChaoningZhang/MobileSAM.git\" 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -532,7 +532,7 @@
         "results": [
           {
             "source_call_id": "toolu_01EDzDVKNsJg6DWyLc1wAtX3",
-            "content": "{\"type\": \"text\", \"text\": \"ok: + mobile-sam==1.0 (from git+https://github.com/ChaoningZhang/MobileSAM.git@f706ad9c4eb7f219c00d9050e46328518ffb65d2)\\n... (8 output lines suppressed on success) ...\\n\\n[atelier: shrunk 606→167; full: read /tmp/atelier-spill/bash-286ab794.txt]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"ok: + mobile-sam==1.0 (from git+https://github.com/ChaoningZhang/MobileSAM.git@f706ad9c4eb7f219c00d9050e46328518ffb65d2)\\n... (8 output lines suppressed on success) ...\\n\\n[lemoncrow: shrunk 606→167; full: read /tmp/lemoncrow-spill/bash-286ab794.txt]\"}"
           }
         ]
       },
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DugnKBjxnyBSM9QD6A6F2W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import mobile_sam, os; print(os.path.dirname(mobile_sam.__file__))\"; python3 -c \"from mobile_sam import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator; print('ok', list(sam_model_registry.keys()))\""
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import mobile_sam, os; print(os.path.dirname(mobile_sam.__file__))\"; python3 -c \"from mobile_sam import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator; print('ok', list(sam_model_registry.keys()))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012DiiNvbYHnDDz7uFAthUN2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -iname \"mobile_sam.pt\" 2>/dev/null; ls -la /usr/local/lib/python3.11/site-packages/mobile_sam/; echo \"---trydl---\"; python3 - <<'EOF'\nimport urllib.request\nurl=\"https://github.com/ChaoningZhang/MobileSAM/raw/master/weights/mobile_sam.pt\"\ntry:\n    urllib.request.urlretrieve(url,\"/app/mobile_sam.pt\")\n    import os; print(\"dl ok\", os.path.getsize(\"/app/mobile_sam.pt\"))\nexcept Exception as e:\n    print(\"dl fail\", e)\nEOF"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "find / -iname \"mobile_sam.pt\" 2>/dev/null; ls -la /usr/local/lib/python3.11/site-packages/mobile_sam/; echo \"---trydl---\"; python3 - <<'EOF'\nimport urllib.request\nurl=\"https://github.com/ChaoningZhang/MobileSAM/raw/master/weights/mobile_sam.pt\"\ntry:\n    urllib.request.urlretrieve(url,\"/app/mobile_sam.pt\")\n    import os; print(\"dl ok\", os.path.getsize(\"/app/mobile_sam.pt\"))\nexcept Exception as e:\n    print(\"dl fail\", e)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P2ennHjPGTd9Ur1nxzNPNR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /root/.cache/uv/git-v0/checkouts/e7d9320a8522f22d/f706ad9/weights/mobile_sam.pt /app/mobile_sam.pt && ls -la /app/mobile_sam.pt"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cp /root/.cache/uv/git-v0/checkouts/e7d9320a8522f22d/f706ad9/weights/mobile_sam.pt /app/mobile_sam.pt && ls -la /app/mobile_sam.pt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ChfFS9N6Ed276iBBny7JmT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint(df.columns.tolist())\nprint(df['type'].value_counts())\nprint(df[['xmin','ymin','xmax','ymax']].agg(['min','max']))\nimport ast\nprint('nrows',len(df))\n# show a rectangle row\nr=df[df['type']=='rectangle']\nprint('rect count', len(r))\nprint(df.iloc[0][['type','xmin','ymin','xmax','ymax','coords_x','coords_y']].to_dict())\n\" 2>&1 | grep -v Warning"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint(df.columns.tolist())\nprint(df['type'].value_counts())\nprint(df[['xmin','ymin','xmax','ymax']].agg(['min','max']))\nimport ast\nprint('nrows',len(df))\n# show a rectangle row\nr=df[df['type']=='rectangle']\nprint('rect count', len(r))\nprint(df.iloc[0][['type','xmin','ymin','xmax','ymax','coords_x','coords_y']].to_dict())\n\" 2>&1 | grep -v Warning"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CoCsJizT2hHCciUC7NMz3n",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"from PIL import Image; print(Image.open('demo_rgb.png').size)\""
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"from PIL import Image; print(Image.open('demo_rgb.png').size)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018G5XJKwX89PEPC49Z7A1pR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -950,7 +950,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1011,7 +1011,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019QbmqV83LZKbk589Pz8NyW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 convert_masks.py --weights_path mobile_sam.pt --output_path out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | tail -20"
           },
@@ -1019,7 +1019,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 convert_masks.py --weights_path mobile_sam.pt --output_path out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1080,7 +1080,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RP2YmSyZ1C9PM1rT5MVxhf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('out.csv',index_col=0)\nprint('cols',df.columns.tolist())\nprint('types',df['type'].unique())\nH,W=355,374\ncanvas=np.zeros((H,W),np.int32)\noverlap=0; empty=0; ncc_bad=0; rect=0\nfor pos,(_,r) in enumerate(df.iterrows()):\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(xs)<=5 and xs[0]==xs[2 if len(xs)>2 else 0]: pass\n    pts=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8)\n    cv2.fillPoly(m,[pts],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: ncc_bad+=1\n    overlap+=int(((canvas>0)&(m>0)).sum())\n    canvas[m>0]+=1\n    # rectangle check: exactly 5 pts forming axis-aligned box\n    u=set(zip(xs,ys))\nprint('overlap px (poly-fill approx):',overlap)\nprint('empty masks:',empty,'noncontig:',ncc_bad)\nprint('bbox consistency sample:')\nprint(df[['xmin','ymin','xmax','ymax']].head())\n# check coords match bbox\nbad=0\nfor _,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax']: bad+=1\nprint('bbox mismatch rows:',bad)\nEOF"
           },
@@ -1088,7 +1088,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('out.csv',index_col=0)\nprint('cols',df.columns.tolist())\nprint('types',df['type'].unique())\nH,W=355,374\ncanvas=np.zeros((H,W),np.int32)\noverlap=0; empty=0; ncc_bad=0; rect=0\nfor pos,(_,r) in enumerate(df.iterrows()):\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(xs)<=5 and xs[0]==xs[2 if len(xs)>2 else 0]: pass\n    pts=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8)\n    cv2.fillPoly(m,[pts],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: ncc_bad+=1\n    overlap+=int(((canvas>0)&(m>0)).sum())\n    canvas[m>0]+=1\n    # rectangle check: exactly 5 pts forming axis-aligned box\n    u=set(zip(xs,ys))\nprint('overlap px (poly-fill approx):',overlap)\nprint('empty masks:',empty,'noncontig:',ncc_bad)\nprint('bbox consistency sample:')\nprint(df[['xmin','ymin','xmax','ymax']].head())\n# check coords match bbox\nbad=0\nfor _,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax']: bad+=1\nprint('bbox mismatch rows:',bad)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1149,7 +1149,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BiKU5cW6RSvYzz4xbKYNQ8",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:L172-L189"
@@ -1161,7 +1161,7 @@
                 "/app/convert_masks.py:L172-L189"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1222,7 +1222,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N77ZZa19KKAuk89NQm9MB4",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1240,7 +1240,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1301,7 +1301,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0128UFtbMfL5F43vNafPR4sL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 convert_masks.py --weights_path mobile_sam.pt --output_path out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | tail -2"
           },
@@ -1309,7 +1309,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 convert_masks.py --weights_path mobile_sam.pt --output_path out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1370,7 +1370,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AESTQnPLaT9uKTtLEr4EFf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('out.csv',index_col=0)\nH,W=355,374\ncanvas=np.zeros((H,W),np.int32)\noverlap=0;empty=0;ncc_bad=0;rectlike=0;bad=0\nfor _,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    pts=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[pts],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: ncc_bad+=1\n    overlap+=int(((canvas>0)&(m>0)).sum()); canvas[m>0]+=1\n    if len(set(zip(xs,ys)))<=4: rectlike+=1\n    if min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax']: bad+=1\nprint('overlap',overlap,'empty',empty,'noncontig',ncc_bad,'rectlike',rectlike,'bboxmismatch',bad,'types',df['type'].unique().tolist())\nEOF"
           },
@@ -1378,7 +1378,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('out.csv',index_col=0)\nH,W=355,374\ncanvas=np.zeros((H,W),np.int32)\noverlap=0;empty=0;ncc_bad=0;rectlike=0;bad=0\nfor _,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    pts=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[pts],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: ncc_bad+=1\n    overlap+=int(((canvas>0)&(m>0)).sum()); canvas[m>0]+=1\n    if len(set(zip(xs,ys)))<=4: rectlike+=1\n    if min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax']: bad+=1\nprint('overlap',overlap,'empty',empty,'noncontig',ncc_bad,'rectlike',rectlike,'bboxmismatch',bad,'types',df['type'].unique().tolist())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1439,7 +1439,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H7pdkcHW1sBPJrYAXG1sA3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f out.csv mobile_sam.pt && ls -la"
           },
@@ -1447,7 +1447,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f out.csv mobile_sam.pt && ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1563,7 +1563,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FaU2jTkMruZvYyTtJoy8gh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp /root/.cache/uv/git-v0/checkouts/e7d9320a8522f22d/f706ad9/weights/mobile_sam.pt /tmp/msam.pt && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv',index_col=0)\ndf.head(4).to_csv('/tmp/sub.csv')\nprint(df['type'].head(4).tolist())\n\""
           },
@@ -1571,7 +1571,7 @@
             "raw_arguments": {
               "command": "cd /app && cp /root/.cache/uv/git-v0/checkouts/e7d9320a8522f22d/f706ad9/weights/mobile_sam.pt /tmp/msam.pt && python3 -c \"\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv',index_col=0)\ndf.head(4).to_csv('/tmp/sub.csv')\nprint(df['type'].head(4).tolist())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1632,7 +1632,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eb4MVW8GE8r6yLevz7mojS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 convert_masks.py --weights_path /tmp/msam.pt --output_path /tmp/subout.csv --rgb_path demo_rgb.png --csv_path /tmp/sub.csv 2>&1 | grep -vi warning | tail -1; echo \"=== validate ===\"; python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd,numpy as np,cv2\nfrom PIL import Image\nW,H=Image.open('/app/demo_rgb.png').size\ndf=pd.read_csv('/tmp/subout.csv',index_col=0)\ncanvas=np.zeros((H,W),np.int32);ov=em=nc=rc=bad=0\nfor _,r in df.iterrows():\n  xs=[int(v) for v in str(r['coords_x']).split(',')];ys=[int(v) for v in str(r['coords_y']).split(',')]\n  m=np.zeros((H,W),np.uint8);cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n  em+=m.sum()==0;n,_=cv2.connectedComponents(m);nc+=n>2\n  ov+=int(((canvas>0)&(m>0)).sum());canvas[m>0]+=1\n  rc+=len(set(zip(xs,ys)))<=4\n  bad+=(min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax'])\nprint('rows',len(df),'overlap',ov,'empty',int(em),'noncontig',int(nc),'rectlike',int(rc),'bboxmismatch',int(bad),'types',df['type'].unique().tolist())\nassert ov==0 and em==0 and nc==0 and rc==0 and bad==0 and df['type'].unique().tolist()==['polyline']\nprint('ALL CHECKS PASS')\nEOF\nrm -f /tmp/msam.pt /tmp/sub.csv /tmp/subout.csv"
           },
@@ -1640,7 +1640,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 convert_masks.py --weights_path /tmp/msam.pt --output_path /tmp/subout.csv --rgb_path demo_rgb.png --csv_path /tmp/sub.csv 2>&1 | grep -vi warning | tail -1; echo \"=== validate ===\"; python3 - <<'EOF' 2>&1 | grep -vi warning\nimport pandas as pd,numpy as np,cv2\nfrom PIL import Image\nW,H=Image.open('/app/demo_rgb.png').size\ndf=pd.read_csv('/tmp/subout.csv',index_col=0)\ncanvas=np.zeros((H,W),np.int32);ov=em=nc=rc=bad=0\nfor _,r in df.iterrows():\n  xs=[int(v) for v in str(r['coords_x']).split(',')];ys=[int(v) for v in str(r['coords_y']).split(',')]\n  m=np.zeros((H,W),np.uint8);cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n  em+=m.sum()==0;n,_=cv2.connectedComponents(m);nc+=n>2\n  ov+=int(((canvas>0)&(m>0)).sum());canvas[m>0]+=1\n  rc+=len(set(zip(xs,ys)))<=4\n  bad+=(min(xs)!=r['xmin'] or max(xs)!=r['xmax'] or min(ys)!=r['ymin'] or max(ys)!=r['ymax'])\nprint('rows',len(df),'overlap',ov,'empty',int(em),'noncontig',int(nc),'rectlike',int(rc),'bboxmismatch',int(bad),'types',df['type'].unique().tolist())\nassert ov==0 and em==0 and nc==0 and rc==0 and bad==0 and df['type'].unique().tolist()==['polyline']\nprint('ALL CHECKS PASS')\nEOF\nrm -f /tmp/msam.pt /tmp/sub.csv /tmp/subout.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

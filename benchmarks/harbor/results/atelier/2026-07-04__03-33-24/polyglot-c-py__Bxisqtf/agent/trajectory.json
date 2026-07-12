@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011ioDS2S6VqguxpMjZBk5xz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016yjbT7nW4LP5PhcYwHxhvs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && for k in 0 1 2 10 20; do echo -n \\\"py $k: \\\"; python3 main.py.c $k; done && gcc main.py.c -o cmain 2>gcc.log; echo \\\"gcc exit $?\\\"; for k in 0 1 2 10 20; do echo -n \\\"c  $k: \\\"; ./cmain $k; done; echo '--- gcc.log ---'; cat gcc.log"
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && for k in 0 1 2 10 20; do echo -n \\\"py $k: \\\"; python3 main.py.c $k; done && gcc main.py.c -o cmain 2>gcc.log; echo \\\"gcc exit $?\\\"; for k in 0 1 2 10 20; do echo -n \\\"c  $k: \\\"; ./cmain $k; done; echo '--- gcc.log ---'; cat gcc.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -238,7 +238,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WAYWzEwzDYF4KpLctfNH4X",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && fail=0\nfor k in 0 1 2 3 4 5 6 7 8 9 10 20 30 50 70 90; do\n  p=$(python3 main.py.c $k); c=$(./cmain $k)\n  ref=$(python3 -c \"a,b=0,1\nfor _ in range($k): a,b=b,a+b\nprint(a)\")\n  if [ \"$p\" = \"$ref\" ] && [ \"$c\" = \"$ref\" ]; then st=ok; else st=MISMATCH; fail=1; fi\n  printf \"k=%-3s py=%-22s c=%-22s ref=%-22s %s\\n\" \"$k\" \"$p\" \"$c\" \"$ref\" \"$st\"\ndone\necho \"RESULT: $([ $fail -eq 0 ] && echo ALL PASS || echo FAILURES)\""
           },
@@ -246,7 +246,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && fail=0\nfor k in 0 1 2 3 4 5 6 7 8 9 10 20 30 50 70 90; do\n  p=$(python3 main.py.c $k); c=$(./cmain $k)\n  ref=$(python3 -c \"a,b=0,1\nfor _ in range($k): a,b=b,a+b\nprint(a)\")\n  if [ \"$p\" = \"$ref\" ] && [ \"$c\" = \"$ref\" ]; then st=ok; else st=MISMATCH; fail=1; fi\n  printf \"k=%-3s py=%-22s c=%-22s ref=%-22s %s\\n\" \"$k\" \"$p\" \"$c\" \"$ref\" \"$st\"\ndone\necho \"RESULT: $([ $fail -eq 0 ] && echo ALL PASS || echo FAILURES)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

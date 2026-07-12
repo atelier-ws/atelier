@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S3q2D8L4k1wYHrnXJx4MDv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /data/source_a /data/source_b /data/source_c 2>&1; echo \"---A---\"; head -c 2000 /data/source_a/users.json; echo; echo \"---B---\"; head -c 2000 /data/source_b/users.csv; echo; echo \"---C---\"; python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_string())\" 2>&1 | head -50"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /data/source_a /data/source_b /data/source_c 2>&1; echo \"---A---\"; head -c 2000 /data/source_a/users.json; echo; echo \"---B---\"; head -c 2000 /data/source_b/users.csv; echo; echo \"---C---\"; python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_string())\" 2>&1 | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Se5zv61PYGaWb29dkkhGLs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport json,csv,pandas as pd\nprint('A:', json.load(open('/data/source_a/users.json')))\nprint('B:', list(csv.DictReader(open('/data/source_b/users.csv'))))\nprint('C:'); \ndf=pd.read_parquet('/data/source_c/users.parquet')\nprint(df.to_dict('records'))\n\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport json,csv,pandas as pd\nprint('A:', json.load(open('/data/source_a/users.json')))\nprint('B:', list(csv.DictReader(open('/data/source_b/users.csv'))))\nprint('C:'); \ndf=pd.read_parquet('/data/source_c/users.parquet')\nprint(df.to_dict('records'))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019hRQFt9Aun7RWA6rSREBgt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport json,csv,pandas as pd\na={r['id']:r['email'] for r in json.load(open('/data/source_a/users.json'))}\nb={int(r['user_id']):r['email_address'] for r in csv.DictReader(open('/data/source_b/users.csv'))}\ndf=pd.read_parquet('/data/source_c/users.parquet')\nc={int(r['userId']):r['email'] for r in df.to_dict('records')}\nprint('101 emails equal A==B:', a[101]==b[101], 'A==C:', a[101]==c[101])\nprint('lens', len(a[101]),len(b[101]),len(c[101]))\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport json,csv,pandas as pd\na={r['id']:r['email'] for r in json.load(open('/data/source_a/users.json'))}\nb={int(r['user_id']):r['email_address'] for r in csv.DictReader(open('/data/source_b/users.csv'))}\ndf=pd.read_parquet('/data/source_c/users.parquet')\nc={int(r['userId']):r['email'] for r in df.to_dict('records')}\nprint('101 emails equal A==B:', a[101]==b[101], 'A==C:', a[101]==c[101])\nprint('lens', len(a[101]),len(b[101]),len(c[101]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016XDB6PtBzUoyJLLDKeyoSe",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -260,7 +260,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NCZYci1wfbN9SyhgkJvpSo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 merge.py"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 merge.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BNMEVGZjMkT4LRZcSLsJPg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_parquet('merged_users.parquet')\nprint(df.dtypes); print(len(df),'rows'); print(sorted(df.user_id.tolist()))\nassert str(df.user_id.dtype).startswith('int')\nimport re\nassert df.created_date.map(lambda s: bool(re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}',s))).all()\nprint('OK')\n\"; ls -la /app/merged_users.parquet /app/conflicts.json"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_parquet('merged_users.parquet')\nprint(df.dtypes); print(len(df),'rows'); print(sorted(df.user_id.tolist()))\nassert str(df.user_id.dtype).startswith('int')\nimport re\nassert df.created_date.map(lambda s: bool(re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}',s))).all()\nprint('OK')\n\"; ls -la /app/merged_users.parquet /app/conflicts.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -514,7 +514,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DSBMrzJePVH5auyWUCqk1M",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; find / -name '*test*' -path '*app*' 2>/dev/null; find /app -name 'test*.py' -o -name '*_test.py' 2>/dev/null"
           },
@@ -522,7 +522,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; find / -name '*test*' -path '*app*' 2>/dev/null; find /app -name 'test*.py' -o -name '*_test.py' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -530,7 +530,7 @@
         "results": [
           {
             "source_call_id": "toolu_01DSBMrzJePVH5auyWUCqk1M",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.agents/skills/embedded-captions/references/test-set.md\\natelier/.atelier/cache/scip/221445b350fc9bcf/refs-heads-bench-3a518531f98c/python-tests.scip\\natelier/.atelier/cache/scip/verify/refs-heads-bench-3a518531f98c/python-tests.scip\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.github/workflows/tests.yml\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.lessons/blocks/template_pytest-layout.md\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/py.test\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/pytest\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/stubtest\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/conftest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/run_tests.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/tests.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pyinstaller_hooks_contrib/stdhooks/hook-litestar.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pyinstaller_hooks_contrib/stdhooks/hook-pytest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/doctest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/pytester.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/pytester_assertions.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/subtests.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/unittest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/absl/testing/absltest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/pytest_plugin.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/test_utils.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/annotated_types/test_cases.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/_core/_testing.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/abc/_testing.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/pytest_plugin.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/templates/reasonblocks/python-fastapi/pytest-layout.md\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/click/testing.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/diff_match_patch_test.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest1.txt\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest2.txt\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/fastapi/testclient.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/fsspec/conftest.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_base.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_example.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_pack.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_stream.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_util.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/google/protobuf/internal/testing_refleaks.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension.c\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension.cpython-313-x86_64-linux-gnu.so\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension_cpp.cpp\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension_cpp.cpython-313-x86_64-linux-gnu.so\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_contextvars.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_cpp.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_extension_interface.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_gc.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator_nested.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet.py\\nateli\\n...[summary clipped; full output is in spill]...\\nes.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_distance_regular.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_dominance.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_dominating.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_efficiency.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_euler.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_graph_hashing.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_graphical.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_hierarchy.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_hybrid.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_isolate.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_link_prediction.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_lowest_common_ancestors.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_matching.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_max_weight_clique.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_mis.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_moral.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_node_classification.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_non_randomness.py\\n... (35592 more)\\n\\n[full output (38017B) spilled to /tmp/atelier-spill/tool_output-bash-1783134050006-adad5f18.txt; read /tmp/atelier-spill/tool_output-bash-1783134050006-adad5f18.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.agents/skills/embedded-captions/references/test-set.md\\nlemoncrow/.lemoncrow/cache/scip/221445b350fc9bcf/refs-heads-bench-3a518531f98c/python-tests.scip\\nlemoncrow/.lemoncrow/cache/scip/verify/refs-heads-bench-3a518531f98c/python-tests.scip\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.github/workflows/tests.yml\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.lessons/blocks/template_pytest-layout.md\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/py.test\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/pytest\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/bin/stubtest\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/conftest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/run_tests.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/PyInstaller/utils/tests.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pyinstaller_hooks_contrib/stdhooks/hook-litestar.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pyinstaller_hooks_contrib/stdhooks/hook-pytest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/doctest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/pytester.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/pytester_assertions.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/subtests.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/_pytest/unittest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/absl/testing/absltest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/pytest_plugin.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/test_utils.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/annotated_types/test_cases.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/_core/_testing.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/abc/_testing.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/anyio/pytest_plugin.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/templates/reasonblocks/python-fastapi/pytest-layout.md\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/click/testing.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/diff_match_patch_test.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest1.txt\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/diff_match_patch/tests/speedtest2.txt\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/fastapi/testclient.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/fsspec/conftest.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_base.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_example.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_pack.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_stream.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_util.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/google/protobuf/internal/testing_refleaks.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension.c\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension.cpython-313-x86_64-linux-gnu.so\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension_cpp.cpp\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/_test_extension_cpp.cpython-313-x86_64-linux-gnu.so\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_contextvars.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_cpp.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_extension_interface.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_gc.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator_nested.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet.py\\nateli\\n...[summary clipped; full output is in spill]...\\nes.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_distance_regular.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_dominance.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_dominating.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_efficiency.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_euler.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_graph_hashing.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_graphical.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_hierarchy.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_hybrid.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_isolate.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_link_prediction.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_lowest_common_ancestors.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_matching.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_max_weight_clique.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_mis.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_moral.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_node_classification.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/algorithms/tests/test_non_randomness.py\\n... (35592 more)\\n\\n[full output (38017B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783134050006-adad5f18.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783134050006-adad5f18.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -583,7 +583,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014qx3RMRWSSQGsFyQXMRewu",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -603,7 +603,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -664,7 +664,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJEGqm1CAygZsHbVqma8Z9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 test_merge.py 2>&1 | tail -5; echo \"--- pytest ---\"; python3 -m pytest test_merge.py -q 2>&1 | tail -12"
           },
@@ -672,7 +672,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 test_merge.py 2>&1 | tail -5; echo \"--- pytest ---\"; python3 -m pytest test_merge.py -q 2>&1 | tail -12"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

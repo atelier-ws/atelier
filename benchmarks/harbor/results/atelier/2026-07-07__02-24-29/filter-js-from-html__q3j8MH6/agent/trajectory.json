@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019h49pMgGawf8mLFxBcz2k4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; ls /app/*.html 2>/dev/null; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; ls /app/*.html 2>/dev/null; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EZKqKsKRR3AnDuYi5HGWny",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app; echo ok"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app; echo ok"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NTbQvJzVa48H6d6BSrAGW6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EP7VSshD4QGq58RzfkYTth",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/t.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head><title>Test</title>\n<script type=\"text/javascript\">alert('x');</script>\n<style>body{color:red}</style>\n</head>\n<body onload=\"doEvil()\">\n<h1 class=\"big\">Hello &amp; welcome</h1>\n<p>Normal <b>bold</b> text with 2 > 1 comparison in text.</p>\n<table><tr><td>cell</td></tr></table>\n<a href=\"https://example.com/?a=1&b=2\" title=\"ok\">link</a>\n<a href=\"javascript:alert(1)\">bad</a>\n<a href=\"JavaScript:alert(1)\">bad2</a>\n<a href=\"jav&#x09;ascript:alert(1)\">bad3</a>\n<img src=\"pic.png\" onerror=\"alert(1)\" alt=\"pic\">\n<img src=\"javascript:alert(1)\">\n<svg onload=\"alert(1)\"></svg>\n<div style=\"background:url(javascript:alert(1))\">x</div>\n<div style=\"color:blue\">good</div>\n<iframe src=\"javascript:alert(1)\"></iframe>\n<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n<!-- a comment with <script>notreal</script> stays -->\n<button onclick=\"x()\">b</button>\n<input type=\"text\" value=\"ok\">\n<SCRIPT>evil2()</SCRIPT>\n<a href=\"data:text/html,<script>alert(1)</script>\">datalink</a>\n</body>\n</html>\nEOF\ncp /tmp/t.html /tmp/work.html\npython3 filter.py /tmp/work.html\necho \"=== OUTPUT ===\"; cat /tmp/work.html\necho \"=== CHECK harmful gone ===\"\ngrep -iE \"script|onload|onerror|onclick|javascript:|expression\\(|url=javascript\" /tmp/work.html || echo \"NONE-FOUND-good\""
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/t.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head><title>Test</title>\n<script type=\"text/javascript\">alert('x');</script>\n<style>body{color:red}</style>\n</head>\n<body onload=\"doEvil()\">\n<h1 class=\"big\">Hello &amp; welcome</h1>\n<p>Normal <b>bold</b> text with 2 > 1 comparison in text.</p>\n<table><tr><td>cell</td></tr></table>\n<a href=\"https://example.com/?a=1&b=2\" title=\"ok\">link</a>\n<a href=\"javascript:alert(1)\">bad</a>\n<a href=\"JavaScript:alert(1)\">bad2</a>\n<a href=\"jav&#x09;ascript:alert(1)\">bad3</a>\n<img src=\"pic.png\" onerror=\"alert(1)\" alt=\"pic\">\n<img src=\"javascript:alert(1)\">\n<svg onload=\"alert(1)\"></svg>\n<div style=\"background:url(javascript:alert(1))\">x</div>\n<div style=\"color:blue\">good</div>\n<iframe src=\"javascript:alert(1)\"></iframe>\n<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n<!-- a comment with <script>notreal</script> stays -->\n<button onclick=\"x()\">b</button>\n<input type=\"text\" value=\"ok\">\n<SCRIPT>evil2()</SCRIPT>\n<a href=\"data:text/html,<script>alert(1)</script>\">datalink</a>\n</body>\n</html>\nEOF\ncp /tmp/t.html /tmp/work.html\npython3 filter.py /tmp/work.html\necho \"=== OUTPUT ===\"; cat /tmp/work.html\necho \"=== CHECK harmful gone ===\"\ngrep -iE \"script|onload|onerror|onclick|javascript:|expression\\(|url=javascript\" /tmp/work.html || echo \"NONE-FOUND-good\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DBmc2DUqZwtfQgruHSNRHo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/benign.html <<'EOF'\n<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Doc</title>\n<style>a{color:#00f} .x>.y{margin:0}</style></head>\n<body>\n<h1>Header</h1>\n<p data-id=\"5\" title=\"a > b test\">Value: 3 < 4 && 5 > 2</p>\n<ul><li>one</li><li>two</li></ul>\n<a href=\"/path?x=1&y=2\">safe</a>\n<input disabled value=\"if(a>b){}\">\n</body></html>\nEOF\ncp /tmp/benign.html /tmp/b2.html\npython3 filter.py /tmp/b2.html\necho \"=== diff (should be empty) ===\"; diff /tmp/benign.html /tmp/b2.html && echo \"IDENTICAL\"\necho \"=== idempotency on t.html ===\"\ncp /tmp/work.html /tmp/work2.html; python3 filter.py /tmp/work2.html; diff /tmp/work.html /tmp/work2.html && echo \"STABLE\""
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/benign.html <<'EOF'\n<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Doc</title>\n<style>a{color:#00f} .x>.y{margin:0}</style></head>\n<body>\n<h1>Header</h1>\n<p data-id=\"5\" title=\"a > b test\">Value: 3 < 4 && 5 > 2</p>\n<ul><li>one</li><li>two</li></ul>\n<a href=\"/path?x=1&y=2\">safe</a>\n<input disabled value=\"if(a>b){}\">\n</body></html>\nEOF\ncp /tmp/benign.html /tmp/b2.html\npython3 filter.py /tmp/b2.html\necho \"=== diff (should be empty) ===\"; diff /tmp/benign.html /tmp/b2.html && echo \"IDENTICAL\"\necho \"=== idempotency on t.html ===\"\ncp /tmp/work.html /tmp/work2.html; python3 filter.py /tmp/work2.html; diff /tmp/work.html /tmp/work2.html && echo \"STABLE\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L8JYPXn7JaDSHvMkzvz6HM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf '<div onclick=\"if(a>b)go()\" class=\"c\">hi</div>\\n<a href='\"'\"'javascript:alert(1)'\"'\"' title=\"t\">x</a>\\n<p>plain 5 < 6 text</p>\\n' > /tmp/c.html\ncp /tmp/c.html /tmp/c2.html; python3 filter.py /tmp/c2.html; cat /tmp/c2.html"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "cd /app && printf '<div onclick=\"if(a>b)go()\" class=\"c\">hi</div>\\n<a href='\"'\"'javascript:alert(1)'\"'\"' title=\"t\">x</a>\\n<p>plain 5 < 6 text</p>\\n' > /tmp/c.html\ncp /tmp/c.html /tmp/c2.html; python3 filter.py /tmp/c2.html; cat /tmp/c2.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -514,7 +514,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HhXPXwprqx3GDo6SHcgv7x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; find / -path /proc -prune -o -name '*test*' -print 2>/dev/null | grep -iE 'app|filter|xss|html' | head; echo \"---no suite check done---\""
           },
@@ -522,7 +522,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; find / -path /proc -prune -o -name '*test*' -print 2>/dev/null | grep -iE 'app|filter|xss|html' | head; echo \"---no suite check done---\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -583,7 +583,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XvvNKK7qcVTQ4koEj6sjen",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/run_tests.py <<'PYEOF'\nimport subprocess, tempfile, os, sys, re\n\ndef run(html):\n    fd, p = tempfile.mkstemp(suffix=\".html\"); os.close(fd)\n    with open(p,\"w\") as f: f.write(html)\n    r = subprocess.run([sys.executable,\"/app/filter.py\",p],capture_output=True,text=True)\n    assert r.returncode==0, r.stderr\n    out=open(p).read(); os.unlink(p); return out\n\nfails=0\ndef check(name, cond):\n    global fails\n    print((\"PASS\" if cond else \"FAIL\")+\" | \"+name)\n    if not cond: fails+=1\n\nJS = re.compile(r\"(?i)<script|on\\w+\\s*=|javascript:|vbscript:|expression\\(|data:text/html\")\n\n# --- harmful vectors neutralized (ignore comment-embedded, which is inert) ---\nvectors = {\n \"script block\":\"<p>a</p><script>alert(1)</script><p>b</p>\",\n \"mixed case script\":\"<SCRIPT>x()</SCRIPT>\",\n \"self-closing script\":\"<script src=e.js/>hi\",\n \"body onload\":\"<body onload=\\\"e()\\\">x</body>\",\n \"img onerror\":\"<img src=x onerror=alert(1)>\",\n \"a javascript\":\"<a href=\\\"javascript:alert(1)\\\">l</a>\",\n \"a JS caps\":\"<a href=\\\"JaVaScRiPt:alert(1)\\\">l</a>\",\n \"entity obfusc\":\"<a href=\\\"jav&#x09;ascript:alert(1)\\\">l</a>\",\n \"svg onload\":\"<svg onload=alert(1)></svg>\",\n \"iframe js\":\"<iframe src=\\\"javascript:alert(1)\\\"></iframe>\",\n \"css expression\":\"<div style=\\\"width:expression(alert(1))\\\">x</div>\",\n \"css url js\":\"<div style=\\\"background:url(javascript:alert(1))\\\">x</div>\",\n \"meta refresh\":\"<meta http-equiv=refresh content=\\\"0;url=javascript:alert(1)\\\">\",\n \"data html\":\"<a href=\\\"data:text/html,<script>e</script>\\\">d</a>\",\n \"single quote js\":\"<a href='javascript:alert(1)'>l</a>\",\n \"handler with gt\":\"<div onclick=\\\"if(a>b)e()\\\">x</div>\",\n}\nfor name,h in vectors.items():\n    out=run(h)\n    # strip comments before scanning (comment content is inert)\n    scan=re.sub(r\"<!--.*?-->\",\"\",out,flags=re.S)\n    check(\"neutralized: \"+name, not JS.search(scan))\n\n# --- benign preserved byte-for-byte ---\nbenign = \"\"\"<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Doc</title>\n<style>a{color:#00f} .x>.y{margin:0}</style></head>\n<body>\n<h1>Header</h1>\n<p data-id=\"5\" title=\"a > b\">Value: 3 < 4 && 5 > 2</p>\n<ul><li>one</li><li>two</li></ul>\n<a href=\"/p?x=1&y=2\">safe</a><input disabled value=\"if(a>b){}\">\n<table><tr><td>c</td></tr></table>\n<!-- keep me --></body></html>\"\"\"\ncheck(\"benign byte-identical\", run(benign)==benign)\n\n# --- content preserved when harmful stripped ---\nout=run(\"<a href=\\\"javascript:x\\\" title=\\\"keep\\\">text</a>\")\ncheck(\"keeps benign attr+text\", 'title=\"keep\"' in out and \">text</a>\" in out)\nout=run(\"<p>before</p><script>e</script><p>after</p>\")\ncheck(\"keeps siblings around script\", \"<p>before</p>\" in out and \"<p>after</p>\" in out)\n\n# --- idempotent ---\nonce=run(benign+vectors[\"script block\"]); twice=run(once)\ncheck(\"idempotent\", once==twice)\n\n# --- in-place + exit 0 already asserted in run() ---\ncheck(\"in-place modification\", run(\"<script>e</script>ok\")==\"ok\")\n\nprint(\"\\n\"+(\"ALL PASS\" if fails==0 else f\"{fails} FAILED\"))\nsys.exit(1 if fails else 0)\nPYEOF\npython3 /tmp/run_tests.py; echo \"exit=$?\"; rm -f /tmp/run_tests.py"
           },
@@ -591,7 +591,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/run_tests.py <<'PYEOF'\nimport subprocess, tempfile, os, sys, re\n\ndef run(html):\n    fd, p = tempfile.mkstemp(suffix=\".html\"); os.close(fd)\n    with open(p,\"w\") as f: f.write(html)\n    r = subprocess.run([sys.executable,\"/app/filter.py\",p],capture_output=True,text=True)\n    assert r.returncode==0, r.stderr\n    out=open(p).read(); os.unlink(p); return out\n\nfails=0\ndef check(name, cond):\n    global fails\n    print((\"PASS\" if cond else \"FAIL\")+\" | \"+name)\n    if not cond: fails+=1\n\nJS = re.compile(r\"(?i)<script|on\\w+\\s*=|javascript:|vbscript:|expression\\(|data:text/html\")\n\n# --- harmful vectors neutralized (ignore comment-embedded, which is inert) ---\nvectors = {\n \"script block\":\"<p>a</p><script>alert(1)</script><p>b</p>\",\n \"mixed case script\":\"<SCRIPT>x()</SCRIPT>\",\n \"self-closing script\":\"<script src=e.js/>hi\",\n \"body onload\":\"<body onload=\\\"e()\\\">x</body>\",\n \"img onerror\":\"<img src=x onerror=alert(1)>\",\n \"a javascript\":\"<a href=\\\"javascript:alert(1)\\\">l</a>\",\n \"a JS caps\":\"<a href=\\\"JaVaScRiPt:alert(1)\\\">l</a>\",\n \"entity obfusc\":\"<a href=\\\"jav&#x09;ascript:alert(1)\\\">l</a>\",\n \"svg onload\":\"<svg onload=alert(1)></svg>\",\n \"iframe js\":\"<iframe src=\\\"javascript:alert(1)\\\"></iframe>\",\n \"css expression\":\"<div style=\\\"width:expression(alert(1))\\\">x</div>\",\n \"css url js\":\"<div style=\\\"background:url(javascript:alert(1))\\\">x</div>\",\n \"meta refresh\":\"<meta http-equiv=refresh content=\\\"0;url=javascript:alert(1)\\\">\",\n \"data html\":\"<a href=\\\"data:text/html,<script>e</script>\\\">d</a>\",\n \"single quote js\":\"<a href='javascript:alert(1)'>l</a>\",\n \"handler with gt\":\"<div onclick=\\\"if(a>b)e()\\\">x</div>\",\n}\nfor name,h in vectors.items():\n    out=run(h)\n    # strip comments before scanning (comment content is inert)\n    scan=re.sub(r\"<!--.*?-->\",\"\",out,flags=re.S)\n    check(\"neutralized: \"+name, not JS.search(scan))\n\n# --- benign preserved byte-for-byte ---\nbenign = \"\"\"<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Doc</title>\n<style>a{color:#00f} .x>.y{margin:0}</style></head>\n<body>\n<h1>Header</h1>\n<p data-id=\"5\" title=\"a > b\">Value: 3 < 4 && 5 > 2</p>\n<ul><li>one</li><li>two</li></ul>\n<a href=\"/p?x=1&y=2\">safe</a><input disabled value=\"if(a>b){}\">\n<table><tr><td>c</td></tr></table>\n<!-- keep me --></body></html>\"\"\"\ncheck(\"benign byte-identical\", run(benign)==benign)\n\n# --- content preserved when harmful stripped ---\nout=run(\"<a href=\\\"javascript:x\\\" title=\\\"keep\\\">text</a>\")\ncheck(\"keeps benign attr+text\", 'title=\"keep\"' in out and \">text</a>\" in out)\nout=run(\"<p>before</p><script>e</script><p>after</p>\")\ncheck(\"keeps siblings around script\", \"<p>before</p>\" in out and \"<p>after</p>\" in out)\n\n# --- idempotent ---\nonce=run(benign+vectors[\"script block\"]); twice=run(once)\ncheck(\"idempotent\", once==twice)\n\n# --- in-place + exit 0 already asserted in run() ---\ncheck(\"in-place modification\", run(\"<script>e</script>ok\")==\"ok\")\n\nprint(\"\\n\"+(\"ALL PASS\" if fails==0 else f\"{fails} FAILED\"))\nsys.exit(1 if fails else 0)\nPYEOF\npython3 /tmp/run_tests.py; echo \"exit=$?\"; rm -f /tmp/run_tests.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

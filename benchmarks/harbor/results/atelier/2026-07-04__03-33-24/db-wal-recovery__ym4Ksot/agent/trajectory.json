@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R12cHsxeKRA6sKwGNL56VE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VkS5UqtgQn6VncXGEngJYj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "xxd /app/main.db-wal | head -60"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "xxd /app/main.db-wal | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013N4Jz2bYKEzriq1oGkJRby",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\ndata=open('main.db-wal','rb').read()\ndec=bytes(b^0x42 for b in data)\nopen('main.db-wal','wb').write(dec)\nprint(dec[:32].hex())\nimport sqlite3,json\ncon=sqlite3.connect('main.db')\ncur=con.execute(\"select name from sqlite_master where type='table'\")\nprint(cur.fetchall())\nrows=con.execute(\"select id,name,value from items order by id\").fetchall() if True else []\nEOF"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\ndata=open('main.db-wal','rb').read()\ndec=bytes(b^0x42 for b in data)\nopen('main.db-wal','wb').write(dec)\nprint(dec[:32].hex())\nimport sqlite3,json\ncon=sqlite3.connect('main.db')\ncur=con.execute(\"select name from sqlite_master where type='table'\")\nprint(cur.fetchall())\nrows=con.execute(\"select id,name,value from items order by id\").fetchall() if True else []\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X97FGNaQ4wRfVaCW5e2uL7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport sqlite3,json\ncon=sqlite3.connect('main.db')\n# figure columns\ncols=[r[1] for r in con.execute(\"PRAGMA table_info(items)\").fetchall()]\nprint(\"cols\",cols)\nrows=con.execute(\"select id,name,value from items order by id\").fetchall()\nprint(len(rows))\nout=[{\"id\":r[0],\"name\":r[1],\"value\":r[2]} for r in rows]\njson.dump(out,open('recovered.json','w'))\nprint(out)\nEOF"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport sqlite3,json\ncon=sqlite3.connect('main.db')\n# figure columns\ncols=[r[1] for r in con.execute(\"PRAGMA table_info(items)\").fetchall()]\nprint(\"cols\",cols)\nrows=con.execute(\"select id,name,value from items order by id\").fetchall()\nprint(len(rows))\nout=[{\"id\":r[0],\"name\":r[1],\"value\":r[2]} for r in rows]\njson.dump(out,open('recovered.json','w'))\nprint(out)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HH8bF9j4DFBiptdQMWHp1G",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; ls -la /app/* 2>/dev/null | head -50"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; ls -la /app/* 2>/dev/null | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ng7KSmo8xCMnv4mx6Guqmy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import urllib.request; print(urllib.request.urlopen('https://huggingface.co', timeout=8).status)\" 2>&1 | head; echo \"===\"; python3 -c \"import urllib.request; print(urllib.request.urlopen('https://raw.githubusercontent.com', timeout=8).status)\" 2>&1 | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import urllib.request; print(urllib.request.urlopen('https://huggingface.co', timeout=8).status)\" 2>&1 | head; echo \"===\"; python3 -c \"import urllib.request; print(urllib.request.urlopen('https://raw.githubusercontent.com', timeout=8).status)\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TYEznchSYXceDmKPRNQmL4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && GIT_LFS_SKIP_SMUDGE=1 git clone --quiet https://huggingface.co/datasets/mteb/results 2>&1 | tail -5; echo \"EXIT:$?\"; ls results | head; echo \"count:\"; ls results/results 2>/dev/null | wc -l"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /root && GIT_LFS_SKIP_SMUDGE=1 git clone --quiet https://huggingface.co/datasets/mteb/results 2>&1 | tail -5; echo \"EXIT:$?\"; ls results | head; echo \"count:\"; ls results/results 2>/dev/null | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GAdcs6CCJh6CL8vRUtL5Mg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root/results && ls; echo \"---data---\"; ls data | head; echo \"count models:\"; ls data | wc -l; echo \"--- git log ---\"; git log -1 --format=\"%H %ci\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /root/results && ls; echo \"---data---\"; ls data | head; echo \"count models:\"; ls data | wc -l; echo \"--- git log ---\"; git log -1 --format=\"%H %ci\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vh5k48LjVtyXGNcab55Y99",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && git clone --quiet https://github.com/embeddings-benchmark/results.git results-gh 2>&1 | tail -3; echo \"EXIT:$?\"; cd results-gh 2>/dev/null && ls | head && echo \"commits around aug 2025:\" && git log --format=\"%H %ci\" --since=\"2025-07-15\" --until=\"2025-09-05\" | head -40"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /root && git clone --quiet https://github.com/embeddings-benchmark/results.git results-gh 2>&1 | tail -3; echo \"EXIT:$?\"; cd results-gh 2>/dev/null && ls | head && echo \"commits around aug 2025:\" && git log --format=\"%H %ci\" --since=\"2025-07-15\" --until=\"2025-09-05\" | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NtTMyrbay6gDcy8Lhpsojt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root/results-gh && git checkout --quiet 3125e8302256ac01d4dd68b6f92902b3e6a78987 && git log -1 --format=\"%H %ci\"; echo \"---\"; ls results | wc -l; echo \"sample model dirs:\"; ls results | head"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /root/results-gh && git checkout --quiet 3125e8302256ac01d4dd68b6f92902b3e6a78987 && git log -1 --format=\"%H %ci\"; echo \"---\"; ls results | wc -l; echo \"sample model dirs:\"; ls results | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CdmjGNfJPBrvzvoQEKWzty",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && pip install --break-system-packages -q \"mteb\" 2>&1 | tail -5; python3 -c \"import mteb; print('mteb', mteb.__version__)\""
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /root && pip install --break-system-packages -q \"mteb\" 2>&1 | tail -5; python3 -c \"import mteb; print('mteb', mteb.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EM6qkQLLd7vJ415BHuP2Wk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb\nbs=[b for b in mteb.get_benchmarks() if 'scand' in b.name.lower()]\nfor b in bs: print(repr(b.name), '| tasks:', len(b.tasks))\n\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb\nbs=[b for b in mteb.get_benchmarks() if 'scand' in b.name.lower()]\nfor b in bs: print(repr(b.name), '| tasks:', len(b.tasks))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013rrgGaQhxpwuC9jTLTPUwh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb\nb=[b for b in mteb.get_benchmarks() if b.name=='MTEB(Scandinavian, v1)'][0]\nfor t in b.tasks: print(t.metadata.name, '|', t.metadata.type, '|', t.metadata.main_score)\n\""
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb\nb=[b for b in mteb.get_benchmarks() if b.name=='MTEB(Scandinavian, v1)'][0]\nfor t in b.tasks: print(t.metadata.name, '|', t.metadata.type, '|', t.metadata.main_score)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VoYmQyNc5weFGA2W5RDcFg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb, inspect\nprint(inspect.signature(mteb.load_results))\nprint('---benchmark methods---')\nb=mteb.get_benchmark('MTEB(Scandinavian, v1)')\nprint([m for m in dir(b) if not m.startswith('__')])\n\""
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb, inspect\nprint(inspect.signature(mteb.load_results))\nprint('---benchmark methods---')\nb=mteb.get_benchmark('MTEB(Scandinavian, v1)')\nprint([m for m in dir(b) if not m.startswith('__')])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011STVnRtE7KNhu82BP3o7oo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.load_results import load_results as lr\nprint(inspect.getsourcefile(mteb.load_results))\n\" 2>&1; echo \"===\"; python3 - <<'EOF'\nimport mteb, inspect\nsrc=inspect.getsource(mteb.load_results)\nprint(src[:2500])\nEOF"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.load_results import load_results as lr\nprint(inspect.getsourcefile(mteb.load_results))\n\" 2>&1; echo \"===\"; python3 - <<'EOF'\nimport mteb, inspect\nsrc=inspect.getsource(mteb.load_results)\nprint(src[:2500])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DNX94t4vDWLonieHbDDh9W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 - <<'EOF'\nimport inspect\nfrom mteb.load_results import load_results as m\nsrc=inspect.getsource(m.download_of_results)\nprint(src)\nEOF"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 - <<'EOF'\nimport inspect\nfrom mteb.load_results import load_results as m\nsrc=inspect.getsource(m.download_of_results)\nprint(src)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NhNLZt2rqyjxaLihoe5mxz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 - <<'EOF'\nimport inspect, mteb.load_results.load_results as M\nprint(inspect.getsource(M.download_of_results))\nEOF"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 - <<'EOF'\nimport inspect, mteb.load_results.load_results as M\nprint(inspect.getsource(M.download_of_results))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016mqLm2upFybzQTRKs1a2YL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 - <<'EOF'\nimport importlib, inspect\nM=importlib.import_module('mteb.load_results.load_results')\nprint(inspect.getsource(M.download_of_results))\nEOF"
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 - <<'EOF'\nimport importlib, inspect\nM=importlib.import_module('mteb.load_results.load_results')\nprint(inspect.getsource(M.download_of_results))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015TFkZVxVSgrHNMfZ35aJD3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF'\nimport mteb\nb=mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres=mteb.load_results(results_repo='/root/results-gh', download_latest=False, tasks=b.tasks, only_main_score=True)\nprint(type(res))\nprint([m for m in dir(res) if not m.startswith('_')])\nEOF"
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF'\nimport mteb\nb=mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres=mteb.load_results(results_repo='/root/results-gh', download_latest=False, tasks=b.tasks, only_main_score=True)\nprint(type(res))\nprint([m for m in dir(res) if not m.startswith('_')])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
         "results": [
           {
             "source_call_id": "toolu_015TFkZVxVSgrHNMfZ35aJD3",
-            "content": "{\"type\": \"text\", \"text\": \"<class 'mteb.load_results.benchmark_results.BenchmarkResults'>\\n['construct', 'copy', 'dict', 'domains', 'filter_models', 'filter_tasks', 'from_dict', 'from_disk', 'from_legacy_dict', 'from_orm', 'from_validated', 'get_scores', 'join_revisions', 'json', 'languages', 'modalities', 'model_computed_fields', 'model_config', 'model_construct', 'model_copy', 'model_dump', 'model_dump_json', 'model_extra', 'model_fields', 'model_fields_set', 'model_json_schema', 'model_names', 'model_parametrized_name', 'model_post_init', 'model_rebuild', 'model_results', 'model_revisions', 'model_validate', 'model_validate_json', 'model_validate_strings', 'parse_file', 'parse_obj', 'parse_raw', 'schema', 'schema_json', 'select_models', 'select_tasks', 'task_names', 'task_types', 'to_dataframe', 'to_dict', 'to_disk', 'to_legacy_dict', 'update_forward_refs', 'validate']\\n\\nstderr:\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split validation\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split validation\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMa\\n...[summary clipped; full output is in spill]...\\n split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\n\\n[output truncated: 2002 lines omitted; full output (155584B) spilled to /tmp/atelier-spill/original-bash-1783130044864-0fa3dad6.txt; read /tmp/atelier-spill/original-bash-1783130044864-0fa3dad6.txt to recover (:L1-L200, :L201-L400 … to page)]\\n\\n[full output (15130B) spilled to /tmp/atelier-spill/tool_output-bash-1783130044873-6248ce5f.txt; read /tmp/atelier-spill/tool_output-bash-1783130044873-6248ce5f.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"<class 'mteb.load_results.benchmark_results.BenchmarkResults'>\\n['construct', 'copy', 'dict', 'domains', 'filter_models', 'filter_tasks', 'from_dict', 'from_disk', 'from_legacy_dict', 'from_orm', 'from_validated', 'get_scores', 'join_revisions', 'json', 'languages', 'modalities', 'model_computed_fields', 'model_config', 'model_construct', 'model_copy', 'model_dump', 'model_dump_json', 'model_extra', 'model_fields', 'model_fields_set', 'model_json_schema', 'model_names', 'model_parametrized_name', 'model_post_init', 'model_rebuild', 'model_results', 'model_revisions', 'model_validate', 'model_validate_json', 'model_validate_strings', 'parse_file', 'parse_obj', 'parse_raw', 'schema', 'schema_json', 'select_models', 'select_tasks', 'task_names', 'task_types', 'to_dataframe', 'to_dict', 'to_disk', 'to_legacy_dict', 'update_forward_refs', 'validate']\\n\\nstderr:\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split validation\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split validation\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMa\\n...[summary clipped; full output is in spill]...\\n split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\nMassiveScenarioClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveScenarioClassification: Missing splits {'validation'}\\nMassiveIntentClassification: Missing subsets {'sv', 'nb', ...} for split test\\nMassiveIntentClassification: Missing splits {'validation'}\\n\\n[output truncated: 2002 lines omitted; full output (155584B) spilled to /tmp/lemoncrow-spill/original-bash-1783130044864-0fa3dad6.txt; read /tmp/lemoncrow-spill/original-bash-1783130044864-0fa3dad6.txt to recover (:L1-L200, :L201-L400 … to page)]\\n\\n[full output (15130B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783130044873-6248ce5f.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783130044873-6248ce5f.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013Fyg7EfSHdzRFesjbTW9Kr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.load_results.benchmark_results import BenchmarkResults as BR\nprint('get_scores:', inspect.signature(BR.get_scores))\nprint('to_dataframe:', inspect.signature(BR.to_dataframe))\nprint('join_revisions:', inspect.signature(BR.join_revisions))\n\""
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.load_results.benchmark_results import BenchmarkResults as BR\nprint('get_scores:', inspect.signature(BR.get_scores))\nprint('to_dataframe:', inspect.signature(BR.to_dataframe))\nprint('join_revisions:', inspect.signature(BR.join_revisions))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1137,7 +1137,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CcALmMJ7o8Bw4gdJE17KE6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && grep -rl \"Mean (Task)\" /usr/local/lib/python3.10/site-packages/mteb/ 2>/dev/null; echo \"---\"; grep -rn \"Mean (Task)\\|Mean(Task)\\|mean_task\\|borda\" /usr/local/lib/python3.10/site-packages/mteb/leaderboard/*.py 2>/dev/null | head"
           },
@@ -1145,7 +1145,7 @@
             "raw_arguments": {
               "command": "cd /root && grep -rl \"Mean (Task)\" /usr/local/lib/python3.10/site-packages/mteb/ 2>/dev/null; echo \"---\"; grep -rn \"Mean (Task)\\|Mean(Task)\\|mean_task\\|borda\" /usr/local/lib/python3.10/site-packages/mteb/leaderboard/*.py 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1206,7 +1206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0195khpk2CkkNwEGnAvM3tTN",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/usr/local/lib/python3.10/site-packages/mteb/leaderboard/table.py"
@@ -1218,7 +1218,7 @@
                 "/usr/local/lib/python3.10/site-packages/mteb/leaderboard/table.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1279,7 +1279,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QPPEAMbjM79Wzj65j4b1XN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && grep -rn \"get_scores\\|scores_long\\|\\.load_results\\|join_revisions\\|filter_models\\|splits=\" /usr/local/lib/python3.10/site-packages/mteb/leaderboard/app.py | head -40"
           },
@@ -1287,7 +1287,7 @@
             "raw_arguments": {
               "command": "cd /root && grep -rn \"get_scores\\|scores_long\\|\\.load_results\\|join_revisions\\|filter_models\\|splits=\" /usr/local/lib/python3.10/site-packages/mteb/leaderboard/app.py | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1348,7 +1348,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PrGXp9XBErL4zXRTPHQSD8",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/usr/local/lib/python3.10/site-packages/mteb/leaderboard/app.py:L30-L55",
@@ -1364,7 +1364,7 @@
                 "/usr/local/lib/python3.10/site-packages/mteb/leaderboard/app.py:L430-L490"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1425,7 +1425,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0163KZidsgQL8cGSRSghRB9Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.benchmarks.benchmark import Benchmark\nprint(inspect.signature(Benchmark.load_results))\nfrom mteb.load_results.benchmark_results import BenchmarkResults as BR\nprint('filter_models', inspect.signature(BR.filter_models))\n\""
           },
@@ -1433,7 +1433,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport mteb, inspect\nfrom mteb.benchmarks.benchmark import Benchmark\nprint(inspect.signature(Benchmark.load_results))\nfrom mteb.load_results.benchmark_results import BenchmarkResults as BR\nprint('filter_models', inspect.signature(BR.filter_models))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1494,7 +1494,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017TVjdLma5Nvkx5shfDzCGd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\n\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]  # joint_table\n# joint has 'Mean (Task)' already *100 via format? scores_to_tables returns pre-styling; Mean(Task) not yet formatted\njt = joint[['Model','Mean (Task)']].copy()\njt = jt.dropna(subset=['Mean (Task)'])\njt = jt.sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 200)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== errors tail ===\"; tail -3 /tmp/err.log"
           },
@@ -1502,7 +1502,7 @@
             "raw_arguments": {
               "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\n\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]  # joint_table\n# joint has 'Mean (Task)' already *100 via format? scores_to_tables returns pre-styling; Mean(Task) not yet formatted\njt = joint[['Model','Mean (Task)']].copy()\njt = jt.dropna(subset=['Mean (Task)'])\njt = jt.sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 200)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== errors tail ===\"; tail -3 /tmp/err.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1563,7 +1563,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RZZax3rAeKYkpigHyCvd4u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q cachetools gradio 2>&1 | tail -2; echo done"
           },
@@ -1571,7 +1571,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q cachetools gradio 2>&1 | tail -2; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1632,7 +1632,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BS4RpksnTckThK2D1W1Mfw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]\njt = joint[['Model','Mean (Task)']].dropna(subset=['Mean (Task)']).sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 300)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== err tail ===\"; tail -5 /tmp/err.log"
           },
@@ -1640,7 +1640,7 @@
             "raw_arguments": {
               "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]\njt = joint[['Model','Mean (Task)']].dropna(subset=['Mean (Task)']).sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 300)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== err tail ===\"; tail -5 /tmp/err.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1701,7 +1701,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XnHywYHCDnJsNGCqfpU8rK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q \"huggingface-hub>=0.34.0,<1.0\" 2>&1 | tail -2; python3 -c \"import huggingface_hub; print(huggingface_hub.__version__)\""
           },
@@ -1709,7 +1709,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q \"huggingface-hub>=0.34.0,<1.0\" 2>&1 | tail -2; python3 -c \"import huggingface_hub; print(huggingface_hub.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1770,7 +1770,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DseWErVjn5MNw7K8JLbsCY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]\njt = joint[['Model','Mean (Task)']].dropna(subset=['Mean (Task)']).sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 300)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== err tail ===\"; tail -5 /tmp/err.log"
           },
@@ -1778,7 +1778,7 @@
             "raw_arguments": {
               "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.leaderboard.table import scores_to_tables\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nres = scores_to_tables(scores)\njoint = res[0]\njt = joint[['Model','Mean (Task)']].dropna(subset=['Mean (Task)']).sort_values('Mean (Task)', ascending=False)\npd.set_option('display.max_colwidth', 300)\nprint('num models with all tasks:', len(jt))\nprint(jt.head(15).to_string(index=False))\nEOF\necho \"=== err tail ===\"; tail -5 /tmp/err.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1839,7 +1839,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KAZ9CMvLEDcWkZRXwVn9em",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -20 /tmp/err.log"
           },
@@ -1847,7 +1847,7 @@
             "raw_arguments": {
               "command": "head -20 /tmp/err.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1908,7 +1908,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FCoGoyMMoLjVDnuugEnnAy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.models.overview import get_model_meta\n\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nprint(\"sample score entry:\", scores[0])\ndata = pd.DataFrame.from_records(scores)\nper_task = data.pivot(index=\"model_name\", columns=\"task_name\", values=\"score\")\nprint(\"n tasks columns:\", per_task.shape[1])\noverall = per_task.mean(skipna=False, axis=1)\ntbl = pd.DataFrame({\"Mean(Task)\": overall}).dropna().sort_values(\"Mean(Task)\", ascending=False)\nprint(\"models with ALL tasks:\", len(tbl))\n\ndef has_meta(n):\n    try: return get_model_meta(n) is not None\n    except Exception: return False\n\ntbl_meta = tbl[[has_meta(n) for n in tbl.index]]\npd.set_option('display.max_colwidth',300)\nprint(\"\\n=== TOP 15 (all-task models, meta-filtered like leaderboard) ===\")\nprint((tbl_meta.head(15)*100).to_string())\nprint(\"\\n=== TOP 5 without meta filter ===\")\nprint((tbl.head(5)*100).to_string())\nEOF\necho \"=== err ===\"; tail -5 /tmp/err.log"
           },
@@ -1916,7 +1916,7 @@
             "raw_arguments": {
               "command": "cd /root && MTEB_CACHE=/root python3 - <<'EOF' 2>/tmp/err.log\nimport mteb, pandas as pd\nfrom mteb.models.overview import get_model_meta\n\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nall_results = mteb.load_results(results_repo='/root/results-gh', download_latest=False,\n                                only_main_score=True, require_model_meta=False).filter_models()\nbench_results = b.load_results(base_results=all_results).join_revisions()\nscores = bench_results.get_scores(format=\"long\")\nprint(\"sample score entry:\", scores[0])\ndata = pd.DataFrame.from_records(scores)\nper_task = data.pivot(index=\"model_name\", columns=\"task_name\", values=\"score\")\nprint(\"n tasks columns:\", per_task.shape[1])\noverall = per_task.mean(skipna=False, axis=1)\ntbl = pd.DataFrame({\"Mean(Task)\": overall}).dropna().sort_values(\"Mean(Task)\", ascending=False)\nprint(\"models with ALL tasks:\", len(tbl))\n\ndef has_meta(n):\n    try: return get_model_meta(n) is not None\n    except Exception: return False\n\ntbl_meta = tbl[[has_meta(n) for n in tbl.index]]\npd.set_option('display.max_colwidth',300)\nprint(\"\\n=== TOP 15 (all-task models, meta-filtered like leaderboard) ===\")\nprint((tbl_meta.head(15)*100).to_string())\nprint(\"\\n=== TOP 5 without meta filter ===\")\nprint((tbl.head(5)*100).to_string())\nEOF\necho \"=== err ===\"; tail -5 /tmp/err.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1977,7 +1977,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013TjdRRSKVum6zDR54URwRf",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1997,7 +1997,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2058,7 +2058,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rgr1nZK3UXvUpT5G3obba7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/result.txt"
           },
@@ -2066,7 +2066,7 @@
             "raw_arguments": {
               "command": "cat /app/result.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

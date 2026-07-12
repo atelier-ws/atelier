@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ApmfXgdSvhbrnmLsTEp92B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bf6t6FGmg7DuYo7tyjtJqf",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L100-L305"
@@ -114,7 +114,7 @@
                 "/app/university_graph.ttl:L100-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V72ZmbAiVHiJ8pUKN9hHRK",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L290-L305"
@@ -187,7 +187,7 @@
                 "/app/university_graph.ttl:L290-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -248,7 +248,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V38X89jwuFAwRf2xUxVX7K",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L270-L305"
@@ -260,7 +260,7 @@
                 "/app/university_graph.ttl:L270-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PeQb75tfUGLUktLrcK353f",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -341,7 +341,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -402,7 +402,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RzcPj1tnyugr1QwNEVxH3Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
           },
@@ -410,7 +410,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -471,7 +471,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0148VB93GAqBknVvFo9xNpYT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\""
           },
@@ -479,7 +479,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -540,7 +540,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RMAUo5bzxMXEg3f9MUguvM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\""
           },
@@ -548,7 +548,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; python3 -m pip install --break-system-packages -q rdflib 2>&1 | tail -3; python3 -c \"import rdflib; print('ok', rdflib.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -609,7 +609,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y76pRvabBDJ8f7s2FMYunx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph(); g.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '||', row.countries)\n\""
           },
@@ -617,7 +617,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph(); g.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '||', row.countries)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RcUX6i1LEF1ndFH2hWC9nw",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/decomp.c"
@@ -45,12 +45,12 @@
                 "/app/decomp.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_016eKdZQXPk887pb4zPDjbQV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -c /app/data.txt; echo '---'; head -c 500 /app/data.txt"
           },
@@ -58,7 +58,7 @@
             "raw_arguments": {
               "command": "wc -c /app/data.txt; echo '---'; head -c 500 /app/data.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S4AcjMrAfPZtHEKVPEr8Ba",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\ndata=open('/app/data.txt','rb').read()\nprint(len(data))\nprint('has null', 0 in data)\nprint('max byte', max(data))\nprint('nonascii', [b for b in set(data) if b>=128])\nprint(repr(data[-40:]))\nEOF\nls -la /app"
           },
@@ -131,7 +131,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\ndata=open('/app/data.txt','rb').read()\nprint(len(data))\nprint('has null', 0 in data)\nprint('max byte', max(data))\nprint('nonascii', [b for b in set(data) if b>=128])\nprint(repr(data[-40:]))\nEOF\nls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -139,7 +139,7 @@
         "results": [
           {
             "source_call_id": "toolu_01S4AcjMrAfPZtHEKVPEr8Ba",
-            "content": "{\"type\": \"text\", \"text\": \"4868\\nhas null False\\nmax byte 226\\nnonascii [128, 147, 226]\\nb\\\"ing patterns in files' content.[12][13]\\\\n\\\"\\ntotal 48\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:08 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:07 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:08 .atelier\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:08 .git\\n-rw-r--r-- 1 root root  4868 Oct 24  2025 data.txt\\n-rwxr-xr-x 1 root root 16544 Oct 28  2025 decomp\\n-rw-r--r-- 1 root root  1262 Oct 24  2025 decomp.c\"}"
+            "content": "{\"type\": \"text\", \"text\": \"4868\\nhas null False\\nmax byte 226\\nnonascii [128, 147, 226]\\nb\\\"ing patterns in files' content.[12][13]\\\\n\\\"\\ntotal 48\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:08 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:07 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:08 .lemoncrow\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:08 .git\\n-rw-r--r-- 1 root root  4868 Oct 24  2025 data.txt\\n-rwxr-xr-x 1 root root 16544 Oct 28  2025 decomp\\n-rw-r--r-- 1 root root  1262 Oct 24  2025 decomp.c\"}"
           }
         ]
       },
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T3JBAiSphGeYMDhmPcn9k9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -212,7 +212,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GbrJTRz1dzfKz66djirVrA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 gen.py"
           },
@@ -281,7 +281,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 gen.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -342,7 +342,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QUKrhGm3j7M5Fb79qiH7K4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat data.comp | ./decomp > /tmp/out.txt; echo \"exit $?\"; cmp /tmp/out.txt data.txt && echo \"MATCH exact\" || echo \"DIFFER\"; wc -c /tmp/out.txt data.txt data.comp"
           },
@@ -350,7 +350,7 @@
             "raw_arguments": {
               "command": "cd /app && cat data.comp | ./decomp > /tmp/out.txt; echo \"exit $?\"; cmp /tmp/out.txt data.txt && echo \"MATCH exact\" || echo \"DIFFER\"; wc -c /tmp/out.txt data.txt data.comp"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -411,7 +411,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017gzCgsSN9BghPFvfX3XrYU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/out.txt gen.py; ls -l data.comp"
           },
@@ -419,7 +419,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/out.txt gen.py; ls -l data.comp"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -535,7 +535,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011kirZpYJayZSdZ3md4vasQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat data.comp | ./decomp > /tmp/verify.txt; echo \"exit $?\"; cmp /tmp/verify.txt data.txt && echo \"MATCH exact\"; wc -c data.comp; rm -f /tmp/verify.txt"
           },
@@ -543,7 +543,7 @@
             "raw_arguments": {
               "command": "cd /app && cat data.comp | ./decomp > /tmp/verify.txt; echo \"exit $?\"; cmp /tmp/verify.txt data.txt && echo \"MATCH exact\"; wc -c data.comp; rm -f /tmp/verify.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PndiHCX4WwjMBJLqWgKhGo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nginx -v 2>&1; echo \"---\"; cat /etc/os-release | head -2; echo \"---\"; ls /etc/nginx 2>&1; ls /etc/nginx/sites-enabled 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "nginx -v 2>&1; echo \"---\"; cat /etc/os-release | head -2; echo \"---\"; ls /etc/nginx 2>&1; ls /etc/nginx/sites-enabled 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TeyCtWez6gJWJJERtUxZwx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y nginx >/tmp/nginx-install.log 2>&1; tail -3 /tmp/nginx-install.log; echo \"===\"; nginx -v 2>&1; ls /etc/nginx/sites-enabled/ 2>&1",
             "timeout": 300
@@ -112,7 +112,7 @@
               "command": "apt-get update -qq && apt-get install -y nginx >/tmp/nginx-install.log 2>&1; tail -3 /tmp/nginx-install.log; echo \"===\"; nginx -v 2>&1; ls /etc/nginx/sites-enabled/ 2>&1",
               "timeout": 300
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -173,7 +173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016p7MLpzqSwdEwdBqfjQ7z8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /etc/nginx/sites-enabled/ 2>&1; echo \"---nginx.conf http block---\"; grep -n \"http {\" /etc/nginx/nginx.conf; grep -n \"log_format\\|include\" /etc/nginx/nginx.conf"
           },
@@ -181,7 +181,7 @@
             "raw_arguments": {
               "command": "ls /etc/nginx/sites-enabled/ 2>&1; echo \"---nginx.conf http block---\"; grep -n \"http {\" /etc/nginx/nginx.conf; grep -n \"log_format\\|include\" /etc/nginx/nginx.conf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -242,7 +242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BeSDSYVKfPRArqJyEcfSvf",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/etc/nginx/nginx.conf:L12-L60"
@@ -254,7 +254,7 @@
                 "/etc/nginx/nginx.conf:L12-L60"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -315,7 +315,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012xMfhNWyxfjeqjNtDahwYi",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -365,7 +365,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -438,7 +438,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012YTtZN8WQny3s3R3Ukewz8",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -458,7 +458,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -531,7 +531,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PBbweo5VvH7ZbS9TJ4zUnC",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/etc/nginx/nginx.conf:expand"
@@ -543,7 +543,7 @@
                 "/etc/nginx/nginx.conf:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -604,7 +604,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QBwZ6twBHnXJ7k5XAYLxJ1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -624,7 +624,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -697,7 +697,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Di3gKeUf2KzbjLyBPMusMG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PYEOF'\nimport os, re\n\n# 1. Insert log_format + limit_req_zone into http block of nginx.conf\np = \"/etc/nginx/nginx.conf\"\ns = open(p).read()\ninject = (\"\\tlog_format benchmark '$time_local $request_method $status \\\"$http_user_agent\\\"';\\n\"\n          \"\\tlimit_req_zone $binary_remote_addr zone=benchmark_limit:10m rate=10r/s;\\n\")\nif \"log_format benchmark\" not in s:\n    s = s.replace(\"http {\\n\", \"http {\\n\\n\" + inject, 1)\n    open(p, \"w\").write(s)\n\n# 2. server config\nconf = \"\"\"server {\n    listen 8080;\n    server_name localhost;\n\n    root /var/www/html;\n    index index.html;\n\n    access_log /var/log/nginx/benchmark-access.log benchmark;\n    error_log /var/log/nginx/benchmark-error.log;\n\n    limit_req zone=benchmark_limit burst=10;\n\n    location / {\n        try_files $uri $uri/ =404;\n    }\n\n    error_page 404 /404.html;\n    location = /404.html {\n        internal;\n    }\n}\n\"\"\"\nos.makedirs(\"/etc/nginx/conf.d\", exist_ok=True)\nopen(\"/etc/nginx/conf.d/benchmark-site.conf\", \"w\").write(conf)\n\n# 3-5. docroot and pages\nos.makedirs(\"/var/www/html\", exist_ok=True)\nopen(\"/var/www/html/index.html\", \"w\").write(\"Welcome to the benchmark webserver\\n\")\nopen(\"/var/www/html/404.html\", \"w\").write(\"Page not found - Please check your URL\\n\")\n\n# disable default site\nd = \"/etc/nginx/sites-enabled/default\"\nif os.path.exists(d):\n    os.remove(d)\nprint(\"files written\")\nPYEOF"
           },
@@ -705,7 +705,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PYEOF'\nimport os, re\n\n# 1. Insert log_format + limit_req_zone into http block of nginx.conf\np = \"/etc/nginx/nginx.conf\"\ns = open(p).read()\ninject = (\"\\tlog_format benchmark '$time_local $request_method $status \\\"$http_user_agent\\\"';\\n\"\n          \"\\tlimit_req_zone $binary_remote_addr zone=benchmark_limit:10m rate=10r/s;\\n\")\nif \"log_format benchmark\" not in s:\n    s = s.replace(\"http {\\n\", \"http {\\n\\n\" + inject, 1)\n    open(p, \"w\").write(s)\n\n# 2. server config\nconf = \"\"\"server {\n    listen 8080;\n    server_name localhost;\n\n    root /var/www/html;\n    index index.html;\n\n    access_log /var/log/nginx/benchmark-access.log benchmark;\n    error_log /var/log/nginx/benchmark-error.log;\n\n    limit_req zone=benchmark_limit burst=10;\n\n    location / {\n        try_files $uri $uri/ =404;\n    }\n\n    error_page 404 /404.html;\n    location = /404.html {\n        internal;\n    }\n}\n\"\"\"\nos.makedirs(\"/etc/nginx/conf.d\", exist_ok=True)\nopen(\"/etc/nginx/conf.d/benchmark-site.conf\", \"w\").write(conf)\n\n# 3-5. docroot and pages\nos.makedirs(\"/var/www/html\", exist_ok=True)\nopen(\"/var/www/html/index.html\", \"w\").write(\"Welcome to the benchmark webserver\\n\")\nopen(\"/var/www/html/404.html\", \"w\").write(\"Page not found - Please check your URL\\n\")\n\n# disable default site\nd = \"/etc/nginx/sites-enabled/default\"\nif os.path.exists(d):\n    os.remove(d)\nprint(\"files written\")\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -766,7 +766,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BZQFeZevs5k3ZZrXCHyjBm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nginx -t 2>&1"
           },
@@ -774,7 +774,7 @@
             "raw_arguments": {
               "command": "nginx -t 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -835,7 +835,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bo93ZpkVBoK69V98M3WSgU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "service nginx start 2>&1 || nginx 2>&1; sleep 1; echo \"=== pgrep ===\"; pgrep -a nginx; echo \"=== curl / ===\"; curl -s -A \"TestAgent/1.0\" -o /dev/null -w \"HTTP %{http_code}\\n\" http://localhost:8080/; curl -s http://localhost:8080/; echo \"=== curl 404 ===\"; curl -s -w \"\\nHTTP %{http_code}\\n\" http://localhost:8080/nope"
           },
@@ -843,7 +843,7 @@
             "raw_arguments": {
               "command": "service nginx start 2>&1 || nginx 2>&1; sleep 1; echo \"=== pgrep ===\"; pgrep -a nginx; echo \"=== curl / ===\"; curl -s -A \"TestAgent/1.0\" -o /dev/null -w \"HTTP %{http_code}\\n\" http://localhost:8080/; curl -s http://localhost:8080/; echo \"=== curl 404 ===\"; curl -s -w \"\\nHTTP %{http_code}\\n\" http://localhost:8080/nope"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -904,7 +904,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LsdwUPiZro4iPZeUWUTACx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== master process ===\"; ps aux | grep '[n]ginx' | head; echo \"=== access log location ===\"; ls -l /var/log/nginx/benchmark-access.log; echo \"=== access log contents ===\"; cat /var/log/nginx/benchmark-access.log"
           },
@@ -912,7 +912,7 @@
             "raw_arguments": {
               "command": "echo \"=== master process ===\"; ps aux | grep '[n]ginx' | head; echo \"=== access log location ===\"; ls -l /var/log/nginx/benchmark-access.log; echo \"=== access log contents ===\"; cat /var/log/nginx/benchmark-access.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NoEDRJnLDdDKDzwyUXywbt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && ls -la /app/trunc.db && xxd /app/trunc.db | head -50"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ && ls -la /app/trunc.db && xxd /app/trunc.db | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012sCCNkZWFcsDF9UGYhZZ7F",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -A d -t x1z /app/trunc.db | head -100"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "od -A d -t x1z /app/trunc.db | head -100"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015AfV7U3qzroTJkMizdPr7n",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport struct, json\n\ndata = open('trunc.db','rb').read()\nprint(\"len\", len(data))\n# strings scan for testword\nimport re\nfor m in re.finditer(rb'testword..', data):\n    print(m.start(), m.group())\nEOF"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport struct, json\n\ndata = open('trunc.db','rb').read()\nprint(\"len\", len(data))\n# strings scan for testword\nimport re\nfor m in re.finditer(rb'testword..', data):\n    print(m.start(), m.group())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WUYwW6ohGbsW9VfsZVj4xe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport struct, json\n\ndata = open('trunc.db','rb').read()\n\ndef varint(buf, off):\n    result = 0\n    for i in range(9):\n        b = buf[off+i]\n        if i == 8:\n            result = (result<<8)|b\n            return result, off+9\n        result = (result<<7)|(b&0x7f)\n        if not (b&0x80):\n            return result, off+i+1\n\ndef serial_len(t):\n    if t==0: return 0\n    if t<=4: return t\n    if t==5: return 6\n    if t==6: return 8\n    if t==7: return 8\n    if t in (8,9): return 0\n    if t>=12:\n        return (t-12)//2 if t%2==0 else (t-13)//2\n    return 0\n\ndef read_col(buf, off, t):\n    n = serial_len(t)\n    raw = buf[off:off+n]\n    if t==0: return None\n    if 1<=t<=6:\n        val = int.from_bytes(raw, 'big', signed=True)\n        return val\n    if t==7:\n        return struct.unpack('>d', raw)[0]\n    if t==8: return 0\n    if t==9: return 1\n    if t%2==0:\n        return raw  # blob\n    else:\n        return raw.decode('utf-8','replace')\n\n# page header at offset 0\nptype = data[0]\nncells = struct.unpack('>H', data[3:5])[0]\nprint(\"ptype\",hex(ptype),\"ncells\",ncells)\n# cell pointer array starts at offset 8 (leaf) \ncp_start = 8\nrows=[]\nfor i in range(ncells):\n    ptr = struct.unpack('>H', data[cp_start+2*i:cp_start+2*i+2])[0]\n    off = ptr\n    plen, off = varint(data, off)\n    rowid, off = varint(data, off)\n    # record\n    hstart = off\n    hlen, hoff = varint(data, off)\n    types=[]\n    while hoff < hstart+hlen:\n        t, hoff = varint(data, hoff)\n        types.append(t)\n    body = hstart+hlen\n    cols=[]\n    for t in types:\n        cols.append(read_col(data, body, t))\n        body += serial_len(t)\n    rows.append((rowid, cols))\n    print(rowid, cols)\n\n# build output: word text col, value numeric col\nout=[]\nfor rowid, cols in rows:\n    word=None; value=None\n    for c in cols:\n        if isinstance(c,str): word=c\n        elif isinstance(c,(int,float)) and word is not None:\n            value=c\n    out.append({\"word\":word,\"value\":value})\nout_sorted = sorted(out, key=lambda x:x[\"word\"])\nprint(json.dumps(out_sorted, indent=2))\njson.dump(out_sorted, open('recover.json','w'))\nEOF"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport struct, json\n\ndata = open('trunc.db','rb').read()\n\ndef varint(buf, off):\n    result = 0\n    for i in range(9):\n        b = buf[off+i]\n        if i == 8:\n            result = (result<<8)|b\n            return result, off+9\n        result = (result<<7)|(b&0x7f)\n        if not (b&0x80):\n            return result, off+i+1\n\ndef serial_len(t):\n    if t==0: return 0\n    if t<=4: return t\n    if t==5: return 6\n    if t==6: return 8\n    if t==7: return 8\n    if t in (8,9): return 0\n    if t>=12:\n        return (t-12)//2 if t%2==0 else (t-13)//2\n    return 0\n\ndef read_col(buf, off, t):\n    n = serial_len(t)\n    raw = buf[off:off+n]\n    if t==0: return None\n    if 1<=t<=6:\n        val = int.from_bytes(raw, 'big', signed=True)\n        return val\n    if t==7:\n        return struct.unpack('>d', raw)[0]\n    if t==8: return 0\n    if t==9: return 1\n    if t%2==0:\n        return raw  # blob\n    else:\n        return raw.decode('utf-8','replace')\n\n# page header at offset 0\nptype = data[0]\nncells = struct.unpack('>H', data[3:5])[0]\nprint(\"ptype\",hex(ptype),\"ncells\",ncells)\n# cell pointer array starts at offset 8 (leaf) \ncp_start = 8\nrows=[]\nfor i in range(ncells):\n    ptr = struct.unpack('>H', data[cp_start+2*i:cp_start+2*i+2])[0]\n    off = ptr\n    plen, off = varint(data, off)\n    rowid, off = varint(data, off)\n    # record\n    hstart = off\n    hlen, hoff = varint(data, off)\n    types=[]\n    while hoff < hstart+hlen:\n        t, hoff = varint(data, hoff)\n        types.append(t)\n    body = hstart+hlen\n    cols=[]\n    for t in types:\n        cols.append(read_col(data, body, t))\n        body += serial_len(t)\n    rows.append((rowid, cols))\n    print(rowid, cols)\n\n# build output: word text col, value numeric col\nout=[]\nfor rowid, cols in rows:\n    word=None; value=None\n    for c in cols:\n        if isinstance(c,str): word=c\n        elif isinstance(c,(int,float)) and word is not None:\n            value=c\n    out.append({\"word\":word,\"value\":value})\nout_sorted = sorted(out, key=lambda x:x[\"word\"])\nprint(json.dumps(out_sorted, indent=2))\njson.dump(out_sorted, open('recover.json','w'))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VDSNHCMtDg1NGn8ysB8KLr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat recover.json && echo && python3 -c \"import json;d=json.load(open('recover.json'));print('rows',len(d))\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && cat recover.json && echo && python3 -c \"import json;d=json.load(open('recover.json'));print('rows',len(d))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

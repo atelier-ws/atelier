@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XwXZYDhEobLvMxMqsd9YmB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && echo \"---EXAMPLES---\" && head -c 3000 /app/examples.json"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/ && echo \"---EXAMPLES---\" && head -c 3000 /app/examples.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01VPtEfjwGUrVWfnuL968zAh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && git bundle list-heads bundle1.bundle 2>&1; echo \"===BUNDLE2===\"; git bundle list-heads bundle2.bundle 2>&1"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "cd /app && git bundle list-heads bundle1.bundle 2>&1; echo \"===BUNDLE2===\"; git bundle list-heads bundle2.bundle 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LYi1ZYcQYxUUQSJ8TsKaBf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/repo && cd /app/repo && git init -q && git config user.email a@b.c && git config user.name a && git fetch /app/bundle1.bundle HEAD 2>&1 && git branch branch1 FETCH_HEAD && git fetch /app/bundle2.bundle HEAD 2>&1 && git branch branch2 FETCH_HEAD && git branch -a"
           },
@@ -127,12 +127,12 @@
             "raw_arguments": {
               "command": "mkdir -p /app/repo && cd /app/repo && git init -q && git config user.email a@b.c && git config user.name a && git fetch /app/bundle1.bundle HEAD 2>&1 && git branch branch1 FETCH_HEAD && git fetch /app/bundle2.bundle HEAD 2>&1 && git branch branch2 FETCH_HEAD && git branch -a"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01LKPKEEkeDGPJU314XLpSRH",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/examples.json"
@@ -144,7 +144,7 @@
                 "/app/examples.json"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012binfDK6yf9Dorqr7xvfHE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git checkout -q branch1 && echo \"B1:\" && ls && echo \"---\" && git merge branch2 --no-edit 2>&1; echo \"EXIT $?\"; echo \"STATUS:\"; git status --short"
           },
@@ -217,7 +217,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git checkout -q branch1 && echo \"B1:\" && ls && echo \"---\" && git merge branch2 --no-edit 2>&1; echo \"EXIT $?\"; echo \"STATUS:\"; git status --short"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -278,7 +278,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WRz1ZSJpD3DdHCc8HAaNMV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git status --short; echo \"=====ALGO=====\"; cat algo.py"
           },
@@ -286,7 +286,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git status --short; echo \"=====ALGO=====\"; cat algo.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -347,7 +347,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MECDsRZAZ4v62Vz4iVaqkq",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -367,7 +367,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -440,7 +440,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KUS1Ts8aqLQGLF57qBudAe",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/repo/algo.py"
@@ -452,7 +452,7 @@
                 "/app/repo/algo.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -513,7 +513,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K1rqi2GZYxofhoyXaY1K3X",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -533,7 +533,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -606,7 +606,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GcXVReYEk1t6p5PXKDivsG",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "map function algo.py",
             "paths": "/app/repo/algo.py"
@@ -616,7 +616,7 @@
               "query": "map function algo.py",
               "paths": "/app/repo/algo.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -677,7 +677,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Tanvvd7gqTf5GRU5F4GeaY",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -697,7 +697,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -770,7 +770,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Xod1zuPxbGRkk7bqFZsaY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/repo/algo.py:expand"
@@ -784,7 +784,7 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -845,7 +845,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J7SjZMQGinQNqvGjiAg6p7",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -865,7 +865,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -938,7 +938,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FAyKfmGA1DJB6eyBgTCKgp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && grep -n \"def map\" algo.py"
           },
@@ -946,7 +946,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && grep -n \"def map\" algo.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1007,7 +1007,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A5jpL7K5vybWvXDJcLLZQu",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1027,7 +1027,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1100,7 +1100,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JVatxsCe4qVb8cdhpFKobv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && python3 - <<'PYEOF'\ncontent = '''def map(g):\n    num_rows = len(g)\n    num_cols = len(g[0]) if num_rows else 0\n\n    # Collect the value living on each anti-diagonal (cells sharing i+j).\n    # Non-zero cells define a periodic pattern that tiles the whole grid.\n    diag_value = {}\n    for i in range(num_rows):\n        for j in range(num_cols):\n            c = g[i][j]\n            if c != 0:\n                diag_value[i + j] = c\n\n    if not diag_value:\n        return [[0] * num_cols for _ in range(num_rows)]\n\n    # Period = number of distinct filled anti-diagonals (one full cycle).\n    period = len(diag_value)\n\n    # Map each residue (mod period) to its value.\n    pattern = {}\n    for d, v in diag_value.items():\n        pattern[d % period] = v\n\n    result = []\n    for i in range(num_rows):\n        row = []\n        for j in range(num_cols):\n            row.append(pattern.get((i + j) % period, 0))\n        result.append(row)\n\n    return result\n'''\nopen('algo.py','w').write(content)\nprint(\"written\")\nPYEOF"
           },
@@ -1108,7 +1108,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && python3 - <<'PYEOF'\ncontent = '''def map(g):\n    num_rows = len(g)\n    num_cols = len(g[0]) if num_rows else 0\n\n    # Collect the value living on each anti-diagonal (cells sharing i+j).\n    # Non-zero cells define a periodic pattern that tiles the whole grid.\n    diag_value = {}\n    for i in range(num_rows):\n        for j in range(num_cols):\n            c = g[i][j]\n            if c != 0:\n                diag_value[i + j] = c\n\n    if not diag_value:\n        return [[0] * num_cols for _ in range(num_rows)]\n\n    # Period = number of distinct filled anti-diagonals (one full cycle).\n    period = len(diag_value)\n\n    # Map each residue (mod period) to its value.\n    pattern = {}\n    for d, v in diag_value.items():\n        pattern[d % period] = v\n\n    result = []\n    for i in range(num_rows):\n        row = []\n        for j in range(num_cols):\n            row.append(pattern.get((i + j) % period, 0))\n        result.append(row)\n\n    return result\n'''\nopen('algo.py','w').write(content)\nprint(\"written\")\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1169,7 +1169,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M8uCJjEhmH7zvdeZar518B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && python3 - <<'PYEOF'\nimport json\nfrom algo import map as m\nex = json.load(open('/app/examples.json'))\nok = True\nfor k,e in enumerate(ex):\n    out = m(e['input'])\n    out = [list(r) for r in out]\n    if out != e['output']:\n        ok = False\n        print(\"FAIL\", k)\n        print(\"got\", out)\n        print(\"exp\", e['output'])\nprint(\"ALL PASS\" if ok else \"SOME FAIL\", \"count\", len(ex))\nPYEOF"
           },
@@ -1177,7 +1177,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && python3 - <<'PYEOF'\nimport json\nfrom algo import map as m\nex = json.load(open('/app/examples.json'))\nok = True\nfor k,e in enumerate(ex):\n    out = m(e['input'])\n    out = [list(r) for r in out]\n    if out != e['output']:\n        ok = False\n        print(\"FAIL\", k)\n        print(\"got\", out)\n        print(\"exp\", e['output'])\nprint(\"ALL PASS\" if ok else \"SOME FAIL\", \"count\", len(ex))\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1238,7 +1238,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PuRhRKgSd435n7Yp2FdDqk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git add algo.py && git commit --no-edit 2>&1 | tail -3; echo \"---\"; git branch; echo \"---\"; git log --oneline -1; echo \"---files---\"; ls; echo \"--- algo.py present:\"; test -f /app/repo/algo.py && echo YES"
           },
@@ -1246,7 +1246,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git add algo.py && git commit --no-edit 2>&1 | tail -3; echo \"---\"; git branch; echo \"---\"; git log --oneline -1; echo \"---files---\"; ls; echo \"--- algo.py present:\"; test -f /app/repo/algo.py && echo YES"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1307,7 +1307,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UV2cJ38cD99oUJAXhebicm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && rm -rf __pycache__ && git status --short && echo \"clean\""
           },
@@ -1315,7 +1315,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && rm -rf __pycache__ && git status --short && echo \"clean\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1376,7 +1376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0196odozrSQJ1Gz5tSDWS7Ew",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && rm -r __pycache__ 2>/dev/null; git status --short; echo \"done\"; ls"
           },
@@ -1384,7 +1384,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && rm -r __pycache__ 2>/dev/null; git status --short; echo \"done\"; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1500,7 +1500,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QNKeAGgC6SDghjLsBRfPTz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && python3 - <<'PYEOF'\nimport json\nfrom algo import map as m\nex = json.load(open('/app/examples.json'))\nfails=0\nfor k,e in enumerate(ex):\n    out=[list(r) for r in m(e['input'])]\n    status = \"PASS\" if out==e['output'] else \"FAIL\"\n    if status==\"FAIL\": fails+=1\n    print(f\"example {k}: {status}\")\nprint(f\"\\n{len(ex)-fails}/{len(ex)} passed\")\nimport sys; sys.exit(1 if fails else 0)\nPYEOF\necho \"exit=$?\""
           },
@@ -1508,7 +1508,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && python3 - <<'PYEOF'\nimport json\nfrom algo import map as m\nex = json.load(open('/app/examples.json'))\nfails=0\nfor k,e in enumerate(ex):\n    out=[list(r) for r in m(e['input'])]\n    status = \"PASS\" if out==e['output'] else \"FAIL\"\n    if status==\"FAIL\": fails+=1\n    print(f\"example {k}: {status}\")\nprint(f\"\\n{len(ex)-fails}/{len(ex)} passed\")\nimport sys; sys.exit(1 if fails else 0)\nPYEOF\necho \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1569,7 +1569,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EgPLDGsgqD6LUX9FF8B3uP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && rm -r __pycache__ 2>/dev/null; git status --short; echo done"
           },
@@ -1577,7 +1577,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && rm -r __pycache__ 2>/dev/null; git status --short; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

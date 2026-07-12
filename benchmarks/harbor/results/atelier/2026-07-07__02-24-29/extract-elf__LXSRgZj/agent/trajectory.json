@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GSr2VWPsrd9SdtL3h8WB7F",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file a.out && node --version"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file a.out && node --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0152JgmGXdb1gE9cB1zT165q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat hi.c && echo \"---\" && node --version 2>&1; which node; readelf -h a.out 2>&1 | head -20"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && cat hi.c && echo \"---\" && node --version 2>&1; which node; readelf -h a.out 2>&1 | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HXMCzwX57dzxLZCrcemqgw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -l a.out 2>&1"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -l a.out 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016giVTr3qdvDKUDFJTkzfLH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nprint(hex(1784774249))\nprint(hex(1718378344))\nimport struct\nprint(struct.pack('<I',1784774249))\nprint(struct.pack('<I',1718378344))\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nprint(hex(1784774249))\nprint(hex(1718378344))\nimport struct\nprint(struct.pack('<I',1784774249))\nprint(struct.pack('<I',1718378344))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013uPhWv8TAmqMaf5Qyw9tZS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndata=open('a.out','rb').read()\nfor pat in [b'i~aj', b'h_lf']:\n    i=data.find(pat)\n    print(pat, i)\nprint(len(data))\n\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndata=open('a.out','rb').read()\nfor pat in [b'i~aj', b'h_lf']:\n    i=data.find(pat)\n    print(pat, i)\nprint(len(data))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015MFFsrZ3pkGBXjCRNBKuDU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndata=open('a.out','rb').read()\nw=lambda o: int.from_bytes(data[o:o+4],'little')\nprint('magic word', w(0), hex(w(0)))\n\""
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndata=open('a.out','rb').read()\nw=lambda o: int.from_bytes(data[o:o+4],'little')\nprint('magic word', w(0), hex(w(0)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C3d7Bi12dgPJXrBbUhXsv1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -467,7 +467,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bch6hDEBZNyJU2cDijMrS4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && python3 -c \"\nimport json\nd=json.load(open('out.json'))\nks=sorted(int(k) for k in d)\nprint('count',len(ks))\nprint('min',hex(ks[0]),'max',hex(ks[-1]))\nprint('first', {hex(k):d[str(k)] for k in ks[:4]})\nprint('sample vals type', type(list(d.values())[0]))\n\""
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && python3 -c \"\nimport json\nd=json.load(open('out.json'))\nks=sorted(int(k) for k in d)\nprint('count',len(ks))\nprint('min',hex(ks[0]),'max',hex(ks[-1]))\nprint('first', {hex(k):d[str(k)] for k in ks[:4]})\nprint('sample vals type', type(list(d.values())[0]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PknPRWh2gphGm1DMueu4D9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f out.json && node extract.js /app/a.out | head -c 120; echo; ls"
           },
@@ -605,7 +605,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f out.json && node extract.js /app/a.out | head -c 120; echo; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -721,7 +721,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XqnA87drBZvKVHSV7JCC15",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && python3 -c \"\nimport json,struct\ndata=open('a.out','rb').read()\nphoff=struct.unpack_from('<Q',data,32)[0]\nphentsize=struct.unpack_from('<H',data,54)[0]\nphnum=struct.unpack_from('<H',data,56)[0]\nloads=[]\nfor i in range(phnum):\n    o=phoff+i*phentsize\n    t=struct.unpack_from('<I',data,o)[0]\n    if t!=1: continue\n    off,va,fs,ms=struct.unpack_from('<Q',data,o+8)[0],struct.unpack_from('<Q',data,o+16)[0],struct.unpack_from('<Q',data,o+32)[0],struct.unpack_from('<Q',data,o+40)[0]\n    if ms: loads.append((off,va,fs,ms))\nminv=min(l[1] for l in loads)\nrebase=0x400000-minv\nref={}\nfor off,va,fs,ms in loads:\n    for w in range(0,ms-ms%4 if False else ms,4):\n        if w+4>ms: break\n        chunk=bytes(data[off+w+b] if (w+b)<fs else 0 for b in range(4))\n        ref[va+rebase+w]=struct.unpack('<I',chunk)[0]\ngot=json.load(open('out.json'))\ngot={int(k):v for k,v in got.items()}\nassert len(ref)==len(got), (len(ref),len(got))\nmismatch=[k for k in ref if ref[k]!=got.get(k)]\nmissing=[k for k in ref if k not in got]\nprint('ref',len(ref),'got',len(got),'mismatch',len(mismatch),'missing',len(missing))\nprint('all values ints:', all(isinstance(v,int) for v in got.values()))\nprint('OK' if not mismatch and not missing else 'FAIL')\n\" && rm -f out.json"
           },
@@ -729,7 +729,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && python3 -c \"\nimport json,struct\ndata=open('a.out','rb').read()\nphoff=struct.unpack_from('<Q',data,32)[0]\nphentsize=struct.unpack_from('<H',data,54)[0]\nphnum=struct.unpack_from('<H',data,56)[0]\nloads=[]\nfor i in range(phnum):\n    o=phoff+i*phentsize\n    t=struct.unpack_from('<I',data,o)[0]\n    if t!=1: continue\n    off,va,fs,ms=struct.unpack_from('<Q',data,o+8)[0],struct.unpack_from('<Q',data,o+16)[0],struct.unpack_from('<Q',data,o+32)[0],struct.unpack_from('<Q',data,o+40)[0]\n    if ms: loads.append((off,va,fs,ms))\nminv=min(l[1] for l in loads)\nrebase=0x400000-minv\nref={}\nfor off,va,fs,ms in loads:\n    for w in range(0,ms-ms%4 if False else ms,4):\n        if w+4>ms: break\n        chunk=bytes(data[off+w+b] if (w+b)<fs else 0 for b in range(4))\n        ref[va+rebase+w]=struct.unpack('<I',chunk)[0]\ngot=json.load(open('out.json'))\ngot={int(k):v for k,v in got.items()}\nassert len(ref)==len(got), (len(ref),len(got))\nmismatch=[k for k in ref if ref[k]!=got.get(k)]\nmissing=[k for k in ref if k not in got]\nprint('ref',len(ref),'got',len(got),'mismatch',len(mismatch),'missing',len(missing))\nprint('all values ints:', all(isinstance(v,int) for v in got.values()))\nprint('OK' if not mismatch and not missing else 'FAIL')\n\" && rm -f out.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

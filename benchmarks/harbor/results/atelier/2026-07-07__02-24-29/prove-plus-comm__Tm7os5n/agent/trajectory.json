@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hp54CVhzR4Luxm9wujzst2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name plus_comm.v 2>/dev/null; which coqc"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "find / -name plus_comm.v 2>/dev/null; which coqc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RMiRCTzNdeMt1gUUqfBxFm",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/workspace/plus_comm.v:full"
@@ -114,12 +114,12 @@
                 "/workspace/plus_comm.v:full"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_0191v8J4zGANcdSMWFXyFUuo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /workspace; which coqc coqtop opam 2>/dev/null; coqc --version 2>/dev/null"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "ls -la /workspace; which coqc coqtop opam 2>/dev/null; coqc --version 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ns9DbVoc9LHy4MWc2auRgm",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -212,7 +212,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011hdV7onku1TbMrsK6KpsQH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /workspace && coqc plus_comm.v && ls -la plus_comm.vo"
           },
@@ -281,7 +281,7 @@
             "raw_arguments": {
               "command": "cd /workspace && coqc plus_comm.v && ls -la plus_comm.vo"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

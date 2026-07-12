@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014C4yJajAULEFfQgyowz3g5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uname -a; lsb_release -a 2>/dev/null; nproc; free -h; ls /app 2>/dev/null; which git make cmake g++ python3 uv pip 2>/dev/null; echo \"---caffe dir---\"; ls /app/caffe 2>/dev/null | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "uname -a; lsb_release -a 2>/dev/null; nproc; free -h; ls /app 2>/dev/null; which git make cmake g++ python3 uv pip 2>/dev/null; echo \"---caffe dir---\"; ls /app/caffe 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017pVedwYiYAPyjHRGKRMMid",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/os-release; echo \"---\"; apt-cache policy caffe-cpu 2>/dev/null | head; echo \"---python---\"; python3 --version; ls /usr/lib/x86_64-linux-gnu/libprotobuf* 2>/dev/null; which protoc 2>/dev/null; protoc --version 2>/dev/null"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cat /etc/os-release; echo \"---\"; apt-cache policy caffe-cpu 2>/dev/null | head; echo \"---python---\"; python3 --version; ls /usr/lib/x86_64-linux-gnu/libprotobuf* 2>/dev/null; which protoc 2>/dev/null; protoc --version 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01At7CYWiLybqjtz3XTXApnZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; timeout 20 git clone --depth 1 --branch 1.0 https://github.com/BVLC/caffe.git /app/caffe 2>&1 | tail -20; echo \"EXIT=$?\"; ls /app/caffe 2>/dev/null | head"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app; timeout 20 git clone --depth 1 --branch 1.0 https://github.com/BVLC/caffe.git /app/caffe 2>&1 | tail -20; echo \"EXIT=$?\"; ls /app/caffe 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R6ooeY875YtFrzmPbF7A6h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; git log --oneline -1; cat include/caffe/util/../../../include/caffe/common.hpp 2>/dev/null | grep -i version | head; grep -r \"1.0.0\" CMakeLists.txt Makefile 2>/dev/null | head; cat .git/HEAD; git describe --tags 2>/dev/null"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; git log --oneline -1; cat include/caffe/util/../../../include/caffe/common.hpp 2>/dev/null | grep -i version | head; grep -r \"1.0.0\" CMakeLists.txt Makefile 2>/dev/null | head; cat .git/HEAD; git describe --tags 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UPQBGWXr8akvdC8TuDXrga",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -3; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libprotobuf-dev protobuf-compiler libboost-all-dev libgflags-dev libgoogle-glog-dev libhdf5-serial-dev libleveldb-dev liblmdb-dev libsnappy-dev libopencv-dev libatlas-base-dev libopenblas-dev 2>&1 | tail -15; echo \"DONE=$?\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -3; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libprotobuf-dev protobuf-compiler libboost-all-dev libgflags-dev libgoogle-glog-dev libhdf5-serial-dev libleveldb-dev liblmdb-dev libsnappy-dev libopencv-dev libatlas-base-dev libopenblas-dev 2>&1 | tail -15; echo \"DONE=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018uYPFzdZdLV7FxF8V2pR7G",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "protoc --version; echo \"---boost---\"; dpkg -l | grep libboost1 | head -1; echo \"---opencv---\"; pkg-config --modversion opencv4 2>/dev/null; echo \"---hdf5 location---\"; ls /usr/include/hdf5/serial/hdf5.h 2>/dev/null; ls /usr/lib/x86_64-linux-gnu/hdf5/serial/ 2>/dev/null | head"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "protoc --version; echo \"---boost---\"; dpkg -l | grep libboost1 | head -1; echo \"---opencv---\"; pkg-config --modversion opencv4 2>/dev/null; echo \"---hdf5 location---\"; ls /usr/include/hdf5/serial/hdf5.h 2>/dev/null; ls /usr/lib/x86_64-linux-gnu/hdf5/serial/ 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014v7jXGgfCuxbNREH8EkZ97",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/Makefile.config.example"
@@ -459,7 +459,7 @@
                 "/app/caffe/Makefile.config.example"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BF3wwUQnK3hbGeMdcYM5KZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; grep -n \"OPENCV_VERSION\\|opencv\\|hdf5\\|LIBRARIES +=\\|c++11\\|std=c++\" Makefile"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; grep -n \"OPENCV_VERSION\\|opencv\\|hdf5\\|LIBRARIES +=\\|c++11\\|std=c++\" Makefile"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q2eujGkpQVNqm5VcBswDU8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; grep -n \"CXXFLAGS\\|COMMON_FLAGS\\|std=\\|WARNINGS\\|-std\" Makefile | head -30"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; grep -n \"CXXFLAGS\\|COMMON_FLAGS\\|std=\\|WARNINGS\\|-std\" Makefile | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Utu4gJHRi47un6n8VrC3Se",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; echo \"=== CV_LOAD constants ===\"; grep -rn \"CV_LOAD_IMAGE\" src/ tools/ examples/ 2>/dev/null; echo \"=== SetTotalBytesLimit ===\"; grep -rn \"SetTotalBytesLimit\" src/; echo \"=== other CV_ constants ===\"; grep -rn \"CV_[A-Z]\" src/ tools/ 2>/dev/null | grep -v CV_LOAD | head"
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; echo \"=== CV_LOAD constants ===\"; grep -rn \"CV_LOAD_IMAGE\" src/ tools/ examples/ 2>/dev/null; echo \"=== SetTotalBytesLimit ===\"; grep -rn \"SetTotalBytesLimit\" src/; echo \"=== other CV_ constants ===\"; grep -rn \"CV_[A-Z]\" src/ tools/ 2>/dev/null | grep -v CV_LOAD | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DJkQH8nAKMj5CEkfx9QrN7",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/src/caffe/util/io.cpp:L50-L60"
@@ -739,7 +739,7 @@
                 "/app/caffe/src/caffe/util/io.cpp:L50-L60"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -800,7 +800,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VsvuuG2Dn1XvRBP6P57NUU",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -850,7 +850,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -911,7 +911,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4netygtqSaQtd9CW6RD6p",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; grep -rn \"CV_LOAD_IMAGE\" src/caffe/util/io.cpp src/caffe/layers/window_data_layer.cpp; echo \"--- context around 182 ---\"; sed -n '178,190p' src/caffe/util/io.cpp 2>/dev/null || true"
           },
@@ -919,7 +919,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; grep -rn \"CV_LOAD_IMAGE\" src/caffe/util/io.cpp src/caffe/layers/window_data_layer.cpp; echo \"--- context around 182 ---\"; sed -n '178,190p' src/caffe/util/io.cpp 2>/dev/null || true"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -980,7 +980,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0167U64MhzNsRjNorXXXwazW",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/src/caffe/util/io.cpp:L178-L190"
@@ -992,7 +992,7 @@
                 "/app/caffe/src/caffe/util/io.cpp:L178-L190"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1053,7 +1053,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U71jGACDwpeJpBRzVj33NS",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1073,7 +1073,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1134,7 +1134,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J4sUP5tpyZy6h1MdVGUNYY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; make all -j4 > /tmp/build.log 2>&1; echo \"MAKE_EXIT=$?\" | tee -a /tmp/build.log; tail -5 /tmp/build.log",
             "background": true
@@ -1144,7 +1144,7 @@
               "command": "cd /app/caffe; make all -j4 > /tmp/build.log 2>&1; echo \"MAKE_EXIT=$?\" | tee -a /tmp/build.log; tail -5 /tmp/build.log",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1205,7 +1205,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fe8dpjEZa4C32hiP44p9UP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 60; tail -15 /tmp/build.log"
           },
@@ -1213,7 +1213,7 @@
             "raw_arguments": {
               "command": "sleep 60; tail -15 /tmp/build.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1274,7 +1274,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L8aju9ApRyZRkEkJf1bASJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>&1 | tail -3; which g++ gcc; g++ --version | head -1"
           },
@@ -1282,7 +1282,7 @@
             "raw_arguments": {
               "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential 2>&1 | tail -3; which g++ gcc; g++ --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1343,7 +1343,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ReM9K5dRtLrvR8ohoqgcwn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; make all -j4 > /tmp/build.log 2>&1; echo \"MAKE_EXIT=$?\" >> /tmp/build.log; tail -3 /tmp/build.log",
             "background": true
@@ -1353,7 +1353,7 @@
               "command": "cd /app/caffe; make all -j4 > /tmp/build.log 2>&1; echo \"MAKE_EXIT=$?\" >> /tmp/build.log; tail -3 /tmp/build.log",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1414,7 +1414,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KhZhuq1Jzrqxz2RDf8UM8f",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 90; echo \"=== errors so far ===\"; grep -iE \"error|not found|No such\" /tmp/build.log | head -20; echo \"=== tail ===\"; tail -5 /tmp/build.log"
           },
@@ -1422,7 +1422,7 @@
             "raw_arguments": {
               "command": "sleep 90; echo \"=== errors so far ===\"; grep -iE \"error|not found|No such\" /tmp/build.log | head -20; echo \"=== tail ===\"; tail -5 /tmp/build.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1483,7 +1483,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016HtAmw8WCjd9tHfxgij8Gv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/examples/cifar10; ls; echo \"=== quick solver ===\"; cat cifar10_quick_solver.prototxt; echo \"=== train_quick.sh ===\"; cat train_quick.sh; echo \"=== get data script ===\"; cat ../../data/cifar10/get_cifar10.sh"
           },
@@ -1491,7 +1491,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe/examples/cifar10; ls; echo \"=== quick solver ===\"; cat cifar10_quick_solver.prototxt; echo \"=== train_quick.sh ===\"; cat train_quick.sh; echo \"=== get data script ===\"; cat ../../data/cifar10/get_cifar10.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1552,7 +1552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ln2GA2LDHGzKEtP5QYFysJ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/examples/cifar10/cifar10_quick_solver.prototxt",
@@ -1568,7 +1568,7 @@
                 "/app/caffe/examples/cifar10/create_cifar10.sh"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1629,7 +1629,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pn18TMziseGBv96nsXhoXg",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/examples/cifar10/cifar10_quick_train_test.prototxt"
@@ -1641,7 +1641,7 @@
                 "/app/caffe/examples/cifar10/cifar10_quick_train_test.prototxt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1702,7 +1702,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W31QGuyPBaHuNk64EqBxmj",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1732,7 +1732,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1793,7 +1793,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SKaD8H6cLnFRcpKL98EeHZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; timeout 120 ./data/cifar10/get_cifar10.sh 2>&1 | tail -5; echo \"EXIT=$?\"; ls -la data/cifar10/ | head"
           },
@@ -1801,7 +1801,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; timeout 120 ./data/cifar10/get_cifar10.sh 2>&1 | tail -5; echo \"EXIT=$?\"; ls -la data/cifar10/ | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1862,7 +1862,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LCdytgwpktfPLEW28i6m6B",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/data/cifar10/get_cifar10.sh"
@@ -1874,7 +1874,7 @@
                 "/app/caffe/data/cifar10/get_cifar10.sh"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1935,7 +1935,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013S7KsZ8jKZcWYB2yhjhaXU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/data/cifar10; wget -c --no-check-certificate http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz -o /tmp/wget.log; echo \"WGET_EXIT=$?\"; ls -la cifar-10-binary.tar.gz",
             "background": true
@@ -1945,7 +1945,7 @@
               "command": "cd /app/caffe/data/cifar10; wget -c --no-check-certificate http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz -o /tmp/wget.log; echo \"WGET_EXIT=$?\"; ls -la cifar-10-binary.tar.gz",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2006,7 +2006,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QDADaAikMusbkUWu2zxJTb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 120; tail -3 /tmp/wget.log; echo \"---\"; ls -la /app/caffe/data/cifar10/cifar-10-binary.tar.gz"
           },
@@ -2014,7 +2014,7 @@
             "raw_arguments": {
               "command": "sleep 120; tail -3 /tmp/wget.log; echo \"---\"; ls -la /app/caffe/data/cifar10/cifar-10-binary.tar.gz"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2075,7 +2075,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013NZ31DHBWQVWFbj2cdiEPR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\nfor url in \\\n  \"https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz\" \\\n  \"http://pjreddie.com/media/files/cifar-10-binary.tar.gz\" ; do\n  echo \"=== $url ===\"\n  timeout 15 curl -s -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"$url\" 2>&1 || echo \"failed/timeout\"\ndone"
           },
@@ -2083,7 +2083,7 @@
             "raw_arguments": {
               "command": "cd /tmp\nfor url in \\\n  \"https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz\" \\\n  \"http://pjreddie.com/media/files/cifar-10-binary.tar.gz\" ; do\n  echo \"=== $url ===\"\n  timeout 15 curl -s -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"$url\" 2>&1 || echo \"failed/timeout\"\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2144,7 +2144,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015baBjHKTuGe2idaVzSfEic",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\n# test github speed (large file) vs toronto range support\necho \"=== github raw speed test ===\"\ntimeout 15 curl -sL -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"https://github.com/BVLC/caffe/archive/refs/tags/1.0.tar.gz\"\necho \"=== toronto range support ===\"\ncurl -sI http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz | grep -i \"accept-ranges\\|content-length\\|HTTP\""
           },
@@ -2152,7 +2152,7 @@
             "raw_arguments": {
               "command": "cd /tmp\n# test github speed (large file) vs toronto range support\necho \"=== github raw speed test ===\"\ntimeout 15 curl -sL -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"https://github.com/BVLC/caffe/archive/refs/tags/1.0.tar.gz\"\necho \"=== toronto range support ===\"\ncurl -sI http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz | grep -i \"accept-ranges\\|content-length\\|HTTP\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2213,7 +2213,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XwQuETWXsRxnJT1m8eQBJY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\necho \"=== cave.cs.toronto range + speed ===\"\ncurl -sI http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz | grep -i \"accept-ranges\\|content-length\\|HTTP\"\necho \"--- speed (single conn, 12s, no competition) ---\"\ntimeout 12 curl -s -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\""
           },
@@ -2221,7 +2221,7 @@
             "raw_arguments": {
               "command": "cd /tmp\necho \"=== cave.cs.toronto range + speed ===\"\ncurl -sI http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz | grep -i \"accept-ranges\\|content-length\\|HTTP\"\necho \"--- speed (single conn, 12s, no competition) ---\"\ntimeout 12 curl -s -o /dev/null -w \"size=%{size_download} speed=%{speed_download} B/s\\n\" \"http://cave.cs.toronto.edu/kriz/cifar-10-binary.tar.gz\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2282,7 +2282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01279GMuXM3KuiFrQi93Fwrf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; sed -n '1,120p' examples/cifar10/convert_cifar_data.cpp 2>/dev/null | grep -n \"batch\\|\\.bin\\|kCIFAR\\|filename\\|for (\" "
           },
@@ -2290,7 +2290,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; sed -n '1,120p' examples/cifar10/convert_cifar_data.cpp 2>/dev/null | grep -n \"batch\\|\\.bin\\|kCIFAR\\|filename\\|for (\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2351,7 +2351,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FBZ7mTZy6Qyg1DUfRYKSwY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/examples/cifar10/convert_cifar_data.cpp"
@@ -2363,7 +2363,7 @@
                 "/app/caffe/examples/cifar10/convert_cifar_data.cpp"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2424,7 +2424,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0155FUbhLNgt8N6gLJhxishu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\nfor u in \\\n \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\" \\\n \"https://huggingface.co/datasets/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\" ; do\n echo \"=== $u ===\"\n timeout 15 curl -sL -o /dev/null -w \"http=%{http_code} size=%{size_download} speed=%{speed_download}B/s\\n\" \"$u\"\ndone"
           },
@@ -2432,7 +2432,7 @@
             "raw_arguments": {
               "command": "cd /tmp\nfor u in \\\n \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\" \\\n \"https://huggingface.co/datasets/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\" ; do\n echo \"=== $u ===\"\n timeout 15 curl -sL -o /dev/null -w \"http=%{http_code} size=%{size_download} speed=%{speed_download}B/s\\n\" \"$u\"\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2493,7 +2493,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017vwYTSwFBxYVmRq8FJiLA3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\nkill 13797 2>/dev/null; pkill -f \"wget.*cifar\" 2>/dev/null\nrm -f /app/caffe/data/cifar10/cifar-10-binary.tar.gz\necho \"downloading parquets...\"\ncurl -sL -o /tmp/cifar_train.parquet \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/train-00000-of-00001.parquet\"\ncurl -sL -o /tmp/cifar_test.parquet  \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\"\nls -la /tmp/cifar_*.parquet"
           },
@@ -2501,7 +2501,7 @@
             "raw_arguments": {
               "command": "cd /tmp\nkill 13797 2>/dev/null; pkill -f \"wget.*cifar\" 2>/dev/null\nrm -f /app/caffe/data/cifar10/cifar-10-binary.tar.gz\necho \"downloading parquets...\"\ncurl -sL -o /tmp/cifar_train.parquet \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/train-00000-of-00001.parquet\"\ncurl -sL -o /tmp/cifar_test.parquet  \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\"\nls -la /tmp/cifar_*.parquet"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2562,7 +2562,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KwgtbEokmAyUZPDhsp2Csk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "action=cancel",
             "session_id": "3d7e0ff4e8864fbaa224254a24a4627c",
@@ -2574,7 +2574,7 @@
               "session_id": "3d7e0ff4e8864fbaa224254a24a4627c",
               "action": "cancel"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2635,7 +2635,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VrUXp3yLbQa3SDbe3teQrf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /app/caffe/data/cifar10/cifar-10-binary.tar.gz\ncurl -sL -o /tmp/cifar_train.parquet \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/train-00000-of-00001.parquet\"\ncurl -sL -o /tmp/cifar_test.parquet  \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\"\nls -la /tmp/cifar_*.parquet"
           },
@@ -2643,7 +2643,7 @@
             "raw_arguments": {
               "command": "rm -f /app/caffe/data/cifar10/cifar-10-binary.tar.gz\ncurl -sL -o /tmp/cifar_train.parquet \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/train-00000-of-00001.parquet\"\ncurl -sL -o /tmp/cifar_test.parquet  \"https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/test-00000-of-00001.parquet\"\nls -la /tmp/cifar_*.parquet"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2704,7 +2704,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Jfq6KNNqhbi6rG8WSzHwhn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -3; python3 -c \"import pyarrow.parquet as pq, PIL, numpy; print('ok', pyarrow.__version__ if False else 'pyarrow-ready')\" 2>&1"
           },
@@ -2712,7 +2712,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -3; python3 -c \"import pyarrow.parquet as pq, PIL, numpy; print('ok', pyarrow.__version__ if False else 'pyarrow-ready')\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2773,7 +2773,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AEsfgNRF7cLntp3cpALu15",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('ok')\""
           },
@@ -2781,7 +2781,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2842,7 +2842,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011YKeeb1nxFwv7jSitd2cbg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip --version 2>&1 | head -1 || (apt-get install -y -qq python3-pip 2>&1 | tail -2); python3 -m pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('imports ok')\""
           },
@@ -2850,7 +2850,7 @@
             "raw_arguments": {
               "command": "python3 -m pip --version 2>&1 | head -1 || (apt-get install -y -qq python3-pip 2>&1 | tail -2); python3 -m pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('imports ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2911,7 +2911,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018HGk4UxJH5zRsmVJyRtZ5A",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq python3-pip 2>&1 | tail -2; which pip3 pip; python3 -m pip --version 2>&1 | head -1"
           },
@@ -2919,7 +2919,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq python3-pip 2>&1 | tail -2; which pip3 pip; python3 -m pip --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2980,7 +2980,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MFF7KoVdcg17Y332L2y1BE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('imports ok')\""
           },
@@ -2988,7 +2988,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pyarrow pillow numpy 2>&1 | tail -4; python3 -c \"import pyarrow.parquet, PIL.Image, numpy; print('imports ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3049,7 +3049,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LkcHiGLdEQNjgmYvm6XBfj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport pyarrow.parquet as pq\nt = pq.read_table('/tmp/cifar_test.parquet')\nprint(\"cols:\", t.column_names, \"rows:\", t.num_rows)\nrow = t.slice(0,1).to_pylist()[0]\nimg = row['img']\nprint(\"label:\", row['label'], \"img type:\", type(img), list(img.keys()) if isinstance(img,dict) else '')\nb = img['bytes'] if isinstance(img,dict) else img\nprint(\"nbytes:\", len(b), \"head:\", b[:8])\nfrom PIL import Image; import io\nim = Image.open(io.BytesIO(b)); print(\"PIL:\", im.size, im.mode)\nPY"
           },
@@ -3057,7 +3057,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport pyarrow.parquet as pq\nt = pq.read_table('/tmp/cifar_test.parquet')\nprint(\"cols:\", t.column_names, \"rows:\", t.num_rows)\nrow = t.slice(0,1).to_pylist()[0]\nimg = row['img']\nprint(\"label:\", row['label'], \"img type:\", type(img), list(img.keys()) if isinstance(img,dict) else '')\nb = img['bytes'] if isinstance(img,dict) else img\nprint(\"nbytes:\", len(b), \"head:\", b[:8])\nfrom PIL import Image; import io\nim = Image.open(io.BytesIO(b)); print(\"PIL:\", im.size, im.mode)\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3118,7 +3118,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BB9EMGNJR9gbSFjDPpzXLg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe/data/cifar10\npython3 - <<'PY'\nimport pyarrow.parquet as pq, numpy as np, io, time\nfrom PIL import Image\n\ndef to_bin_records(table):\n    imgs = table.column('img').to_pylist()\n    labels = table.column('label').to_pylist()\n    out = bytearray()\n    for d, lab in zip(imgs, labels):\n        im = Image.open(io.BytesIO(d['bytes']))\n        if im.mode != 'RGB': im = im.convert('RGB')\n        a = np.asarray(im, dtype=np.uint8)          # (32,32,3) RGB\n        planes = a.transpose(2,0,1).tobytes()        # R plane,G plane,B plane row-major\n        out.append(lab & 0xff)\n        out += planes\n    return out\n\nt0=time.time()\ntrain = pq.read_table('/tmp/cifar_train.parquet')\nprint(\"train rows\", train.num_rows)\nbuf = to_bin_records(train)\nassert len(buf) == 50000*3073, len(buf)\nrec = 3073\nfor i in range(5):\n    with open(f'data_batch_{i+1}.bin','wb') as f:\n        f.write(buf[i*10000*rec:(i+1)*10000*rec])\ntest = pq.read_table('/tmp/cifar_test.parquet')\ntbuf = to_bin_records(test)\nassert len(tbuf) == 10000*rec, len(tbuf)\nwith open('test_batch.bin','wb') as f:\n    f.write(tbuf)\nprint(\"done in %.1fs\"%(time.time()-t0))\nPY\nls -la *.bin"
           },
@@ -3126,7 +3126,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe/data/cifar10\npython3 - <<'PY'\nimport pyarrow.parquet as pq, numpy as np, io, time\nfrom PIL import Image\n\ndef to_bin_records(table):\n    imgs = table.column('img').to_pylist()\n    labels = table.column('label').to_pylist()\n    out = bytearray()\n    for d, lab in zip(imgs, labels):\n        im = Image.open(io.BytesIO(d['bytes']))\n        if im.mode != 'RGB': im = im.convert('RGB')\n        a = np.asarray(im, dtype=np.uint8)          # (32,32,3) RGB\n        planes = a.transpose(2,0,1).tobytes()        # R plane,G plane,B plane row-major\n        out.append(lab & 0xff)\n        out += planes\n    return out\n\nt0=time.time()\ntrain = pq.read_table('/tmp/cifar_train.parquet')\nprint(\"train rows\", train.num_rows)\nbuf = to_bin_records(train)\nassert len(buf) == 50000*3073, len(buf)\nrec = 3073\nfor i in range(5):\n    with open(f'data_batch_{i+1}.bin','wb') as f:\n        f.write(buf[i*10000*rec:(i+1)*10000*rec])\ntest = pq.read_table('/tmp/cifar_test.parquet')\ntbuf = to_bin_records(test)\nassert len(tbuf) == 10000*rec, len(tbuf)\nwith open('test_batch.bin','wb') as f:\n    f.write(tbuf)\nprint(\"done in %.1fs\"%(time.time()-t0))\nPY\nls -la *.bin"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3187,7 +3187,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012wnf5y4ezi4L4homJ2L1xd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; ./examples/cifar10/create_cifar10.sh 2>&1 | tail -8; echo \"EXIT=$?\"; ls -la examples/cifar10/mean.binaryproto examples/cifar10/cifar10_train_lmdb examples/cifar10/cifar10_test_lmdb 2>&1 | head"
           },
@@ -3195,7 +3195,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; ./examples/cifar10/create_cifar10.sh 2>&1 | tail -8; echo \"EXIT=$?\"; ls -la examples/cifar10/mean.binaryproto examples/cifar10/cifar10_train_lmdb examples/cifar10/cifar10_test_lmdb 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3256,7 +3256,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0197smidGZ4N7ZpxWZS7hqnr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; rm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate\n./build/tools/caffe train --solver=examples/cifar10/cifar10_quick_solver.prototxt > training_output.txt 2>&1\necho \"TRAIN_EXIT=$?\"; tail -20 training_output.txt",
             "background": true
@@ -3266,7 +3266,7 @@
               "command": "cd /app/caffe; rm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate\n./build/tools/caffe train --solver=examples/cifar10/cifar10_quick_solver.prototxt > training_output.txt 2>&1\necho \"TRAIN_EXIT=$?\"; tail -20 training_output.txt",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3327,7 +3327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G1RGKiA7mBpLkrR6uKMi7F",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 60; cd /app/caffe; grep -c \"Iteration\" training_output.txt; tail -6 training_output.txt"
           },
@@ -3335,7 +3335,7 @@
             "raw_arguments": {
               "command": "sleep 60; cd /app/caffe; grep -c \"Iteration\" training_output.txt; tail -6 training_output.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3396,7 +3396,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011Z1HDMZ3z6JviM6Uv1af42",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 120; cd /app/caffe; grep -E \"Iteration [0-9]+, loss|Test net output\" training_output.txt | tail -8"
           },
@@ -3404,7 +3404,7 @@
             "raw_arguments": {
               "command": "sleep 120; cd /app/caffe; grep -E \"Iteration [0-9]+, loss|Test net output\" training_output.txt | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3465,7 +3465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CkhZTanu1Lcm1zTGkkgSir",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "action=poll",
             "session_id": "800f1d9d548a40fe910ab1472d6b4f38",
@@ -3479,7 +3479,7 @@
               "action": "poll",
               "timeout": 1200
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3540,7 +3540,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QMmGWmLNsMvyjjpi2xxvHt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; ps aux | grep \"[c]affe train\" | head; echo \"---\"; grep -E \"Iteration [0-9]+, (loss|Testing)|Test net output|Snapshotting|Optimization Done\" training_output.txt | tail -12"
           },
@@ -3548,7 +3548,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; ps aux | grep \"[c]affe train\" | head; echo \"---\"; grep -E \"Iteration [0-9]+, (loss|Testing)|Test net output|Snapshotting|Optimization Done\" training_output.txt | tail -12"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3609,7 +3609,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T22RkQnG7PB9KUcni1C983",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; wc -l training_output.txt; echo \"=== full tail ===\"; tail -20 training_output.txt; echo \"=== TRAIN_EXIT? ===\"; grep -i \"exit\\|killed\\|abort\\|error\\|terminate\" training_output.txt | tail"
           },
@@ -3617,7 +3617,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; wc -l training_output.txt; echo \"=== full tail ===\"; tail -20 training_output.txt; echo \"=== TRAIN_EXIT? ===\"; grep -i \"exit\\|killed\\|abort\\|error\\|terminate\" training_output.txt | tail"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3678,7 +3678,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RmG1CcbU3TGmfMCXUVwj5w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; sed -n '740,760p' training_output.txt"
           },
@@ -3686,7 +3686,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; sed -n '740,760p' training_output.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3747,7 +3747,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016WYFLJn8WTiGsCqGrE1xL4",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/caffe/training_output.txt:L735-L760"
@@ -3759,7 +3759,7 @@
                 "/app/caffe/training_output.txt:L735-L760"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3820,7 +3820,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SGy4jmhyDLPvFywPrgTvfx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe\npkill -f \"caffe train\" 2>/dev/null; sleep 2\nrm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate training_output.txt\nexport OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4\nsetsid bash -lc 'cd /app/caffe; OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 ./build/tools/caffe train --solver=examples/cifar10/cifar10_quick_solver.prototxt > /app/caffe/training_output.txt 2>&1; echo \"TRAIN_EXIT=$?\" >> /app/caffe/training_output.txt' </dev/null >/dev/null 2>&1 &\ndisown\nsleep 3; ps aux | grep \"[c]affe train\" | awk '{print $2, $11, $12, $13, $14}'"
           },
@@ -3828,7 +3828,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe\npkill -f \"caffe train\" 2>/dev/null; sleep 2\nrm -f examples/cifar10/cifar10_quick_iter_*.caffemodel examples/cifar10/cifar10_quick_iter_*.solverstate training_output.txt\nexport OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4\nsetsid bash -lc 'cd /app/caffe; OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 ./build/tools/caffe train --solver=examples/cifar10/cifar10_quick_solver.prototxt > /app/caffe/training_output.txt 2>&1; echo \"TRAIN_EXIT=$?\" >> /app/caffe/training_output.txt' </dev/null >/dev/null 2>&1 &\ndisown\nsleep 3; ps aux | grep \"[c]affe train\" | awk '{print $2, $11, $12, $13, $14}'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3836,7 +3836,7 @@
         "results": [
           {
             "source_call_id": "toolu_01SGy4jmhyDLPvFywPrgTvfx",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
           }
         ]
       },
@@ -3889,7 +3889,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011oBg9enDFAo6t31Xu76Jiv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -3909,7 +3909,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -3970,7 +3970,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BpQrBXburGQq5wFaat2HsG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; pkill -f \"caffe train\" 2>/dev/null; sleep 2; chmod +x run_train.sh; setsid bash run_train.sh </dev/null >/dev/null 2>&1 & disown; sleep 4; ps aux | grep \"[c]affe train\" | awk '{print \"PID\",$2}'; head -1 training_output.txt"
           },
@@ -3978,7 +3978,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; pkill -f \"caffe train\" 2>/dev/null; sleep 2; chmod +x run_train.sh; setsid bash run_train.sh </dev/null >/dev/null 2>&1 & disown; sleep 4; ps aux | grep \"[c]affe train\" | awk '{print \"PID\",$2}'; head -1 training_output.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3986,7 +3986,7 @@
         "results": [
           {
             "source_call_id": "toolu_01BpQrBXburGQq5wFaat2HsG",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
           }
         ]
       },
@@ -4039,7 +4039,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ALmkppLjdMBLk74HukQTin",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -4059,7 +4059,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -4120,7 +4120,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018LXuud38GbPvvRgtwGMpSq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe; pkill -f \"caffe train\" 2>/dev/null; sleep 2; bash launch_train.sh"
           },
@@ -4128,7 +4128,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe; pkill -f \"caffe train\" 2>/dev/null; sleep 2; bash launch_train.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4136,7 +4136,7 @@
         "results": [
           {
             "source_call_id": "toolu_018LXuud38GbPvvRgtwGMpSq",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
           }
         ]
       },
@@ -4189,7 +4189,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PQns1RdpkADEysKnSqW12w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pkill -f \"caffe train\""
           },
@@ -4197,7 +4197,7 @@
             "raw_arguments": {
               "command": "pkill -f \"caffe train\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4258,7 +4258,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EnaU63F94RMBpXy3V3oZSP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "bash /app/caffe/launch_train.sh"
           },
@@ -4266,7 +4266,7 @@
             "raw_arguments": {
               "command": "bash /app/caffe/launch_train.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4327,7 +4327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V4uWnPQ9tCQhZTMEDQFc4Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 400; grep -E \"Iteration [0-9]+.*loss =|Test net output|Snapshotting|Optimization Done|TRAIN_EXIT\" /app/caffe/training_output.txt | tail -8"
           },
@@ -4335,7 +4335,7 @@
             "raw_arguments": {
               "command": "sleep 400; grep -E \"Iteration [0-9]+.*loss =|Test net output|Snapshotting|Optimization Done|TRAIN_EXIT\" /app/caffe/training_output.txt | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4396,7 +4396,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GXtmqWkpej6JDRSFFwTyyG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -E \"Train net output #0: accuracy|Test net output #0: accuracy\" /app/caffe/training_output.txt; echo \"=== model files ===\"; ls -la /app/caffe/examples/cifar10/*.caffemodel /app/caffe/examples/cifar10/*.solverstate"
           },
@@ -4404,7 +4404,7 @@
             "raw_arguments": {
               "command": "grep -E \"Train net output #0: accuracy|Test net output #0: accuracy\" /app/caffe/training_output.txt; echo \"=== model files ===\"; ls -la /app/caffe/examples/cifar10/*.caffemodel /app/caffe/examples/cifar10/*.solverstate"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4465,7 +4465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K4mJ5RAC4yvpB6ZJJPU85P",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/caffe\necho \"=== solver key settings ===\"; grep -E \"max_iter|solver_mode|test_iter|snapshot:\" examples/cifar10/cifar10_quick_solver.prototxt\necho \"=== final accuracies ===\"; grep -E \"Train net output #0: accuracy|Test net output #0: accuracy\" training_output.txt | tail -2\necho \"=== output tail ===\"; tail -3 training_output.txt\necho \"=== model ===\"; ls examples/cifar10/cifar10_quick_iter_500.caffemodel\nrm -f /tmp/cifar_train.parquet /tmp/cifar_test.parquet /app/caffe/run_train.sh /app/caffe/launch_train.sh /tmp/build.log /tmp/wget.log\necho \"cleaned\""
           },
@@ -4473,7 +4473,7 @@
             "raw_arguments": {
               "command": "cd /app/caffe\necho \"=== solver key settings ===\"; grep -E \"max_iter|solver_mode|test_iter|snapshot:\" examples/cifar10/cifar10_quick_solver.prototxt\necho \"=== final accuracies ===\"; grep -E \"Train net output #0: accuracy|Test net output #0: accuracy\" training_output.txt | tail -2\necho \"=== output tail ===\"; tail -3 training_output.txt\necho \"=== model ===\"; ls examples/cifar10/cifar10_quick_iter_500.caffemodel\nrm -f /tmp/cifar_train.parquet /tmp/cifar_test.parquet /app/caffe/run_train.sh /app/caffe/launch_train.sh /tmp/build.log /tmp/wget.log\necho \"cleaned\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4589,7 +4589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AAKpBXDG8krSiM41yTcLrQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -4609,7 +4609,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -4670,7 +4670,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012XwT8T8RfSQib1vsXGRBNy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "bash /app/caffe/verify_test.sh"
           },
@@ -4678,7 +4678,7 @@
             "raw_arguments": {
               "command": "bash /app/caffe/verify_test.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4739,7 +4739,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014SDYKBtVUgUMXWsbSSmiaw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -E \"accuracy|loss =|TEST_EXIT|Loading|Restoring\" /tmp/verify_test.log | tail -8"
           },
@@ -4747,7 +4747,7 @@
             "raw_arguments": {
               "command": "grep -E \"accuracy|loss =|TEST_EXIT|Loading|Restoring\" /tmp/verify_test.log | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4808,7 +4808,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011tiris6zVnBLQCSu8gTcKE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /app/caffe/verify_test.sh /tmp/verify_test.log; echo cleaned"
           },
@@ -4816,7 +4816,7 @@
             "raw_arguments": {
               "command": "rm -f /app/caffe/verify_test.sh /tmp/verify_test.log; echo cleaned"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

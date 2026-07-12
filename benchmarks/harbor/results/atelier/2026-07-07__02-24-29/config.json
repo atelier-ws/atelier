@@ -1,26 +1,26 @@
 {
     "job_name": "2026-07-07__02-24-29",
-    "jobs_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier",
+    "jobs_dir": "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/results/lemoncrow",
     "environment": {
         "type": "docker",
         "mounts": [
             {
                 "type": "bind",
-                "source": "/home/pankaj/Projects/leanchain/atelier",
-                "target": "/atelier",
+                "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                "target": "/lemoncrow",
                 "read_only": true
             },
             {
                 "type": "bind",
-                "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                "target": "/atelier-bundle.tar.gz",
+                "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                "target": "/lemoncrow-bundle.tar.gz",
                 "read_only": true
             }
         ]
     },
     "agents": [
         {
-            "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent"
+            "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent"
         }
     ],
     "datasets": [

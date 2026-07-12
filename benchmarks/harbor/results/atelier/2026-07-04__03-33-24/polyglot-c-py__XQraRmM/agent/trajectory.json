@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Sej8rkgb7hHPAhYvpAZCDU",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FZoURmuQsqkKkASrBFUGXg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && for n in 0 1 2 3 10 50 100; do echo -n \"py f($n)=\"; python3 main.py.c $n; done && gcc main.py.c -o cmain 2>gccwarn.txt; echo \"gcc exit=$?\"; for n in 0 1 2 3 10 50 100; do echo -n \"c  f($n)=\"; ./cmain $n; done; echo \"---warnings---\"; cat gccwarn.txt"
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && for n in 0 1 2 3 10 50 100; do echo -n \"py f($n)=\"; python3 main.py.c $n; done && gcc main.py.c -o cmain 2>gccwarn.txt; echo \"gcc exit=$?\"; for n in 0 1 2 3 10 50 100; do echo -n \"c  f($n)=\"; ./cmain $n; done; echo \"---warnings---\"; cat gccwarn.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014QvedDxmB35k2gKkrGwxQ9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rm -f cmain gccwarn.txt && ls"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rm -f cmain gccwarn.txt && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -307,7 +307,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L3JLM1VvRzNtpnUuqaMhsb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && pass=1\nfor n in 0 1 2 3 4 5 6 7 8 9 20 46 47 92 93 100 200; do\n  exp=$(python3 -c \"a,b=0,1\nfor _ in range($n): a,b=b,a+b\nprint(a)\")\n  py=$(python3 main.py.c $n)\n  [ \"$py\" = \"$exp\" ] || { echo \"PY MISMATCH n=$n got=$py exp=$exp\"; pass=0; }\ndone\ngcc -Wall main.py.c -o cmain 2>/dev/null; echo \"gcc exit=$?\"\nfor n in 0 1 2 3 4 5 6 7 8 9 20 46 47 92 93 100 200; do\n  exp=$(python3 -c \"a,b=0,1\nfor _ in range($n): a,b=b,a+b\nprint(a)\")\n  c=$(./cmain $n)\n  [ \"$c\" = \"$exp\" ] || { echo \"C MISMATCH n=$n got=$c exp=$exp\"; pass=0; }\ndone\n[ $pass = 1 ] && echo \"ALL TESTS PASS (both interpreters, n up to 200 incl. overflow-range & bignum)\"\nrm -f cmain"
           },
@@ -315,7 +315,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && pass=1\nfor n in 0 1 2 3 4 5 6 7 8 9 20 46 47 92 93 100 200; do\n  exp=$(python3 -c \"a,b=0,1\nfor _ in range($n): a,b=b,a+b\nprint(a)\")\n  py=$(python3 main.py.c $n)\n  [ \"$py\" = \"$exp\" ] || { echo \"PY MISMATCH n=$n got=$py exp=$exp\"; pass=0; }\ndone\ngcc -Wall main.py.c -o cmain 2>/dev/null; echo \"gcc exit=$?\"\nfor n in 0 1 2 3 4 5 6 7 8 9 20 46 47 92 93 100 200; do\n  exp=$(python3 -c \"a,b=0,1\nfor _ in range($n): a,b=b,a+b\nprint(a)\")\n  c=$(./cmain $n)\n  [ \"$c\" = \"$exp\" ] || { echo \"C MISMATCH n=$n got=$c exp=$exp\"; pass=0; }\ndone\n[ $pass = 1 ] && echo \"ALL TESTS PASS (both interpreters, n up to 200 incl. overflow-range & bignum)\"\nrm -f cmain"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

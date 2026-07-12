@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012hA68tLpHY4FDah457ZmgG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/input.csv; echo \"---\"; head -5 /app/expected.csv; echo \"===\"; wc -l /app/input.csv /app/expected.csv"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "head -5 /app/input.csv; echo \"---\"; head -5 /app/expected.csv; echo \"===\"; wc -l /app/input.csv /app/expected.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H1BCDdpkKyfGSysKp3TT2Z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '1,3p' /app/input.csv | cat -A; echo \"---\"; sed -n '1,3p' /app/expected.csv | cat -A; echo \"===\"; tail -3 /app/input.csv | cat -A; echo \"---\"; tail -3 /app/expected.csv | cat -A"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "sed -n '1,3p' /app/input.csv | cat -A; echo \"---\"; sed -n '1,3p' /app/expected.csv | cat -A; echo \"===\"; tail -3 /app/input.csv | cat -A; echo \"---\"; tail -3 /app/expected.csv | cat -A"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MNJyoM35mSVaEUsCvfdoZB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\ninp=open('/app/input.csv').readlines()\nexp=open('/app/expected.csv').readlines()\nfor i in range(3):\n    print('IN ', repr(inp[i]))\n    print('EXP', repr(exp[i]))\nprint('...')\nfor i in [-2,-1]:\n    print('IN ', repr(inp[i]))\n    print('EXP', repr(exp[i]))\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\ninp=open('/app/input.csv').readlines()\nexp=open('/app/expected.csv').readlines()\nfor i in range(3):\n    print('IN ', repr(inp[i]))\n    print('EXP', repr(exp[i]))\nprint('...')\nfor i in [-2,-1]:\n    print('IN ', repr(inp[i]))\n    print('EXP', repr(exp[i]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017gFt6H7Q3Q5sZVptNdcqZW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport re\nbad=0\nfor l in open('/app/input.csv'):\n    if not re.match(r'^ *[^ ,]+ *, *[^ ,]+ *, *[^ ,]+ *\\n$', l):\n        bad+=1\n        if bad<=5: print(repr(l))\nprint('bad',bad)\n# also check separators around comma always have space? count lines without space before comma\nns=sum(1 for l in open('/app/input.csv') if re.search(r'\\S,',l) or re.search(r',\\S',l))\nprint('adjacent',ns)\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport re\nbad=0\nfor l in open('/app/input.csv'):\n    if not re.match(r'^ *[^ ,]+ *, *[^ ,]+ *, *[^ ,]+ *\\n$', l):\n        bad+=1\n        if bad<=5: print(repr(l))\nprint('bad',bad)\n# also check separators around comma always have space? count lines without space before comma\nns=sum(1 for l in open('/app/input.csv') if re.search(r'\\S,',l) or re.search(r',\\S',l))\nprint('adjacent',ns)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XCkt9rtm6VsdY6VzRhd2HH",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -329,7 +329,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ERGTDNfguu86sC7ND43tpq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/apply_macros.vim"
@@ -402,7 +402,7 @@
                 "/app/apply_macros.vim"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018GcQDDYCEefvKBrLdgtJFR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /app/input.csv /tmp/input.bak\ncd /app && time vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim\necho \"exit=$?\"\ncmp /app/input.csv /app/expected.csv && echo \"MATCH\" || echo \"DIFF\""
           },
@@ -471,7 +471,7 @@
             "raw_arguments": {
               "command": "cp /app/input.csv /tmp/input.bak\ncd /app && time vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim\necho \"exit=$?\"\ncmp /app/input.csv /app/expected.csv && echo \"MATCH\" || echo \"DIFF\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -532,7 +532,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019DDLpsP9nojXrb4amu2NcF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /tmp/input.bak /app/input.csv && head -1 /app/input.csv | cat -A"
           },
@@ -540,7 +540,7 @@
             "raw_arguments": {
               "command": "cp /tmp/input.bak /app/input.csv && head -1 /app/input.csv | cat -A"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

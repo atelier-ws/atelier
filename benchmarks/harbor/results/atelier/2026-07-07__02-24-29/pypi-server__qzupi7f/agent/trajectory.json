@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DNGmY1PegDkJ8vQnEUvQkk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip python3 twine pypi-server 2>/dev/null; python3 --version; pip --version 2>/dev/null; echo \"---\"; ls /root"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "which pip python3 twine pypi-server 2>/dev/null; python3 --version; pip --version 2>/dev/null; echo \"---\"; ls /root"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SP1zaiow8XVqxEiL7W3xzD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q build pypiserver 2>&1 | tail -5; echo \"exit=$?\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q build pypiserver 2>&1 | tail -5; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NCm7XEDR2pp4RKZvbUiTDb",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -201,7 +201,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -209,7 +209,7 @@
         "results": [
           {
             "source_call_id": "toolu_01NCm7XEDR2pp4RKZvbUiTDb",
-            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or ATELIER_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/root/vectorops_src/pyproject.toml\\\",\\\"/root/vectorops_src/vectorops/__init__.py\\\"]}],\\\"rolled_back\\\":true}\"}"
+            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or LEMONCROW_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/root/vectorops_src/pyproject.toml\\\",\\\"/root/vectorops_src/vectorops/__init__.py\\\"]}],\\\"rolled_back\\\":true}\"}"
           }
         ]
       },
@@ -262,7 +262,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011T1YNB5wmcrD54auWDFgdf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /root/vectorops_src/vectorops\ncat > /root/vectorops_src/vectorops/__init__.py <<'EOF'\ndef dotproduct(a, b):\n    \"\"\"Return the dot product of two lists of numbers.\"\"\"\n    return sum(x * y for x, y in zip(a, b))\n\n\n__all__ = [\"dotproduct\"]\nEOF\ncat > /root/vectorops_src/pyproject.toml <<'EOF'\n[build-system]\nrequires = [\"setuptools>=61.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"vectorops\"\nversion = \"0.1.0\"\ndescription = \"Vector operations\"\nrequires-python = \">=3.7\"\n\n[tool.setuptools.packages.find]\nwhere = [\".\"]\ninclude = [\"vectorops*\"]\nEOF\nls -R /root/vectorops_src"
           },
@@ -270,7 +270,7 @@
             "raw_arguments": {
               "command": "mkdir -p /root/vectorops_src/vectorops\ncat > /root/vectorops_src/vectorops/__init__.py <<'EOF'\ndef dotproduct(a, b):\n    \"\"\"Return the dot product of two lists of numbers.\"\"\"\n    return sum(x * y for x, y in zip(a, b))\n\n\n__all__ = [\"dotproduct\"]\nEOF\ncat > /root/vectorops_src/pyproject.toml <<'EOF'\n[build-system]\nrequires = [\"setuptools>=61.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"vectorops\"\nversion = \"0.1.0\"\ndescription = \"Vector operations\"\nrequires-python = \">=3.7\"\n\n[tool.setuptools.packages.find]\nwhere = [\".\"]\ninclude = [\"vectorops*\"]\nEOF\nls -R /root/vectorops_src"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -331,7 +331,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TAzkSc7qjkFeFLreFfqFmy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root/vectorops_src && python3 -m build 2>&1 | tail -8; echo \"---\"; ls dist"
           },
@@ -339,7 +339,7 @@
             "raw_arguments": {
               "command": "cd /root/vectorops_src && python3 -m build 2>&1 | tail -8; echo \"---\"; ls dist"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -400,7 +400,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RHZLCvmPVvfK8p56KiqWY3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /root/pypi_packages && cp /root/vectorops_src/dist/* /root/pypi_packages/\nnohup pypi-server run -p 8080 -a . -P . /root/pypi_packages > /root/pypiserver.log 2>&1 &\necho \"started pid $!\"; sleep 3; curl -s http://localhost:8080/simple/ | head; echo \"---\"; curl -s http://localhost:8080/simple/vectorops/ | head"
           },
@@ -408,7 +408,7 @@
             "raw_arguments": {
               "command": "mkdir -p /root/pypi_packages && cp /root/vectorops_src/dist/* /root/pypi_packages/\nnohup pypi-server run -p 8080 -a . -P . /root/pypi_packages > /root/pypiserver.log 2>&1 &\necho \"started pid $!\"; sleep 3; curl -s http://localhost:8080/simple/ | head; echo \"---\"; curl -s http://localhost:8080/simple/vectorops/ | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -469,7 +469,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JnQfBfWwcrZda8GEQJyYCq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip uninstall -y vectorops -q 2>/dev/null\npip install --break-system-packages -q --index-url http://localhost:8080/simple vectorops==0.1.0 2>&1 | tail -3\necho \"exit=$?\"\ncd /tmp && python3 -c \"from vectorops import dotproduct; assert 1 == dotproduct([1,1],[0,1]); print('import+assert OK', dotproduct([1,2,3],[4,5,6]))\""
           },
@@ -477,7 +477,7 @@
             "raw_arguments": {
               "command": "pip uninstall -y vectorops -q 2>/dev/null\npip install --break-system-packages -q --index-url http://localhost:8080/simple vectorops==0.1.0 2>&1 | tail -3\necho \"exit=$?\"\ncd /tmp && python3 -c \"from vectorops import dotproduct; assert 1 == dotproduct([1,1],[0,1]); print('import+assert OK', dotproduct([1,2,3],[4,5,6]))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -593,7 +593,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KeraT3FtezzManKt7fbfEE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nfrom vectorops import dotproduct\nassert 1 == dotproduct([1,1],[0,1])\nassert 32 == dotproduct([1,2,3],[4,5,6])\nassert 0 == dotproduct([],[])\nassert 2.5 == dotproduct([1.0,0.5],[2.0,1.0])\nprint('all assertions passed')\n\"; echo \"exit=$?\"\ncurl -s -o /dev/null -w '%{http_code}\\n' http://localhost:8080/simple/vectorops/"
           },
@@ -601,7 +601,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nfrom vectorops import dotproduct\nassert 1 == dotproduct([1,1],[0,1])\nassert 32 == dotproduct([1,2,3],[4,5,6])\nassert 0 == dotproduct([],[])\nassert 2.5 == dotproduct([1.0,0.5],[2.0,1.0])\nprint('all assertions passed')\n\"; echo \"exit=$?\"\ncurl -s -o /dev/null -w '%{http_code}\\n' http://localhost:8080/simple/vectorops/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

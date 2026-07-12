@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01672uatRaTXjn9iA7LyqCoq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -20 /app/data.csv; echo \"---\"; wc -l /app/data.csv; echo \"---\"; which R Rscript stan; echo \"---\"; R --version 2>/dev/null | head -1"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "head -20 /app/data.csv; echo \"---\"; wc -l /app/data.csv; echo \"---\"; which R Rscript stan; echo \"---\"; R --version 2>/dev/null | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01CWiTJyUHe1Wuj4v1AUdAdx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---os---\"; cat /etc/os-release 2>/dev/null | head -3"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---os---\"; cat /etc/os-release 2>/dev/null | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QaCy9zAjAPjJhhgaFkPjGu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript -e 'cat(as.character(packageVersion(\"rstan\")), \"\\n\")' 2>&1 | tail -3"
           },
@@ -127,12 +127,12 @@
             "raw_arguments": {
               "command": "Rscript -e 'cat(as.character(packageVersion(\"rstan\")), \"\\n\")' 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01RGJtyYNtDegdZEwqH25cnP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/data.csv"
           },
@@ -140,7 +140,7 @@
             "raw_arguments": {
               "command": "cat /app/data.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -205,7 +205,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EUMeFUrE7FULAYwtjgyCy6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript -e '.libPaths(); print(installed.packages()[,\"Version\"][c(\"Rcpp\",\"RcppEigen\",\"StanHeaders\",\"BH\",\"inline\",\"RcppParallel\")])' 2>&1 | tail -20"
           },
@@ -213,12 +213,12 @@
             "raw_arguments": {
               "command": "Rscript -e '.libPaths(); print(installed.packages()[,\"Version\"][c(\"Rcpp\",\"RcppEigen\",\"StanHeaders\",\"BH\",\"inline\",\"RcppParallel\")])' 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_016q6nvqGmFDNZLZSdHrrFdQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "timeout 20 Rscript -e 'con<-url(\"https://cran.r-project.org\",open=\"rb\"); cat(\"CRAN reachable\\n\"); close(con)' 2>&1 | tail -5"
           },
@@ -226,7 +226,7 @@
             "raw_arguments": {
               "command": "timeout 20 Rscript -e 'con<-url(\"https://cran.r-project.org\",open=\"rb\"); cat(\"CRAN reachable\\n\"); close(con)' 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -291,7 +291,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DEyRA2oNmKBFGRoqRn5FQE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which g++ gcc gfortran make; g++ --version | head -1"
           },
@@ -299,7 +299,7 @@
             "raw_arguments": {
               "command": "which g++ gcc gfortran make; g++ --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -360,7 +360,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VyXjFicdzRjSfT65P7Hu8F",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq gfortran >/dev/null 2>&1; which gfortran; nproc"
           },
@@ -368,7 +368,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq gfortran >/dev/null 2>&1; which gfortran; nproc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -429,7 +429,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WqzKS1kSFyRkidhJAKLbLf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/install_rstan.R <<'EOF'\noptions(Ncpus=8, repos=c(CRAN=\"https://cloud.r-project.org\"))\ninstall.packages(\"rstan\")\ncat(\"INSTALLED rstan version:\", as.character(packageVersion(\"rstan\")), \"\\n\")\nEOF\necho written"
           },
@@ -437,7 +437,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/install_rstan.R <<'EOF'\noptions(Ncpus=8, repos=c(CRAN=\"https://cloud.r-project.org\"))\ninstall.packages(\"rstan\")\ncat(\"INSTALLED rstan version:\", as.character(packageVersion(\"rstan\")), \"\\n\")\nEOF\necho written"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -498,7 +498,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019BR9DaYK82sX9VbVP6ygf7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript /tmp/install_rstan.R > /tmp/rstan_install.log 2>&1",
             "background": true,
@@ -510,7 +510,7 @@
               "background": true,
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -571,7 +571,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y9EBpBBU6UuAaemydt96ML",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -601,7 +601,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -662,7 +662,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014cSSt2GzPRmEv1fXQPsC75",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "status",
             "session_id": "e46d495de8a246ee88ea7af783d5008a"
@@ -672,7 +672,7 @@
               "action": "status",
               "session_id": "e46d495de8a246ee88ea7af783d5008a"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -733,7 +733,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FQ37YrLdfHK47U3Xv7wcnr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 120; tail -5 /tmp/rstan_install.log"
           },
@@ -741,7 +741,7 @@
             "raw_arguments": {
               "command": "sleep 120; tail -5 /tmp/rstan_install.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -802,7 +802,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MuPD2SSFAsbd6L3iUCC17k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -iE \"error|fatal|cannot|failed|would exceed|memory|virtual\" /tmp/rstan_install.log | head -40"
           },
@@ -810,7 +810,7 @@
             "raw_arguments": {
               "command": "grep -iE \"error|fatal|cannot|failed|would exceed|memory|virtual\" /tmp/rstan_install.log | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -871,7 +871,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019VKExzXhFHugTQhxSGQdbG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -nE \"ERROR|error:|had non-zero exit|not available|cannot open|No such|c\\+\\+: |g\\+\\+: |killed|Killed|out of memory|std::\" /tmp/rstan_install.log | grep -viE \"format-security|Werror=format\" | head -40"
           },
@@ -879,7 +879,7 @@
             "raw_arguments": {
               "command": "grep -nE \"ERROR|error:|had non-zero exit|not available|cannot open|No such|c\\+\\+: |g\\+\\+: |killed|Killed|out of memory|std::\" /tmp/rstan_install.log | grep -viE \"format-security|Werror=format\" | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -940,7 +940,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ASLcU7pCFxJiU85Jj6Evrc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq libblas-dev liblapack-dev >/dev/null 2>&1; ls -la /usr/lib/x86_64-linux-gnu/libblas.so /usr/lib/x86_64-linux-gnu/liblapack.so 2>&1"
           },
@@ -948,7 +948,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq libblas-dev liblapack-dev >/dev/null 2>&1; ls -la /usr/lib/x86_64-linux-gnu/libblas.so /usr/lib/x86_64-linux-gnu/liblapack.so 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1009,7 +1009,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PC8jtL7sgLKihyoa246bXq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript /tmp/install_rstan.R > /tmp/rstan_install2.log 2>&1",
             "background": true,
@@ -1021,7 +1021,7 @@
               "background": true,
               "timeout": 3000
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1082,7 +1082,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011NorZbHpvAd3BLHKjsJaDf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "action": "poll",
             "session_id": "c3eb9df6a0e042bbb8f64046f2119972"
@@ -1092,7 +1092,7 @@
               "action": "poll",
               "session_id": "c3eb9df6a0e042bbb8f64046f2119972"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1153,7 +1153,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A3Gjw5gV8BZzM4s8tB6Foh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "tail -3 /tmp/rstan_install2.log; echo \"---check---\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")),\"\\n\")' 2>&1 | tail -2"
           },
@@ -1161,7 +1161,7 @@
             "raw_arguments": {
               "command": "tail -3 /tmp/rstan_install2.log; echo \"---check---\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")),\"\\n\")' 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1222,7 +1222,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vkr24GssPc6Ev6WfJBks1r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript analysis.R > /tmp/analysis.log 2>&1",
             "background": true,
@@ -1234,7 +1234,7 @@
               "background": true,
               "timeout": 5400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1295,7 +1295,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Uwv8TtTAgbPB4HiYDqZi6u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 90; tail -20 /tmp/analysis.log"
           },
@@ -1303,7 +1303,7 @@
             "raw_arguments": {
               "command": "sleep 90; tail -20 /tmp/analysis.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1364,7 +1364,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MT7VJ2pFoyHb4K5k8zzkHp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"alpha:\"; cat posterior_alpha_mean.txt; echo \"beta:\"; cat posterior_beta_mean.txt; echo \"---files---\"; ls -la posterior_*.txt hierarchical_model.stan analysis.R"
           },
@@ -1372,7 +1372,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"alpha:\"; cat posterior_alpha_mean.txt; echo \"beta:\"; cat posterior_beta_mean.txt; echo \"---files---\"; ls -la posterior_*.txt hierarchical_model.stan analysis.R"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -12,7 +12,7 @@
         "n_cancelled_trials": 8,
         "n_retries": 0,
         "evals": {
-            "atelier-claude-code__terminal-bench/terminal-bench-2-1": {
+            "lemoncrow-claude-code__terminal-bench/terminal-bench-2-1": {
                 "n_trials": 250,
                 "n_errors": 45,
                 "metrics": [

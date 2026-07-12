@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NBgRzpYbirssHL2Fhw2XAb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git log --all --oneline && echo \"---REFLOG---\" && git reflog -20"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "cd /app/repo && git log --all --oneline && echo \"---REFLOG---\" && git reflog -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01JA5v1PESpmEcQS6fZyBAzD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git status && echo \"---\" && ls -la && echo \"---BRANCHES---\" && git branch -a"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git status && echo \"---\" && ls -la && echo \"---BRANCHES---\" && git branch -a"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UGCKYPL12gt2KJbNXwFpcH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git show 6b4c75c"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git show 6b4c75c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mr9pDqaGwvS5RV5RE1Pb4V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf 'secret[lost_and_found_in_git]' > /app/secret.txt && cat /app/secret.txt && echo"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "printf 'secret[lost_and_found_in_git]' > /app/secret.txt && cat /app/secret.txt && echo"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SeZgZjGctbpD1odRvxssVG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git reflog expire --expire=now --all && git reflog expire --expire-unreachable=now --all && rm -rf .git/refs/original && git gc --prune=now --aggressive 2>&1 | tail -3"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git reflog expire --expire=now --all && git reflog expire --expire-unreachable=now --all && rm -rf .git/refs/original && git gc --prune=now --aggressive 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GwKvMz6YLr5vVhzrwHvjj9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git reflog expire --expire=now --all && git reflog expire --expire-unreachable=now --all && git gc --prune=now 2>&1 | tail -3"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git reflog expire --expire=now --all && git reflog expire --expire-unreachable=now --all && git gc --prune=now 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SxKhHcAcCursqqzw6f921i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && echo \"--- dangling commit check ---\"; git cat-file -t 6b4c75c 2>&1; git cat-file -t 52d18a0 2>&1; echo \"--- fsck ---\"; git fsck --unreachable --no-reflogs 2>&1 | tail; echo \"--- grep secret ---\"; grep -rn \"secret\\[\" . 2>&1 | head"
           },
@@ -403,7 +403,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && echo \"--- dangling commit check ---\"; git cat-file -t 6b4c75c 2>&1; git cat-file -t 52d18a0 2>&1; echo \"--- fsck ---\"; git fsck --unreachable --no-reflogs 2>&1 | tail; echo \"--- grep secret ---\"; grep -rn \"secret\\[\" . 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,7 +464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KnDQoh9CH8ySRiQkYaUXEY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && echo \"--- all objects ---\"; for o in $(git rev-list --all --objects | awk '{print $1}'); do git cat-file -p $o 2>/dev/null; done | grep -c \"secret\\[\"; echo \"--- search .git raw ---\"; git grep -a \"secret\\[\" $(git rev-list --all) 2>&1 | head; echo \"--- reflog ---\"; git reflog --all; echo \"--- log ---\"; git log --all --oneline"
           },
@@ -472,7 +472,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && echo \"--- all objects ---\"; for o in $(git rev-list --all --objects | awk '{print $1}'); do git cat-file -p $o 2>/dev/null; done | grep -c \"secret\\[\"; echo \"--- search .git raw ---\"; git grep -a \"secret\\[\" $(git rev-list --all) 2>&1 | head; echo \"--- reflog ---\"; git reflog --all; echo \"--- log ---\"; git log --all --oneline"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -533,7 +533,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DnVwxZjZobjFKZD62P3sCC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && grep -ra \"secret\\[\" .git 2>&1 | head; echo \"exit=$?\"; echo \"--- files ---\"; git show HEAD:README.md; echo; git show 7a2420e:README.md 2>&1 | head"
           },
@@ -541,7 +541,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && grep -ra \"secret\\[\" .git 2>&1 | head; echo \"exit=$?\"; echo \"--- files ---\"; git show HEAD:README.md; echo; git show 7a2420e:README.md 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

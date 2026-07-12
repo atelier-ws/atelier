@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SDU4AMQjnuXXuNWeZDskov",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01K5pAg8YcEMUB8RtcWZBZKb",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/forward.py"
@@ -58,7 +58,7 @@
                 "/app/forward.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0119kDTRyCpxpdqaWfbAuGNk",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -143,7 +143,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -204,7 +204,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Db4KZhZe62g4uZbJXvzYp5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python steal.py"
           },
@@ -212,7 +212,7 @@
             "raw_arguments": {
               "command": "cd /app && time python steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -273,7 +273,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018chefTVQnMLPkL4AueUsBj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport numpy as np\nfrom forward import forward\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nts=np.arange(-6,6,0.01)\nvals=np.array([forward(p+t*d) for t in ts])\nsl=np.diff(vals)/0.01\nds=np.abs(np.diff(sl))\nprint('vals range',vals.min(),vals.max())\nprint('slope range',sl.min(),sl.max())\nprint('dslope max',ds.max(),'num>1e-6',(ds>1e-6).sum())\n\""
           },
@@ -281,7 +281,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport numpy as np\nfrom forward import forward\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nts=np.arange(-6,6,0.01)\nvals=np.array([forward(p+t*d) for t in ts])\nsl=np.diff(vals)/0.01\nds=np.abs(np.diff(sl))\nprint('vals range',vals.min(),vals.max())\nprint('slope range',sl.min(),sl.max())\nprint('dslope max',ds.max(),'num>1e-6',(ds>1e-6).sum())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -342,7 +342,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011Zz9wkHtpWJUqhDyYWKWJw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport steal, numpy as np\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nk=steal.find_kinks(p,d)\nprint('nkinks',len(k))\niso=0\nfor i,t in enumerate(k):\n    o=np.delete(k,i)\n    if len(o) and np.min(np.abs(o-t))<0.06: continue\n    iso+=1\nprint('isolated',iso)\n\""
           },
@@ -350,7 +350,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport steal, numpy as np\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nk=steal.find_kinks(p,d)\nprint('nkinks',len(k))\niso=0\nfor i,t in enumerate(k):\n    o=np.delete(k,i)\n    if len(o) and np.min(np.abs(o-t))<0.06: continue\n    iso+=1\nprint('isolated',iso)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -411,7 +411,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LbWEf8G56M4hMwyCFPvtKW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport steal, numpy as np\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nk=np.sort(steal.find_kinks(p,d))\nprint(np.round(np.diff(k),3))\n\""
           },
@@ -419,7 +419,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport steal, numpy as np\nrng=np.random.RandomState(1234)\np=rng.randn(10)*1.5; d=rng.randn(10); d/=np.linalg.norm(d)\nk=np.sort(steal.find_kinks(p,d))\nprint(np.round(np.diff(k),3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -480,7 +480,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EEKk9eMbYqVpeakdmY6tNa",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -500,7 +500,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -573,7 +573,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QX4j3cYDKWY7gSuUV2C4UW",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L37-L48"
@@ -585,7 +585,7 @@
                 "/app/steal.py:L37-L48"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -646,7 +646,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01StQKGjfJjHHsu2VFiKKVtp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -666,7 +666,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -739,7 +739,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HhxFDZF9aDPsYcHLeTKGBU",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "find_kinks slope jump merge",
             "paths": "/app/steal.py"
@@ -749,7 +749,7 @@
               "query": "find_kinks slope jump merge",
               "paths": "/app/steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -810,7 +810,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014MG67yYjjrosC3UAx6K2ZX",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -830,7 +830,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -903,7 +903,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BdwnL1rsX5Mv82ZxV5MGzc",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:expand"
@@ -915,7 +915,7 @@
                 "/app/steal.py:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -976,7 +976,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01THh4KbE8XzwERVtzVsccix",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -996,7 +996,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1069,7 +1069,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NanxZL9ZcWtBLvJ8ZUpy9T",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L36-L46"
@@ -1081,7 +1081,7 @@
                 "/app/steal.py:L36-L46"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1142,7 +1142,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BJBrWW4t9KKBHgtJ9bC5Bv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1162,7 +1162,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1223,7 +1223,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LKag2CoPDgZZBxnoa2X3MV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python steal.py"
           },
@@ -1231,7 +1231,7 @@
             "raw_arguments": {
               "command": "cd /app && time python steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1292,7 +1292,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JgeZ9fPMoAyxgNTw3jsUfn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport numpy as np, steal\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\n# normalize true rows\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nC=np.abs(St@T.T)  # 200x20\nbest=C.max(axis=1)\nprint('rows',St.shape,'best-match cos: min %.4f mean %.4f'%(best.min(),best.mean()))\n# how many true neurons covered\ncovered=(C.max(axis=0)>0.999).sum()\nprint('true neurons matched >0.999:',covered)\nprint('sample best per stolen (first 10):',np.round(best[:10],4))\n\""
           },
@@ -1300,7 +1300,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport numpy as np, steal\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\n# normalize true rows\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nC=np.abs(St@T.T)  # 200x20\nbest=C.max(axis=1)\nprint('rows',St.shape,'best-match cos: min %.4f mean %.4f'%(best.min(),best.mean()))\n# how many true neurons covered\ncovered=(C.max(axis=0)>0.999).sum()\nprint('true neurons matched >0.999:',covered)\nprint('sample best per stolen (first 10):',np.round(best[:10],4))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1361,7 +1361,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F4NiVifXTBkMLnaSmSBvpv",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/steal.py:L60-L98"
@@ -1373,7 +1373,7 @@
                 "/app/steal.py:L60-L98"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1434,7 +1434,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FEGLWnELkeX1D71YLMr1Ec",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1454,7 +1454,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1515,7 +1515,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019wJ2rH4CwEkYUDZE6L5u2e",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python steal.py"
           },
@@ -1523,7 +1523,7 @@
             "raw_arguments": {
               "command": "cd /app && time python steal.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1584,7 +1584,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YRvkBwkBUCx1mTyBFcgBxa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport numpy as np\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)\n# bijective match check\nfrom scipy.optimize import linear_sum_assignment\nr,c=linear_sum_assignment(-C)\nprint('shape',St.shape)\nprint('matched cos per neuron:',np.round(C[r,c],5))\nprint('min cos',C[r,c].min(),'all>0.999:',bool((C[r,c]>0.999).all()))\n\""
           },
@@ -1592,7 +1592,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport numpy as np\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)\n# bijective match check\nfrom scipy.optimize import linear_sum_assignment\nr,c=linear_sum_assignment(-C)\nprint('shape',St.shape)\nprint('matched cos per neuron:',np.round(C[r,c],5))\nprint('min cos',C[r,c].min(),'all>0.999:',bool((C[r,c]>0.999).all()))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1653,7 +1653,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015HnmBtbw6CAtVrwhFV2drq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport numpy as np\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)  # 20x20\n# greedy bijection\nused=set(); cos=[]\norder=np.dstack(np.unravel_index(np.argsort(-C,axis=None),C.shape))[0]\nrows_used=set(); cols_used=set(); pairs=[]\nfor i,j in order:\n    if i in rows_used or j in cols_used: continue\n    rows_used.add(i); cols_used.add(j); pairs.append(C[i,j])\nprint('num matched',len(pairs))\nprint('min cos %.6f mean %.6f'%(min(pairs),np.mean(pairs)))\nprint('all>0.999:',all(p>0.999 for p in pairs))\nprint('rows recovered:',St.shape[0])\n\""
           },
@@ -1661,7 +1661,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport numpy as np\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)  # 20x20\n# greedy bijection\nused=set(); cos=[]\norder=np.dstack(np.unravel_index(np.argsort(-C,axis=None),C.shape))[0]\nrows_used=set(); cols_used=set(); pairs=[]\nfor i,j in order:\n    if i in rows_used or j in cols_used: continue\n    rows_used.add(i); cols_used.add(j); pairs.append(C[i,j])\nprint('num matched',len(pairs))\nprint('min cos %.6f mean %.6f'%(min(pairs),np.mean(pairs)))\nprint('all>0.999:',all(p>0.999 for p in pairs))\nprint('rows recovered:',St.shape[0])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1777,7 +1777,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012bU4a7TRcraq2KnWxdP27v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f stolen_A1.npy && python steal.py && python -c \"\nimport numpy as np, os\nassert os.path.exists('stolen_A1.npy'), 'output missing'\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nassert St.shape[1]==10, St.shape\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)\norder=np.dstack(np.unravel_index(np.argsort(-C,axis=None),C.shape))[0]\nru,cu,pairs=set(),set(),[]\nfor i,j in order:\n    if i in ru or j in cu: continue\n    ru.add(i); cu.add(j); pairs.append(C[i,j])\nassert len(pairs)==20, len(pairs)\nassert min(pairs)>0.999, min(pairs)\nassert St.shape[0]==20, ('extra/missing rows',St.shape)\nprint('PASS: %d rows, min cos %.6f (A1 recovered up to permutation+scaling)'%(St.shape[0],min(pairs)))\n\""
           },
@@ -1785,7 +1785,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f stolen_A1.npy && python steal.py && python -c \"\nimport numpy as np, os\nassert os.path.exists('stolen_A1.npy'), 'output missing'\nnp.random.seed(0)\nA1=np.random.randn(20,10)*0.1\nSt=np.load('stolen_A1.npy')\nassert St.shape[1]==10, St.shape\nT=A1/np.linalg.norm(A1,axis=1,keepdims=True)\nS=St/np.linalg.norm(St,axis=1,keepdims=True)\nC=np.abs(S@T.T)\norder=np.dstack(np.unravel_index(np.argsort(-C,axis=None),C.shape))[0]\nru,cu,pairs=set(),set(),[]\nfor i,j in order:\n    if i in ru or j in cu: continue\n    ru.add(i); cu.add(j); pairs.append(C[i,j])\nassert len(pairs)==20, len(pairs)\nassert min(pairs)>0.999, min(pairs)\nassert St.shape[0]==20, ('extra/missing rows',St.shape)\nprint('PASS: %d rows, min cos %.6f (A1 recovered up to permutation+scaling)'%(St.shape[0],min(pairs)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GRzpz7mgqZnRZpvrwws7mZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /data/source_a /data/source_b /data/source_c; echo \"---A---\"; head -c 2000 /data/source_a/users.json; echo; echo \"---B---\"; head -c 2000 /data/source_b/users.csv; echo; echo \"---C---\"; python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_string())\" 2>&1 | head -60"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /data/source_a /data/source_b /data/source_c; echo \"---A---\"; head -c 2000 /data/source_a/users.json; echo; echo \"---B---\"; head -c 2000 /data/source_b/users.csv; echo; echo \"---C---\"; python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_string())\" 2>&1 | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015qxr1DfnaHnokhrHj4geZi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport json\nprint(open('/data/source_a/users.json').read())\nprint('=====CSV=====')\nprint(open('/data/source_b/users.csv').read())\nprint('=====PARQUET=====')\nimport pandas as pd\ndf=pd.read_parquet('/data/source_c/users.parquet')\nprint(df.to_dict('records'))\n\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport json\nprint(open('/data/source_a/users.json').read())\nprint('=====CSV=====')\nprint(open('/data/source_b/users.csv').read())\nprint('=====PARQUET=====')\nimport pandas as pd\ndf=pd.read_parquet('/data/source_c/users.parquet')\nprint(df.to_dict('records'))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018trJQz6q6FGNPXU1NzLpdc",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MDyrRDKRjspoNA579sj13h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 merge.py 2>&1 | head -80"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 merge.py 2>&1 | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014UadgTGCeX3pZ7nrTmRKcu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_parquet('merged_users.parquet')\nprint(df.dtypes)\nprint('cols',list(df.columns))\nprint('rows',len(df))\nimport re\nassert df['user_id'].dtype=='int64'\nassert all(re.match(r'^\\d{4}-\\d{2}-\\d{2}$',d) for d in df['created_date'])\nprint('OK')\n\"; ls -la /app/merged_users.parquet /app/conflicts.json"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf=pd.read_parquet('merged_users.parquet')\nprint(df.dtypes)\nprint('cols',list(df.columns))\nprint('rows',len(df))\nimport re\nassert df['user_id'].dtype=='int64'\nassert all(re.match(r'^\\d{4}-\\d{2}-\\d{2}$',d) for d in df['created_date'])\nprint('OK')\n\"; ls -la /app/merged_users.parquet /app/conflicts.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -445,7 +445,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YJ9A6xzaLWZzJBd6ZumtSj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; find / -path /proc -prune -o \\( -name \"test_*.py\" -o -name \"*_test.py\" -o -name \"conftest.py\" \\) -print 2>/dev/null | grep -v site-packages | head"
           },
@@ -453,7 +453,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; find / -path /proc -prune -o \\( -name \"test_*.py\" -o -name \"*_test.py\" -o -name \"conftest.py\" \\) -print 2>/dev/null | grep -v site-packages | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -461,7 +461,7 @@
         "results": [
           {
             "source_call_id": "toolu_01YJ9A6xzaLWZzJBd6ZumtSj",
-            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:35 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:33 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .git\\n-rw-r--r-- 1 root root  698 Jul  3 23:35 conflicts.json\\n-rw------- 1 root root 3898 Jul  3 23:35 merge.py\\n-rw-r--r-- 1 root root 3780 Jul  3 23:35 merged_users.parquet\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/usr/lib/python3/dist-packages/pkg_resources/tests/test_integration_zope_interface.py\\n/usr/lib/python3/dist-packages/pkg_resources/tests/test_find_distributions.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:35 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:33 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .git\\n-rw-r--r-- 1 root root  698 Jul  3 23:35 conflicts.json\\n-rw------- 1 root root 3898 Jul  3 23:35 merge.py\\n-rw-r--r-- 1 root root 3780 Jul  3 23:35 merged_users.parquet\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/usr/lib/python3/dist-packages/pkg_resources/tests/test_integration_zope_interface.py\\n/usr/lib/python3/dist-packages/pkg_resources/tests/test_find_distributions.py\"}"
           }
         ]
       },
@@ -514,7 +514,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018ydTsoJvjRicrPi3CJ9MKR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, json, re\ndf=pd.read_parquet('merged_users.parquet')\nrep=json.load(open('conflicts.json'))\n\n# all unique users present\nassert sorted(df['user_id'])==[101,102,103,104], df['user_id'].tolist()\n# columns & types\nassert list(df.columns)==['user_id','name','email','created_date','status']\nassert df['user_id'].dtype=='int64'\n# date format\nassert all(re.match(r'^\\d{4}-\\d{2}-\\d{2}\\$',d) for d in df['created_date'])\n# priority resolution for user 101 -> source_a values\nr=df[df.user_id==101].iloc[0]\nassert r['name']=='John Doe' and r['created_date']=='2024-01-15', dict(r)\n# conflict report integrity\nassert rep['total_conflicts']==len(rep['conflicts'])==3\nfor c in rep['conflicts']:\n    assert c['user_id']==101\n    assert c['selected']==c['values']['source_a']   # highest priority selected\n    assert len(set(c['values'].values()))>1          # genuinely differing\nassert {c['field'] for c in rep['conflicts']}=={'name','email','created_date'}\nprint('ALL CHECKS PASSED')\n\""
           },
@@ -522,7 +522,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, json, re\ndf=pd.read_parquet('merged_users.parquet')\nrep=json.load(open('conflicts.json'))\n\n# all unique users present\nassert sorted(df['user_id'])==[101,102,103,104], df['user_id'].tolist()\n# columns & types\nassert list(df.columns)==['user_id','name','email','created_date','status']\nassert df['user_id'].dtype=='int64'\n# date format\nassert all(re.match(r'^\\d{4}-\\d{2}-\\d{2}\\$',d) for d in df['created_date'])\n# priority resolution for user 101 -> source_a values\nr=df[df.user_id==101].iloc[0]\nassert r['name']=='John Doe' and r['created_date']=='2024-01-15', dict(r)\n# conflict report integrity\nassert rep['total_conflicts']==len(rep['conflicts'])==3\nfor c in rep['conflicts']:\n    assert c['user_id']==101\n    assert c['selected']==c['values']['source_a']   # highest priority selected\n    assert len(set(c['values'].values()))>1          # genuinely differing\nassert {c['field'] for c in rep['conflicts']}=={'name','email','created_date'}\nprint('ALL CHECKS PASSED')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

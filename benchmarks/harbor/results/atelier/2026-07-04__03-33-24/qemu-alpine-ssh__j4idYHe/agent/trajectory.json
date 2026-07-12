@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ejf6AmwEE6d5rnzecthyyJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && which qemu-system-x86_64 qemu-img ssh sshpass 2>&1; echo \"---\"; nproc; free -m"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ && which qemu-system-x86_64 qemu-img ssh sshpass 2>&1; echo \"---\"; nproc; free -m"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DuntsXZWArcQmSELN2GDCa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /dev/kvm 2>&1; echo \"---img---\"; qemu-img info /app/alpine-disk.qcow2; echo \"---iso---\"; file /app/alpine.iso; echo \"---mem---\"; grep MemTotal /proc/meminfo; echo \"---sshpass---\"; which sshpass expect nc telnet 2>&1"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /dev/kvm 2>&1; echo \"---img---\"; qemu-img info /app/alpine-disk.qcow2; echo \"---iso---\"; file /app/alpine.iso; echo \"---mem---\"; grep MemTotal /proc/meminfo; echo \"---sshpass---\"; which sshpass expect nc telnet 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QkXz9e9fBQxCStyjHMYy6A",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "qemu-img info /app/alpine-disk.qcow2; echo \"===\"; grep MemTotal /proc/meminfo; echo \"===\"; which sshpass expect nc telnet socat 2>&1; echo \"===\"; head -c 64 /app/alpine.iso | xxd | head"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "qemu-img info /app/alpine-disk.qcow2; echo \"===\"; grep MemTotal /proc/meminfo; echo \"===\"; which sshpass expect nc telnet socat 2>&1; echo \"===\"; head -c 64 /app/alpine.iso | xxd | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FbEGUAD3a33kK552U4bwhU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /mnt/iso && mount -o loop,ro /app/alpine.iso /mnt/iso 2>&1; echo \"===\"; ls /mnt/iso; echo \"===boot===\"; ls -R /mnt/iso/boot 2>/dev/null | head -50"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "mkdir -p /mnt/iso && mount -o loop,ro /app/alpine.iso /mnt/iso 2>&1; echo \"===\"; ls /mnt/iso; echo \"===boot===\"; ls -R /mnt/iso/boot 2>/dev/null | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0158nSWRRM2Akit5B3hPKqep",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which 7z bsdtar isoinfo xorriso 2>&1; echo \"===\"; python3 -c \"import pycdlib\" 2>&1; echo \"===\"; ls -la /app/alpine-disk.qcow2"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "which 7z bsdtar isoinfo xorriso 2>&1; echo \"===\"; python3 -c \"import pycdlib\" 2>&1; echo \"===\"; ls -la /app/alpine-disk.qcow2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BffBewAbWggGfbiujg3CpM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "losetup -f 2>&1; ls /dev/loop* 2>&1; echo \"===modprobe===\"; modprobe loop 2>&1; echo \"===fuseiso===\"; which fuseiso guestmount 2>&1; echo \"===apt test===\"; apt-get install -y -qq xorriso </dev/null 2>&1 | tail -5"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "losetup -f 2>&1; ls /dev/loop* 2>&1; echo \"===modprobe===\"; modprobe loop 2>&1; echo \"===fuseiso===\"; which fuseiso guestmount 2>&1; echo \"===apt test===\"; apt-get install -y -qq xorriso </dev/null 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M6k3wAX1Bp29JBHsCzN5ji",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq xorriso </dev/null 2>&1 | tail -8; echo \"EXIT=$?\"; which xorriso osirrox 2>&1"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq xorriso </dev/null 2>&1 | tail -8; echo \"EXIT=$?\"; which xorriso osirrox 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016ZV92AWmgdqX7w5Hegqpx8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -find / -type f 2>/dev/null | head -60"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -find / -type f 2>/dev/null | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013XMUF3AqVTiDvU5LCj6Mf9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -find / -type f 2>/dev/null | grep -viE '\\.apk|APKINDEX' | head -80"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -find / -type f 2>/dev/null | grep -viE '\\.apk|APKINDEX' | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SgEdrX9QCSRyxp6tjhLknH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -extract /boot/syslinux/syslinux.cfg /tmp/syslinux.cfg -extract /boot/grub/grub.cfg /tmp/grub.cfg 2>/dev/null; echo \"===syslinux===\"; cat /tmp/syslinux.cfg; echo \"===grub===\"; cat /tmp/grub.cfg"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /tmp && xorriso -osirrox on -indev /app/alpine.iso -extract /boot/syslinux/syslinux.cfg /tmp/syslinux.cfg -extract /boot/grub/grub.cfg /tmp/grub.cfg 2>/dev/null; echo \"===syslinux===\"; cat /tmp/syslinux.cfg; echo \"===grub===\"; cat /tmp/grub.cfg"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WX8APBH3MLWiHXhUc3tZQX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && mkdir -p boot && xorriso -osirrox on -indev /app/alpine.iso \\\n -extract /boot/vmlinuz-lts /tmp/boot/vmlinuz-lts \\\n -extract /boot/initramfs-lts /tmp/boot/initramfs-lts \\\n -extract /boot/intel-ucode.img /tmp/boot/intel-ucode.img \\\n -extract /boot/amd-ucode.img /tmp/boot/amd-ucode.img 2>/dev/null; ls -la /tmp/boot"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /tmp && mkdir -p boot && xorriso -osirrox on -indev /app/alpine.iso \\\n -extract /boot/vmlinuz-lts /tmp/boot/vmlinuz-lts \\\n -extract /boot/initramfs-lts /tmp/boot/initramfs-lts \\\n -extract /boot/intel-ucode.img /tmp/boot/intel-ucode.img \\\n -extract /boot/amd-ucode.img /tmp/boot/amd-ucode.img 2>/dev/null; ls -la /tmp/boot"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KmmqNrvq415q9dC7pmSaus",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/runqemu.sh <<'EOF'\n#!/bin/sh\nexec qemu-system-x86_64 \\\n  -name alpinevm \\\n  -m 4096 -smp 4 \\\n  -kernel /tmp/boot/vmlinuz-lts \\\n  -initrd /tmp/boot/initramfs-lts \\\n  -append \"modules=loop,squashfs,sd-mod,usb-storage console=ttyS0,115200 console=tty0\" \\\n  -cdrom /app/alpine.iso \\\n  -drive file=/app/alpine-disk.qcow2,if=virtio,format=qcow2 \\\n  -netdev user,id=n0,hostfwd=tcp::2222-:22 \\\n  -device e1000,netdev=n0 \\\n  -serial telnet:127.0.0.1:9001,server,nowait \\\n  -monitor telnet:127.0.0.1:9002,server,nowait \\\n  -display none\nEOF\nchmod +x /tmp/runqemu.sh\nnohup /tmp/runqemu.sh > /tmp/qemu.out 2>&1 &\necho \"started pid $!\"; sleep 5; cat /tmp/qemu.out"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/runqemu.sh <<'EOF'\n#!/bin/sh\nexec qemu-system-x86_64 \\\n  -name alpinevm \\\n  -m 4096 -smp 4 \\\n  -kernel /tmp/boot/vmlinuz-lts \\\n  -initrd /tmp/boot/initramfs-lts \\\n  -append \"modules=loop,squashfs,sd-mod,usb-storage console=ttyS0,115200 console=tty0\" \\\n  -cdrom /app/alpine.iso \\\n  -drive file=/app/alpine-disk.qcow2,if=virtio,format=qcow2 \\\n  -netdev user,id=n0,hostfwd=tcp::2222-:22 \\\n  -device e1000,netdev=n0 \\\n  -serial telnet:127.0.0.1:9001,server,nowait \\\n  -monitor telnet:127.0.0.1:9002,server,nowait \\\n  -display none\nEOF\nchmod +x /tmp/runqemu.sh\nnohup /tmp/runqemu.sh > /tmp/qemu.out 2>&1 &\necho \"started pid $!\"; sleep 5; cat /tmp/qemu.out"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -808,7 +808,7 @@
         "results": [
           {
             "source_call_id": "toolu_01KmmqNrvq415q9dC7pmSaus",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline sh execution is blocked; use Atelier tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\\nInline sh execution is blocked; use Atelier tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline sh execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\\nInline sh execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\"}"
           }
         ]
       },
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0124BqSTMkKDLx6GSDGu57BD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -881,7 +881,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -942,7 +942,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SVJArzycqnNur4orSaubuU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sh -n /tmp/runqemu.sh && echo OK; nohup sh /tmp/runqemu.sh > /tmp/qemu.out 2>&1 &\necho \"launched\"; sleep 6; echo \"---out---\"; cat /tmp/qemu.out; echo \"---ps---\"; ps aux | grep qemu | grep -v grep | head"
           },
@@ -950,7 +950,7 @@
             "raw_arguments": {
               "command": "sh -n /tmp/runqemu.sh && echo OK; nohup sh /tmp/runqemu.sh > /tmp/qemu.out 2>&1 &\necho \"launched\"; sleep 6; echo \"---out---\"; cat /tmp/qemu.out; echo \"---ps---\"; ps aux | grep qemu | grep -v grep | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1011,7 +1011,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01By7PUhcHjEaqu1Q1co4rJc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /tmp/qemu.out; echo \"---pgrep---\"; pgrep -a qemu 2>&1 || ls /proc/*/exe -la 2>/dev/null | grep -i qemu; echo \"---ports---\"; (nc -z 127.0.0.1 9001 && echo \"9001 open\") 2>&1; (nc -z 127.0.0.1 9002 && echo \"9002 open\") 2>&1"
           },
@@ -1019,7 +1019,7 @@
             "raw_arguments": {
               "command": "cat /tmp/qemu.out; echo \"---pgrep---\"; pgrep -a qemu 2>&1 || ls /proc/*/exe -la 2>/dev/null | grep -i qemu; echo \"---ports---\"; (nc -z 127.0.0.1 9001 && echo \"9001 open\") 2>&1; (nc -z 127.0.0.1 9002 && echo \"9002 open\") 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1080,7 +1080,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ac4WhWch2Zhce6wwBHm1VD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1100,7 +1100,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1161,7 +1161,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017nPPT26T1NkgNnkQ2PyvM9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1181,7 +1181,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1254,7 +1254,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D2D8zpqzYHdp5yg8HC6jsx",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/peek.exp"
@@ -1266,7 +1266,7 @@
                 "/tmp/peek.exp"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1327,7 +1327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015K2Wc5oPxVnp65iV98vwFH",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1347,7 +1347,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1420,7 +1420,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HEGZX9r9oYykMZpYvnTbT5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "expect /tmp/peek.exp 2>&1 | tail -40"
           },
@@ -1428,7 +1428,7 @@
             "raw_arguments": {
               "command": "expect /tmp/peek.exp 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1489,7 +1489,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LTWeGNuHAQLmkpyzcAFgoq",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1509,7 +1509,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1570,7 +1570,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UAT3Vd2VdFoNKjXv1stfMp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "expect /tmp/peek2.exp 2>&1 | tail -40"
           },
@@ -1578,7 +1578,7 @@
             "raw_arguments": {
               "command": "expect /tmp/peek2.exp 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1639,7 +1639,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WCkcwfokqAjdoz1ZDPWVHX",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1659,7 +1659,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1720,7 +1720,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016dmrWTF2MFydtmY8bKkBBh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "expect /tmp/poke.exp 2>&1 | tail -40"
           },
@@ -1728,7 +1728,7 @@
             "raw_arguments": {
               "command": "expect /tmp/poke.exp 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1789,7 +1789,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YPkuAJSJ7jy3tyFshFRzeK",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1809,7 +1809,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1870,7 +1870,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VuYhSZ5DUnTuvk8JU2QBZ6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "expect /tmp/diag.exp 2>&1 | tail -50"
           },
@@ -1878,7 +1878,7 @@
             "raw_arguments": {
               "command": "expect /tmp/diag.exp 2>&1 | tail -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1939,7 +1939,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LVGYkxPoLYMLfXDCSLZPkF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1959,7 +1959,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2020,7 +2020,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BWfXQhk4JcZ4qx5g5y6Jd6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "expect /tmp/setup.exp 2>&1 | tail -60"
           },
@@ -2028,7 +2028,7 @@
             "raw_arguments": {
               "command": "expect /tmp/setup.exp 2>&1 | tail -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2089,7 +2089,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VP4eYr7zNsCi7o3kKG2Lwd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq sshpass </dev/null 2>&1 | tail -2; which sshpass"
           },
@@ -2097,7 +2097,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq sshpass </dev/null 2>&1 | tail -2; which sshpass"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2158,7 +2158,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XifmsnxcjWdKDvS5VFo81y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /root/.ssh/known_hosts 2>/dev/null; sshpass -p password123 ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@localhost 'echo SSH_OK; id; hostname; cat /etc/alpine-release' 2>&1 | grep -v Warning"
           },
@@ -2166,7 +2166,7 @@
             "raw_arguments": {
               "command": "rm -f /root/.ssh/known_hosts 2>/dev/null; sshpass -p password123 ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@localhost 'echo SSH_OK; id; hostname; cat /etc/alpine-release' 2>&1 | grep -v Warning"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2282,7 +2282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ABS975gLh9WZdErm9an69i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /proc/6435/exe 2>&1 | head -1; echo \"---iso still attached / vm alive---\"; sshpass -p password123 ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@localhost 'echo SHELL_OK; whoami; uname -a; rc-service sshd status' 2>&1 | grep -v Warning"
           },
@@ -2290,7 +2290,7 @@
             "raw_arguments": {
               "command": "ls -la /proc/6435/exe 2>&1 | head -1; echo \"---iso still attached / vm alive---\"; sshpass -p password123 ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@localhost 'echo SHELL_OK; whoami; uname -a; rc-service sshd status' 2>&1 | grep -v Warning"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

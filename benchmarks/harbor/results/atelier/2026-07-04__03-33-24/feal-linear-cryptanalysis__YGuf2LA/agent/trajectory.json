@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TzBVgUDnz3iUNetXgrT4QS",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.c",
@@ -47,12 +47,12 @@
                 "/app/decrypt.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01YXcUKN7dS3w6LGAohcvw4C",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/pairs.txt; echo \"---\"; wc -l /app/pairs.txt /app/ciphertexts.txt; echo \"---\"; head -5 /app/ciphertexts.txt",
             "cwd": "/app"
@@ -62,7 +62,7 @@
               "command": "head -5 /app/pairs.txt; echo \"---\"; wc -l /app/pairs.txt /app/ciphertexts.txt; echo \"---\"; head -5 /app/ciphertexts.txt",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -127,7 +127,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C2dQGidGPbgniLZTtpAShd",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pairs.txt",
@@ -141,7 +141,7 @@
                 "/app/ciphertexts.txt:head=3"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -202,7 +202,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015UxG8wxMpmvNL7SwxL6inp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -222,7 +222,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -283,7 +283,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LiZGKnDEMZyfioybtu89kK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cc -O2 -o attack attack.c && time ./attack",
             "cwd": "/app"
@@ -293,7 +293,7 @@
               "command": "cd /app && cc -O2 -o attack attack.c && time ./attack",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -354,7 +354,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016A4hfYe4HDKLwQnVSL1j6w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && wc -l plaintexts.txt && cc -O2 -o feal feal.c && cc -O2 -o decrypt decrypt.c\n# cross-check reference decrypt.c with recovered seeds\n./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_pt.txt\ndiff -q ref_pt.txt plaintexts.txt && echo \"MATCH_decrypt.c\"\n# round-trip: encrypt each recovered plaintext, compare to ciphertexts.txt\npaste plaintexts.txt ciphertexts.txt | while read pt ct; do\n  hpt=$(printf '%016x' \"$pt\")\n  out=$(./feal \"$hpt\" 68e63 62571 1f61c b74a5 | awk '/Ciphertext/{print $2}')\n  dec=$((16#${out#0x}))\n  [ \"$dec\" = \"$ct\" ] || echo \"MISMATCH $pt\"\ndone\necho \"roundtrip_done\"",
             "cwd": "/app"
@@ -364,7 +364,7 @@
               "command": "cd /app && wc -l plaintexts.txt && cc -O2 -o feal feal.c && cc -O2 -o decrypt decrypt.c\n# cross-check reference decrypt.c with recovered seeds\n./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_pt.txt\ndiff -q ref_pt.txt plaintexts.txt && echo \"MATCH_decrypt.c\"\n# round-trip: encrypt each recovered plaintext, compare to ciphertexts.txt\npaste plaintexts.txt ciphertexts.txt | while read pt ct; do\n  hpt=$(printf '%016x' \"$pt\")\n  out=$(./feal \"$hpt\" 68e63 62571 1f61c b74a5 | awk '/Ciphertext/{print $2}')\n  dec=$((16#${out#0x}))\n  [ \"$dec\" = \"$ct\" ] || echo \"MISMATCH $pt\"\ndone\necho \"roundtrip_done\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -425,7 +425,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LabPAuhEQkXcb96FFyX2pA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint32_t expand(uint32_t k){return k^(k<<16)^(k*12345);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){uint8_t t=(a+b+x)&0xFF;return((t<<2)|(t>>6))&0xFF;}\nuint32_t F(uint32_t v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n uint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p&0xFFFFFFFF;r^=l;\n for(int i=0;i<4;i++){uint32_t m=F(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t k[4]={expand(0x68e63),expand(0x62571),expand(0x1f61c),expand(0xb74a5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1 && fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,k)!=ct){bad++;}}\n printf(\"checked %d, mismatches %d\\n\",n,bad);return 0;}\nEOF\ncc -O2 -o rt rt.c && ./rt",
             "cwd": "/app"
@@ -435,7 +435,7 @@
               "command": "cd /app && cat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint32_t expand(uint32_t k){return k^(k<<16)^(k*12345);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){uint8_t t=(a+b+x)&0xFF;return((t<<2)|(t>>6))&0xFF;}\nuint32_t F(uint32_t v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n uint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p&0xFFFFFFFF;r^=l;\n for(int i=0;i<4;i++){uint32_t m=F(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t k[4]={expand(0x68e63),expand(0x62571),expand(0x1f61c),expand(0xb74a5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1 && fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,k)!=ct){bad++;}}\n printf(\"checked %d, mismatches %d\\n\",n,bad);return 0;}\nEOF\ncc -O2 -o rt rt.c && ./rt",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -496,7 +496,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EvhJVqWSrtTEnS24jKaTQY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f rt.c rt ref_pt.txt feal decrypt attack && ls",
             "cwd": "/app"
@@ -506,7 +506,7 @@
               "command": "cd /app && rm -f rt.c rt ref_pt.txt feal decrypt attack && ls",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -622,7 +622,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PzgcbXEJ51x2yBjDEYRx4K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cc -O2 -o attack attack.c && ./attack\necho \"--- round-trip verification ---\"\ncat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint32_t expand(uint32_t k){return k^(k<<16)^(k*12345);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){uint8_t t=(a+b+x)&0xFF;return((t<<2)|(t>>6))&0xFF;}\nuint32_t F(uint32_t v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n uint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p&0xFFFFFFFF;r^=l;\n for(int i=0;i<4;i++){uint32_t m=F(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t k[4]={expand(0x68e63),expand(0x62571),expand(0x1f61c),expand(0xb74a5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1 && fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,k)!=ct)bad++;}\n printf(\"re-encrypt check: %d lines, %d mismatches\\n\",n,bad);return bad?1:0;}\nEOF\ncc -O2 -o rt rt.c && ./rt\necho \"--- cross-check vs reference decrypt.c ---\"\ncc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_pt.txt\ndiff -q ref_pt.txt plaintexts.txt && echo \"PASS: matches reference decrypt.c\"\nrm -f rt.c rt ref_pt.txt decrypt attack",
             "cwd": "/app"
@@ -632,7 +632,7 @@
               "command": "cd /app && cc -O2 -o attack attack.c && ./attack\necho \"--- round-trip verification ---\"\ncat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint32_t expand(uint32_t k){return k^(k<<16)^(k*12345);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){uint8_t t=(a+b+x)&0xFF;return((t<<2)|(t>>6))&0xFF;}\nuint32_t F(uint32_t v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n uint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint64_t enc(uint64_t p,uint32_t*k){uint32_t l=p>>32,r=p&0xFFFFFFFF;r^=l;\n for(int i=0;i<4;i++){uint32_t m=F(r^k[i]),t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){uint32_t k[4]={expand(0x68e63),expand(0x62571),expand(0x1f61c),expand(0xb74a5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1 && fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,k)!=ct)bad++;}\n printf(\"re-encrypt check: %d lines, %d mismatches\\n\",n,bad);return bad?1:0;}\nEOF\ncc -O2 -o rt rt.c && ./rt\necho \"--- cross-check vs reference decrypt.c ---\"\ncc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 68e63 62571 1f61c b74a5 > ref_pt.txt\ndiff -q ref_pt.txt plaintexts.txt && echo \"PASS: matches reference decrypt.c\"\nrm -f rt.c rt ref_pt.txt decrypt attack",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

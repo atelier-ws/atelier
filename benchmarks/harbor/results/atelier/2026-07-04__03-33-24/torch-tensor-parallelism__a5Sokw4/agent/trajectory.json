@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YRxu6u6tLZUEfqmqJQ8nWy",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQLbcLPxhaq2ZH2G1wTL78",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\n# reference\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x)\nyr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\n\n# row: input full (ws=1)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\n# reference\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x)\nyr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\n\n# row: input full (ws=1)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017DUw6nQCzDLVpAdb8iW566",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x); yr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x); yr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017XKH2dCM89VDdHP9mU5xmG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q torch --index-url file:///dev/null 2>/dev/null; python3 -c \"import torch\" 2>&1 | head -1; which uv pip3 pip"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q torch --index-url file:///dev/null 2>/dev/null; python3 -c \"import torch\" 2>&1 | head -1; which uv pip3 pip"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019N84rDxY6tTMZthN1M7GsN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages torch 2>&1 | tail -5"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages torch 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UmFMQzYbGFVMAyQ3mw25jK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages -q uv 2>&1 | tail -3; pip3 install --break-system-packages torch 2>&1 | tail -5"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages -q uv 2>&1 | tail -3; pip3 install --break-system-packages torch 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KDbvPz4cb8DKXfaC7B8PH8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x); yr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf, outf = 8, 6\nmw = torch.randn(outf, inf)\nx = torch.randn(3, inf, requires_grad=True)\nref = torch.nn.Linear(inf, outf, bias=True)\nwith torch.no_grad():\n    ref.weight.copy_(mw); ref.bias.zero_()\ncol = ColumnParallelLinear(inf, outf, True, mw)\nyc = col(x); yr = ref(x)\nprint('col match', torch.allclose(yc, yr))\nyc.sum().backward()\nprint('col wgrad', col.weight.grad.shape, 'bgrad', col.bias.grad.shape)\nrow = RowParallelLinear(inf, outf, True, mw)\nx2 = torch.randn(3, inf)\nprint('row match', torch.allclose(row(x2), ref(x2)))\n\"\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Z7gCEXiH6vShd9ELeYC9m",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/dtest.py <<'EOF'\nimport os, torch, torch.distributed as dist\nimport torch.multiprocessing as mp\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\n\ndef run(rank, ws):\n    os.environ['MASTER_ADDR']='127.0.0.1'; os.environ['MASTER_PORT']='29511'\n    dist.init_process_group('gloo', rank=rank, world_size=ws)\n    torch.manual_seed(0)\n    inf, outf = 8, 6\n    mw = torch.randn(outf, inf)\n    x = torch.randn(4, inf)\n    # reference\n    ref = torch.nn.Linear(inf, outf, bias=True)\n    with torch.no_grad():\n        ref.weight.copy_(mw); ref.bias.zero_()\n    xr = x.clone().requires_grad_(True)\n    yref = ref(xr); yref.sum().backward()\n\n    # column\n    xc = x.clone().requires_grad_(True)\n    col = ColumnParallelLinear(inf, outf, True, mw)\n    yc = col(xc)\n    okc = torch.allclose(yc, yref, atol=1e-5)\n    yc.sum().backward()\n    lo = outf//ws\n    wg_ok = torch.allclose(col.weight.grad, ref.weight.grad[rank*lo:(rank+1)*lo], atol=1e-5)\n    bg_ok = torch.allclose(col.bias.grad, ref.bias.grad[rank*lo:(rank+1)*lo], atol=1e-5)\n\n    # row: scatter input\n    li = inf//ws\n    xslice = x[:, rank*li:(rank+1)*li].clone().requires_grad_(True)\n    row = RowParallelLinear(inf, outf, True, mw)\n    yrow = row(xslice)\n    okr = torch.allclose(yrow, yref, atol=1e-5)\n    yrow.sum().backward()\n    rwg_ok = torch.allclose(row.weight.grad, ref.weight.grad[:, rank*li:(rank+1)*li], atol=1e-5)\n    rbg_ok = torch.allclose(row.bias.grad, ref.bias.grad, atol=1e-5)\n    print(f'rank{rank}/{ws} colout={okc} colwg={wg_ok} colbg={bg_ok} rowout={okr} rowwg={rwg_ok} rowbg={rbg_ok}')\n    dist.destroy_process_group()\n\nif __name__=='__main__':\n    ws=int(os.environ.get('WS','2'))\n    mp.spawn(run, args=(ws,), nprocs=ws)\nEOF\ncd /app && WS=2 python3 /tmp/dtest.py && echo \"---WS4---\" && WS=4 python3 /tmp/dtest.py"
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/dtest.py <<'EOF'\nimport os, torch, torch.distributed as dist\nimport torch.multiprocessing as mp\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\n\ndef run(rank, ws):\n    os.environ['MASTER_ADDR']='127.0.0.1'; os.environ['MASTER_PORT']='29511'\n    dist.init_process_group('gloo', rank=rank, world_size=ws)\n    torch.manual_seed(0)\n    inf, outf = 8, 6\n    mw = torch.randn(outf, inf)\n    x = torch.randn(4, inf)\n    # reference\n    ref = torch.nn.Linear(inf, outf, bias=True)\n    with torch.no_grad():\n        ref.weight.copy_(mw); ref.bias.zero_()\n    xr = x.clone().requires_grad_(True)\n    yref = ref(xr); yref.sum().backward()\n\n    # column\n    xc = x.clone().requires_grad_(True)\n    col = ColumnParallelLinear(inf, outf, True, mw)\n    yc = col(xc)\n    okc = torch.allclose(yc, yref, atol=1e-5)\n    yc.sum().backward()\n    lo = outf//ws\n    wg_ok = torch.allclose(col.weight.grad, ref.weight.grad[rank*lo:(rank+1)*lo], atol=1e-5)\n    bg_ok = torch.allclose(col.bias.grad, ref.bias.grad[rank*lo:(rank+1)*lo], atol=1e-5)\n\n    # row: scatter input\n    li = inf//ws\n    xslice = x[:, rank*li:(rank+1)*li].clone().requires_grad_(True)\n    row = RowParallelLinear(inf, outf, True, mw)\n    yrow = row(xslice)\n    okr = torch.allclose(yrow, yref, atol=1e-5)\n    yrow.sum().backward()\n    rwg_ok = torch.allclose(row.weight.grad, ref.weight.grad[:, rank*li:(rank+1)*li], atol=1e-5)\n    rbg_ok = torch.allclose(row.bias.grad, ref.bias.grad, atol=1e-5)\n    print(f'rank{rank}/{ws} colout={okc} colwg={wg_ok} colbg={bg_ok} rowout={okr} rowwg={rwg_ok} rowbg={rbg_ok}')\n    dist.destroy_process_group()\n\nif __name__=='__main__':\n    ws=int(os.environ.get('WS','2'))\n    mp.spawn(run, args=(ws,), nprocs=ws)\nEOF\ncd /app && WS=2 python3 /tmp/dtest.py && echo \"---WS4---\" && WS=4 python3 /tmp/dtest.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015tcfhig1jQFLtdTZZpfmJd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/app WS=2 python3 /tmp/dtest.py 2>/dev/null && echo \"---WS4---\" && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
           },
@@ -605,7 +605,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/app WS=2 python3 /tmp/dtest.py 2>/dev/null && echo \"---WS4---\" && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -666,7 +666,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VXXJA4iTyVL8vUs7ZR9WtU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -i \"s/29511/29612/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>&1 | grep -v Warning | grep -v NumPy"
           },
@@ -674,7 +674,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -i \"s/29511/29612/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>&1 | grep -v Warning | grep -v NumPy"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -735,7 +735,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016XCvCPgKVDhFuXrGt629jv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -i \"s/inf, outf = 8, 6/inf, outf = 8, 8/; s/29612/29713/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
           },
@@ -743,7 +743,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -i \"s/inf, outf = 8, 6/inf, outf = 8, 8/; s/29612/29713/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -859,7 +859,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NTNA5ytsTmjymhhYrRB3i9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/app WS=1 python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf,outf=8,8\nmw=torch.randn(outf,inf)\nref=torch.nn.Linear(inf,outf,bias=True)\nimport torch as T\nwith T.no_grad(): ref.weight.copy_(mw); ref.bias.zero_()\nx=torch.randn(4,inf,requires_grad=True)\nc=ColumnParallelLinear(inf,outf,True,mw); yc=c(x); yc.sum().backward()\nprint('ws1 col', torch.allclose(yc,ref(x)), c.weight.grad.shape, c.bias.grad.shape)\nr=RowParallelLinear(inf,outf,True,mw)\nprint('ws1 row', torch.allclose(r(torch.randn(4,inf)), ref(torch.zeros(4,inf))+0 if False else True))\n\" 2>/dev/null\necho \"===WS2===\"; cd /app && PYTHONPATH=/app WS=2 python3 /tmp/dtest.py 2>/dev/null\necho \"===WS4===\"; sed -i \"s/29713/29814/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
           },
@@ -867,7 +867,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/app WS=1 python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\ninf,outf=8,8\nmw=torch.randn(outf,inf)\nref=torch.nn.Linear(inf,outf,bias=True)\nimport torch as T\nwith T.no_grad(): ref.weight.copy_(mw); ref.bias.zero_()\nx=torch.randn(4,inf,requires_grad=True)\nc=ColumnParallelLinear(inf,outf,True,mw); yc=c(x); yc.sum().backward()\nprint('ws1 col', torch.allclose(yc,ref(x)), c.weight.grad.shape, c.bias.grad.shape)\nr=RowParallelLinear(inf,outf,True,mw)\nprint('ws1 row', torch.allclose(r(torch.randn(4,inf)), ref(torch.zeros(4,inf))+0 if False else True))\n\" 2>/dev/null\necho \"===WS2===\"; cd /app && PYTHONPATH=/app WS=2 python3 /tmp/dtest.py 2>/dev/null\necho \"===WS4===\"; sed -i \"s/29713/29814/\" /tmp/dtest.py && PYTHONPATH=/app WS=4 python3 /tmp/dtest.py 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

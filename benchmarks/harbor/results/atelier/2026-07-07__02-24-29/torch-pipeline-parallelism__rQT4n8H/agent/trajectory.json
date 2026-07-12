@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QPMWJaSdaDyr7MTRDepwMa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; python3 -c \"import torch; print(torch.__version__)\"; echo \"---\"; python3 -c \"import transformers; print(transformers.__version__)\""
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; python3 -c \"import torch; print(torch.__version__)\"; echo \"---\"; python3 -c \"import transformers; print(transformers.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_0196ZFRLfH3McSKQCWp3vheM",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "LlamaForCausalLM model layers partition pipeline",
             "paths": "/app"
@@ -56,7 +56,7 @@
               "query": "LlamaForCausalLM model layers partition pipeline",
               "paths": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -121,7 +121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VWMTr2R3zmwNeMwi6WEJGx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip uv python3; pip --version 2>/dev/null; uv --version 2>/dev/null"
           },
@@ -129,7 +129,7 @@
             "raw_arguments": {
               "command": "which pip uv python3; pip --version 2>/dev/null; uv --version 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -190,7 +190,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hdp8gd3s63ea9KTt7dDx9r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages uv >/dev/null 2>&1; which pip uv"
           },
@@ -198,7 +198,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages uv >/dev/null 2>&1; which pip uv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -259,7 +259,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BoYe9n518uQj4qsCcXR3WG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages torch transformers 2>&1 | tail -5"
           },
@@ -267,7 +267,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages torch transformers 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -328,7 +328,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XVexvxd8n6rzReNSVrroPK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import torch, transformers; print(torch.__version__, transformers.__version__)\"; python3 -c \"from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaModel; import inspect; print([n for n,_ in inspect.getmembers(LlamaModel)][:0]); print('ok')\""
           },
@@ -336,7 +336,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import torch, transformers; print(torch.__version__, transformers.__version__)\"; python3 -c \"from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaModel; import inspect; print([n for n,_ in inspect.getmembers(LlamaModel)][:0]); print('ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -397,7 +397,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012n164m3RFHaij3rRyF8rzL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaModel\nimport inspect, transformers.models.llama.modeling_llama as m\nprint(\"== LlamaModel.forward ==\")\nprint(inspect.getsource(LlamaModel.forward))\nEOF"
           },
@@ -405,7 +405,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaModel\nimport inspect, transformers.models.llama.modeling_llama as m\nprint(\"== LlamaModel.forward ==\")\nprint(inspect.getsource(LlamaModel.forward))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -466,7 +466,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0125mAabyKi89pny9rYNPwsC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport inspect\nimport transformers.models.llama.modeling_llama as M\nprint(\"has create_causal_mask:\", hasattr(M, \"create_causal_mask\"))\nfrom transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM\nprint(\"== DecoderLayer.forward ==\")\nprint(inspect.getsource(LlamaDecoderLayer.forward))\nEOF"
           },
@@ -474,7 +474,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport inspect\nimport transformers.models.llama.modeling_llama as M\nprint(\"has create_causal_mask:\", hasattr(M, \"create_causal_mask\"))\nfrom transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM\nprint(\"== DecoderLayer.forward ==\")\nprint(inspect.getsource(LlamaDecoderLayer.forward))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -535,7 +535,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015MhEg4frWTjGUhpmfPJxpW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport inspect\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\nprint(inspect.getsource(LlamaForCausalLM.forward))\nEOF"
           },
@@ -543,7 +543,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport inspect\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\nprint(inspect.getsource(LlamaForCausalLM.forward))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -604,7 +604,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T3nzqQdK6hJvmvhgttd8s6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/pipeline_parallel.py",
             "new": "\"\"\"Pipeline parallel (AFAB) training for the LLaMA model.\n\nImplements one all-forward-all-backward pipeline-parallel training step.\nEach rank owns a roughly balanced contiguous slice of the decoder layers and\nexecutes only that slice (plus the embedding on the first stage and the final\nnorm + lm_head + loss on the last stage).  No forward/backward hooks are used\ninside this module -- the test relies on hooks of its own.\n\"\"\"\n\nimport torch\nimport torch.distributed as dist\nimport torch.nn.functional as F\n\nfrom transformers.models.llama.modeling_llama import create_causal_mask\n\n\ndef _layer_partition(num_layers, world_size):\n    \"\"\"Roughly balanced contiguous partition of ``num_layers`` over the ranks.\n\n    Returns a list of ``(start, end)`` half-open ranges, one per rank.\n    \"\"\"\n    base = num_layers // world_size\n    rem = num_layers % world_size\n    counts = [base + (1 if r < rem else 0) for r in range(world_size)]\n    bounds = []\n    start = 0\n    for c in counts:\n        bounds.append((start, start + c))\n        start += c\n    return bounds\n\n\ndef _send(tensor, dst):\n    op = dist.P2POp(dist.isend, tensor.contiguous(), dst)\n    for req in dist.batch_isend_irecv([op]):\n        req.wait()\n\n\ndef _recv(shape, src, device, dtype):\n    buf = torch.empty(shape, device=device, dtype=dtype)\n    op = dist.P2POp(dist.irecv, buf, src)\n    for req in dist.batch_isend_irecv([op]):\n        req.wait()\n    return buf\n\n\ndef train_step_pipeline_afab(model, inputs, targets, device, dtype):\n    \"\"\"Run one AFAB pipeline-parallel training step.\n\n    ``inputs`` / ``targets`` are lists of microbatches that together form one\n    batch.  Forward passes for all microbatches run first, then all backward\n    passes.  Returns the accumulated loss value (float) on the last stage,\n    ``None`` elsewhere.\n    \"\"\"\n    rank = dist.get_rank()\n    world_size = dist.get_world_size()\n\n    model = model.to(device=device, dtype=dtype)\n    llama = model.model  # LlamaModel: embed_tokens, layers, norm, rotary_emb\n    config = model.config\n    num_layers = config.num_hidden_layers\n\n    start, end = _layer_partition(num_layers, world_size)[rank]\n    my_layers = llama.layers[start:end]\n\n    is_first = rank == 0\n    is_last = rank == world_size - 1\n    prev_rank = rank - 1\n    next_rank = rank + 1\n\n    num_micro = len(inputs)\n\n    def stage_forward(hidden_states):\n        \"\"\"Run this rank's decoder layers over ``hidden_states``.\"\"\"\n        position_ids = torch.arange(\n            hidden_states.shape[1], device=device\n        ).unsqueeze(0)\n        position_embeddings = llama.rotary_emb(hidden_states, position_ids)\n        causal_mask = create_causal_mask(\n            config=config,\n            inputs_embeds=hidden_states,\n            attention_mask=None,\n            past_key_values=None,\n            position_ids=position_ids,\n        )\n        for layer in my_layers:\n            hidden_states = layer(\n                hidden_states,\n                attention_mask=causal_mask,\n                position_ids=position_ids,\n                past_key_values=None,\n                use_cache=False,\n                position_embeddings=position_embeddings,\n            )\n        return hidden_states\n\n    # Buffers kept between the forward and backward phases (one per microbatch).\n    stage_inputs = []   # incoming activation (requires_grad) for non-first stages\n    stage_outputs = []  # outgoing activation / loss tensor to backprop through\n    total_loss = 0.0\n\n    # ---------------------------------------------------------------- forward\n    for m in range(num_micro):\n        if is_first:\n            input_ids = inputs[m].to(device=device, dtype=torch.long)\n            hidden_states = llama.embed_tokens(input_ids)\n            stage_input = None\n        else:\n            mb, seq_len = inputs[m].shape[0], inputs[m].shape[1]\n            recv_shape = (mb, seq_len, config.hidden_size)\n            stage_input = _recv(recv_shape, prev_rank, device, dtype)\n            stage_input.requires_grad_(True)\n            hidden_states = stage_input\n\n        hidden_states = stage_forward(hidden_states)\n\n        if is_last:\n            hidden_states = llama.norm(hidden_states)\n            logits = model.lm_head(hidden_states)\n            target = targets[m].to(device=device, dtype=torch.long)\n            loss = F.cross_entropy(\n                logits.reshape(-1, logits.shape[-1]), target.reshape(-1)\n            )\n            loss = loss / num_micro\n            total_loss += loss.item()\n            stage_output = loss\n        else:\n            _send(hidden_states, next_rank)\n            stage_output = hidden_states\n\n        stage_inputs.append(stage_input)\n        stage_outputs.append(stage_output)\n\n    # --------------------------------------------------------------- backward\n    for m in range(num_micro):\n        stage_input = stage_inputs[m]\n        stage_output = stage_outputs[m]\n\n        if is_last:\n            stage_output.backward()\n        else:\n            mb, seq_len = inputs[m].shape[0], inputs[m].shape[1]\n            grad_shape = (mb, seq_len, config.hidden_size)\n            grad_output = _recv(grad_shape, next_rank, device, dtype)\n            stage_output.backward(grad_output)\n\n        if not is_first:\n            _send(stage_input.grad, prev_rank)\n\n    return total_loss if is_last else None\n"
@@ -614,7 +614,7 @@
               "path": "/app/pipeline_parallel.py",
               "new": "\"\"\"Pipeline parallel (AFAB) training for the LLaMA model.\n\nImplements one all-forward-all-backward pipeline-parallel training step.\nEach rank owns a roughly balanced contiguous slice of the decoder layers and\nexecutes only that slice (plus the embedding on the first stage and the final\nnorm + lm_head + loss on the last stage).  No forward/backward hooks are used\ninside this module -- the test relies on hooks of its own.\n\"\"\"\n\nimport torch\nimport torch.distributed as dist\nimport torch.nn.functional as F\n\nfrom transformers.models.llama.modeling_llama import create_causal_mask\n\n\ndef _layer_partition(num_layers, world_size):\n    \"\"\"Roughly balanced contiguous partition of ``num_layers`` over the ranks.\n\n    Returns a list of ``(start, end)`` half-open ranges, one per rank.\n    \"\"\"\n    base = num_layers // world_size\n    rem = num_layers % world_size\n    counts = [base + (1 if r < rem else 0) for r in range(world_size)]\n    bounds = []\n    start = 0\n    for c in counts:\n        bounds.append((start, start + c))\n        start += c\n    return bounds\n\n\ndef _send(tensor, dst):\n    op = dist.P2POp(dist.isend, tensor.contiguous(), dst)\n    for req in dist.batch_isend_irecv([op]):\n        req.wait()\n\n\ndef _recv(shape, src, device, dtype):\n    buf = torch.empty(shape, device=device, dtype=dtype)\n    op = dist.P2POp(dist.irecv, buf, src)\n    for req in dist.batch_isend_irecv([op]):\n        req.wait()\n    return buf\n\n\ndef train_step_pipeline_afab(model, inputs, targets, device, dtype):\n    \"\"\"Run one AFAB pipeline-parallel training step.\n\n    ``inputs`` / ``targets`` are lists of microbatches that together form one\n    batch.  Forward passes for all microbatches run first, then all backward\n    passes.  Returns the accumulated loss value (float) on the last stage,\n    ``None`` elsewhere.\n    \"\"\"\n    rank = dist.get_rank()\n    world_size = dist.get_world_size()\n\n    model = model.to(device=device, dtype=dtype)\n    llama = model.model  # LlamaModel: embed_tokens, layers, norm, rotary_emb\n    config = model.config\n    num_layers = config.num_hidden_layers\n\n    start, end = _layer_partition(num_layers, world_size)[rank]\n    my_layers = llama.layers[start:end]\n\n    is_first = rank == 0\n    is_last = rank == world_size - 1\n    prev_rank = rank - 1\n    next_rank = rank + 1\n\n    num_micro = len(inputs)\n\n    def stage_forward(hidden_states):\n        \"\"\"Run this rank's decoder layers over ``hidden_states``.\"\"\"\n        position_ids = torch.arange(\n            hidden_states.shape[1], device=device\n        ).unsqueeze(0)\n        position_embeddings = llama.rotary_emb(hidden_states, position_ids)\n        causal_mask = create_causal_mask(\n            config=config,\n            inputs_embeds=hidden_states,\n            attention_mask=None,\n            past_key_values=None,\n            position_ids=position_ids,\n        )\n        for layer in my_layers:\n            hidden_states = layer(\n                hidden_states,\n                attention_mask=causal_mask,\n                position_ids=position_ids,\n                past_key_values=None,\n                use_cache=False,\n                position_embeddings=position_embeddings,\n            )\n        return hidden_states\n\n    # Buffers kept between the forward and backward phases (one per microbatch).\n    stage_inputs = []   # incoming activation (requires_grad) for non-first stages\n    stage_outputs = []  # outgoing activation / loss tensor to backprop through\n    total_loss = 0.0\n\n    # ---------------------------------------------------------------- forward\n    for m in range(num_micro):\n        if is_first:\n            input_ids = inputs[m].to(device=device, dtype=torch.long)\n            hidden_states = llama.embed_tokens(input_ids)\n            stage_input = None\n        else:\n            mb, seq_len = inputs[m].shape[0], inputs[m].shape[1]\n            recv_shape = (mb, seq_len, config.hidden_size)\n            stage_input = _recv(recv_shape, prev_rank, device, dtype)\n            stage_input.requires_grad_(True)\n            hidden_states = stage_input\n\n        hidden_states = stage_forward(hidden_states)\n\n        if is_last:\n            hidden_states = llama.norm(hidden_states)\n            logits = model.lm_head(hidden_states)\n            target = targets[m].to(device=device, dtype=torch.long)\n            loss = F.cross_entropy(\n                logits.reshape(-1, logits.shape[-1]), target.reshape(-1)\n            )\n            loss = loss / num_micro\n            total_loss += loss.item()\n            stage_output = loss\n        else:\n            _send(hidden_states, next_rank)\n            stage_output = hidden_states\n\n        stage_inputs.append(stage_input)\n        stage_outputs.append(stage_output)\n\n    # --------------------------------------------------------------- backward\n    for m in range(num_micro):\n        stage_input = stage_inputs[m]\n        stage_output = stage_outputs[m]\n\n        if is_last:\n            stage_output.backward()\n        else:\n            mb, seq_len = inputs[m].shape[0], inputs[m].shape[1]\n            grad_shape = (mb, seq_len, config.hidden_size)\n            grad_output = _recv(grad_shape, next_rank, device, dtype)\n            stage_output.backward(grad_output)\n\n        if not is_first:\n            _send(stage_input.grad, prev_rank)\n\n    return total_loss if is_last else None\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -675,7 +675,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WMKiNE87DBnMMTx6RpcNZb",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/tmp/selftest.py",
             "new": "import os, copy\nimport torch\nimport torch.distributed as dist\nimport torch.multiprocessing as mp\nimport torch.nn.functional as F\nfrom transformers import LlamaConfig\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\n\nimport sys\nsys.path.insert(0, \"/app\")\nfrom pipeline_parallel import train_step_pipeline_afab\n\n\ndef make_model():\n    torch.manual_seed(0)\n    cfg = LlamaConfig(\n        vocab_size=128, hidden_size=32, intermediate_size=64,\n        num_hidden_layers=4, num_attention_heads=4, num_key_value_heads=4,\n        max_position_embeddings=64,\n    )\n    return LlamaForCausalLM(cfg)\n\n\ndef make_data():\n    torch.manual_seed(1)\n    mb, seq = 2, 8\n    inputs = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    targets = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    return inputs, targets\n\n\ndef reference_grads():\n    model = make_model()\n    inputs, targets = make_data()\n    device = torch.device(\"cpu\"); dtype = torch.float32\n    model = model.to(device=device, dtype=dtype)\n    num_micro = len(inputs)\n    for m in range(num_micro):\n        out = model(input_ids=inputs[m].to(device))\n        logits = out.logits\n        loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]),\n                               targets[m].reshape(-1)) / num_micro\n        loss.backward()\n    return {n: p.grad.clone() for n, p in model.named_parameters() if p.grad is not None}\n\n\ndef worker(rank, world_size, ref):\n    os.environ[\"MASTER_ADDR\"] = \"127.0.0.1\"\n    os.environ[\"MASTER_PORT\"] = \"29511\"\n    dist.init_process_group(\"gloo\", rank=rank, world_size=world_size)\n    model = make_model()\n    inputs, targets = make_data()\n    loss = train_step_pipeline_afab(model, inputs, targets,\n                                    torch.device(\"cpu\"), torch.float32)\n    # check grads for params this rank actually touched\n    max_err = 0.0\n    n_checked = 0\n    for n, p in model.named_parameters():\n        if p.grad is None:\n            continue\n        if n in ref:\n            err = (p.grad - ref[n]).abs().max().item()\n            max_err = max(max_err, err)\n            n_checked += 1\n    print(f\"[rank {rank}] loss={loss} params_with_grad={n_checked} max_err={max_err:.3e}\")\n    dist.barrier()\n    dist.destroy_process_group()\n\n\ndef run(world_size):\n    ref = reference_grads()\n    print(f\"=== world_size={world_size} ===\")\n    mp.spawn(worker, args=(world_size, ref), nprocs=world_size, join=True)\n\n\nif __name__ == \"__main__\":\n    run(1)\n    run(2)\n"
@@ -685,7 +685,7 @@
               "path": "/tmp/selftest.py",
               "new": "import os, copy\nimport torch\nimport torch.distributed as dist\nimport torch.multiprocessing as mp\nimport torch.nn.functional as F\nfrom transformers import LlamaConfig\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\n\nimport sys\nsys.path.insert(0, \"/app\")\nfrom pipeline_parallel import train_step_pipeline_afab\n\n\ndef make_model():\n    torch.manual_seed(0)\n    cfg = LlamaConfig(\n        vocab_size=128, hidden_size=32, intermediate_size=64,\n        num_hidden_layers=4, num_attention_heads=4, num_key_value_heads=4,\n        max_position_embeddings=64,\n    )\n    return LlamaForCausalLM(cfg)\n\n\ndef make_data():\n    torch.manual_seed(1)\n    mb, seq = 2, 8\n    inputs = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    targets = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    return inputs, targets\n\n\ndef reference_grads():\n    model = make_model()\n    inputs, targets = make_data()\n    device = torch.device(\"cpu\"); dtype = torch.float32\n    model = model.to(device=device, dtype=dtype)\n    num_micro = len(inputs)\n    for m in range(num_micro):\n        out = model(input_ids=inputs[m].to(device))\n        logits = out.logits\n        loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]),\n                               targets[m].reshape(-1)) / num_micro\n        loss.backward()\n    return {n: p.grad.clone() for n, p in model.named_parameters() if p.grad is not None}\n\n\ndef worker(rank, world_size, ref):\n    os.environ[\"MASTER_ADDR\"] = \"127.0.0.1\"\n    os.environ[\"MASTER_PORT\"] = \"29511\"\n    dist.init_process_group(\"gloo\", rank=rank, world_size=world_size)\n    model = make_model()\n    inputs, targets = make_data()\n    loss = train_step_pipeline_afab(model, inputs, targets,\n                                    torch.device(\"cpu\"), torch.float32)\n    # check grads for params this rank actually touched\n    max_err = 0.0\n    n_checked = 0\n    for n, p in model.named_parameters():\n        if p.grad is None:\n            continue\n        if n in ref:\n            err = (p.grad - ref[n]).abs().max().item()\n            max_err = max(max_err, err)\n            n_checked += 1\n    print(f\"[rank {rank}] loss={loss} params_with_grad={n_checked} max_err={max_err:.3e}\")\n    dist.barrier()\n    dist.destroy_process_group()\n\n\ndef run(world_size):\n    ref = reference_grads()\n    print(f\"=== world_size={world_size} ===\")\n    mp.spawn(worker, args=(world_size, ref), nprocs=world_size, join=True)\n\n\nif __name__ == \"__main__\":\n    run(1)\n    run(2)\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -746,7 +746,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MUC4HkUQj5jLagQ62DDE8b",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 selftest.py 2>&1 | grep -vE \"Warning|warn|UserWarning|^\\s*$\" | tail -30"
           },
@@ -754,7 +754,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 selftest.py 2>&1 | grep -vE \"Warning|warn|UserWarning|^\\s*$\" | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -815,7 +815,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ed4pCwoWmR7wiydqw4reBT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tmp/selftest.py; ls /app"
           },
@@ -823,7 +823,7 @@
             "raw_arguments": {
               "command": "rm -f /tmp/selftest.py; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -884,7 +884,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HxZ2BBRLT3enWh85VgJE9w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf /app/__pycache__; ls /app"
           },
@@ -892,7 +892,7 @@
             "raw_arguments": {
               "command": "rm -rf /app/__pycache__; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -953,7 +953,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HkbARYmJgWcidYgsdYqtFV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -r /app/__pycache__; ls -la /app"
           },
@@ -961,7 +961,7 @@
             "raw_arguments": {
               "command": "rm -r /app/__pycache__; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1077,7 +1077,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E7xnXBEbgSjVN3rzLEupxU",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/tmp/selftest.py",
             "new": "import os, sys\nimport torch\nimport torch.distributed as dist\nimport torch.multiprocessing as mp\nimport torch.nn.functional as F\nfrom transformers import LlamaConfig\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\n\nsys.path.insert(0, \"/app\")\nfrom pipeline_parallel import train_step_pipeline_afab\n\n\ndef make_model():\n    torch.manual_seed(0)\n    cfg = LlamaConfig(\n        vocab_size=128, hidden_size=32, intermediate_size=64,\n        num_hidden_layers=4, num_attention_heads=4, num_key_value_heads=4,\n        max_position_embeddings=64,\n    )\n    return LlamaForCausalLM(cfg)\n\n\ndef make_data():\n    torch.manual_seed(1)\n    mb, seq = 2, 8\n    inputs = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    targets = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    return inputs, targets\n\n\ndef reference():\n    model = make_model()\n    inputs, targets = make_data()\n    n = len(inputs)\n    acts, grads = {}, {}\n    handles = []\n    def mk(name):\n        def fh(mod, i, o):\n            acts.setdefault(name, []).append((o[0] if isinstance(o, tuple) else o).detach().clone())\n        def bh(mod, gi, go):\n            grads.setdefault(name, []).append(go[0].detach().clone())\n        return fh, bh\n    for i, layer in enumerate(model.model.layers):\n        fh, bh = mk(i)\n        handles.append(layer.register_forward_hook(fh))\n        handles.append(layer.register_full_backward_hook(bh))\n    for m in range(n):\n        out = model(input_ids=inputs[m])\n        loss = F.cross_entropy(out.logits.reshape(-1, out.logits.shape[-1]),\n                               targets[m].reshape(-1)) / n\n        loss.backward()\n    for h in handles: h.remove()\n    pg = {k: v.grad.clone() for k, v in model.named_parameters() if v.grad is not None}\n    return pg, acts, grads\n\n\ndef worker(rank, world_size, ref_pg, ref_acts, ref_grads):\n    os.environ[\"MASTER_ADDR\"] = \"127.0.0.1\"\n    os.environ[\"MASTER_PORT\"] = \"29513\"\n    dist.init_process_group(\"gloo\", rank=rank, world_size=world_size)\n    # capture activations/grads of this rank's layers to compare to reference\n    from pipeline_parallel import _layer_partition\n    model = make_model()\n    inputs, targets = make_data()\n    start, end = _layer_partition(4, world_size)[rank]\n    acts, grads = {}, {}\n    handles = []\n    for idx in range(start, end):\n        layer = model.model.layers[idx]\n        def fh(mod, i, o, idx=idx):\n            acts.setdefault(idx, []).append((o[0] if isinstance(o, tuple) else o).detach().clone())\n        def bh(mod, gi, go, idx=idx):\n            grads.setdefault(idx, []).append(go[0].detach().clone())\n        handles.append(layer.register_forward_hook(fh))\n        handles.append(layer.register_full_backward_hook(bh))\n    loss = train_step_pipeline_afab(model, inputs, targets, torch.device(\"cpu\"), torch.float32)\n    for h in handles: h.remove()\n\n    perr = max((p.grad - ref_pg[n]).abs().max().item()\n               for n, p in model.named_parameters() if p.grad is not None)\n    ferr = max((a - ref_acts[idx][k]).abs().max().item()\n               for idx in acts for k, a in enumerate(acts[idx]))\n    berr = max((g - ref_grads[idx][k]).abs().max().item()\n               for idx in grads for k, g in enumerate(grads[idx]))\n    print(f\"[rank {rank}] layers[{start}:{end}] loss={loss} \"\n          f\"param_gerr={perr:.2e} fwd_act_err={ferr:.2e} bwd_act_err={berr:.2e}\")\n    assert perr < 1e-5 and ferr < 1e-5 and berr < 1e-5, f\"MISMATCH rank {rank}\"\n    dist.barrier(); dist.destroy_process_group()\n\n\ndef run(ws):\n    pg, acts, grads = reference()\n    print(f\"=== world_size={ws} ===\")\n    mp.spawn(worker, args=(ws, pg, acts, grads), nprocs=ws, join=True)\n\n\nif __name__ == \"__main__\":\n    run(1); run(2)\n    print(\"ALL PASS\")\n"
@@ -1087,7 +1087,7 @@
               "path": "/tmp/selftest.py",
               "new": "import os, sys\nimport torch\nimport torch.distributed as dist\nimport torch.multiprocessing as mp\nimport torch.nn.functional as F\nfrom transformers import LlamaConfig\nfrom transformers.models.llama.modeling_llama import LlamaForCausalLM\n\nsys.path.insert(0, \"/app\")\nfrom pipeline_parallel import train_step_pipeline_afab\n\n\ndef make_model():\n    torch.manual_seed(0)\n    cfg = LlamaConfig(\n        vocab_size=128, hidden_size=32, intermediate_size=64,\n        num_hidden_layers=4, num_attention_heads=4, num_key_value_heads=4,\n        max_position_embeddings=64,\n    )\n    return LlamaForCausalLM(cfg)\n\n\ndef make_data():\n    torch.manual_seed(1)\n    mb, seq = 2, 8\n    inputs = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    targets = [torch.randint(0, 128, (mb, seq)) for _ in range(3)]\n    return inputs, targets\n\n\ndef reference():\n    model = make_model()\n    inputs, targets = make_data()\n    n = len(inputs)\n    acts, grads = {}, {}\n    handles = []\n    def mk(name):\n        def fh(mod, i, o):\n            acts.setdefault(name, []).append((o[0] if isinstance(o, tuple) else o).detach().clone())\n        def bh(mod, gi, go):\n            grads.setdefault(name, []).append(go[0].detach().clone())\n        return fh, bh\n    for i, layer in enumerate(model.model.layers):\n        fh, bh = mk(i)\n        handles.append(layer.register_forward_hook(fh))\n        handles.append(layer.register_full_backward_hook(bh))\n    for m in range(n):\n        out = model(input_ids=inputs[m])\n        loss = F.cross_entropy(out.logits.reshape(-1, out.logits.shape[-1]),\n                               targets[m].reshape(-1)) / n\n        loss.backward()\n    for h in handles: h.remove()\n    pg = {k: v.grad.clone() for k, v in model.named_parameters() if v.grad is not None}\n    return pg, acts, grads\n\n\ndef worker(rank, world_size, ref_pg, ref_acts, ref_grads):\n    os.environ[\"MASTER_ADDR\"] = \"127.0.0.1\"\n    os.environ[\"MASTER_PORT\"] = \"29513\"\n    dist.init_process_group(\"gloo\", rank=rank, world_size=world_size)\n    # capture activations/grads of this rank's layers to compare to reference\n    from pipeline_parallel import _layer_partition\n    model = make_model()\n    inputs, targets = make_data()\n    start, end = _layer_partition(4, world_size)[rank]\n    acts, grads = {}, {}\n    handles = []\n    for idx in range(start, end):\n        layer = model.model.layers[idx]\n        def fh(mod, i, o, idx=idx):\n            acts.setdefault(idx, []).append((o[0] if isinstance(o, tuple) else o).detach().clone())\n        def bh(mod, gi, go, idx=idx):\n            grads.setdefault(idx, []).append(go[0].detach().clone())\n        handles.append(layer.register_forward_hook(fh))\n        handles.append(layer.register_full_backward_hook(bh))\n    loss = train_step_pipeline_afab(model, inputs, targets, torch.device(\"cpu\"), torch.float32)\n    for h in handles: h.remove()\n\n    perr = max((p.grad - ref_pg[n]).abs().max().item()\n               for n, p in model.named_parameters() if p.grad is not None)\n    ferr = max((a - ref_acts[idx][k]).abs().max().item()\n               for idx in acts for k, a in enumerate(acts[idx]))\n    berr = max((g - ref_grads[idx][k]).abs().max().item()\n               for idx in grads for k, g in enumerate(grads[idx]))\n    print(f\"[rank {rank}] layers[{start}:{end}] loss={loss} \"\n          f\"param_gerr={perr:.2e} fwd_act_err={ferr:.2e} bwd_act_err={berr:.2e}\")\n    assert perr < 1e-5 and ferr < 1e-5 and berr < 1e-5, f\"MISMATCH rank {rank}\"\n    dist.barrier(); dist.destroy_process_group()\n\n\ndef run(ws):\n    pg, acts, grads = reference()\n    print(f\"=== world_size={ws} ===\")\n    mp.spawn(worker, args=(ws, pg, acts, grads), nprocs=ws, join=True)\n\n\nif __name__ == \"__main__\":\n    run(1); run(2)\n    print(\"ALL PASS\")\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1148,7 +1148,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RaNBQeNR274JHVc8BJN8QT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 selftest.py 2>&1 | grep -vE \"Warning|warn|UserWarning|^\\s*$\" | tail -20"
           },
@@ -1156,7 +1156,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 selftest.py 2>&1 | grep -vE \"Warning|warn|UserWarning|^\\s*$\" | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1217,7 +1217,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L36dzKqc2zEWTaaPkvjGf6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tmp/selftest.py; rm -r /app/__pycache__ 2>/dev/null; ls -la /app"
           },
@@ -1225,7 +1225,7 @@
             "raw_arguments": {
               "command": "rm -f /tmp/selftest.py; rm -r /app/__pycache__ 2>/dev/null; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

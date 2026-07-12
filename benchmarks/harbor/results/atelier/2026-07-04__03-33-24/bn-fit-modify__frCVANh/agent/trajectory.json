@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S3ztsKBxT3Jax1D5DEDDJv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -20 /app/bn_sample_10k.csv; echo \"---\"; wc -l /app/bn_sample_10k.csv"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "head -20 /app/bn_sample_10k.csv; echo \"---\"; wc -l /app/bn_sample_10k.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01JRddHStFZb2TsS1eSodTGQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pgmpy; print(pgmpy.__version__)\" 2>&1; echo \"---\"; python3 -c \"import pandas; print('pandas ok')\" 2>&1"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pgmpy; print(pgmpy.__version__)\" 2>&1; echo \"---\"; python3 -c \"import pandas; print('pandas ok')\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ArUGNfuBQV6oKare9MFc5z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pandas numpy scipy 2>&1 | tail -3; echo done"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pandas numpy scipy 2>&1 | tail -3; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AocAFk1h1DY4fRkqLqDcxj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\ndf=pd.read_csv('bn_sample_10k.csv')\nprint(df.columns.tolist())\nprint(df.corr().round(3))\n\""
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\ndf=pd.read_csv('bn_sample_10k.csv')\nprint(df.columns.tolist())\nprint(df.corr().round(3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KMmDyga6urfdyhE6tHNQc7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\ndf=pd.read_csv('bn_sample_10k.csv')\ncols=df.columns.tolist()\nC=df.corr().values\nP=np.linalg.inv(C)\n# partial corr\nd=np.sqrt(np.diag(P))\npc=-P/np.outer(d,d)\nnp.fill_diagonal(pc,1)\nimport itertools\nprint('Partial correlations (given all others):')\nprint(pd.DataFrame(pc,index=cols,columns=cols).round(3))\n\""
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\ndf=pd.read_csv('bn_sample_10k.csv')\ncols=df.columns.tolist()\nC=df.corr().values\nP=np.linalg.inv(C)\n# partial corr\nd=np.sqrt(np.diag(P))\npc=-P/np.outer(d,d)\nnp.fill_diagonal(pc,1)\nimport itertools\nprint('Partial correlations (given all others):')\nprint(pd.DataFrame(pc,index=cols,columns=cols).round(3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Swjo7tnYBDDacVHverYe6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pgmpy 2>&1 | tail -2; python3 -c \"from pgmpy.models import LinearGaussianBayesianNetwork; print('ok')\" 2>&1 | tail -3"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pgmpy 2>&1 | tail -2; python3 -c \"from pgmpy.models import LinearGaussianBayesianNetwork; print('ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MddQwfY9yMq2d3rSYj3EGG",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app"
@@ -407,12 +407,12 @@
                 "/app"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01Y1eL6gwUbHwY9mZkSdYrSD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nm=LG([('U','Y')])\nprint([x for x in dir(m) if not x.startswith('__')])\nprint('---fit---')\nprint(inspect.signature(m.fit))\nprint('---sim---')\nprint([x for x in dir(m) if 'sim' in x.lower() or 'sample' in x.lower()])\n\""
           },
@@ -420,7 +420,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nm=LG([('U','Y')])\nprint([x for x in dir(m) if not x.startswith('__')])\nprint('---fit---')\nprint(inspect.signature(m.fit))\nprint('---sim---')\nprint([x for x in dir(m) if 'sim' in x.lower() or 'sample' in x.lower()])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -485,7 +485,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TbkMjbW4sfDvqiBNAvCSwP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nprint('do:',inspect.signature(LG([('U','Y')]).do))\nprint('sim:',inspect.signature(LG([('U','Y')]).simulate))\n\""
           },
@@ -493,7 +493,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nprint('do:',inspect.signature(LG([('U','Y')]).do))\nprint('sim:',inspect.signature(LG([('U','Y')]).simulate))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -554,7 +554,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017AsAjaor5TAF8gQy5ktgC8",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -574,7 +574,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -635,7 +635,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016sBq7QBcP78EACiPNkD5dM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 build_bn.py 2>&1 | tail -30"
           },
@@ -643,7 +643,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 build_bn.py 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -704,7 +704,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V5PAvCd5oZ1sm9aJJd5LLU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"== learned_dag.csv ==\"; cat learned_dag.csv; echo \"== intervened_dag.csv ==\"; cat intervened_dag.csv; echo \"== final head ==\"; head -4 final_bn_sample.csv; echo \"== rows ==\"; wc -l final_bn_sample.csv"
           },
@@ -712,7 +712,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"== learned_dag.csv ==\"; cat learned_dag.csv; echo \"== intervened_dag.csv ==\"; cat intervened_dag.csv; echo \"== final head ==\"; head -4 final_bn_sample.csv; echo \"== rows ==\"; wc -l final_bn_sample.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -828,7 +828,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DhQzvmq8hLTpiii94AAADY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\norig=pd.read_csv('bn_sample_10k.csv')\n\n# learned_dag\nld=pd.read_csv('learned_dag.csv')\nassert list(ld.columns)==['to','from'], ld.columns\nassert len(ld)==6, len(ld)\nlearned=set(zip(ld['from'],ld['to']))\nassert learned=={('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')}, learned\n# U has no parents\nassert 'U' not in set(ld['to']), 'U must have no parents'\n\n# intervened_dag: do(Y=0) removes incoming edges to Y\nidf=pd.read_csv('intervened_dag.csv')\nassert list(idf.columns)==['to','from']\ninter=set(zip(idf['from'],idf['to']))\nassert inter==learned-{('U','Y')}, inter\nassert 'Y' not in set(idf['to']), 'Y must have no parents after do()'\n\n# final sample\nfs=pd.read_csv('final_bn_sample.csv')\nassert list(fs.columns)==list(orig.columns), fs.columns\nassert len(fs)==10000, len(fs)\nassert abs(fs['Y'].mean())<1e-3 and fs['Y'].var()<1e-6, (fs['Y'].mean(),fs['Y'].var())\n\n# structural sanity: after do(Y=0), D no longer correlates via Y; Y independent of U\nc=fs.corr()\nassert abs(c.loc['U','Y'])<0.05, c.loc['U','Y']  # intervention severs U->Y\nprint('ALL CHECKS PASSED')\nprint('U-Y corr in intervened sample:', round(c.loc[\\\"U\\\",\\\"Y\\\"],4))\nprint('Y stats:', fs[\\\"Y\\\"].mean(), fs[\\\"Y\\\"].var())\n\""
           },
@@ -836,7 +836,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\norig=pd.read_csv('bn_sample_10k.csv')\n\n# learned_dag\nld=pd.read_csv('learned_dag.csv')\nassert list(ld.columns)==['to','from'], ld.columns\nassert len(ld)==6, len(ld)\nlearned=set(zip(ld['from'],ld['to']))\nassert learned=={('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')}, learned\n# U has no parents\nassert 'U' not in set(ld['to']), 'U must have no parents'\n\n# intervened_dag: do(Y=0) removes incoming edges to Y\nidf=pd.read_csv('intervened_dag.csv')\nassert list(idf.columns)==['to','from']\ninter=set(zip(idf['from'],idf['to']))\nassert inter==learned-{('U','Y')}, inter\nassert 'Y' not in set(idf['to']), 'Y must have no parents after do()'\n\n# final sample\nfs=pd.read_csv('final_bn_sample.csv')\nassert list(fs.columns)==list(orig.columns), fs.columns\nassert len(fs)==10000, len(fs)\nassert abs(fs['Y'].mean())<1e-3 and fs['Y'].var()<1e-6, (fs['Y'].mean(),fs['Y'].var())\n\n# structural sanity: after do(Y=0), D no longer correlates via Y; Y independent of U\nc=fs.corr()\nassert abs(c.loc['U','Y'])<0.05, c.loc['U','Y']  # intervention severs U->Y\nprint('ALL CHECKS PASSED')\nprint('U-Y corr in intervened sample:', round(c.loc[\\\"U\\\",\\\"Y\\\"],4))\nprint('Y stats:', fs[\\\"Y\\\"].mean(), fs[\\\"Y\\\"].var())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

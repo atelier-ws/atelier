@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01APe492bJmQoJbwuCgG7jSq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/trunc.db; echo \"---\"; xxd /app/trunc.db | head -40; echo \"size:\"; stat -c %s /app/trunc.db"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/trunc.db; echo \"---\"; xxd /app/trunc.db | head -40; echo \"size:\"; stat -c %s /app/trunc.db"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01StVGHdrMgF1gzBYr1dis61",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -A d -t x1z /app/trunc.db | head -60"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "od -A d -t x1z /app/trunc.db | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014qwYNgWLNPmALsWK6sJ1q3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\ndata=open('trunc.db','rb').read()\nprint(len(data))\n# treat whole file as a single leaf page starting at offset 0\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8:\n            v=(v<<8)|c; return v,off+9\n        v=(v<<7)|(c&0x7f)\n        if not c&0x80:\n            return v,off+i+1\n    return v,off+9\n\ndef parse_page(b,base):\n    typ=b[base]\n    ncell=int.from_bytes(b[base+3:base+5],'big')\n    hdr=8 if typ in (0x0d,0x0a) else 12\n    ptrs=[int.from_bytes(b[base+hdr+2*i:base+hdr+2*i+2],'big') for i in range(ncell)]\n    rows=[]\n    for p in ptrs:\n        off=base+p\n        try:\n            paylen,off=varint(b,off)\n            rowid,off=varint(b,off)\n            rec=b[off:off+paylen]\n            # parse record\n            ho=0\n            hlen,ho=varint(rec,ho)\n            serials=[]\n            while ho<hlen:\n                s,ho=varint(rec,ho)\n                serials.append(s)\n            vals=[]\n            do=hlen\n            for s in serials:\n                if s==0: vals.append(None)\n                elif s==1: vals.append(int.from_bytes(rec[do:do+1],'big',signed=True)); do+=1\n                elif s==2: vals.append(int.from_bytes(rec[do:do+2],'big',signed=True)); do+=2\n                elif s==3: vals.append(int.from_bytes(rec[do:do+3],'big',signed=True)); do+=3\n                elif s==4: vals.append(int.from_bytes(rec[do:do+4],'big',signed=True)); do+=4\n                elif s==5: vals.append(int.from_bytes(rec[do:do+6],'big',signed=True)); do+=6\n                elif s==6: vals.append(int.from_bytes(rec[do:do+8],'big',signed=True)); do+=8\n                elif s==7:\n                    import struct\n                    vals.append(struct.unpack('>d',rec[do:do+8])[0]); do+=8\n                elif s==8: vals.append(0)\n                elif s==9: vals.append(1)\n                elif s>=12 and s%2==0:\n                    n=(s-12)//2; vals.append(rec[do:do+n]); do+=n\n                else:\n                    n=(s-13)//2; vals.append(rec[do:do+n].decode('utf8','replace')); do+=n\n            rows.append((rowid,vals,paylen,len(rec)))\n        except Exception as e:\n            rows.append(('ERR',str(e)))\n    return typ,ncell,rows\n\nt,n,rows=parse_page(data,0)\nprint('type',hex(t),'ncell',n)\nfor r in rows: print(r)\nEOF"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\ndata=open('trunc.db','rb').read()\nprint(len(data))\n# treat whole file as a single leaf page starting at offset 0\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8:\n            v=(v<<8)|c; return v,off+9\n        v=(v<<7)|(c&0x7f)\n        if not c&0x80:\n            return v,off+i+1\n    return v,off+9\n\ndef parse_page(b,base):\n    typ=b[base]\n    ncell=int.from_bytes(b[base+3:base+5],'big')\n    hdr=8 if typ in (0x0d,0x0a) else 12\n    ptrs=[int.from_bytes(b[base+hdr+2*i:base+hdr+2*i+2],'big') for i in range(ncell)]\n    rows=[]\n    for p in ptrs:\n        off=base+p\n        try:\n            paylen,off=varint(b,off)\n            rowid,off=varint(b,off)\n            rec=b[off:off+paylen]\n            # parse record\n            ho=0\n            hlen,ho=varint(rec,ho)\n            serials=[]\n            while ho<hlen:\n                s,ho=varint(rec,ho)\n                serials.append(s)\n            vals=[]\n            do=hlen\n            for s in serials:\n                if s==0: vals.append(None)\n                elif s==1: vals.append(int.from_bytes(rec[do:do+1],'big',signed=True)); do+=1\n                elif s==2: vals.append(int.from_bytes(rec[do:do+2],'big',signed=True)); do+=2\n                elif s==3: vals.append(int.from_bytes(rec[do:do+3],'big',signed=True)); do+=3\n                elif s==4: vals.append(int.from_bytes(rec[do:do+4],'big',signed=True)); do+=4\n                elif s==5: vals.append(int.from_bytes(rec[do:do+6],'big',signed=True)); do+=6\n                elif s==6: vals.append(int.from_bytes(rec[do:do+8],'big',signed=True)); do+=8\n                elif s==7:\n                    import struct\n                    vals.append(struct.unpack('>d',rec[do:do+8])[0]); do+=8\n                elif s==8: vals.append(0)\n                elif s==9: vals.append(1)\n                elif s>=12 and s%2==0:\n                    n=(s-12)//2; vals.append(rec[do:do+n]); do+=n\n                else:\n                    n=(s-13)//2; vals.append(rec[do:do+n].decode('utf8','replace')); do+=n\n            rows.append((rowid,vals,paylen,len(rec)))\n        except Exception as e:\n            rows.append(('ERR',str(e)))\n    return typ,ncell,rows\n\nt,n,rows=parse_page(data,0)\nprint('type',hex(t),'ncell',n)\nfor r in rows: print(r)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019pUnyXEAhBCn3JkMT6d2WB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport json,struct\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8: return (v<<8)|c,off+9\n        v=(v<<7)|(c&0x7f)\n        if not c&0x80: return v,off+i+1\ndef val(rec,serials):\n    out=[];do=0\n    hlen=serials[1]  # unused\n    return out\nbase=0\nncell=int.from_bytes(data[3:5],'big')\nptrs=[int.from_bytes(data[8+2*i:10+2*i],'big') for i in range(ncell)]\nres=[]\nfor p in ptrs:\n    off=p\n    paylen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+paylen]\n    ho=0;hlen,ho=varint(rec,ho);ser=[]\n    while ho<hlen:\n        s,ho=varint(rec,ho);ser.append(s)\n    vals=[];do=hlen\n    for s in ser:\n        if s==0:vals.append(None)\n        elif 1<=s<=6:\n            ln={1:1,2:2,3:3,4:4,5:6,6:8}[s]\n            vals.append(int.from_bytes(rec[do:do+ln],'big',signed=True));do+=ln\n        elif s==7:vals.append(struct.unpack('>d',rec[do:do+8])[0]);do+=8\n        elif s==8:vals.append(0)\n        elif s==9:vals.append(1)\n        elif s>=12 and s%2==0:n=(s-12)//2;vals.append(rec[do:do+n].hex());do+=n\n        else:n=(s-13)//2;vals.append(rec[do:do+n].decode('utf8','replace'));do+=n\n    res.append({\"word\":vals[1],\"value\":vals[2]})\nres.sort(key=lambda r:r[\"word\"])\njson.dump(res,open('recover.json','w'),indent=2)\nprint(open('recover.json').read())\nEOF"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport json,struct\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8: return (v<<8)|c,off+9\n        v=(v<<7)|(c&0x7f)\n        if not c&0x80: return v,off+i+1\ndef val(rec,serials):\n    out=[];do=0\n    hlen=serials[1]  # unused\n    return out\nbase=0\nncell=int.from_bytes(data[3:5],'big')\nptrs=[int.from_bytes(data[8+2*i:10+2*i],'big') for i in range(ncell)]\nres=[]\nfor p in ptrs:\n    off=p\n    paylen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+paylen]\n    ho=0;hlen,ho=varint(rec,ho);ser=[]\n    while ho<hlen:\n        s,ho=varint(rec,ho);ser.append(s)\n    vals=[];do=hlen\n    for s in ser:\n        if s==0:vals.append(None)\n        elif 1<=s<=6:\n            ln={1:1,2:2,3:3,4:4,5:6,6:8}[s]\n            vals.append(int.from_bytes(rec[do:do+ln],'big',signed=True));do+=ln\n        elif s==7:vals.append(struct.unpack('>d',rec[do:do+8])[0]);do+=8\n        elif s==8:vals.append(0)\n        elif s==9:vals.append(1)\n        elif s>=12 and s%2==0:n=(s-12)//2;vals.append(rec[do:do+n].hex());do+=n\n        else:n=(s-13)//2;vals.append(rec[do:do+n].decode('utf8','replace'));do+=n\n    res.append({\"word\":vals[1],\"value\":vals[2]})\nres.sort(key=lambda r:r[\"word\"])\njson.dump(res,open('recover.json','w'),indent=2)\nprint(open('recover.json').read())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

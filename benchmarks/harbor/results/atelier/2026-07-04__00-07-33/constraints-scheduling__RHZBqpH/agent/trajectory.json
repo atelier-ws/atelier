@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fg9GhzzaATGM53swgyNY4X",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/alice_calendar.ics",
@@ -49,7 +49,7 @@
                 "/app/carol_calendar.ics"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -110,7 +110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H5toZJ4nNBQEptQYJKDLsF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nfrom datetime import datetime, timedelta\n\nbusy = {\n 15:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",11,0,12,0),(\"bob\",13,0,15,0),(\"carol\",11,0,12,0)],\n 16:[(\"alice\",10,0,12,0),(\"bob\",13,0,14,0),(\"carol\",11,0,12,0),(\"carol\",13,0,14,0)],\n 17:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",12,0,13,0),(\"carol\",12,0,13,0)],\n 18:[(\"alice\",10,0,11,0),(\"bob\",13,0,14,0),(\"carol\",12,0,13,0)],\n 19:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",12,0,13,0),(\"carol\",11,0,12,0)],\n}\ndef mins(h,m): return h*60+m\nfor day in [15,16,17,18,19]:\n    intervals=[(mins(a,b),mins(c,d)) for _,a,b,c,d in busy[day]]\n    intervals.append((mins(12,0),mins(12,30))) # carol lunch\n    for start in range(10*60,13*60+1):  # start>=10:00, end<=14:00\n        end=start+60\n        if end>14*60: break\n        ok=all(not(start<e and s<end) for s,e in intervals)\n        if ok:\n            print(day, f\"{start//60:02d}:{start%60:02d}-{end//60:02d}:{end%60:02d}\")\n            break\n    else:\n        print(day,\"none\")\nEOF"
           },
@@ -118,7 +118,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nfrom datetime import datetime, timedelta\n\nbusy = {\n 15:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",11,0,12,0),(\"bob\",13,0,15,0),(\"carol\",11,0,12,0)],\n 16:[(\"alice\",10,0,12,0),(\"bob\",13,0,14,0),(\"carol\",11,0,12,0),(\"carol\",13,0,14,0)],\n 17:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",12,0,13,0),(\"carol\",12,0,13,0)],\n 18:[(\"alice\",10,0,11,0),(\"bob\",13,0,14,0),(\"carol\",12,0,13,0)],\n 19:[(\"alice\",10,0,11,0),(\"alice\",13,0,14,0),(\"bob\",12,0,13,0),(\"carol\",11,0,12,0)],\n}\ndef mins(h,m): return h*60+m\nfor day in [15,16,17,18,19]:\n    intervals=[(mins(a,b),mins(c,d)) for _,a,b,c,d in busy[day]]\n    intervals.append((mins(12,0),mins(12,30))) # carol lunch\n    for start in range(10*60,13*60+1):  # start>=10:00, end<=14:00\n        end=start+60\n        if end>14*60: break\n        ok=all(not(start<e and s<end) for s,e in intervals)\n        if ok:\n            print(day, f\"{start//60:02d}:{start%60:02d}-{end//60:02d}:{end%60:02d}\")\n            break\n    else:\n        print(day,\"none\")\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -179,7 +179,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xf1ibrZSdMAxs75ksRtJfZ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -199,7 +199,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],

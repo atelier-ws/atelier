@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014ciYr32FhNqaW4EKL2khGC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -5 bn_sample_10k.csv && echo \"---\" && wc -l bn_sample_10k.csv && echo \"---\" && python3 -c \"import pandas as pd; d=pd.read_csv('bn_sample_10k.csv'); print(d.describe()); print(d.dtypes); print(d.nunique())\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && head -5 bn_sample_10k.csv && echo \"---\" && wc -l bn_sample_10k.csv && echo \"---\" && python3 -c \"import pandas as pd; d=pd.read_csv('bn_sample_10k.csv'); print(d.describe()); print(d.dtypes); print(d.nunique())\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HpkyVbTqNHuCY9f9dUcoAi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pandas numpy scikit-learn networkx 2>&1 | tail -2; python3 -c \"import pandas, numpy, sklearn, networkx; print('ok')\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pandas numpy scikit-learn networkx 2>&1 | tail -2; python3 -c \"import pandas, numpy, sklearn, networkx; print('ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HugM83giDM4Cevz9aeTHBh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\nprint(d.describe().T[['mean','std','min','max']])\nprint('CORR')\nprint(d.corr().round(3))\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\nprint(d.describe().T[['mean','std','min','max']])\nprint('CORR')\nprint(d.corr().round(3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JwxTdd5RpAg9wF14KGC2Ht",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, itertools\nfrom numpy.linalg import inv\nd=pd.read_csv('bn_sample_10k.csv')\ncols=list(d.columns)\nC=d.corr().values\nP=inv(C)\n# partial corr given all others\nn=len(cols)\nprint('Partial corr (given all others):')\nfor i in range(n):\n  for j in range(i+1,n):\n    pc=-P[i,j]/np.sqrt(P[i,i]*P[j,j])\n    print(cols[i],cols[j],round(pc,3))\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, itertools\nfrom numpy.linalg import inv\nd=pd.read_csv('bn_sample_10k.csv')\ncols=list(d.columns)\nC=d.corr().values\nP=inv(C)\n# partial corr given all others\nn=len(cols)\nprint('Partial corr (given all others):')\nfor i in range(n):\n  for j in range(i+1,n):\n    pc=-P[i,j]/np.sqrt(P[i,i]*P[j,j])\n    print(cols[i],cols[j],round(pc,3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GEhiaaZe3XBkzbKUpCETkB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\n\n# DAG parents\nparents={'U':[], 'R':['U'], 'Y':['U'], 'D':['U','Y'], 'M':['U','R']}\n\n# learned_dag.csv  (to=child, from=parent)\nedges=[(c,p) for c,ps in parents.items() for p in ps]\npd.DataFrame(edges,columns=['to','from']).to_csv('learned_dag.csv',index=False)\n\ndef fit(node):\n    ps=parents[node]\n    y=d[node].values\n    if not ps:\n        return dict(inter=y.mean(), coef={}, sd=y.std(ddof=0))\n    X=np.column_stack([np.ones(len(d))]+[d[p].values for p in ps])\n    beta,_,_,_=np.linalg.lstsq(X,y,rcond=None)\n    resid=y-X@beta\n    return dict(inter=beta[0], coef=dict(zip(ps,beta[1:])), sd=resid.std(ddof=0))\n\nmodels={n:fit(n) for n in parents}\nfor n,m in models.items(): print(n, 'inter=%.3f'%m['inter'], {k:round(v,3) for k,v in m['coef'].items()}, 'sd=%.3f'%m['sd'])\n\n# intervened DAG: cut incoming edges to Y (do(Y=0)); Y->D kept\niparents={k:([] if k=='Y' else v) for k,v in parents.items()}\niedges=[(c,p) for c,ps in iparents.items() for p in ps]\npd.DataFrame(iedges,columns=['to','from']).to_csv('intervened_dag.csv',index=False)\n\n# sample from intervened BN\nnp.random.seed(0)\nN=10000\norder=['U','Y','R','D','M']   # topo: U,then Y(fixed),R,D,M ; check deps\ns={}\nfor n in order:\n    if n=='Y':\n        s['Y']=np.random.normal(0.0, np.sqrt(1e-8), N)   # do(Y=0), tiny var\n        continue\n    m=models[n]\n    mu=m['inter']+sum(m['coef'][p]*s[p] for p in parents[n])\n    s[n]=mu+np.random.normal(0,m['sd'],N)\nout=pd.DataFrame({c:s[c] for c in d.columns})\nout.to_csv('final_bn_sample.csv',index=False)\nprint('sample means:',out.mean().round(3).to_dict())\nprint('done')\nEOF\necho \"=== learned_dag ===\"; cat /app/learned_dag.csv\necho \"=== intervened_dag ===\"; cat /app/intervened_dag.csv\necho \"=== final head ===\"; head -3 /app/final_bn_sample.csv; wc -l /app/final_bn_sample.csv"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\n\n# DAG parents\nparents={'U':[], 'R':['U'], 'Y':['U'], 'D':['U','Y'], 'M':['U','R']}\n\n# learned_dag.csv  (to=child, from=parent)\nedges=[(c,p) for c,ps in parents.items() for p in ps]\npd.DataFrame(edges,columns=['to','from']).to_csv('learned_dag.csv',index=False)\n\ndef fit(node):\n    ps=parents[node]\n    y=d[node].values\n    if not ps:\n        return dict(inter=y.mean(), coef={}, sd=y.std(ddof=0))\n    X=np.column_stack([np.ones(len(d))]+[d[p].values for p in ps])\n    beta,_,_,_=np.linalg.lstsq(X,y,rcond=None)\n    resid=y-X@beta\n    return dict(inter=beta[0], coef=dict(zip(ps,beta[1:])), sd=resid.std(ddof=0))\n\nmodels={n:fit(n) for n in parents}\nfor n,m in models.items(): print(n, 'inter=%.3f'%m['inter'], {k:round(v,3) for k,v in m['coef'].items()}, 'sd=%.3f'%m['sd'])\n\n# intervened DAG: cut incoming edges to Y (do(Y=0)); Y->D kept\niparents={k:([] if k=='Y' else v) for k,v in parents.items()}\niedges=[(c,p) for c,ps in iparents.items() for p in ps]\npd.DataFrame(iedges,columns=['to','from']).to_csv('intervened_dag.csv',index=False)\n\n# sample from intervened BN\nnp.random.seed(0)\nN=10000\norder=['U','Y','R','D','M']   # topo: U,then Y(fixed),R,D,M ; check deps\ns={}\nfor n in order:\n    if n=='Y':\n        s['Y']=np.random.normal(0.0, np.sqrt(1e-8), N)   # do(Y=0), tiny var\n        continue\n    m=models[n]\n    mu=m['inter']+sum(m['coef'][p]*s[p] for p in parents[n])\n    s[n]=mu+np.random.normal(0,m['sd'],N)\nout=pd.DataFrame({c:s[c] for c in d.columns})\nout.to_csv('final_bn_sample.csv',index=False)\nprint('sample means:',out.mean().round(3).to_dict())\nprint('done')\nEOF\necho \"=== learned_dag ===\"; cat /app/learned_dag.csv\necho \"=== intervened_dag ===\"; cat /app/intervened_dag.csv\necho \"=== final head ===\"; head -3 /app/final_bn_sample.csv; wc -l /app/final_bn_sample.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

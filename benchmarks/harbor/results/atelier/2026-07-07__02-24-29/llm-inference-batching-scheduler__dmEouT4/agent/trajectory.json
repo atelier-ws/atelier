@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Y1xoEXYQwmy9Rvd8C7bgL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/task_file/ /app/task_file/input_data/ /app/task_file/scripts/ /app/task_file/output_data/ 2>&1; echo \"---counts---\"; wc -l /app/task_file/input_data/*.jsonl"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/task_file/ /app/task_file/input_data/ /app/task_file/scripts/ /app/task_file/output_data/ 2>&1; echo \"---counts---\"; wc -l /app/task_file/input_data/*.jsonl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01KW4wJhmhJ3RAD2TrRJ99o2",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/task_file/scripts/cost_model.py",
@@ -60,7 +60,7 @@
                 "/app/task_file/scripts/baseline_packer.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y6mjdKG5HaGPF9mhsfeAFb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file; echo \"B1:\"; head -3 input_data/requests_bucket_1.jsonl; wc -l input_data/requests_bucket_1.jsonl; echo \"B2:\"; head -3 input_data/requests_bucket_2.jsonl; wc -l input_data/requests_bucket_2.jsonl\npython3 - <<'EOF'\nimport json\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'input_data/{f}.jsonl')]\n    pl=[r['prompt_len'] for r in rs]; gl=[r['gen_len'] for r in rs]\n    print(f, 'n=',len(rs))\n    print('  prompt min/max/mean', min(pl),max(pl),sum(pl)/len(pl))\n    print('  gen min/max/mean', min(gl),max(gl),sum(gl)/len(gl))\nEOF"
           },
@@ -133,7 +133,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file; echo \"B1:\"; head -3 input_data/requests_bucket_1.jsonl; wc -l input_data/requests_bucket_1.jsonl; echo \"B2:\"; head -3 input_data/requests_bucket_2.jsonl; wc -l input_data/requests_bucket_2.jsonl\npython3 - <<'EOF'\nimport json\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'input_data/{f}.jsonl')]\n    pl=[r['prompt_len'] for r in rs]; gl=[r['gen_len'] for r in rs]\n    print(f, 'n=',len(rs))\n    print('  prompt min/max/mean', min(pl),max(pl),sum(pl)/len(pl))\n    print('  gen min/max/mean', min(gl),max(gl),sum(gl)/len(gl))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -194,7 +194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011kmev4XKNVoLcKSbnkt5qR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom cost_model import CostModel, align, HIDDEN\ncm=CostModel(64)\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    # constant prefill cost\n    pref=sum(cm._prefill_cost(r['prompt_len']) for r in rs)\n    # one-batch-per-request decode cost & latency sum\n    dec=0; latsum=0\n    for r in rs:\n        m=cm.batch_metrics([r])\n        dec+=m['cost']-cm._prefill_cost(r['prompt_len'])\n        latsum+=m['latencies'][0]\n    print(f)\n    print('  prefill_const=%.4e  decode_min(1/req)=%.4e  sum_lat=%.4e'%(pref,dec,latsum))\n    print('  n=',len(rs),' overhead if 1/req=%.2e'%(1e7*len(rs)))\nEOF"
           },
@@ -202,7 +202,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom cost_model import CostModel, align, HIDDEN\ncm=CostModel(64)\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    # constant prefill cost\n    pref=sum(cm._prefill_cost(r['prompt_len']) for r in rs)\n    # one-batch-per-request decode cost & latency sum\n    dec=0; latsum=0\n    for r in rs:\n        m=cm.batch_metrics([r])\n        dec+=m['cost']-cm._prefill_cost(r['prompt_len'])\n        latsum+=m['latencies'][0]\n    print(f)\n    print('  prefill_const=%.4e  decode_min(1/req)=%.4e  sum_lat=%.4e'%(pref,dec,latsum))\n    print('  n=',len(rs),' overhead if 1/req=%.2e'%(1e7*len(rs)))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -263,7 +263,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018piidqtUTf5ArG6SVRSXRL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align\ncm=CostModel(64)\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    groups=defaultdict(list)\n    for r in rs:\n        groups[(align(r['prompt_len'],64), r['gen_len'])].append(r)\n    # exact grouping metrics\n    dec=0; seq=0\n    for (S,G),members in groups.items():\n        m=cm.batch_metrics(members)\n        dec+=m['cost']-sum(cm._prefill_cost(r['prompt_len']) for r in members)\n        seq+=max(x+8 for x in m['latencies'])\n    print(f,'distinct(S,G)=',len(groups),'decode=%.4e seq(no compile)=%.4e overhead=%.2e'%(dec,seq,1e7*len(groups)))\n    # distinct S and G\n    print('  distinctS=',len({align(r['prompt_len'],64) for r in rs}),'distinctG=',len({r['gen_len'] for r in rs}))\nEOF"
           },
@@ -271,7 +271,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align\ncm=CostModel(64)\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    groups=defaultdict(list)\n    for r in rs:\n        groups[(align(r['prompt_len'],64), r['gen_len'])].append(r)\n    # exact grouping metrics\n    dec=0; seq=0\n    for (S,G),members in groups.items():\n        m=cm.batch_metrics(members)\n        dec+=m['cost']-sum(cm._prefill_cost(r['prompt_len']) for r in members)\n        seq+=max(x+8 for x in m['latencies'])\n    print(f,'distinct(S,G)=',len(groups),'decode=%.4e seq(no compile)=%.4e overhead=%.2e'%(dec,seq,1e7*len(groups)))\n    # distinct S and G\n    print('  distinctS=',len({align(r['prompt_len'],64) for r in rs}),'distinctG=',len({r['gen_len'] for r in rs}))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -332,7 +332,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q1emsPd5wbwrqybEMMNCYo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import Counter\nfrom cost_model import align\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    c=Counter(align(r['prompt_len'],64) for r in rs)\n    print(f)\n    for s in sorted(c): print('   S=%4d count=%d'%(s,c[s]))\nEOF"
           },
@@ -340,7 +340,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import Counter\nfrom cost_model import align\nfor f in ['requests_bucket_1','requests_bucket_2']:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    c=Counter(align(r['prompt_len'],64) for r in rs)\n    print(f)\n    for s in sorted(c): print('   S=%4d count=%d'%(s,c[s]))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -401,7 +401,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XHh7cveqTZcBWmJYnoUziD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\n\ndef build(rs, Wg):\n    groups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        gb=((r['gen_len']+Wg-1)//Wg)*Wg\n        groups[(S,gb)].append(r)\n    plan=[]; bid=0\n    for (S,gb),members in sorted(groups.items()):\n        bid+=1; b=f\"b-{bid:04d}\"; t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n                'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\n\nfor f,thr in [('requests_bucket_1',(3.0e11,0.055,2.1e6,2.7e8)),\n              ('requests_bucket_2',(4.8e10,0.15,2.1e5,3.2e7))]:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    reqd={r['request_id']:r for r in rs}\n    print(f,'thresholds',thr)\n    for Wg in [1,8,16,24,32,48,64,96,128,200,300]:\n        plan=build(rs,Wg)\n        m=cm.plan_metrics(reqd,plan)\n        nb=len({p['batch_id'] for p in plan})\n        ok=m['cost']<thr[0] and m['pad_ratio']<thr[1] and m['p95_latency_ms']<thr[2] and m['sequential_timecost']<thr[3]\n        print('  Wg=%3d nb=%3d cost=%.4e pad=%.4f p95=%.4e seq=%.4e %s'%(\n            Wg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost'],'OK' if ok else ''))\nEOF"
           },
@@ -409,7 +409,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\n\ndef build(rs, Wg):\n    groups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        gb=((r['gen_len']+Wg-1)//Wg)*Wg\n        groups[(S,gb)].append(r)\n    plan=[]; bid=0\n    for (S,gb),members in sorted(groups.items()):\n        bid+=1; b=f\"b-{bid:04d}\"; t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n                'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\n\nfor f,thr in [('requests_bucket_1',(3.0e11,0.055,2.1e6,2.7e8)),\n              ('requests_bucket_2',(4.8e10,0.15,2.1e5,3.2e7))]:\n    rs=[json.loads(l) for l in open(f'../input_data/{f}.jsonl')]\n    reqd={r['request_id']:r for r in rs}\n    print(f,'thresholds',thr)\n    for Wg in [1,8,16,24,32,48,64,96,128,200,300]:\n        plan=build(rs,Wg)\n        m=cm.plan_metrics(reqd,plan)\n        nb=len({p['batch_id'] for p in plan})\n        ok=m['cost']<thr[0] and m['pad_ratio']<thr[1] and m['p95_latency_ms']<thr[2] and m['sequential_timecost']<thr[3]\n        print('  Wg=%3d nb=%3d cost=%.4e pad=%.4f p95=%.4e seq=%.4e %s'%(\n            Wg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost'],'OK' if ok else ''))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -470,7 +470,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JvhhUNvDUasVxEMepx3beG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef evalplan(rs, keyfn):\n    reqd={r['request_id']:r for r in rs}\n    groups=defaultdict(list)\n    for r in rs: groups[keyfn(r)].append(r)\n    plan=[]; bid=0\n    for k,members in sorted(groups.items(),key=lambda x:str(x[0])):\n        bid+=1; b=f\"b-{bid:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    m=cm.plan_metrics(reqd,plan); m['nb']=bid; return m\n\ndef Sbin(S,W): \n    # coarse S grouping width W (multiples), returns bin ceil\n    return ((S+W-1)//W)*W\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\ndef pr(tag,m,thr):\n    ok=m['cost']<thr[0] and m['pad_ratio']<thr[1] and m['p95_latency_ms']<thr[2] and m['sequential_timecost']<thr[3]\n    print('  %-22s nb=%3d cost=%.4e pad=%.4f p95=%.4e seq=%.4e %s'%(tag,m['nb'],m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost'],'OK' if ok else ''))\nthr1=(3.0e11,0.055,2.1e6,2.7e8)\nprint('B1:')\npr('exactgen(mergeS)',evalplan(rs1,lambda r:(r['gen_len'],)),thr1)\nfor W in [128,256,384,512,640]:\n  pr('Sbin%d,exactgen'%W,evalplan(rs1,lambda r:(Sbin(align(r['prompt_len'],64),W),r['gen_len'])),thr1)\n# gen bin + S merge combos\ndef keyf(Ws,Wg):\n    return lambda r:(Sbin(align(r['prompt_len'],64),Ws), ((r['gen_len']+Wg-1)//Wg)*Wg)\nfor Ws in [64,128,256]:\n  for Wg in [1,4,8]:\n    pr('Ws%d,Wg%d'%(Ws,Wg),evalplan(rs1,keyf(Ws,Wg)),thr1)\nEOF"
           },
@@ -478,7 +478,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef evalplan(rs, keyfn):\n    reqd={r['request_id']:r for r in rs}\n    groups=defaultdict(list)\n    for r in rs: groups[keyfn(r)].append(r)\n    plan=[]; bid=0\n    for k,members in sorted(groups.items(),key=lambda x:str(x[0])):\n        bid+=1; b=f\"b-{bid:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    m=cm.plan_metrics(reqd,plan); m['nb']=bid; return m\n\ndef Sbin(S,W): \n    # coarse S grouping width W (multiples), returns bin ceil\n    return ((S+W-1)//W)*W\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\ndef pr(tag,m,thr):\n    ok=m['cost']<thr[0] and m['pad_ratio']<thr[1] and m['p95_latency_ms']<thr[2] and m['sequential_timecost']<thr[3]\n    print('  %-22s nb=%3d cost=%.4e pad=%.4f p95=%.4e seq=%.4e %s'%(tag,m['nb'],m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost'],'OK' if ok else ''))\nthr1=(3.0e11,0.055,2.1e6,2.7e8)\nprint('B1:')\npr('exactgen(mergeS)',evalplan(rs1,lambda r:(r['gen_len'],)),thr1)\nfor W in [128,256,384,512,640]:\n  pr('Sbin%d,exactgen'%W,evalplan(rs1,lambda r:(Sbin(align(r['prompt_len'],64),W),r['gen_len'])),thr1)\n# gen bin + S merge combos\ndef keyf(Ws,Wg):\n    return lambda r:(Sbin(align(r['prompt_len'],64),Ws), ((r['gen_len']+Wg-1)//Wg)*Wg)\nfor Ws in [64,128,256]:\n  for Wg in [1,4,8]:\n    pr('Ws%d,Wg%d'%(Ws,Wg),evalplan(rs1,keyf(Ws,Wg)),thr1)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -539,7 +539,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EKXZYnKEY3LM9tWfhakkcZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef evalplan(rs,Ws,Wg):\n    reqd={r['request_id']:r for r in rs}\n    groups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        groups[(((S+Ws-1)//Ws)*Ws, ((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    plan=[]; bid=0\n    for k,members in sorted(groups.items()):\n        bid+=1; b=f\"b-{bid:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    m=cm.plan_metrics(reqd,plan); m['nb']=bid; return m\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    best=None\n    for Ws in [64,128,192,256,320,384]:\n        for Wg in range(1,40):\n            m=evalplan(rs,Ws,Wg); mg=margin(m,thr)\n            if best is None or mg>best[0]: best=(mg,Ws,Wg,m)\n    mg,Ws,Wg,m=best\n    print('%s best Ws=%d Wg=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,Ws,Wg,mg,m['nb'],m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
           },
@@ -547,7 +547,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef evalplan(rs,Ws,Wg):\n    reqd={r['request_id']:r for r in rs}\n    groups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        groups[(((S+Ws-1)//Ws)*Ws, ((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    plan=[]; bid=0\n    for k,members in sorted(groups.items()):\n        bid+=1; b=f\"b-{bid:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    m=cm.plan_metrics(reqd,plan); m['nb']=bid; return m\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    best=None\n    for Ws in [64,128,192,256,320,384]:\n        for Wg in range(1,40):\n            m=evalplan(rs,Ws,Wg); mg=margin(m,thr)\n            if best is None or mg>best[0]: best=(mg,Ws,Wg,m)\n    mg,Ws,Wg,m=best\n    print('%s best Ws=%d Wg=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,Ws,Wg,mg,m['nb'],m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -608,7 +608,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RDk4pygmpo3KaUuNZVjVe5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef build(rs,Ws,T):\n    # group by S-bin, then within group cluster gen by tolerance T\n    sgroups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        sgroups[((S+Ws-1)//Ws)*Ws].append(r)\n    batches=[]\n    for sb,members in sgroups.items():\n        members.sort(key=lambda r:r['gen_len'])\n        cur=[]; gmin=None\n        for r in members:\n            if not cur:\n                cur=[r]; gmin=r['gen_len']\n            elif r['gen_len']-gmin<=T:\n                cur.append(r)\n            else:\n                batches.append(cur); cur=[r]; gmin=r['gen_len']\n        if cur: batches.append(cur)\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    reqd={r['request_id']:r for r in rs}\n    best=None\n    for Ws in [64,128,192,256,320,384,512]:\n        for T in range(0,60,2):\n            plan=build(rs,Ws,T); m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n            if best is None or mg>best[0]: best=(mg,Ws,T,m,len({p['batch_id'] for p in plan}))\n    mg,Ws,T,m,nb=best\n    print('%s Ws=%d T=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,Ws,T,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
           },
@@ -616,7 +616,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef build(rs,Ws,T):\n    # group by S-bin, then within group cluster gen by tolerance T\n    sgroups=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        sgroups[((S+Ws-1)//Ws)*Ws].append(r)\n    batches=[]\n    for sb,members in sgroups.items():\n        members.sort(key=lambda r:r['gen_len'])\n        cur=[]; gmin=None\n        for r in members:\n            if not cur:\n                cur=[r]; gmin=r['gen_len']\n            elif r['gen_len']-gmin<=T:\n                cur.append(r)\n            else:\n                batches.append(cur); cur=[r]; gmin=r['gen_len']\n        if cur: batches.append(cur)\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    reqd={r['request_id']:r for r in rs}\n    best=None\n    for Ws in [64,128,192,256,320,384,512]:\n        for T in range(0,60,2):\n            plan=build(rs,Ws,T); m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n            if best is None or mg>best[0]: best=(mg,Ws,T,m,len({p['batch_id'] for p in plan}))\n    mg,Ws,T,m,nb=best\n    print('%s Ws=%d T=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,Ws,T,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -677,7 +677,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W4WBbamhYPtCnteTAcc9EH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef build_tol(rs,Ws,T):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); sg[((S+Ws-1)//Ws)*Ws].append(r)\n    B=[]\n    for sb,mem in sg.items():\n        mem.sort(key=lambda r:r['gen_len']); cur=[]; gmin=None\n        for r in mem:\n            if not cur: cur=[r]; gmin=r['gen_len']\n            elif r['gen_len']-gmin<=T: cur.append(r)\n            else: B.append(cur); cur=[r]; gmin=r['gen_len']\n        if cur: B.append(cur)\n    return make_plan(B)\ndef build_wg(rs,Ws,Wg):\n    g=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        g[(((S+Ws-1)//Ws)*Ws,((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    return make_plan(list(g.values()))\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nresults={}\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    reqd={r['request_id']:r for r in rs}\n    best=None\n    for Ws in [64,96,112,128,144,160,192,256,320]:\n        for T in range(0,40):\n            for fam,plan in [('tol',build_tol(rs,Ws,T)),('wg',build_wg(rs,Ws,T+1))]:\n                m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n                if best is None or mg>best[0]:\n                    best=(mg,fam,Ws,T,m,len({p['batch_id'] for p in plan}),plan)\n    mg,fam,Ws,T,m,nb,plan=best; results[tag]=(fam,Ws,T,plan)\n    print('%s %s Ws=%d T/W=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,fam,Ws,T,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nimport pickle; pickle.dump(results,open('/tmp/best.pkl','wb'))\nEOF"
           },
@@ -685,7 +685,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"\n        S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef build_tol(rs,Ws,T):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); sg[((S+Ws-1)//Ws)*Ws].append(r)\n    B=[]\n    for sb,mem in sg.items():\n        mem.sort(key=lambda r:r['gen_len']); cur=[]; gmin=None\n        for r in mem:\n            if not cur: cur=[r]; gmin=r['gen_len']\n            elif r['gen_len']-gmin<=T: cur.append(r)\n            else: B.append(cur); cur=[r]; gmin=r['gen_len']\n        if cur: B.append(cur)\n    return make_plan(B)\ndef build_wg(rs,Ws,Wg):\n    g=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        g[(((S+Ws-1)//Ws)*Ws,((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    return make_plan(list(g.values()))\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nresults={}\nfor tag,rs,thr in [('B1',rs1,thr1),('B2',rs2,thr2)]:\n    reqd={r['request_id']:r for r in rs}\n    best=None\n    for Ws in [64,96,112,128,144,160,192,256,320]:\n        for T in range(0,40):\n            for fam,plan in [('tol',build_tol(rs,Ws,T)),('wg',build_wg(rs,Ws,T+1))]:\n                m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n                if best is None or mg>best[0]:\n                    best=(mg,fam,Ws,T,m,len({p['batch_id'] for p in plan}),plan)\n    mg,fam,Ws,T,m,nb,plan=best; results[tag]=(fam,Ws,T,plan)\n    print('%s %s Ws=%d T/W=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,fam,Ws,T,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nimport pickle; pickle.dump(results,open('/tmp/best.pkl','wb'))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -746,7 +746,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014sVjFTrfxFHP9LMEAsKnzg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"; S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef cluster(mem,T):\n    mem=sorted(mem,key=lambda r:r['gen_len']); out=[]; cur=[]; gmin=None\n    for r in mem:\n        if not cur: cur=[r]; gmin=r['gen_len']\n        elif r['gen_len']-gmin<=T: cur.append(r)\n        else: out.append(cur); cur=[r]; gmin=r['gen_len']\n    if cur: out.append(cur)\n    return out\ndef build(rs,split,WsL,TL,WsH,TH):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        Ws=WsL if S<=split else WsH\n        sg[(S<=split,((S+Ws-1)//Ws)*Ws)].append(r)\n    B=[]\n    for (low,sb),mem in sg.items():\n        B+=cluster(mem, TL if low else TH)\n    return make_plan(B)\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); reqd={r['request_id']:r for r in rs1}\nbest=None\nfor split in [512,640,768]:\n for WsL in [128,192,256]:\n  for TL in range(0,20,2):\n   for WsH in [64,128,256,512,1024]:\n    for TH in [4,8,16,32,64,128,256,10**9]:\n        plan=build(rs1,split,WsL,TL,WsH,TH); m=cm.plan_metrics(reqd,plan); mg=margin(m,thr1)\n        if best is None or mg>best[0]: best=(mg,split,WsL,TL,WsH,TH,m,len({p['batch_id'] for p in plan}))\nmg,split,WsL,TL,WsH,TH,m,nb=best\nprint('B1 split=%d WsL=%d TL=%d WsH=%d TH=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n  split,WsL,TL,WsH,TH,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
           },
@@ -754,7 +754,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\nTIERS=[128,256,384,512,704,1024,1536,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"; S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef cluster(mem,T):\n    mem=sorted(mem,key=lambda r:r['gen_len']); out=[]; cur=[]; gmin=None\n    for r in mem:\n        if not cur: cur=[r]; gmin=r['gen_len']\n        elif r['gen_len']-gmin<=T: cur.append(r)\n        else: out.append(cur); cur=[r]; gmin=r['gen_len']\n    if cur: out.append(cur)\n    return out\ndef build(rs,split,WsL,TL,WsH,TH):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64)\n        Ws=WsL if S<=split else WsH\n        sg[(S<=split,((S+Ws-1)//Ws)*Ws)].append(r)\n    B=[]\n    for (low,sb),mem in sg.items():\n        B+=cluster(mem, TL if low else TH)\n    return make_plan(B)\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); reqd={r['request_id']:r for r in rs1}\nbest=None\nfor split in [512,640,768]:\n for WsL in [128,192,256]:\n  for TL in range(0,20,2):\n   for WsH in [64,128,256,512,1024]:\n    for TH in [4,8,16,32,64,128,256,10**9]:\n        plan=build(rs1,split,WsL,TL,WsH,TH); m=cm.plan_metrics(reqd,plan); mg=margin(m,thr1)\n        if best is None or mg>best[0]: best=(mg,split,WsL,TL,WsH,TH,m,len({p['batch_id'] for p in plan}))\nmg,split,WsL,TL,WsH,TH,m,nb=best\nprint('B1 split=%d WsL=%d TL=%d WsH=%d TH=%d margin=%.4f nb=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n  split,WsL,TL,WsH,TH,mg,nb,m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -815,7 +815,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PyH2LEEKHamupTCbp1Wt8S",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/task_file/output_data; cd /app/task_file/scripts; python3 - <<'EOF'\nimport json,os\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\n# minimized global tier set (union across both buckets), <=8 distinct shapes\nTIERS=[128,256,384,512,704,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"; S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef cluster(mem,T):\n    mem=sorted(mem,key=lambda r:r['gen_len']); out=[]; cur=[]; gmin=None\n    for r in mem:\n        if not cur: cur=[r]; gmin=r['gen_len']\n        elif r['gen_len']-gmin<=T: cur.append(r)\n        else: out.append(cur); cur=[r]; gmin=r['gen_len']\n    if cur: out.append(cur)\n    return out\ndef build_tol_region(rs,split,WsL,TL,WsH,TH):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); low=S<=split; Ws=WsL if low else WsH\n        sg[(low,((S+Ws-1)//Ws)*Ws)].append(r)\n    B=[]\n    for (low,sb),mem in sg.items(): B+=cluster(mem,TL if low else TH)\n    return make_plan(B)\ndef build_wg(rs,Ws,Wg):\n    g=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); g[(((S+Ws-1)//Ws)*Ws,((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    return make_plan(list(g.values()))\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\ndef search(rs,thr):\n    reqd={r['request_id']:r for r in rs}; best=None\n    cand=[]\n    for split in [512,640,768]:\n      for WsL in [128,192,256]:\n       for TL in range(0,20,2):\n        for WsH in [64,128,256,512,1024]:\n         for TH in [4,8,16,32,64,128,256,10**9]:\n            cand.append(('reg',build_tol_region(rs,split,WsL,TL,WsH,TH)))\n    for Ws in [64,128,192,256,320]:\n      for Wg in range(1,40): cand.append(('wg',build_wg(rs,Ws,Wg)))\n    for tagf,plan in cand:\n        m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n        if best is None or mg>best[0]: best=(mg,plan,m)\n    return best\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nroot='..'\nfor tag,rs,thr,out in [('B1',rs1,thr1,'plan_b1.jsonl'),('B2',rs2,thr2,'plan_b2.jsonl')]:\n    mg,plan,m=search(rs,thr)\n    with open(f'../output_data/{out}','w') as f:\n        for p in plan: f.write(json.dumps(p)+'\\n')\n    shapes=set((p['shape']['seq_align'],p['shape']['heads_align'],p['shape']['hidden_align']) for p in plan)\n    print('%s margin=%.4f nb=%d shapes=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,mg,len({p['batch_id'] for p in plan}),len(shapes),m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\n    print('   seq_aligns used:',sorted({s[0] for s in shapes}))\nEOF"
           },
@@ -823,7 +823,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/task_file/output_data; cd /app/task_file/scripts; python3 - <<'EOF'\nimport json,os\nfrom collections import defaultdict\nfrom cost_model import CostModel, align, HEADS, HIDDEN\ncm=CostModel(64)\n# minimized global tier set (union across both buckets), <=8 distinct shapes\nTIERS=[128,256,384,512,704,2048]\ndef tier_for(S):\n    for t in TIERS:\n        if t>=S: return t\n    return TIERS[-1]\ndef make_plan(batches):\n    plan=[]\n    for i,members in enumerate(batches,1):\n        b=f\"b-{i:04d}\"; S=max(align(r['prompt_len'],64) for r in members); t=tier_for(S)\n        for r in members:\n            plan.append({'request_id':r['request_id'],'batch_id':b,\n              'shape':{'seq_align':t,'heads_align':HEADS,'hidden_align':HIDDEN}})\n    return plan\ndef cluster(mem,T):\n    mem=sorted(mem,key=lambda r:r['gen_len']); out=[]; cur=[]; gmin=None\n    for r in mem:\n        if not cur: cur=[r]; gmin=r['gen_len']\n        elif r['gen_len']-gmin<=T: cur.append(r)\n        else: out.append(cur); cur=[r]; gmin=r['gen_len']\n    if cur: out.append(cur)\n    return out\ndef build_tol_region(rs,split,WsL,TL,WsH,TH):\n    sg=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); low=S<=split; Ws=WsL if low else WsH\n        sg[(low,((S+Ws-1)//Ws)*Ws)].append(r)\n    B=[]\n    for (low,sb),mem in sg.items(): B+=cluster(mem,TL if low else TH)\n    return make_plan(B)\ndef build_wg(rs,Ws,Wg):\n    g=defaultdict(list)\n    for r in rs:\n        S=align(r['prompt_len'],64); g[(((S+Ws-1)//Ws)*Ws,((r['gen_len']+Wg-1)//Wg)*Wg)].append(r)\n    return make_plan(list(g.values()))\ndef margin(m,thr):\n    return min(1-m['cost']/thr[0],1-m['pad_ratio']/thr[1],1-m['p95_latency_ms']/thr[2],1-m['sequential_timecost']/thr[3])\ndef search(rs,thr):\n    reqd={r['request_id']:r for r in rs}; best=None\n    cand=[]\n    for split in [512,640,768]:\n      for WsL in [128,192,256]:\n       for TL in range(0,20,2):\n        for WsH in [64,128,256,512,1024]:\n         for TH in [4,8,16,32,64,128,256,10**9]:\n            cand.append(('reg',build_tol_region(rs,split,WsL,TL,WsH,TH)))\n    for Ws in [64,128,192,256,320]:\n      for Wg in range(1,40): cand.append(('wg',build_wg(rs,Ws,Wg)))\n    for tagf,plan in cand:\n        m=cm.plan_metrics(reqd,plan); mg=margin(m,thr)\n        if best is None or mg>best[0]: best=(mg,plan,m)\n    return best\nrs1=[json.loads(l) for l in open('../input_data/requests_bucket_1.jsonl')]\nrs2=[json.loads(l) for l in open('../input_data/requests_bucket_2.jsonl')]\nthr1=(3.0e11,0.055,2.1e6,2.7e8); thr2=(4.8e10,0.15,2.1e5,3.2e7)\nroot='..'\nfor tag,rs,thr,out in [('B1',rs1,thr1,'plan_b1.jsonl'),('B2',rs2,thr2,'plan_b2.jsonl')]:\n    mg,plan,m=search(rs,thr)\n    with open(f'../output_data/{out}','w') as f:\n        for p in plan: f.write(json.dumps(p)+'\\n')\n    shapes=set((p['shape']['seq_align'],p['shape']['heads_align'],p['shape']['hidden_align']) for p in plan)\n    print('%s margin=%.4f nb=%d shapes=%d cost=%.4e pad=%.4f p95=%.4e seq=%.4e'%(\n      tag,mg,len({p['batch_id'] for p in plan}),len(shapes),m['cost'],m['pad_ratio'],m['p95_latency_ms'],m['sequential_timecost']))\n    print('   seq_aligns used:',sorted({s[0] for s in shapes}))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -884,7 +884,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R4NbYoh1dQPvaVujh1AsB6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json,math\nfrom collections import defaultdict\nfrom cost_model import CostModel, align\ncm=CostModel(64)\nthr={'plan_b1.jsonl':(3.0e11,0.055,2.1e6,2.7e8,'requests_bucket_1.jsonl'),\n     'plan_b2.jsonl':(4.8e10,0.15,2.1e5,3.2e7,'requests_bucket_2.jsonl')}\nallshapes=set()\nfor out,(c,pd,p95,seq,inp) in thr.items():\n    rs=[json.loads(l) for l in open(f'../input_data/{inp}')]\n    reqd={r['request_id']:r for r in rs}\n    plan=[json.loads(l) for l in open(f'../output_data/{out}')]\n    ids=[p['request_id'] for p in plan]\n    assert len(ids)==len(set(ids)), 'dup ids'\n    assert set(ids)==set(reqd), 'missing/extra ids'\n    # identical shape within batch\n    bshape=defaultdict(set)\n    for p in plan:\n        s=p['shape']; assert s['heads_align']==32 and s['hidden_align']==4096\n        assert s['seq_align']%64==0\n        assert s['seq_align']>=align(reqd[p['request_id']]['prompt_len'],64), 'seq_align too small'\n        bshape[p['batch_id']].add((s['seq_align'],s['heads_align'],s['hidden_align']))\n        allshapes.add((s['seq_align'],s['heads_align'],s['hidden_align']))\n    for b,ss in bshape.items(): assert len(ss)==1, 'mixed shapes in batch'\n    m=cm.plan_metrics(reqd,plan)\n    ok=(m['cost']<c and m['pad_ratio']<pd and m['p95_latency_ms']<p95 and m['sequential_timecost']<seq)\n    print(out,'n=%d PASS=%s cost=%.4e/%.1e pad=%.4f/%.3f p95=%.4e/%.1e seq=%.4e/%.1e'%(\n      len(ids),ok,m['cost'],c,m['pad_ratio'],pd,m['p95_latency_ms'],p95,m['sequential_timecost'],seq))\nprint('total distinct shapes across both:',len(allshapes),'<=8:',len(allshapes)<=8)\nEOF"
           },
@@ -892,7 +892,7 @@
             "raw_arguments": {
               "command": "cd /app/task_file/scripts; python3 - <<'EOF'\nimport json,math\nfrom collections import defaultdict\nfrom cost_model import CostModel, align\ncm=CostModel(64)\nthr={'plan_b1.jsonl':(3.0e11,0.055,2.1e6,2.7e8,'requests_bucket_1.jsonl'),\n     'plan_b2.jsonl':(4.8e10,0.15,2.1e5,3.2e7,'requests_bucket_2.jsonl')}\nallshapes=set()\nfor out,(c,pd,p95,seq,inp) in thr.items():\n    rs=[json.loads(l) for l in open(f'../input_data/{inp}')]\n    reqd={r['request_id']:r for r in rs}\n    plan=[json.loads(l) for l in open(f'../output_data/{out}')]\n    ids=[p['request_id'] for p in plan]\n    assert len(ids)==len(set(ids)), 'dup ids'\n    assert set(ids)==set(reqd), 'missing/extra ids'\n    # identical shape within batch\n    bshape=defaultdict(set)\n    for p in plan:\n        s=p['shape']; assert s['heads_align']==32 and s['hidden_align']==4096\n        assert s['seq_align']%64==0\n        assert s['seq_align']>=align(reqd[p['request_id']]['prompt_len'],64), 'seq_align too small'\n        bshape[p['batch_id']].add((s['seq_align'],s['heads_align'],s['hidden_align']))\n        allshapes.add((s['seq_align'],s['heads_align'],s['hidden_align']))\n    for b,ss in bshape.items(): assert len(ss)==1, 'mixed shapes in batch'\n    m=cm.plan_metrics(reqd,plan)\n    ok=(m['cost']<c and m['pad_ratio']<pd and m['p95_latency_ms']<p95 and m['sequential_timecost']<seq)\n    print(out,'n=%d PASS=%s cost=%.4e/%.1e pad=%.4f/%.3f p95=%.4e/%.1e seq=%.4e/%.1e'%(\n      len(ids),ok,m['cost'],c,m['pad_ratio'],pd,m['p95_latency_ms'],p95,m['sequential_timecost'],seq))\nprint('total distinct shapes across both:',len(allshapes),'<=8:',len(allshapes)<=8)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

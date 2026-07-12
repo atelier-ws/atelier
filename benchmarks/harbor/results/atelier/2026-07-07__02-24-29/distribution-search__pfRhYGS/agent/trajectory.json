@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S3hRKBXX5RBkr9yfenkT5u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy,scipy;print(numpy.__version__,scipy.__version__)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import numpy,scipy;print(numpy.__version__,scipy.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KQWqPFhuCvf1C8kjR3VTAY",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011H9KrZ5tNX4TRtyihuoDKA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EVfbvKjdg3tyJ9Cp1jfCWK",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -282,7 +282,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -343,7 +343,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F3pXpNCpFhVyexnySQiBvL",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -363,7 +363,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -424,7 +424,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ULA8uz6PiCrjdiMxKWV896",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py"
           },
@@ -432,7 +432,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -493,7 +493,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EH26H6bbGw57WQ8tV5wUAj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import fsolve\nn=150000; logn=np.log(n); T=10.0\nHt=logn-T; Bt=-n*(T+logn)\ndef eqs(v):\n    a,b,m=v; p=np.exp(a); q=np.exp(b)\n    N=m*p+(n-m)*q-1.0\n    F=-(m*p*a+(n-m)*q*b)-Ht\n    B=(m*a+(n-m)*b-Bt)/n\n    return [N,F,B]\nqg=-(T+logn)\nx0=[np.log(0.147),qg,6.8]\nx,info,ier,msg=fsolve(eqs,x0,full_output=True)\nprint('ier',ier,'res',np.max(np.abs(eqs(x))))\na,b,m=x; print('p',np.exp(a),'q',np.exp(b),'m',m)\n\""
           },
@@ -501,7 +501,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import fsolve\nn=150000; logn=np.log(n); T=10.0\nHt=logn-T; Bt=-n*(T+logn)\ndef eqs(v):\n    a,b,m=v; p=np.exp(a); q=np.exp(b)\n    N=m*p+(n-m)*q-1.0\n    F=-(m*p*a+(n-m)*q*b)-Ht\n    B=(m*a+(n-m)*b-Bt)/n\n    return [N,F,B]\nqg=-(T+logn)\nx0=[np.log(0.147),qg,6.8]\nx,info,ier,msg=fsolve(eqs,x0,full_output=True)\nprint('ier',ier,'res',np.max(np.abs(eqs(x))))\na,b,m=x; print('p',np.exp(a),'q',np.exp(b),'m',m)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -562,7 +562,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MHUdpENHErr7Lq5ET2WxwT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import fsolve\nn=150000; logn=np.log(n); T=10.0\nHt=logn-T; Bt=-n*(T+logn)\npg=0.14697638; qg=3.023917e-10; mg=6.8035\nfor k in [5,6,7]:\n    s=n-k-1\n    def eqs(x):\n        a,b,c=x; p=np.exp(a); r=np.exp(b); q=np.exp(c)\n        N=k*p+r+s*q-1.0\n        F=-(k*p*a+r*b+s*q*c)-Ht\n        B=(k*a+b+s*c-Bt)/n\n        return [N,F,B]\n    frac=mg-k\n    r0=pg*frac if 0<frac<1 else pg*0.5\n    x0=[np.log(pg),np.log(abs(r0)+1e-6),np.log(qg)]\n    x,info,ier,msg=fsolve(eqs,x0,full_output=True)\n    res=np.max(np.abs(eqs(x)))\n    p,r,q=np.exp(x)\n    print('k',k,'ier',ier,'res',f'{res:.1e}','p',f'{p:.4e}','r',f'{r:.4e}','q',f'{q:.4e}')\n\""
           },
@@ -570,7 +570,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import fsolve\nn=150000; logn=np.log(n); T=10.0\nHt=logn-T; Bt=-n*(T+logn)\npg=0.14697638; qg=3.023917e-10; mg=6.8035\nfor k in [5,6,7]:\n    s=n-k-1\n    def eqs(x):\n        a,b,c=x; p=np.exp(a); r=np.exp(b); q=np.exp(c)\n        N=k*p+r+s*q-1.0\n        F=-(k*p*a+r*b+s*q*c)-Ht\n        B=(k*a+b+s*c-Bt)/n\n        return [N,F,B]\n    frac=mg-k\n    r0=pg*frac if 0<frac<1 else pg*0.5\n    x0=[np.log(pg),np.log(abs(r0)+1e-6),np.log(qg)]\n    x,info,ier,msg=fsolve(eqs,x0,full_output=True)\n    res=np.max(np.abs(eqs(x)))\n    p,r,q=np.exp(x)\n    print('k',k,'ier',ier,'res',f'{res:.1e}','p',f'{p:.4e}','r',f'{r:.4e}','q',f'{q:.4e}')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -631,7 +631,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X5rVSMiiMZCNMyXzRPC7sQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -651,7 +651,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -712,7 +712,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01THGFhKYBgyW1bZ9dy9tq24",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py"
           },
@@ -720,7 +720,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -781,7 +781,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WcezYHfo1Nw8DtirjXQSwb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nP=np.load('/app/dist.npy'); n=P.size\nf=np.sum(P*np.log(P*n)); b=np.sum((1/n)*np.log((1/n)/P))\nprint('size',n,'sum',P.sum(),'min',P.min(),'valid',np.all(P>0))\nprint('fwd',f,'bwd',b,'|f-10|',abs(f-10),'|b-10|',abs(b-10))\n\""
           },
@@ -789,7 +789,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nP=np.load('/app/dist.npy'); n=P.size\nf=np.sum(P*np.log(P*n)); b=np.sum((1/n)*np.log((1/n)/P))\nprint('size',n,'sum',P.sum(),'min',P.min(),'valid',np.all(P>0))\nprint('fwd',f,'bwd',b,'|f-10|',abs(f-10),'|b-10|',abs(b-10))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -905,7 +905,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YPuJxV5Y6Zp9LAsmXLuere",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && find . -name 'test*' -o -name '*test*' 2>/dev/null | grep -v dist.npy | head"
           },
@@ -913,7 +913,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && find . -name 'test*' -o -name '*test*' 2>/dev/null | grep -v dist.npy | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -974,7 +974,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016ubZgUEB3VxaJ9L5mKUAgu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo ---; ls /app/*.py 2>/dev/null"
           },
@@ -982,7 +982,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo ---; ls /app/*.py 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

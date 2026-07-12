@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P6bBdKaMN739BCNwWea6EJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; which 7z 7za 7zr 2>/dev/null; echo \"---\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; which 7z 7za 7zr 2>/dev/null; echo \"---\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JCiD7RmCEVAsfXBFGzExL4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/john; echo \"---\"; apt-get install -y p7zip-full 2>/dev/null | tail -1; which 7z 7za 7zr"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -la /app/john; echo \"---\"; apt-get install -y p7zip-full 2>/dev/null | tail -1; which 7z 7za 7zr"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bt5QH1xJvtYSe1ZF4Vq6Xt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/john/run | head -50; echo \"---\"; ls /app/john/run/*.pl 2>/dev/null; ls /app/john/run/7z2john* 2>/dev/null; file /app/john/run/john 2>/dev/null"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "ls /app/john/run | head -50; echo \"---\"; ls /app/john/run/*.pl 2>/dev/null; ls /app/john/run/7z2john* 2>/dev/null; file /app/john/run/john 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018UykXavETf7EnTj7EdSxdH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && 7z l -slt /app/secrets.7z 2>&1 | head -40"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /tmp && 7z l -slt /app/secrets.7z 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019gvmLPy9jARKjqgbkF3aeY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/john/run/john 2>&1; ls /app/john/run | grep -i john$ ; echo \"===\"; ls /app/john/run/*.lst 2>/dev/null; ls -la /app/john/run/password.lst 2>/dev/null"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "ls -la /app/john/run/john 2>&1; ls /app/john/run | grep -i john$ ; echo \"===\"; ls /app/john/run/*.lst 2>/dev/null; ls -la /app/john/run/password.lst 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GSePy8cD3B8CPfDodWZACW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && perl 7z2john.pl /app/secrets.7z > /tmp/hash.txt 2>/tmp/err.txt; head -c 300 /tmp/hash.txt; echo; echo \"ERR:\"; cat /tmp/err.txt"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && perl 7z2john.pl /app/secrets.7z > /tmp/hash.txt 2>/tmp/err.txt; head -c 300 /tmp/hash.txt; echo; echo \"ERR:\"; cat /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KZnXFdfaNKtg2ncpSAwxAH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y libcompress-raw-lzma-perl 2>&1 | tail -2; cd /app/john/run && perl 7z2john.pl /app/secrets.7z 2>/tmp/err.txt | tee /tmp/hash.txt | head -c 200; echo; cat /tmp/err.txt | head"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "apt-get install -y libcompress-raw-lzma-perl 2>&1 | tail -2; cd /app/john/run && perl 7z2john.pl /app/secrets.7z 2>/tmp/err.txt | tee /tmp/hash.txt | head -c 200; echo; cat /tmp/err.txt | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PBiM2fcNLbSXApwBeUCyAN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && ./john --wordlist=password.lst /tmp/hash.txt 2>&1 | tail -20; echo \"===\"; ./john --show /tmp/hash.txt 2>&1"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && ./john --wordlist=password.lst /tmp/hash.txt 2>&1 | tail -20; echo \"===\"; ./john --show /tmp/hash.txt 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0151Z6XNH17tZvJ6395aWZvQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && rm -rf ex && 7z x -p1998 -oex /app/secrets.7z >/dev/null 2>&1 && cat ex/secrets/secret_file.txt; echo \"---\"; word=$(cat ex/secrets/secret_file.txt); printf '%s' \"$word\" > /app/solution.txt; echo \"solution.txt:\"; cat /app/solution.txt; echo; xxd /app/solution.txt"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /tmp && rm -rf ex && 7z x -p1998 -oex /app/secrets.7z >/dev/null 2>&1 && cat ex/secrets/secret_file.txt; echo \"---\"; word=$(cat ex/secrets/secret_file.txt); printf '%s' \"$word\" > /app/solution.txt; echo \"solution.txt:\"; cat /app/solution.txt; echo; xxd /app/solution.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GrAqp8t85Xa5NqtyxzBVdU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && 7z x -y -p1998 -oex2 /app/secrets.7z >/dev/null 2>&1 && cat ex2/secrets/secret_file.txt; echo \"---\"; tr -d '\\n' < ex2/secrets/secret_file.txt > /app/solution.txt; cat /app/solution.txt; echo; xxd /app/solution.txt"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /tmp && 7z x -y -p1998 -oex2 /app/secrets.7z >/dev/null 2>&1 && cat ex2/secrets/secret_file.txt; echo \"---\"; tr -d '\\n' < ex2/secrets/secret_file.txt > /app/solution.txt; cat /app/solution.txt; echo; xxd /app/solution.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WbuowG2hFzdG3grb5gVG6t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -c /app/solution.txt; wc -c /app/solution.txt"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "od -c /app/solution.txt; wc -c /app/solution.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

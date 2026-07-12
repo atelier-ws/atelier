@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQjufMaZQfPeWogt3UtMMu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name sequences.fasta 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "find / -name sequences.fasta 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JfogDjzggHwr2fTBTQwnUF",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sequences.fasta"
@@ -114,7 +114,7 @@
                 "/app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P4F5NJtmb5Lt6AVoUVVn4B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which oligotm primer3_core 2>/dev/null; python3 -c \"import primer3; print('py primer3', primer3.__version__)\" 2>/dev/null; ls /usr/bin | grep -i primer 2>/dev/null; echo done"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "which oligotm primer3_core 2>/dev/null; python3 -c \"import primer3; print('py primer3', primer3.__version__)\" 2>/dev/null; ls /usr/bin | grep -i primer 2>/dev/null; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LdNn7hy48BMfNbCzgtBLrj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y primer3 2>&1 | tail -5; echo \"---\"; which oligotm primer3_core ntthal 2>/dev/null; dpkg -L primer3 2>/dev/null | grep -iE \"bin|oligotm\""
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "apt-get install -y primer3 2>&1 | tail -5; echo \"---\"; which oligotm primer3_core ntthal 2>/dev/null; dpkg -L primer3 2>/dev/null | grep -iE \"bin|oligotm\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RwwaeRvRuSLD1FZwumokUF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "oligotm 2>&1 | head -30; echo \"===\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 ATGAGCAAGGGCGAGGAGCTG"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "oligotm 2>&1 | head -30; echo \"===\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 ATGAGCAAGGGCGAGGAGCTG"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JpHuFXexNyJGtkPed5K7MY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/design.py <<'PY'\nimport subprocess, sys\n\n# ---- parse fasta ----\nseqs={}\nname=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'):\n        name=line[1:].strip(); seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; egfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; out=seqs['output']\n\ncomp=str.maketrans('acgt','tgca')\ndef rc(s): return s.translate(comp)[::-1]\n\nOLIGO=['-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500']\ndef tm(s):\n    r=subprocess.run(['oligotm',*OLIGO,s.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\n\n# ---- locate backbone ends in input ----\n# old ORF start: ...atatacat atg atcagt...   backbone rev end includes 'atga'\ni_atg = inp.index('atatacatatg')  # position of 'a' of atatacat\nrev_end = i_atg + len('atatacat') + 4   # include atg + a  -> overhang 'atga'\nassert inp[rev_end-4:rev_end]=='atga', inp[rev_end-4:rev_end]\n# backbone fwd start: after old ORF: ...gagcggcggtaa tgaggatccc...\ni_fwd = inp.index('ggtaatgaggatccc')+len('ggtaa')\nassert inp[i_fwd:i_fwd+4]=='tgag', inp[i_fwd:i_fwd+4]\n\n# ---- fragment full top strands (with both 4nt overhangs) ----\negfp_ns=egfp[:-3]            # remove stop taa -> ...tacaaa\nflag_body=flag[3:-3]         # remove atg and stop -> ggta...ttca\nsnap_body=snap[3:]           # remove atg, keep stop -> gacaaa...gggttaa\negfp_top = egfp_ns + 'ggta'                 # L:atga(=egfp start) R:ggta(tail)\nflag_top = flag_body                        # L:ggta R:ttca (both native)\nsnap_top = 'ttca' + snap_body + 'tgag'      # L:ttca(tail) R:tgag(tail)\nbb_top   = inp[i_fwd:] + inp[:rev_end]      # L:tgag R:atga (native)\n\n# check overhangs match\nassert bb_top[-4:]=='atga' and egfp_top[:4]=='atga'\nassert egfp_top[-4:]=='ggta' and flag_top[:4]=='ggta'\nassert flag_top[-4:]=='ttca' and snap_top[:4]=='ttca'\nassert snap_top[-4:]=='tgag' and bb_top[:4]=='tgag'\n\n# ---- reconstruct circular assembly and compare to output ----\ncirc = bb_top[:-4]+egfp_top[:-4]+flag_top[:-4]+snap_top[:-4]\ndef is_rotation(a,b):\n    return len(a)==len(b) and a in (b+b)\nprint('len circ',len(circ),'len out',len(out),'rotation match:',is_rotation(circ,out))\n\n# ---- annealing region generators (as they appear in primer, 5'->3') ----\n# forward: template sense from start; reverse: rc of template region ending at junction\ndef fwd_regions(templ_sense):   # returns dict L-> annealing seq (sense)\n    return {L: templ_sense[:L] for L in range(15,37)}\ndef rev_regions(region_end):    # region_end = sense sequence whose 3' end is the junction; take last L, rc\n    return {L: rc(region_end[-L:]) for L in range(15,37)}\n\nfrags={\n 'egfp':(fwd_regions(egfp_ns),           rev_regions(egfp_ns)),\n 'flag':(fwd_regions(flag[3:]),          rev_regions(flag[:-3])),\n 'snap':(fwd_regions(snap[3:]),          rev_regions(snap)),\n 'input':(fwd_regions(inp[i_fwd:]),      rev_regions(inp[:rev_end])),\n}\n\ndef pick(fdict,rdict):\n    # candidates with Tm in [58,72]\n    fok={L:tm(s) for L,s in fdict.items()}\n    rok={L:tm(s) for L,s in rdict.items()}\n    best=None\n    for Lf,tf in fok.items():\n        if not(58<=tf<=72):continue\n        for Lr,tr in rok.items():\n            if not(58<=tr<=72):continue\n            if abs(tf-tr)>5:continue\n            score=abs(tf-65)+abs(tr-65)+abs(tf-tr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,tf,tr)\n    return best\n\nchosen={}\nfor name,(fd,rd) in frags.items():\n    b=pick(fd,rd)\n    chosen[name]=b\n    print(name,'Lf=%d Lr=%d Tmf=%.2f Tmr=%.2f dt=%.2f'%(b[1],b[2],b[3],b[4],abs(b[3]-b[4])))\n\n# ---- build primers ----\nPAD='catcac'; SITE='ggtctc'; SP='a'\ndef build():\n    prim={}\n    # egfp\n    _,Lf,Lr,_,_=chosen['egfp']\n    prim['egfp_fwd']=PAD+SITE+SP+frags['egfp'][0][Lf]      # overhang atga inside anneal\n    prim['egfp_rev']=PAD+SITE+SP+rc('ggta')+frags['egfp'][1][Lr]  # add ggta overhang tail\n    # flag\n    _,Lf,Lr,_,_=chosen['flag']\n    prim['flag_fwd']=PAD+SITE+SP+frags['flag'][0][Lf]      # overhang ggta inside anneal (flag[3:] starts ggta)\n    prim['flag_rev']=PAD+SITE+SP+frags['flag'][1][Lr]      # overhang ttca native (flag[:-3] ends ttca)\n    # snap\n    _,Lf,Lr,_,_=chosen['snap']\n    prim['snap_fwd']=PAD+SITE+SP+rc('ttca')+frags['snap'][0][Lf]  # add ttca overhang tail\n    prim['snap_rev']=PAD+SITE+SP+rc('tgag')+frags['snap'][1][Lr]  # add tgag overhang tail\n    # input/backbone\n    _,Lf,Lr,_,_=chosen['input']\n    prim['input_fwd']=PAD+SITE+SP+frags['input'][0][Lf]   # overhang tgag inside anneal\n    prim['input_rev']=PAD+SITE+SP+frags['input'][1][Lr]   # overhang atga native\n    return prim\nprim=build()\n\n# ---- verify: simulate BsaI digestion of each primer-defined fragment top strand and reassemble ----\n# For each fragment, the digested top strand = overhangL + body + overhangR, which we already have.\n# Just re-check overhang wiring is consistent with primers (spacer 'a' then 4nt overhang region present)\nfor k,v in prim.items():\n    assert v[:len(PAD+SITE)]==PAD+SITE\n    print(k,len(v),v)\n\n# write fasta\nwith open('/app/primers.fasta','w') as f:\n    order=['input','egfp','flag','snap']\n    for n in order:\n        f.write('>%s_fwd\\n%s\\n'%(n,prim[n+'_fwd']))\n        f.write('>%s_rev\\n%s\\n'%(n,prim[n+'_rev']))\nprint('WROTE primers.fasta')\nPY\npython3 /app/design.py"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "cat > /app/design.py <<'PY'\nimport subprocess, sys\n\n# ---- parse fasta ----\nseqs={}\nname=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'):\n        name=line[1:].strip(); seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; egfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; out=seqs['output']\n\ncomp=str.maketrans('acgt','tgca')\ndef rc(s): return s.translate(comp)[::-1]\n\nOLIGO=['-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500']\ndef tm(s):\n    r=subprocess.run(['oligotm',*OLIGO,s.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\n\n# ---- locate backbone ends in input ----\n# old ORF start: ...atatacat atg atcagt...   backbone rev end includes 'atga'\ni_atg = inp.index('atatacatatg')  # position of 'a' of atatacat\nrev_end = i_atg + len('atatacat') + 4   # include atg + a  -> overhang 'atga'\nassert inp[rev_end-4:rev_end]=='atga', inp[rev_end-4:rev_end]\n# backbone fwd start: after old ORF: ...gagcggcggtaa tgaggatccc...\ni_fwd = inp.index('ggtaatgaggatccc')+len('ggtaa')\nassert inp[i_fwd:i_fwd+4]=='tgag', inp[i_fwd:i_fwd+4]\n\n# ---- fragment full top strands (with both 4nt overhangs) ----\negfp_ns=egfp[:-3]            # remove stop taa -> ...tacaaa\nflag_body=flag[3:-3]         # remove atg and stop -> ggta...ttca\nsnap_body=snap[3:]           # remove atg, keep stop -> gacaaa...gggttaa\negfp_top = egfp_ns + 'ggta'                 # L:atga(=egfp start) R:ggta(tail)\nflag_top = flag_body                        # L:ggta R:ttca (both native)\nsnap_top = 'ttca' + snap_body + 'tgag'      # L:ttca(tail) R:tgag(tail)\nbb_top   = inp[i_fwd:] + inp[:rev_end]      # L:tgag R:atga (native)\n\n# check overhangs match\nassert bb_top[-4:]=='atga' and egfp_top[:4]=='atga'\nassert egfp_top[-4:]=='ggta' and flag_top[:4]=='ggta'\nassert flag_top[-4:]=='ttca' and snap_top[:4]=='ttca'\nassert snap_top[-4:]=='tgag' and bb_top[:4]=='tgag'\n\n# ---- reconstruct circular assembly and compare to output ----\ncirc = bb_top[:-4]+egfp_top[:-4]+flag_top[:-4]+snap_top[:-4]\ndef is_rotation(a,b):\n    return len(a)==len(b) and a in (b+b)\nprint('len circ',len(circ),'len out',len(out),'rotation match:',is_rotation(circ,out))\n\n# ---- annealing region generators (as they appear in primer, 5'->3') ----\n# forward: template sense from start; reverse: rc of template region ending at junction\ndef fwd_regions(templ_sense):   # returns dict L-> annealing seq (sense)\n    return {L: templ_sense[:L] for L in range(15,37)}\ndef rev_regions(region_end):    # region_end = sense sequence whose 3' end is the junction; take last L, rc\n    return {L: rc(region_end[-L:]) for L in range(15,37)}\n\nfrags={\n 'egfp':(fwd_regions(egfp_ns),           rev_regions(egfp_ns)),\n 'flag':(fwd_regions(flag[3:]),          rev_regions(flag[:-3])),\n 'snap':(fwd_regions(snap[3:]),          rev_regions(snap)),\n 'input':(fwd_regions(inp[i_fwd:]),      rev_regions(inp[:rev_end])),\n}\n\ndef pick(fdict,rdict):\n    # candidates with Tm in [58,72]\n    fok={L:tm(s) for L,s in fdict.items()}\n    rok={L:tm(s) for L,s in rdict.items()}\n    best=None\n    for Lf,tf in fok.items():\n        if not(58<=tf<=72):continue\n        for Lr,tr in rok.items():\n            if not(58<=tr<=72):continue\n            if abs(tf-tr)>5:continue\n            score=abs(tf-65)+abs(tr-65)+abs(tf-tr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,tf,tr)\n    return best\n\nchosen={}\nfor name,(fd,rd) in frags.items():\n    b=pick(fd,rd)\n    chosen[name]=b\n    print(name,'Lf=%d Lr=%d Tmf=%.2f Tmr=%.2f dt=%.2f'%(b[1],b[2],b[3],b[4],abs(b[3]-b[4])))\n\n# ---- build primers ----\nPAD='catcac'; SITE='ggtctc'; SP='a'\ndef build():\n    prim={}\n    # egfp\n    _,Lf,Lr,_,_=chosen['egfp']\n    prim['egfp_fwd']=PAD+SITE+SP+frags['egfp'][0][Lf]      # overhang atga inside anneal\n    prim['egfp_rev']=PAD+SITE+SP+rc('ggta')+frags['egfp'][1][Lr]  # add ggta overhang tail\n    # flag\n    _,Lf,Lr,_,_=chosen['flag']\n    prim['flag_fwd']=PAD+SITE+SP+frags['flag'][0][Lf]      # overhang ggta inside anneal (flag[3:] starts ggta)\n    prim['flag_rev']=PAD+SITE+SP+frags['flag'][1][Lr]      # overhang ttca native (flag[:-3] ends ttca)\n    # snap\n    _,Lf,Lr,_,_=chosen['snap']\n    prim['snap_fwd']=PAD+SITE+SP+rc('ttca')+frags['snap'][0][Lf]  # add ttca overhang tail\n    prim['snap_rev']=PAD+SITE+SP+rc('tgag')+frags['snap'][1][Lr]  # add tgag overhang tail\n    # input/backbone\n    _,Lf,Lr,_,_=chosen['input']\n    prim['input_fwd']=PAD+SITE+SP+frags['input'][0][Lf]   # overhang tgag inside anneal\n    prim['input_rev']=PAD+SITE+SP+frags['input'][1][Lr]   # overhang atga native\n    return prim\nprim=build()\n\n# ---- verify: simulate BsaI digestion of each primer-defined fragment top strand and reassemble ----\n# For each fragment, the digested top strand = overhangL + body + overhangR, which we already have.\n# Just re-check overhang wiring is consistent with primers (spacer 'a' then 4nt overhang region present)\nfor k,v in prim.items():\n    assert v[:len(PAD+SITE)]==PAD+SITE\n    print(k,len(v),v)\n\n# write fasta\nwith open('/app/primers.fasta','w') as f:\n    order=['input','egfp','flag','snap']\n    for n in order:\n        f.write('>%s_fwd\\n%s\\n'%(n,prim[n+'_fwd']))\n        f.write('>%s_rev\\n%s\\n'%(n,prim[n+'_rev']))\nprint('WROTE primers.fasta')\nPY\npython3 /app/design.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014v8fpE3ufvHLvkpUvRaNLZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/verify.py <<'PY'\ncomp=str.maketrans('acgt','tgca')\ndef rc(s): return s.translate(comp)[::-1]\ndef sites(s):\n    s=s.lower(); return s.count('ggtctc'), s.count(rc('ggtctc'))  # rc=gagacc\n\n# read primers\np={}; n=None\nfor l in open('/app/primers.fasta'):\n    l=l.rstrip('\\n')\n    if l.startswith('>'): n=l[1:]\n    else: p[n]=l\nprint(\"num records:\",len(p))\nfor k,v in p.items():\n    f,r=sites(v)\n    print(k, \"len\",len(v), \"GGTCTC\",f,\"GAGACC\",r, v)\n    assert f==1 and r==0, \"primer must have exactly one BsaI site in fwd orientation\"\n\n# overhangs used\novs=['tgag','atga','ggta','ttca']\nprint(\"overhangs:\",ovs,\"unique:\",len(set(ovs))==4,\n      \"no palindrome:\",all(o!=rc(o) for o in ovs),\n      \"no rc-collision:\",len(set(ovs)|set(rc(o) for o in ovs))==8)\n\n# fragment bodies must not contain internal BsaI sites\nseqs={};nm=None\nfor l in open('/app/sequences.fasta'):\n    l=l.strip()\n    if not l or l.startswith('##'):continue\n    if l.startswith('>'):nm=l[1:];seqs[nm]=''\n    else:seqs[nm]+=l.lower()\nfor nm in ['input','egfp','flag','snap']:\n    s=seqs[nm]; f=s.count('ggtctc'); r=s.count('gagacc')\n    print(\"template\",nm,\"internal GGTCTC\",f,\"GAGACC\",r)\n\n# blank lines / format check\nraw=open('/app/primers.fasta').read().split('\\n')\nprint(\"trailing/other blank lines:\", any(x=='' for x in raw[:-1]), \"ends with newline:\", raw[-1]=='')\nhdr=[x for x in raw if x.startswith('>')]\nimport re\nprint(\"headers ok:\", all(re.fullmatch(r'>(input|egfp|flag|snap)_(fwd|rev)',h) for h in hdr), hdr)\nPY\npython3 /app/verify.py"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cat > /app/verify.py <<'PY'\ncomp=str.maketrans('acgt','tgca')\ndef rc(s): return s.translate(comp)[::-1]\ndef sites(s):\n    s=s.lower(); return s.count('ggtctc'), s.count(rc('ggtctc'))  # rc=gagacc\n\n# read primers\np={}; n=None\nfor l in open('/app/primers.fasta'):\n    l=l.rstrip('\\n')\n    if l.startswith('>'): n=l[1:]\n    else: p[n]=l\nprint(\"num records:\",len(p))\nfor k,v in p.items():\n    f,r=sites(v)\n    print(k, \"len\",len(v), \"GGTCTC\",f,\"GAGACC\",r, v)\n    assert f==1 and r==0, \"primer must have exactly one BsaI site in fwd orientation\"\n\n# overhangs used\novs=['tgag','atga','ggta','ttca']\nprint(\"overhangs:\",ovs,\"unique:\",len(set(ovs))==4,\n      \"no palindrome:\",all(o!=rc(o) for o in ovs),\n      \"no rc-collision:\",len(set(ovs)|set(rc(o) for o in ovs))==8)\n\n# fragment bodies must not contain internal BsaI sites\nseqs={};nm=None\nfor l in open('/app/sequences.fasta'):\n    l=l.strip()\n    if not l or l.startswith('##'):continue\n    if l.startswith('>'):nm=l[1:];seqs[nm]=''\n    else:seqs[nm]+=l.lower()\nfor nm in ['input','egfp','flag','snap']:\n    s=seqs[nm]; f=s.count('ggtctc'); r=s.count('gagacc')\n    print(\"template\",nm,\"internal GGTCTC\",f,\"GAGACC\",r)\n\n# blank lines / format check\nraw=open('/app/primers.fasta').read().split('\\n')\nprint(\"trailing/other blank lines:\", any(x=='' for x in raw[:-1]), \"ends with newline:\", raw[-1]=='')\nhdr=[x for x in raw if x.startswith('>')]\nimport re\nprint(\"headers ok:\", all(re.fullmatch(r'>(input|egfp|flag|snap)_(fwd|rev)',h) for h in hdr), hdr)\nPY\npython3 /app/verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012DaAyCvtwH2sHzPiNXVg9a",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/design.py <<'PY'\nimport subprocess\n\nseqs={};name=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'):continue\n    if line.startswith('>'):name=line[1:].strip();seqs[name]=''\n    else:seqs[name]+=line.lower()\ninp,egfp,flag,snap,out=(seqs[k] for k in ['input','egfp','flag','snap','output'])\ncomp=str.maketrans('acgt','tgca')\ndef rc(s):return s.translate(comp)[::-1]\nOLIGO=['-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500']\ndef tm(s):return float(subprocess.run(['oligotm',*OLIGO,s.upper()],capture_output=True,text=True).stdout.strip())\n\ni_atg=inp.index('atatacatatg');rev_end=i_atg+len('atatacat')+4\nassert inp[rev_end-4:rev_end]=='atga'\ni_fwd=inp.index('ggtaatgaggatccc')+len('ggtaa');assert inp[i_fwd:i_fwd+4]=='tgag'\n\negfp_ns=egfp[:-3];flag_body=flag[3:-3];snap_body=snap[3:]\nbb_top=inp[i_fwd:]+inp[:rev_end]\n# independent expected fragment top strands (leftOH..body..rightOH)\nexp={'egfp':egfp_ns+'ggta','flag':flag_body,'snap':'ttca'+snap_body+'tgag','input':bb_top}\n\n# annealing regions as written in primer 5'->3'\nFR={\n 'egfp':(lambda L:egfp_ns[:L],      lambda L:rc(egfp_ns[-L:])),\n 'flag':(lambda L:flag[3:][:L],     lambda L:rc(flag[:-3][-L:])),\n 'snap':(lambda L:snap[3:][:L],     lambda L:rc(snap[-L:])),\n 'input':(lambda L:inp[i_fwd:][:L], lambda L:rc(inp[:rev_end][-L:])),\n}\ndef pick(ff,rf):\n    best=None\n    for Lf in range(15,37):\n        tf=tm(ff(Lf))\n        if not 58<=tf<=72:continue\n        for Lr in range(15,37):\n            tr=tm(rf(Lr))\n            if not 58<=tr<=72 or abs(tf-tr)>5:continue\n            sc=abs(tf-65)+abs(tr-65)+abs(tf-tr)\n            if best is None or sc<best[0]:best=(sc,Lf,Lr,tf,tr)\n    return best\nchosen={n:pick(*FR[n]) for n in FR}\nfor n in chosen:\n    _,Lf,Lr,tf,tr=chosen[n];print(f\"{n}: Lf={Lf} Lr={Lr} Tmf={tf:.2f} Tmr={tr:.2f} dTm={abs(tf-tr):.2f}\")\n\nPAD,SITE,SP='catcac','ggtctc','a'\n# fwd tails: overhang given as sense ONLY when it's a tail (not native in anneal)\nftail={'egfp':PAD+SITE+SP,'flag':PAD+SITE+SP,'snap':PAD+SITE+SP+'ttca','input':PAD+SITE+SP}\nrtail={'egfp':PAD+SITE+SP+'tacc','flag':PAD+SITE+SP,'snap':PAD+SITE+SP+'ctca','input':PAD+SITE+SP}\nprim={}\nfor n in FR:\n    _,Lf,Lr,_,_=chosen[n]\n    prim[n+'_fwd']=ftail[n]+FR[n][0](Lf)\n    prim[n+'_rev']=rtail[n]+FR[n][1](Lr)\n\n# ---- realistic PCR + BsaI digest simulation from the primers ----\nspan={'egfp':egfp_ns,'flag':flag_body,'snap':snap_body,'input':bb_top}\ndef digest_internal(product):\n    gg=product.find('ggtctc');ga=product.find('gagacc')\n    assert product.count('ggtctc')==1 and product.count('gagacc')==1\n    return product[gg+7:ga]   # left overhang start .. 4nt right overhang before rc-site\nfrag={}\nfor n in FR:\n    _,Lf,Lr,_,_=chosen[n]\n    product=ftail[n]+span[n]+rc(rtail[n])\n    top=digest_internal(product)\n    assert top==exp[n], (n,'MISMATCH')\n    frag[n]=top\nprint(\"all fragments digest to expected top strands:\",all(frag[n]==exp[n] for n in FR))\n\n# ---- ligate by 4nt overhangs, circular ----\norder=['input','egfp','flag','snap']\nfor a,b in zip(order,order[1:]+order[:1]):\n    assert frag[a][-4:]==frag[b][:4], (a,b,frag[a][-4:],frag[b][:4])\ncirc=''.join(frag[n][:-4] for n in order)\nassert len(circ)==len(out) and circ in out+out, \"assembly != output\"\nprint(\"ligated circular assembly == output (rotation):\",circ in out+out,\"len\",len(circ))\n\nwith open('/app/primers.fasta','w') as f:\n    for n in order:\n        f.write(f\">{n}_fwd\\n{prim[n+'_fwd']}\\n>{n}_rev\\n{prim[n+'_rev']}\\n\")\nprint(\"WROTE /app/primers.fasta\")\nPY\npython3 /app/design.py"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cat > /app/design.py <<'PY'\nimport subprocess\n\nseqs={};name=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'):continue\n    if line.startswith('>'):name=line[1:].strip();seqs[name]=''\n    else:seqs[name]+=line.lower()\ninp,egfp,flag,snap,out=(seqs[k] for k in ['input','egfp','flag','snap','output'])\ncomp=str.maketrans('acgt','tgca')\ndef rc(s):return s.translate(comp)[::-1]\nOLIGO=['-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500']\ndef tm(s):return float(subprocess.run(['oligotm',*OLIGO,s.upper()],capture_output=True,text=True).stdout.strip())\n\ni_atg=inp.index('atatacatatg');rev_end=i_atg+len('atatacat')+4\nassert inp[rev_end-4:rev_end]=='atga'\ni_fwd=inp.index('ggtaatgaggatccc')+len('ggtaa');assert inp[i_fwd:i_fwd+4]=='tgag'\n\negfp_ns=egfp[:-3];flag_body=flag[3:-3];snap_body=snap[3:]\nbb_top=inp[i_fwd:]+inp[:rev_end]\n# independent expected fragment top strands (leftOH..body..rightOH)\nexp={'egfp':egfp_ns+'ggta','flag':flag_body,'snap':'ttca'+snap_body+'tgag','input':bb_top}\n\n# annealing regions as written in primer 5'->3'\nFR={\n 'egfp':(lambda L:egfp_ns[:L],      lambda L:rc(egfp_ns[-L:])),\n 'flag':(lambda L:flag[3:][:L],     lambda L:rc(flag[:-3][-L:])),\n 'snap':(lambda L:snap[3:][:L],     lambda L:rc(snap[-L:])),\n 'input':(lambda L:inp[i_fwd:][:L], lambda L:rc(inp[:rev_end][-L:])),\n}\ndef pick(ff,rf):\n    best=None\n    for Lf in range(15,37):\n        tf=tm(ff(Lf))\n        if not 58<=tf<=72:continue\n        for Lr in range(15,37):\n            tr=tm(rf(Lr))\n            if not 58<=tr<=72 or abs(tf-tr)>5:continue\n            sc=abs(tf-65)+abs(tr-65)+abs(tf-tr)\n            if best is None or sc<best[0]:best=(sc,Lf,Lr,tf,tr)\n    return best\nchosen={n:pick(*FR[n]) for n in FR}\nfor n in chosen:\n    _,Lf,Lr,tf,tr=chosen[n];print(f\"{n}: Lf={Lf} Lr={Lr} Tmf={tf:.2f} Tmr={tr:.2f} dTm={abs(tf-tr):.2f}\")\n\nPAD,SITE,SP='catcac','ggtctc','a'\n# fwd tails: overhang given as sense ONLY when it's a tail (not native in anneal)\nftail={'egfp':PAD+SITE+SP,'flag':PAD+SITE+SP,'snap':PAD+SITE+SP+'ttca','input':PAD+SITE+SP}\nrtail={'egfp':PAD+SITE+SP+'tacc','flag':PAD+SITE+SP,'snap':PAD+SITE+SP+'ctca','input':PAD+SITE+SP}\nprim={}\nfor n in FR:\n    _,Lf,Lr,_,_=chosen[n]\n    prim[n+'_fwd']=ftail[n]+FR[n][0](Lf)\n    prim[n+'_rev']=rtail[n]+FR[n][1](Lr)\n\n# ---- realistic PCR + BsaI digest simulation from the primers ----\nspan={'egfp':egfp_ns,'flag':flag_body,'snap':snap_body,'input':bb_top}\ndef digest_internal(product):\n    gg=product.find('ggtctc');ga=product.find('gagacc')\n    assert product.count('ggtctc')==1 and product.count('gagacc')==1\n    return product[gg+7:ga]   # left overhang start .. 4nt right overhang before rc-site\nfrag={}\nfor n in FR:\n    _,Lf,Lr,_,_=chosen[n]\n    product=ftail[n]+span[n]+rc(rtail[n])\n    top=digest_internal(product)\n    assert top==exp[n], (n,'MISMATCH')\n    frag[n]=top\nprint(\"all fragments digest to expected top strands:\",all(frag[n]==exp[n] for n in FR))\n\n# ---- ligate by 4nt overhangs, circular ----\norder=['input','egfp','flag','snap']\nfor a,b in zip(order,order[1:]+order[:1]):\n    assert frag[a][-4:]==frag[b][:4], (a,b,frag[a][-4:],frag[b][:4])\ncirc=''.join(frag[n][:-4] for n in order)\nassert len(circ)==len(out) and circ in out+out, \"assembly != output\"\nprint(\"ligated circular assembly == output (rotation):\",circ in out+out,\"len\",len(circ))\n\nwith open('/app/primers.fasta','w') as f:\n    for n in order:\n        f.write(f\">{n}_fwd\\n{prim[n+'_fwd']}\\n>{n}_rev\\n{prim[n+'_rev']}\\n\")\nprint(\"WROTE /app/primers.fasta\")\nPY\npython3 /app/design.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YKxXF8QqLr6269PZcSqK1r",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -609,7 +609,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -670,7 +670,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019acCaMLry2GLRjjiXPkKxt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 design.py && echo \"=== primers.fasta ===\" && python3 verify.py"
           },
@@ -678,7 +678,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 design.py && echo \"=== primers.fasta ===\" && python3 verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -739,7 +739,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013BMeYGxxrTBSrWKe7KZG8m",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/primers.fasta"
@@ -751,7 +751,7 @@
                 "/app/primers.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -867,7 +867,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UmonyB466Ln1e7ovusEw4V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls *.py; echo \"=== run design.py (build+simulate BsaI digest/ligate) ===\"; python3 design.py; echo \"=== run verify.py (site/overhang/format checks) ===\"; python3 verify.py"
           },
@@ -875,7 +875,7 @@
             "raw_arguments": {
               "command": "cd /app && ls *.py; echo \"=== run design.py (build+simulate BsaI digest/ligate) ===\"; python3 design.py; echo \"=== run verify.py (site/overhang/format checks) ===\"; python3 verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

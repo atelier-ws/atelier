@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0173L44ZYcdTunqm84tBZJAS",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/polyglot/main.rs",
             "replace": "true",
@@ -45,7 +45,7 @@
               "replace": "true",
               "new": "/* /*\n*/\n#include <cstdio>\n#include <cstdlib>\nint main(int argc, char** argv){\n    long n = atol(argv[1]);\n    unsigned long long a = 1, b = 1;\n    for(long i = 0; i < n; i++){\n        unsigned long long t = a + b;\n        a = b;\n        b = t;\n    }\n    printf(\"%llu\\n\", a);\n    return 0;\n}\n#if 0\n// */\nfn main() {\n    let n: u64 = std::env::args().nth(1).unwrap().parse().unwrap();\n    let mut a: u64 = 1;\n    let mut b: u64 = 1;\n    for _ in 0..n {\n        let t = a + b;\n        a = b;\n        b = t;\n    }\n    println!(\"{}\", a);\n}\n/* /* */\n#endif\n// */\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -106,7 +106,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DZiTskcjuz1XfNGv2CytKh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rustc main.rs 2>&1 && echo \"--- rust ---\" && for k in 0 1 2 3 4 5 10; do printf \"f(%s)=\" $k; ./main $k; done"
           },
@@ -114,12 +114,12 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rustc main.rs 2>&1 && echo \"--- rust ---\" && for k in 0 1 2 3 4 5 10; do printf \"f(%s)=\" $k; ./main $k; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01F96Kyy1U3hWRL2BFvYCscv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && g++ -x c++ main.rs -o cmain 2>&1 && echo \"--- cpp ---\" && for k in 0 1 2 3 4 5 10; do printf \"f(%s)=\" $k; ./cmain $k; done"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && g++ -x c++ main.rs -o cmain 2>&1 && echo \"--- cpp ---\" && for k in 0 1 2 3 4 5 10; do printf \"f(%s)=\" $k; ./cmain $k; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QT1Jtp6q3q8JEZjhGtFmYY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rm -f main cmain && ls"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rm -f main cmain && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -316,7 +316,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019wGkN8vn1Ssv3vDZe53Gzc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rustc /app/polyglot/main.rs -o /app/polyglot/main 2>&1 && g++ -x c++ /app/polyglot/main.rs -o /app/polyglot/cmain 2>&1 && echo \"=== both compiled ===\" && for k in 0 1 2 3 4 5 6 10 20 40 90; do r=$(/app/polyglot/main $k); c=$(/app/polyglot/cmain $k); if [ \"$r\" = \"$c\" ]; then echo \"f($k) rust=$r cpp=$c OK\"; else echo \"f($k) MISMATCH rust=$r cpp=$c\"; fi; done; rm -f /app/polyglot/main /app/polyglot/cmain"
           },
@@ -324,7 +324,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rustc /app/polyglot/main.rs -o /app/polyglot/main 2>&1 && g++ -x c++ /app/polyglot/main.rs -o /app/polyglot/cmain 2>&1 && echo \"=== both compiled ===\" && for k in 0 1 2 3 4 5 6 10 20 40 90; do r=$(/app/polyglot/main $k); c=$(/app/polyglot/cmain $k); if [ \"$r\" = \"$c\" ]; then echo \"f($k) rust=$r cpp=$c OK\"; else echo \"f($k) MISMATCH rust=$r cpp=$c\"; fi; done; rm -f /app/polyglot/main /app/polyglot/cmain"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

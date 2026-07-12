@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017k9NzBiirKhL4YcrRceosr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -5 input.csv && echo \"---EXPECTED---\" && head -5 expected.csv && echo \"---\" && wc -l input.csv expected.csv"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && head -5 input.csv && echo \"---EXPECTED---\" && head -5 expected.csv && echo \"---\" && wc -l input.csv expected.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015ARz1EZyEhhZmNCTSA1y1Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -n '6,15p' input.csv && echo \"---\" && sed -n '6,15p' expected.csv && echo \"---tail---\" && tail -3 input.csv | cat -A && echo \"---\" && tail -3 expected.csv | cat -A"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -n '6,15p' input.csv && echo \"---\" && sed -n '6,15p' expected.csv && echo \"---tail---\" && tail -3 input.csv | cat -A && echo \"---\" && tail -3 expected.csv | cat -A"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BuN1Sk42x1r6kTxxV7FH8u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -n '6,15p' expected.csv && echo \"---rawtail---\" && tail -3 input.csv | cat -A && echo \"===\" && tail -3 expected.csv | cat -A"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -n '6,15p' expected.csv && echo \"---rawtail---\" && tail -3 input.csv | cat -A && echo \"===\" && tail -3 expected.csv | cat -A"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018BScvcEcjiSLoYZNfhSspo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && tail -c 30 input.csv | xxd | tail -3 && echo \"===EXP===\" && tail -c 30 expected.csv | xxd | tail -3 && echo \"---fieldcheck---\" && awk -F',' 'NF!=3{c++} END{print \"bad rows:\",c+0}' input.csv"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && tail -c 30 input.csv | xxd | tail -3 && echo \"===EXP===\" && tail -c 30 expected.csv | xxd | tail -3 && echo \"---fieldcheck---\" && awk -F',' 'NF!=3{c++} END{print \"bad rows:\",c+0}' input.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016M11cXLfbmw2Mhi8AHgKJE",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -329,7 +329,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N57BEvkWVCkobJ8NtzcHMH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -100 input.csv > /tmp/sample.csv && head -100 expected.csv > /tmp/sample_exp.csv && cp /tmp/sample.csv /tmp/test.csv && vim -Nu NONE -n -Es /tmp/test.csv -S /app/apply_macros.vim; echo \"exit=$?\" && diff /tmp/test.csv /tmp/sample_exp.csv && echo \"SAMPLE MATCH\""
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "cd /app && head -100 input.csv > /tmp/sample.csv && head -100 expected.csv > /tmp/sample_exp.csv && cp /tmp/sample.csv /tmp/test.csv && vim -Nu NONE -n -Es /tmp/test.csv -S /app/apply_macros.vim; echo \"exit=$?\" && diff /tmp/test.csv /tmp/sample_exp.csv && echo \"SAMPLE MATCH\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014AdS2iq9PffPUCLcF7svRQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp input.csv /tmp/full.csv && time vim -Nu NONE -n -Es /tmp/full.csv -S /app/apply_macros.vim; echo \"exit=$?\" && cmp /tmp/full.csv expected.csv && echo \"FULL BYTE-MATCH\""
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "cd /app && cp input.csv /tmp/full.csv && time vim -Nu NONE -n -Es /tmp/full.csv -S /app/apply_macros.vim; echo \"exit=$?\" && cmp /tmp/full.csv expected.csv && echo \"FULL BYTE-MATCH\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

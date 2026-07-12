@@ -2,7 +2,7 @@
     "id": "8cf7a5c5-2807-4d1c-af2d-f10e8176e0f0",
     "task_name": "terminal-bench/git-multibranch",
     "trial_name": "git-multibranch__hZceM6o",
-    "trial_uri": "file:///home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-04__03-33-24/git-multibranch__hZceM6o",
+    "trial_uri": "file:///home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/results/lemoncrow/2026-07-04__03-33-24/git-multibranch__hZceM6o",
     "task_id": {
         "org": "terminal-bench",
         "name": "git-multibranch",
@@ -22,7 +22,7 @@
             "source": "terminal-bench/terminal-bench-2-1"
         },
         "trial_name": "git-multibranch__hZceM6o",
-        "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-04__03-33-24",
+        "trials_dir": "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/results/lemoncrow/2026-07-04__03-33-24",
         "install_only": false,
         "timeout_multiplier": 1.0,
         "agent_timeout_multiplier": null,
@@ -31,7 +31,7 @@
         "environment_build_timeout_multiplier": null,
         "agent": {
             "name": null,
-            "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+            "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
             "model_name": null,
             "n_concurrent": null,
             "concurrency_group": null,
@@ -59,14 +59,14 @@
             "mounts": [
                 {
                     "type": "bind",
-                    "source": "/home/pankaj/Projects/leanchain/atelier",
-                    "target": "/atelier",
+                    "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                    "target": "/lemoncrow",
                     "read_only": true
                 },
                 {
                     "type": "bind",
-                    "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                    "target": "/atelier-bundle.tar.gz",
+                    "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                    "target": "/lemoncrow-bundle.tar.gz",
                     "read_only": true
                 }
             ],
@@ -86,7 +86,7 @@
         "job_id": "b7cd2759-a073-4b4d-ae6b-e1db9a377515"
     },
     "agent_info": {
-        "name": "atelier-claude-code",
+        "name": "lemoncrow-claude-code",
         "version": "latest",
         "model_info": null
     },

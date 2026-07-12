@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E3dXrdk8JMFsmfuXJHXAJW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which rustc g++; rustc --version; g++ --version | head -1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "which rustc g++; rustc --version; g++ --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AJowyugsk6JFXrtnDUuguA",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ExWocjhrbVjbYTPHP4KyUY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rustc main.rs -o rmain 2>&1 | head; g++ -x c++ main.rs -o cmain 2>&1 | head; echo \"---rust---\"; for i in 0 1 2 3 4 5 10; do printf \"%s: \" $i; ./rmain $i; done; echo \"---c++---\"; for i in 0 1 2 3 4 5 10; do printf \"%s: \" $i; ./cmain $i; done"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rustc main.rs -o rmain 2>&1 | head; g++ -x c++ main.rs -o cmain 2>&1 | head; echo \"---rust---\"; for i in 0 1 2 3 4 5 10; do printf \"%s: \" $i; ./rmain $i; done; echo \"---c++---\"; for i in 0 1 2 3 4 5 10; do printf \"%s: \" $i; ./cmain $i; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QnLc9i3BC2xwJfq1iyJdrF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rm -f rmain cmain main && rustc /app/polyglot/main.rs && /app/polyglot/main 7 && g++ -x c++ /app/polyglot/main.rs -o /app/polyglot/cmain && /app/polyglot/cmain 7 && rm -f /app/polyglot/main /app/polyglot/cmain && ls"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rm -f rmain cmain main && rustc /app/polyglot/main.rs && /app/polyglot/main 7 && g++ -x c++ /app/polyglot/main.rs -o /app/polyglot/cmain && /app/polyglot/cmain 7 && rm -f /app/polyglot/main /app/polyglot/cmain && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013ipaBbdoFsH95u7Ux72ovp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && set -e\nrustc main.rs -o /tmp/rmain 2>/tmp/re; echo \"rustc exit=$? stderr:\"; cat /tmp/re\ng++ -x c++ main.rs -o /tmp/cmain 2>/tmp/ce; echo \"g++ exit=$? stderr:\"; cat /tmp/ce\n# expected fib f(0)=1,f(1)=1,f(2)=2...\nexp=(1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987)\nfail=0\nfor i in $(seq 0 15); do\n  r=$(/tmp/rmain $i); c=$(/tmp/cmain $i); e=${exp[$i]}\n  if [ \"$r\" != \"$e\" ] || [ \"$c\" != \"$e\" ]; then echo \"MISMATCH N=$i exp=$e rust=$r cpp=$c\"; fail=1; fi\ndone\n# no-arg default (N=0)\nr=$(/tmp/rmain); c=$(/tmp/cmain); [ \"$r\" = 1 ] && [ \"$c\" = 1 ] || { echo \"no-arg fail rust=$r cpp=$c\"; fail=1; }\n[ $fail = 0 ] && echo \"ALL PASS: N=0..15 both compilers match expected fib, no-arg=1\"\nrm -f /tmp/rmain /tmp/cmain"
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && set -e\nrustc main.rs -o /tmp/rmain 2>/tmp/re; echo \"rustc exit=$? stderr:\"; cat /tmp/re\ng++ -x c++ main.rs -o /tmp/cmain 2>/tmp/ce; echo \"g++ exit=$? stderr:\"; cat /tmp/ce\n# expected fib f(0)=1,f(1)=1,f(2)=2...\nexp=(1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987)\nfail=0\nfor i in $(seq 0 15); do\n  r=$(/tmp/rmain $i); c=$(/tmp/cmain $i); e=${exp[$i]}\n  if [ \"$r\" != \"$e\" ] || [ \"$c\" != \"$e\" ]; then echo \"MISMATCH N=$i exp=$e rust=$r cpp=$c\"; fail=1; fi\ndone\n# no-arg default (N=0)\nr=$(/tmp/rmain); c=$(/tmp/cmain); [ \"$r\" = 1 ] && [ \"$c\" = 1 ] || { echo \"no-arg fail rust=$r cpp=$c\"; fail=1; }\n[ $fail = 0 ] && echo \"ALL PASS: N=0..15 both compilers match expected fib, no-arg=1\"\nrm -f /tmp/rmain /tmp/cmain"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

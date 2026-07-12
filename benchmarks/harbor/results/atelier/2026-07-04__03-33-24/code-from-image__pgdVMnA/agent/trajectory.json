@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DkZVbCob5VUUzD2wcQWox7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file code.png"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file code.png"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FdJHvCcXVLB6aEtr7k4KcM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import PIL; print(PIL.__version__)\"; which tesseract; python3 --version"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import PIL; print(PIL.__version__)\"; which tesseract; python3 --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UXvBYMDFYkJtiKwLyZjSYm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y tesseract-ocr 2>&1 | tail -5; which tesseract"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "apt-get install -y tesseract-ocr 2>&1 | tail -5; which tesseract"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XhK8FMkpXcW44CAYAQRgRL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && tesseract code.png stdout 2>/dev/null"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && tesseract code.png stdout 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013Lo9TF7YWCWNKTrUpebL87",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for psm in 3 4 6 11 12; do echo \"=== psm $psm ===\"; tesseract code.png stdout --psm $psm 2>/dev/null; done"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && for psm in 3 4 6 11 12; do echo \"=== psm $psm ===\"; tesseract code.png stdout --psm $psm 2>/dev/null; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012n6yYd1tCsA78Y7ivUL9uV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pillow -q 2>&1 | tail -2"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pillow -q 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q7ezi4rRKA6kUXhs3GPzhb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pillow 2>&1 | tail -2; python3 -c \"import PIL,sys; print('ok', PIL.__version__)\""
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pillow 2>&1 | tail -2; python3 -c \"import PIL,sys; print('ok', PIL.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PGFrstSbTXLrHdq2X5xmHu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png')\nprint(im.size, im.mode)\nim=im.convert('L').resize((im.width*4,im.height*4),Image.LANCZOS)\nim.save('big.png')\n\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png')\nprint(im.size, im.mode)\nim=im.convert('L').resize((im.width*4,im.height*4),Image.LANCZOS)\nim.save('big.png')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WjS9dy7SoMEapU5MuD4LTF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && tesseract big.png stdout --psm 6 2>/dev/null"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app && tesseract big.png stdout --psm 6 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RmnF5xfMMMhVn4XSRZVoDs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png').convert('L')\nw,h=im.size\n# crop second line region\nc=im.crop((0,int(h*0.14),w,int(h*0.28)))\nc=c.resize((c.width*6,c.height*6),Image.LANCZOS)\nc.save('salt.png')\n\"\ntesseract salt.png stdout --psm 7 2>/dev/null\necho \"---psm8---\"\ntesseract salt.png stdout --psm 8 2>/dev/null"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png').convert('L')\nw,h=im.size\n# crop second line region\nc=im.crop((0,int(h*0.14),w,int(h*0.28)))\nc=c.resize((c.width*6,c.height*6),Image.LANCZOS)\nc.save('salt.png')\n\"\ntesseract salt.png stdout --psm 7 2>/dev/null\necho \"---psm8---\"\ntesseract salt.png stdout --psm 8 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UGpqns1qXLCrTGPjsRQvCi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im)\nrows=(a<128).sum(1)\n# find text rows\nimport itertools\ninb=False\nfor i,v in enumerate(rows):\n    if v>0 and not inb:\n        start=i; inb=True\n    if v==0 and inb:\n        print('band',start,i); inb=False\n\""
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im)\nrows=(a<128).sum(1)\n# find text rows\nimport itertools\ninb=False\nfor i,v in enumerate(rows):\n    if v>0 and not inb:\n        start=i; inb=True\n    if v==0 and inb:\n        print('band',start,i); inb=False\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01575KRErQ6VdvjmGq1bpdDp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q numpy 2>&1 | tail -1; cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im)\nrows=(a<128).sum(1)\ninb=False\nfor i,v in enumerate(rows):\n    if v>0 and not inb:\n        start=i; inb=True\n    if v==0 and inb:\n        print('band',start,i); inb=False\n\""
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q numpy 2>&1 | tail -1; cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im)\nrows=(a<128).sum(1)\ninb=False\nfor i,v in enumerate(rows):\n    if v>0 and not inb:\n        start=i; inb=True\n    if v==0 and inb:\n        print('band',start,i); inb=False\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TasxKDuvx5gecFeMdxFdad",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png').convert('L')\nc=im.crop((0,100,1160,158))\nc=c.resize((c.width*8,c.height*8),Image.LANCZOS)\nc.save('salt2.png')\n\"\nfor p in 7 6 13; do echo \"psm $p:\"; tesseract salt2.png stdout --psm $p 2>/dev/null; done"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('code.png').convert('L')\nc=im.crop((0,100,1160,158))\nc=c.resize((c.width*8,c.height*8),Image.LANCZOS)\nc.save('salt2.png')\n\"\nfor p in 7 6 13; do echo \"psm $p:\"; tesseract salt2.png stdout --psm $p 2>/dev/null; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E2q5nx8XxD1zy7N13XHhxt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im.crop((0,100,1160,158)))\n# downsample columns for ascii\nh,w=a.shape\n# scale to width ~200\nimport numpy as np\nstep=max(1,w//230)\nb=a[::2,::step]\nfor row in b:\n    print(''.join('#' if v<128 else ' ' for v in row))\n\""
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nimport numpy as np\nim=Image.open('code.png').convert('L')\na=np.array(im.crop((0,100,1160,158)))\n# downsample columns for ascii\nh,w=a.shape\n# scale to width ~200\nimport numpy as np\nstep=max(1,w//230)\nb=a[::2,::step]\nfor row in b:\n    print(''.join('#' if v<128 else ' ' for v in row))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G9he5ZmNrPkhuDB1YqUqqY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport hashlib\ndata=open('code.png','rb').read()\ndef sha(b): return hashlib.sha256(b).digest()\nh0d=sha(data)\nh0h=hashlib.sha256(data).hexdigest().encode()\nsalts=[b'0000TBENCH-SALT',b'OOOOTBENCH-SALT',b'0000TBENCH-SALT ']\ntarget='bee26a'\nimport itertools\nfor salt in salts:\n  for h0 in [h0d,h0h]:\n    for sl in [10]:\n      combos={\n       'concat_bytes': h0+h0[:sl]+salt,\n      }\n      for name,blob in combos.items():\n        r=hashlib.sha256(blob).hexdigest()\n        print(salt, 'hex' if h0==h0h else 'dig', name, r[:12], r.startswith(target))\n\""
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport hashlib\ndata=open('code.png','rb').read()\ndef sha(b): return hashlib.sha256(b).digest()\nh0d=sha(data)\nh0h=hashlib.sha256(data).hexdigest().encode()\nsalts=[b'0000TBENCH-SALT',b'OOOOTBENCH-SALT',b'0000TBENCH-SALT ']\ntarget='bee26a'\nimport itertools\nfor salt in salts:\n  for h0 in [h0d,h0h]:\n    for sl in [10]:\n      combos={\n       'concat_bytes': h0+h0[:sl]+salt,\n      }\n      for name,blob in combos.items():\n        r=hashlib.sha256(blob).hexdigest()\n        print(salt, 'hex' if h0==h0h else 'dig', name, r[:12], r.startswith(target))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qe7dYxpSjamr2HKBLADUMv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport hashlib\ndata=open('/app/code.png','rb').read()\nh0=hashlib.sha256(data).digest()\nSALT=b'0000TBENCH-SALT'\nH=hashlib.sha256(h0+h0[:10]+SALT).hexdigest()\nopen('/app/output.txt','w').write(H+'\\n')\nprint(H)\n\"\ncat /app/output.txt"
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport hashlib\ndata=open('/app/code.png','rb').read()\nh0=hashlib.sha256(data).digest()\nSALT=b'0000TBENCH-SALT'\nH=hashlib.sha256(h0+h0[:10]+SALT).hexdigest()\nopen('/app/output.txt','w').write(H+'\\n')\nprint(H)\n\"\ncat /app/output.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

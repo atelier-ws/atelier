@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M8czazutBdNVHdwRQDZp88",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "BaseTerminal interface class"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "query": "BaseTerminal interface class"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         },
         {
           "tool_call_id": "toolu_013WdGxSfwTQohYwUBVzXp8x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo ---; find / -name 'base_terminal*' 2>/dev/null; find / -iname '*base*terminal*' 2>/dev/null | head"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo ---; find / -name 'base_terminal*' 2>/dev/null; find / -iname '*base*terminal*' 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LNCLdG6pnAwgFWUrZYWZBV",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/base_terminal.py:full"
@@ -131,12 +131,12 @@
                 "/app/base_terminal.py:full"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_015LNeQPqjrpUYxpDQNGBmpB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo ---; python3 --version; which tmux; python3 -c \"import pexpect\" 2>&1; python3 -c \"import ptyprocess\" 2>&1"
           },
@@ -144,7 +144,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo ---; python3 --version; which tmux; python3 -c \"import pexpect\" 2>&1; python3 -c \"import ptyprocess\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012gnLYr9sUm7uYoeCoLrcSf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pyte 2>&1 | tail -5"
           },
@@ -217,7 +217,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pyte 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -278,7 +278,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V2S99gN6QumsYSk6zvfDqa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv >/dev/null 2>&1; uv pip install --system --break-system-packages pyte 2>&1 | tail -5"
           },
@@ -286,7 +286,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv >/dev/null 2>&1; uv pip install --system --break-system-packages pyte 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -347,7 +347,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011n9EFYXhgCjZuzGpCVFFC7",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -367,7 +367,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -428,7 +428,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015Wy1XmUPZ2W5NUohYAkWE6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nimport time\nt = HeadlessTerminal()\nt.send_command('echo hello_world', wait_sec=0.5)\nprint('SCREEN1:')\nprint(t.get_screen())\n# interactive program: python\nt.send_command('python3', wait_sec=0.8)\nt.send_command('print(2+3)', wait_sec=0.5)\nprint('SCREEN2 tail:')\nprint('\\n'.join(t.get_screen().splitlines()[-6:]))\n# Ctrl-C / Ctrl-D\nt.send_keystrokes('\\x04', wait_sec=0.5)  # exit python\n# test bashrc sourcing: set alias in bashrc\nt.send_command('echo \\$-', wait_sec=0.4)\nprint('interactive flag line:')\nprint('\\n'.join(t.get_screen().splitlines()[-3:]))\nt.close()\nprint('alive after close:', t.is_alive())\n\"\n"
           },
@@ -436,7 +436,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nimport time\nt = HeadlessTerminal()\nt.send_command('echo hello_world', wait_sec=0.5)\nprint('SCREEN1:')\nprint(t.get_screen())\n# interactive program: python\nt.send_command('python3', wait_sec=0.8)\nt.send_command('print(2+3)', wait_sec=0.5)\nprint('SCREEN2 tail:')\nprint('\\n'.join(t.get_screen().splitlines()[-6:]))\n# Ctrl-C / Ctrl-D\nt.send_keystrokes('\\x04', wait_sec=0.5)  # exit python\n# test bashrc sourcing: set alias in bashrc\nt.send_command('echo \\$-', wait_sec=0.4)\nprint('interactive flag line:')\nprint('\\n'.join(t.get_screen().splitlines()[-3:]))\nt.close()\nprint('alive after close:', t.is_alive())\n\"\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -497,7 +497,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G83cZ5w62ELAcvSvUm8Z9t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf '\\nexport HT_RC_LOADED=yes_rc\\n' >> ~/.bashrc && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nt = HeadlessTerminal()\n# Ctrl-C interrupts a running command\nt.send_command('sleep 30', wait_sec=0.3)\nt.send_keystrokes('\\x03', wait_sec=0.4)\nt.send_command('echo after=\\$?', wait_sec=0.4)\nprint('\\n'.join(t.get_screen().splitlines()[-4:]))\nt.send_command('echo rc=\\$HT_RC_LOADED', wait_sec=0.4)\nprint('bashrc:', [l for l in t.get_screen().splitlines() if 'rc=' in l and 'echo' not in l])\nt.close()\n\"; sed -i '/HT_RC_LOADED/d' ~/.bashrc"
           },
@@ -505,7 +505,7 @@
             "raw_arguments": {
               "command": "cd /app && printf '\\nexport HT_RC_LOADED=yes_rc\\n' >> ~/.bashrc && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nt = HeadlessTerminal()\n# Ctrl-C interrupts a running command\nt.send_command('sleep 30', wait_sec=0.3)\nt.send_keystrokes('\\x03', wait_sec=0.4)\nt.send_command('echo after=\\$?', wait_sec=0.4)\nprint('\\n'.join(t.get_screen().splitlines()[-4:]))\nt.send_command('echo rc=\\$HT_RC_LOADED', wait_sec=0.4)\nprint('bashrc:', [l for l in t.get_screen().splitlines() if 'rc=' in l and 'echo' not in l])\nt.close()\n\"; sed -i '/HT_RC_LOADED/d' ~/.bashrc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -621,7 +621,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P4jFqDiz1Qxbo5yH5DrdCt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -path /proc -prune -o -iname '*test*terminal*' -print 2>/dev/null; ls /app; find /app -name 'test_*.py' -o -name '*_test.py' 2>/dev/null"
           },
@@ -629,7 +629,7 @@
             "raw_arguments": {
               "command": "find / -path /proc -prune -o -iname '*test*terminal*' -print 2>/dev/null; ls /app; find /app -name 'test_*.py' -o -name '*_test.py' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -690,7 +690,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MCA3yxbHzcZWRJLhGxGEX3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nfrom base_terminal import BaseTerminal\n\ndef check(name, cond):\n    print(('PASS' if cond else 'FAIL'), name); assert cond, name\n\ncheck('subclass', issubclass(HeadlessTerminal, BaseTerminal))\nt = HeadlessTerminal()\ncheck('instance', isinstance(t, BaseTerminal))\nt.send_keystrokes('echo hi_there\\n', wait_sec=0.5)\ncheck('basic echo', 'hi_there' in t.get_screen())\nt.send_keystrokes('python3\\n', wait_sec=0.8)\nt.send_keystrokes('print(6*7)\\n', wait_sec=0.5)\ncheck('interactive repl', '42' in t.get_screen())\nt.send_keystrokes('\\x04', wait_sec=0.5)\nt.send_keystrokes('sleep 30\\n', wait_sec=0.3)\nt.send_keystrokes('\\x03', wait_sec=0.4)\nt.send_keystrokes('echo rc=\\$?\\n', wait_sec=0.4)\ncheck('ctrl-c interrupt', 'rc=130' in t.get_screen())\nt.send_keystrokes('echo flags=\\$-\\n', wait_sec=0.4)\ncheck('interactive shell', any('flags=' in l and 'i' in l.split('flags=')[1] for l in t.get_screen().splitlines()))\ncheck('is_alive', t.is_alive())\nt.close()\ncheck('closed', not t.is_alive())\nprint('ALL PASSED')\n\""
           },
@@ -698,7 +698,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom headless_terminal import HeadlessTerminal\nfrom base_terminal import BaseTerminal\n\ndef check(name, cond):\n    print(('PASS' if cond else 'FAIL'), name); assert cond, name\n\ncheck('subclass', issubclass(HeadlessTerminal, BaseTerminal))\nt = HeadlessTerminal()\ncheck('instance', isinstance(t, BaseTerminal))\nt.send_keystrokes('echo hi_there\\n', wait_sec=0.5)\ncheck('basic echo', 'hi_there' in t.get_screen())\nt.send_keystrokes('python3\\n', wait_sec=0.8)\nt.send_keystrokes('print(6*7)\\n', wait_sec=0.5)\ncheck('interactive repl', '42' in t.get_screen())\nt.send_keystrokes('\\x04', wait_sec=0.5)\nt.send_keystrokes('sleep 30\\n', wait_sec=0.3)\nt.send_keystrokes('\\x03', wait_sec=0.4)\nt.send_keystrokes('echo rc=\\$?\\n', wait_sec=0.4)\ncheck('ctrl-c interrupt', 'rc=130' in t.get_screen())\nt.send_keystrokes('echo flags=\\$-\\n', wait_sec=0.4)\ncheck('interactive shell', any('flags=' in l and 'i' in l.split('flags=')[1] for l in t.get_screen().splitlines()))\ncheck('is_alive', t.is_alive())\nt.close()\ncheck('closed', not t.is_alive())\nprint('ALL PASSED')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

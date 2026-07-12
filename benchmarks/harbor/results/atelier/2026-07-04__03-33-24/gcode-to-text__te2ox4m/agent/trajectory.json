@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WMRp4ayGoP9KAiZcAnvHme",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/text.gcode; head -50 /app/text.gcode"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/text.gcode; head -50 /app/text.gcode"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cdtz5wYMdDFeZST61vm6i2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"M486\" /app/text.gcode | head -80"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "grep -n \"M486\" /app/text.gcode | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QmLX1NL1848C3b8WC9YJfu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/parse.py << 'PYEOF'\nimport re\n\nlines = open('/app/text.gcode').read().split('\\n')\n\n# state\nx=y=z=e=0.0\nabs_e=False\nsegs=[]  # (x0,y0,x1,y1,z)\nin_obj=False\ncur=0.0\nfor ln in lines:\n    s=ln.strip()\n    if s.startswith('M486'):\n        m=re.match(r'M486 S(-?\\d+)',s)\n        if m:\n            v=int(m.group(1))\n            in_obj = (v==0)\n        continue\n    if s.startswith('M82'): abs_e=True; continue\n    if s.startswith('M83'): abs_e=False; continue\n    if s.startswith('G92'):\n        mm=re.search(r'E([-\\d.]+)',s)\n        if mm: e=float(mm.group(1))\n        continue\n    if s.startswith('G1') or s.startswith('G0'):\n        nx,ny,nz=x,y,z\n        de=None\n        for tok in s.split():\n            if tok[0]=='X': nx=float(tok[1:])\n            elif tok[0]=='Y': ny=float(tok[1:])\n            elif tok[0]=='Z': nz=float(tok[1:])\n            elif tok[0]=='E':\n                ev=float(tok[1:])\n                if abs_e:\n                    de=ev-e; e=ev\n                else:\n                    de=ev; e=ev\n        extruding = de is not None and de>0\n        if extruding and in_obj and (nx!=x or ny!=y):\n            segs.append((x,y,nx,ny,nz))\n        x,y,z=nx,ny,nz\n        continue\n\nprint(\"num segs\",len(segs))\nxs=[s[0] for s in segs]+[s[2] for s in segs]\nys=[s[1] for s in segs]+[s[3] for s in segs]\nzs=[s[4] for s in segs]\nprint(\"x\",min(xs),max(xs))\nprint(\"y\",min(ys),max(ys))\nprint(\"z\",min(zs),max(zs))\nimport pickle\npickle.dump(segs,open('/app/segs.pkl','wb'))\nPYEOF\npython3 /app/parse.py"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cat > /app/parse.py << 'PYEOF'\nimport re\n\nlines = open('/app/text.gcode').read().split('\\n')\n\n# state\nx=y=z=e=0.0\nabs_e=False\nsegs=[]  # (x0,y0,x1,y1,z)\nin_obj=False\ncur=0.0\nfor ln in lines:\n    s=ln.strip()\n    if s.startswith('M486'):\n        m=re.match(r'M486 S(-?\\d+)',s)\n        if m:\n            v=int(m.group(1))\n            in_obj = (v==0)\n        continue\n    if s.startswith('M82'): abs_e=True; continue\n    if s.startswith('M83'): abs_e=False; continue\n    if s.startswith('G92'):\n        mm=re.search(r'E([-\\d.]+)',s)\n        if mm: e=float(mm.group(1))\n        continue\n    if s.startswith('G1') or s.startswith('G0'):\n        nx,ny,nz=x,y,z\n        de=None\n        for tok in s.split():\n            if tok[0]=='X': nx=float(tok[1:])\n            elif tok[0]=='Y': ny=float(tok[1:])\n            elif tok[0]=='Z': nz=float(tok[1:])\n            elif tok[0]=='E':\n                ev=float(tok[1:])\n                if abs_e:\n                    de=ev-e; e=ev\n                else:\n                    de=ev; e=ev\n        extruding = de is not None and de>0\n        if extruding and in_obj and (nx!=x or ny!=y):\n            segs.append((x,y,nx,ny,nz))\n        x,y,z=nx,ny,nz\n        continue\n\nprint(\"num segs\",len(segs))\nxs=[s[0] for s in segs]+[s[2] for s in segs]\nys=[s[1] for s in segs]+[s[3] for s in segs]\nzs=[s[4] for s in segs]\nprint(\"x\",min(xs),max(xs))\nprint(\"y\",min(ys),max(ys))\nprint(\"z\",min(zs),max(zs))\nimport pickle\npickle.dump(segs,open('/app/segs.pkl','wb'))\nPYEOF\npython3 /app/parse.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0182bdtqtCMipQy8ifTPD48B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/render.py << 'PYEOF'\nimport pickle\nsegs=pickle.load(open('/app/segs.pkl','rb'))\n\ndef bres(x0,y0,x1,y1,grid,W,H,minx,miny,sx,sy):\n    import math\n    n=int(max(abs(x1-x0),abs(y1-y0))/0.3)+1\n    for i in range(n+1):\n        t=i/n\n        px=x0+(x1-x0)*t; py=y0+(y1-y0)*t\n        gx=int((px-minx)*sx); gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:\n            grid[gy][gx]='#'\n\ndef render(getpt,name,W=180):\n    pts=[]\n    for s in segs:\n        a=getpt(s[0],s[1],s[4]); b=getpt(s[2],s[3],s[4])\n        pts.append((a,b))\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx)\n    H=int((maxy-miny)*sx/2)+1  # aspect for char\n    sy=(H-1)/(maxy-miny)\n    grid=[[' ']*W for _ in range(H)]\n    for (a,b) in pts:\n        bres(a[0],a[1],b[0],b[1],grid,W,H,minx,miny,sx,sy)\n    # flip y so up is up\n    out='\\n'.join(''.join(r) for r in reversed(grid))\n    return f\"=== {name} ===\\n\"+out+\"\\n\"\n\nprint(render(lambda x,y,z:(x,y),\"XY (top)\"))\nPYEOF\npython3 /app/render.py"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cat > /app/render.py << 'PYEOF'\nimport pickle\nsegs=pickle.load(open('/app/segs.pkl','rb'))\n\ndef bres(x0,y0,x1,y1,grid,W,H,minx,miny,sx,sy):\n    import math\n    n=int(max(abs(x1-x0),abs(y1-y0))/0.3)+1\n    for i in range(n+1):\n        t=i/n\n        px=x0+(x1-x0)*t; py=y0+(y1-y0)*t\n        gx=int((px-minx)*sx); gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:\n            grid[gy][gx]='#'\n\ndef render(getpt,name,W=180):\n    pts=[]\n    for s in segs:\n        a=getpt(s[0],s[1],s[4]); b=getpt(s[2],s[3],s[4])\n        pts.append((a,b))\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx)\n    H=int((maxy-miny)*sx/2)+1  # aspect for char\n    sy=(H-1)/(maxy-miny)\n    grid=[[' ']*W for _ in range(H)]\n    for (a,b) in pts:\n        bres(a[0],a[1],b[0],b[1],grid,W,H,minx,miny,sx,sy)\n    # flip y so up is up\n    out='\\n'.join(''.join(r) for r in reversed(grid))\n    return f\"=== {name} ===\\n\"+out+\"\\n\"\n\nprint(render(lambda x,y,z:(x,y),\"XY (top)\"))\nPYEOF\npython3 /app/render.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WChgyuiAbfTkL4PvtuZC4Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >> /app/render.py << 'PYEOF'\nprint(render(lambda x,y,z:(x,z),\"XZ (front)\"))\nprint(render(lambda x,y,z:(y,z),\"YZ (side)\"))\nPYEOF\npython3 /app/render.py 2>&1 | tail -80"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cat >> /app/render.py << 'PYEOF'\nprint(render(lambda x,y,z:(x,z),\"XZ (front)\"))\nprint(render(lambda x,y,z:(y,z),\"YZ (side)\"))\nPYEOF\npython3 /app/render.py 2>&1 | tail -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Kann6raiNVh1TAXZ6GjPtE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '117,145p' /app/text.gcode"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "sed -n '117,145p' /app/text.gcode"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KfuxUahtc46nTLtdr9ikpz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r2.py << 'PYEOF'\nimport pickle,collections\nsegs=pickle.load(open('/app/segs.pkl','rb'))\nzc=collections.Counter(round(s[4],2) for s in segs)\nprint(\"layers (z:count) first 20:\",sorted(zc.items())[:20])\nprint(\"total distinct z:\",len(zc))\n# segment length stats\nimport math\nL=[math.hypot(s[2]-s[0],s[3]-s[1]) for s in segs]\nprint(\"len min/mean/max\",min(L),sum(L)/len(L),max(L))\nPYEOF\npython3 /app/r2.py"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cat > /app/r2.py << 'PYEOF'\nimport pickle,collections\nsegs=pickle.load(open('/app/segs.pkl','rb'))\nzc=collections.Counter(round(s[4],2) for s in segs)\nprint(\"layers (z:count) first 20:\",sorted(zc.items())[:20])\nprint(\"total distinct z:\",len(zc))\n# segment length stats\nimport math\nL=[math.hypot(s[2]-s[0],s[3]-s[1]) for s in segs]\nprint(\"len min/mean/max\",min(L),sum(L)/len(L),max(L))\nPYEOF\npython3 /app/r2.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016dkndfA3vPt4CZMMPzzkg4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/parse2.py << 'PYEOF'\nimport re,pickle\nlines=open('/app/text.gcode').read().split('\\n')\nx=y=z=e=0.0; abs_e=False\nobjsegs={0:[],1:[]}; obj=None\nfor ln in lines:\n    s=ln.strip()\n    if s.startswith('M486'):\n        m=re.match(r'M486 S(-?\\d+)',s)\n        if m:\n            v=int(m.group(1)); obj=v if v in (0,1) else None\n        continue\n    if s.startswith('M82'): abs_e=True; continue\n    if s.startswith('M83'): abs_e=False; continue\n    if s.startswith('G92'):\n        mm=re.search(r'E([-\\d.]+)',s); \n        if mm:e=float(mm.group(1))\n        continue\n    if s[:2] in ('G1','G0'):\n        nx,ny,nz=x,y,z; de=None\n        for t in s.split():\n            if t[0]=='X':nx=float(t[1:])\n            elif t[0]=='Y':ny=float(t[1:])\n            elif t[0]=='Z':nz=float(t[1:])\n            elif t[0]=='E':\n                ev=float(t[1:]); de=ev-e if abs_e else ev; e=ev\n        if de and de>0 and obj is not None and (nx!=x or ny!=y):\n            objsegs[obj].append((x,y,nx,ny,nz))\n        x,y,z=nx,ny,nz\npickle.dump(objsegs,open('/app/objsegs.pkl','wb'))\nfor k,v in objsegs.items():\n    xs=[s[0] for s in v]+[s[2] for s in v]\n    ys=[s[1] for s in v]+[s[3] for s in v]\n    zs=[s[4] for s in v]\n    print(k,len(v),\"x\",round(min(xs),1),round(max(xs),1),\"y\",round(min(ys),1),round(max(ys),1),\"z\",round(min(zs),1),round(max(zs),1))\nPYEOF\npython3 /app/parse2.py"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cat > /app/parse2.py << 'PYEOF'\nimport re,pickle\nlines=open('/app/text.gcode').read().split('\\n')\nx=y=z=e=0.0; abs_e=False\nobjsegs={0:[],1:[]}; obj=None\nfor ln in lines:\n    s=ln.strip()\n    if s.startswith('M486'):\n        m=re.match(r'M486 S(-?\\d+)',s)\n        if m:\n            v=int(m.group(1)); obj=v if v in (0,1) else None\n        continue\n    if s.startswith('M82'): abs_e=True; continue\n    if s.startswith('M83'): abs_e=False; continue\n    if s.startswith('G92'):\n        mm=re.search(r'E([-\\d.]+)',s); \n        if mm:e=float(mm.group(1))\n        continue\n    if s[:2] in ('G1','G0'):\n        nx,ny,nz=x,y,z; de=None\n        for t in s.split():\n            if t[0]=='X':nx=float(t[1:])\n            elif t[0]=='Y':ny=float(t[1:])\n            elif t[0]=='Z':nz=float(t[1:])\n            elif t[0]=='E':\n                ev=float(t[1:]); de=ev-e if abs_e else ev; e=ev\n        if de and de>0 and obj is not None and (nx!=x or ny!=y):\n            objsegs[obj].append((x,y,nx,ny,nz))\n        x,y,z=nx,ny,nz\npickle.dump(objsegs,open('/app/objsegs.pkl','wb'))\nfor k,v in objsegs.items():\n    xs=[s[0] for s in v]+[s[2] for s in v]\n    ys=[s[1] for s in v]+[s[3] for s in v]\n    zs=[s[4] for s in v]\n    print(k,len(v),\"x\",round(min(xs),1),round(max(xs),1),\"y\",round(min(ys),1),round(max(ys),1),\"z\",round(min(zs),1),round(max(zs),1))\nPYEOF\npython3 /app/parse2.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GYUoxYtZWsMX3YaFcfVbAv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r3.py << 'PYEOF'\nimport pickle,math\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\n# PCA on xy points\npts=[]\nfor s in segs:\n    pts.append((s[0],s[1])); pts.append((s[2],s[3]))\nn=len(pts)\nmx=sum(p[0] for p in pts)/n; my=sum(p[1] for p in pts)/n\nsxx=sum((p[0]-mx)**2 for p in pts)/n\nsyy=sum((p[1]-my)**2 for p in pts)/n\nsxy=sum((p[0]-mx)*(p[1]-my) for p in pts)/n\n# principal angle\ntheta=0.5*math.atan2(2*sxy,sxx-syy)\nprint(\"centroid\",mx,my,\"angle deg\",math.degrees(theta))\nc,sn=math.cos(theta),math.sin(theta)\n# project along u (baseline), perp = w\nus=[]; ws=[]\nfor p in pts:\n    dx,dy=p[0]-mx,p[1]-my\n    us.append(dx*c+dy*sn); ws.append(-dx*sn+dy*c)\nprint(\"u range\",round(min(us),1),round(max(us),1))\nprint(\"w(perp) range\",round(min(ws),1),round(max(ws),1))\nPYEOF\npython3 /app/r3.py"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cat > /app/r3.py << 'PYEOF'\nimport pickle,math\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\n# PCA on xy points\npts=[]\nfor s in segs:\n    pts.append((s[0],s[1])); pts.append((s[2],s[3]))\nn=len(pts)\nmx=sum(p[0] for p in pts)/n; my=sum(p[1] for p in pts)/n\nsxx=sum((p[0]-mx)**2 for p in pts)/n\nsyy=sum((p[1]-my)**2 for p in pts)/n\nsxy=sum((p[0]-mx)*(p[1]-my) for p in pts)/n\n# principal angle\ntheta=0.5*math.atan2(2*sxy,sxx-syy)\nprint(\"centroid\",mx,my,\"angle deg\",math.degrees(theta))\nc,sn=math.cos(theta),math.sin(theta)\n# project along u (baseline), perp = w\nus=[]; ws=[]\nfor p in pts:\n    dx,dy=p[0]-mx,p[1]-my\n    us.append(dx*c+dy*sn); ws.append(-dx*sn+dy*c)\nprint(\"u range\",round(min(us),1),round(max(us),1))\nprint(\"w(perp) range\",round(min(ws),1),round(max(ws),1))\nPYEOF\npython3 /app/r3.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015LUv963n88ni8k7PNLi4Kp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r4.py << 'PYEOF'\nimport pickle,math\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nmx,my=124.8188907805604,110.32135280457764\ntheta=math.radians(22.25385239801003)\nc,sn=math.cos(theta),math.sin(theta)\ndef proj(x,y,z):\n    dx,dy=x-mx,y-my\n    u=dx*c+dy*sn\n    w=-dx*sn+dy*c\n    return u,z,w\n# render u (x-axis) vs z (y-axis), maybe filter by w side\ndef render(wmin,wmax,W=200,fname=None):\n    pts=[]\n    for s in segs:\n        a=proj(s[0],s[1],s[4]); b=proj(s[2],s[3],s[4])\n        if a[2]<wmin or a[2]>wmax: continue\n        pts.append((a,b))\n    if not pts: \n        print(\"no pts\"); return\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx)\n    H=int((maxy-miny)*sx*0.5)+1\n    sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n\n            px=a[0]+(b[0]-a[0])*t; py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx); gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H: g[gy][gx]='#'\n    out='\\n'.join(''.join(r) for r in reversed(g))\n    print(out)\n    if fname: open(fname,'w').write(out+'\\n')\nprint(\"=== front face (w>0) ===\")\nrender(0.5,10)\nPYEOF\npython3 /app/r4.py"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cat > /app/r4.py << 'PYEOF'\nimport pickle,math\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nmx,my=124.8188907805604,110.32135280457764\ntheta=math.radians(22.25385239801003)\nc,sn=math.cos(theta),math.sin(theta)\ndef proj(x,y,z):\n    dx,dy=x-mx,y-my\n    u=dx*c+dy*sn\n    w=-dx*sn+dy*c\n    return u,z,w\n# render u (x-axis) vs z (y-axis), maybe filter by w side\ndef render(wmin,wmax,W=200,fname=None):\n    pts=[]\n    for s in segs:\n        a=proj(s[0],s[1],s[4]); b=proj(s[2],s[3],s[4])\n        if a[2]<wmin or a[2]>wmax: continue\n        pts.append((a,b))\n    if not pts: \n        print(\"no pts\"); return\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx)\n    H=int((maxy-miny)*sx*0.5)+1\n    sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n\n            px=a[0]+(b[0]-a[0])*t; py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx); gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H: g[gy][gx]='#'\n    out='\\n'.join(''.join(r) for r in reversed(g))\n    print(out)\n    if fname: open(fname,'w').write(out+'\\n')\nprint(\"=== front face (w>0) ===\")\nrender(0.5,10)\nPYEOF\npython3 /app/r4.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YEVgqkijZSiQekS5xw4d8y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages numpy -q 2>/dev/null; cat > /app/r5.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nP=[]\nfor s in segs:\n    P.append((s[0],s[1],s[4])); P.append((s[2],s[3],s[4]))\nP=np.array(P)\nc=P.mean(0)\nQ=P-c\ncov=Q.T@Q/len(Q)\nw,v=np.linalg.eigh(cov)\nprint(\"eigvals\",w)\nprint(\"eigvecs (cols)\")\nprint(v)\n# smallest eigval -> normal; largest two -> plane axes\nnormal=v[:,0]\na1=v[:,2]; a2=v[:,1]\nprint(\"normal\",normal)\nprint(\"axis1\",a1,\"axis2\",a2)\nu=Q@a1; vv=Q@a2; nn=Q@normal\nprint(\"u range\",u.min(),u.max())\nprint(\"v range\",vv.min(),vv.max())\nprint(\"n(thickness) range\",nn.min(),nn.max())\npickle.dump((c,a1,a2,normal),open('/app/basis.pkl','wb'))\nPYEOF\npython3 /app/r5.py"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages numpy -q 2>/dev/null; cat > /app/r5.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nP=[]\nfor s in segs:\n    P.append((s[0],s[1],s[4])); P.append((s[2],s[3],s[4]))\nP=np.array(P)\nc=P.mean(0)\nQ=P-c\ncov=Q.T@Q/len(Q)\nw,v=np.linalg.eigh(cov)\nprint(\"eigvals\",w)\nprint(\"eigvecs (cols)\")\nprint(v)\n# smallest eigval -> normal; largest two -> plane axes\nnormal=v[:,0]\na1=v[:,2]; a2=v[:,1]\nprint(\"normal\",normal)\nprint(\"axis1\",a1,\"axis2\",a2)\nu=Q@a1; vv=Q@a2; nn=Q@normal\nprint(\"u range\",u.min(),u.max())\nprint(\"v range\",vv.min(),vv.max())\nprint(\"n(thickness) range\",nn.min(),nn.max())\npickle.dump((c,a1,a2,normal),open('/app/basis.pkl','wb'))\nPYEOF\npython3 /app/r5.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V4W3DD8kRiFVywfB2egqa7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages numpy -q 2>&1 | tail -2; python3 -c \"import numpy;print(numpy.__version__)\""
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages numpy -q 2>&1 | tail -2; python3 -c \"import numpy;print(numpy.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013bPEKA9Jchm2Gs8h9p3CEE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/r5.py"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "python3 /app/r5.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ci7HgSPSf7wRhMgNG1738z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"thumbnail\\|; png\\|base64\\|Q29\\|iVBOR\" /app/text.gcode | head"
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "grep -n \"thumbnail\\|; png\\|base64\\|Q29\\|iVBOR\" /app/text.gcode | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NgeeLSyypSGpQ4Pwsj2HKK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"^;\" /app/text.gcode | head -60; echo \"---TAIL---\"; tail -60 /app/text.gcode"
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "grep -n \"^;\" /app/text.gcode | head -60; echo \"---TAIL---\"; tail -60 /app/text.gcode"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XqCChuUE8Aaq4bb7ADoJbk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r6.py << 'PYEOF'\nimport pickle,collections\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nby=collections.defaultdict(list)\nfor s in segs: by[round(s[4],2)].append(s)\nzs=sorted(by)\nprint(\"nlayers\",len(zs),\"zmin\",zs[0],\"zmax\",zs[-1])\nfor z in [zs[len(zs)//2]]:\n    ss=by[z]\n    xs=[s[0] for s in ss]+[s[2] for s in ss]\n    ys=[s[1] for s in ss]+[s[3] for s in ss]\n    print(\"layer\",z,\"n\",len(ss),\"x\",round(min(xs),1),round(max(xs),1),\"y\",round(min(ys),1),round(max(ys),1))\n# counts vs z\nprint(\"counts:\",[len(by[z]) for z in zs[::20]])\nPYEOF\npython3 /app/r6.py"
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "cat > /app/r6.py << 'PYEOF'\nimport pickle,collections\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nby=collections.defaultdict(list)\nfor s in segs: by[round(s[4],2)].append(s)\nzs=sorted(by)\nprint(\"nlayers\",len(zs),\"zmin\",zs[0],\"zmax\",zs[-1])\nfor z in [zs[len(zs)//2]]:\n    ss=by[z]\n    xs=[s[0] for s in ss]+[s[2] for s in ss]\n    ys=[s[1] for s in ss]+[s[3] for s in ss]\n    print(\"layer\",z,\"n\",len(ss),\"x\",round(min(xs),1),round(max(xs),1),\"y\",round(min(ys),1),round(max(ys),1))\n# counts vs z\nprint(\"counts:\",[len(by[z]) for z in zs[::20]])\nPYEOF\npython3 /app/r6.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1137,7 +1137,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016jijhLpVq2hmFJ9X8MgkQs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r7.py << 'PYEOF'\nimport pickle,collections\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nby=collections.defaultdict(list)\nfor s in segs: by[round(s[4],2)].append(s)\nzs=sorted(by)\ndef draw(ss,W=60):\n    xs=[s[0] for s in ss]+[s[2] for s in ss]\n    ys=[s[1] for s in ss]+[s[3] for s in ss]\n    minx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\n    if maxx==minx or maxy==miny:return\n    sx=(W-1)/(maxx-minx); H=int((maxy-miny)*sx*0.5)+1; sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for s in ss:\n        a=(s[0],s[1]);b=(s[2],s[3])\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\nfor z in [zs[80]]:\n    print(\"z\",z,\"n\",len(by[z]))\n    draw(by[z])\nPYEOF\npython3 /app/r7.py"
           },
@@ -1145,7 +1145,7 @@
             "raw_arguments": {
               "command": "cat > /app/r7.py << 'PYEOF'\nimport pickle,collections\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nby=collections.defaultdict(list)\nfor s in segs: by[round(s[4],2)].append(s)\nzs=sorted(by)\ndef draw(ss,W=60):\n    xs=[s[0] for s in ss]+[s[2] for s in ss]\n    ys=[s[1] for s in ss]+[s[3] for s in ss]\n    minx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\n    if maxx==minx or maxy==miny:return\n    sx=(W-1)/(maxx-minx); H=int((maxy-miny)*sx*0.5)+1; sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for s in ss:\n        a=(s[0],s[1]);b=(s[2],s[3])\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\nfor z in [zs[80]]:\n    print(\"z\",z,\"n\",len(by[z]))\n    draw(by[z])\nPYEOF\npython3 /app/r7.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1206,7 +1206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AgeZ8UeRJAZ55MsUdZZTEN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r8.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef pr(x,y,z):\n    q=np.array([x,y,z])-c\n    return q@a1,q@a2,q@normal\ndef render(W=220,nsel=None):\n    pts=[]\n    for s in segs:\n        a=pr(s[0],s[1],s[4]);b=pr(s[2],s[3],s[4])\n        pts.append((a,b))\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx);H=int((maxy-miny)*sx*0.5)+1;sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\nrender()\nPYEOF\npython3 /app/r8.py"
           },
@@ -1214,7 +1214,7 @@
             "raw_arguments": {
               "command": "cat > /app/r8.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef pr(x,y,z):\n    q=np.array([x,y,z])-c\n    return q@a1,q@a2,q@normal\ndef render(W=220,nsel=None):\n    pts=[]\n    for s in segs:\n        a=pr(s[0],s[1],s[4]);b=pr(s[2],s[3],s[4])\n        pts.append((a,b))\n    xs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\n    ys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\n    minx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\n    sx=(W-1)/(maxx-minx);H=int((maxy-miny)*sx*0.5)+1;sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\nrender()\nPYEOF\npython3 /app/r8.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1275,7 +1275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FKtSczWhqqKjv52yVCVWCF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r9.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef pr(x,y,z):\n    q=np.array([x,y,z])-c\n    return q@a1,q@a2\npts=[(pr(s[0],s[1],s[4]),pr(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nH=22\ndef render(u0,u1,W):\n    sx=(W-1)/(u1-u0);sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\ntot=maxx-minx\nrender(minx,minx+tot/2,180)\nprint(\"\\n\\n\")\nrender(minx+tot/2,maxx,180)\nPYEOF\npython3 /app/r9.py"
           },
@@ -1283,7 +1283,7 @@
             "raw_arguments": {
               "command": "cat > /app/r9.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef pr(x,y,z):\n    q=np.array([x,y,z])-c\n    return q@a1,q@a2\npts=[(pr(s[0],s[1],s[4]),pr(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nH=22\ndef render(u0,u1,W):\n    sx=(W-1)/(u1-u0);sy=(H-1)/(maxy-miny)\n    g=[[' ']*W for _ in range(H)]\n    for a,b in pts:\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for i in range(n+1):\n            t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-miny)*sy)\n            if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\n    print('\\n'.join(''.join(r) for r in reversed(g)))\ntot=maxx-minx\nrender(minx,minx+tot/2,180)\nprint(\"\\n\\n\")\nrender(minx+tot/2,maxx,180)\nPYEOF\npython3 /app/r9.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1344,7 +1344,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YAx4yBywpBWTxNN24Z4FQJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/r10.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\npr=lambda x,y,z:(np.array([x,y,z])-c)@a1, (np.array([x,y,z])-c)@a2\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=760;H=26\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/full.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"done\",W,H)\nPYEOF\npython3 /app/r10.py\necho \"=== cols 0-190 ===\"\ncut -c1-190 /app/full.txt"
           },
@@ -1352,7 +1352,7 @@
             "raw_arguments": {
               "command": "cat > /app/r10.py << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\npr=lambda x,y,z:(np.array([x,y,z])-c)@a1, (np.array([x,y,z])-c)@a2\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=760;H=26\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/full.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"done\",W,H)\nPYEOF\npython3 /app/r10.py\necho \"=== cols 0-190 ===\"\ncut -c1-190 /app/full.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1413,7 +1413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VSb3EgjbDUEDUvX84FpBQR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1433,7 +1433,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1506,7 +1506,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pj1sxN1A5d9qTyvepLsXTg",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/r10.py:L1-L6"
@@ -1518,7 +1518,7 @@
                 "/app/r10.py:L1-L6"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1579,7 +1579,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F2bncvJiJTLihh2C4ejS4p",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1599,7 +1599,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1672,7 +1672,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J4NxtPG58RkvtTBXAYt85k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=760;H=26\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/full.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"done\")\nPYEOF\necho \"=== 1-190 ===\"; cut -c1-190 /app/full.txt"
           },
@@ -1680,7 +1680,7 @@
             "raw_arguments": {
               "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p[0][0] for p in pts]+[p[1][0] for p in pts]\nys=[p[0][1] for p in pts]+[p[1][1] for p in pts]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=760;H=26\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/full.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"done\")\nPYEOF\necho \"=== 1-190 ===\"; cut -c1-190 /app/full.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1741,7 +1741,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rc584z5QJP4ZA6BGMxqmA5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== 190-400 ===\"; cut -c190-400 /app/full.txt"
           },
@@ -1749,7 +1749,7 @@
             "raw_arguments": {
               "command": "echo \"=== 190-400 ===\"; cut -c190-400 /app/full.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1810,7 +1810,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AKXaV1cpvk1euuecxtM2RJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - << 'PYEOF'\nrows=open('/app/full.txt').read('\\n') if False else open('/app/full.txt').read().split('\\n')\nrows=[r for r in rows if r.strip()]\nH=len(rows); W=max(len(r) for r in rows)\nrows=[r.ljust(W) for r in rows]\n# column occupancy\ncolfill=[sum(1 for r in rows if r[c]=='#') for c in range(W)]\n# find gaps (columns with 0 fill) to segment glyphs\nglyphs=[]; c=0\nwhile c<W:\n    if colfill[c]==0:\n        c+=1;continue\n    s=c\n    while c<W and not (colfill[c]==0 and all(colfill[c:c+3]==[0,0,0] if c+3<=W else True) ):\n        # break on a run of >=2 empty cols\n        if colfill[c]==0 and (c+1>=W or colfill[c+1]==0):\n            break\n        c+=1\n    glyphs.append((s,c))\n    while c<W and colfill[c]==0: c+=1\nprint(\"nglyphs\",len(glyphs))\nprint([(a,b,b-a) for a,b in glyphs])\nPYEOF"
           },
@@ -1818,7 +1818,7 @@
             "raw_arguments": {
               "command": "python3 - << 'PYEOF'\nrows=open('/app/full.txt').read('\\n') if False else open('/app/full.txt').read().split('\\n')\nrows=[r for r in rows if r.strip()]\nH=len(rows); W=max(len(r) for r in rows)\nrows=[r.ljust(W) for r in rows]\n# column occupancy\ncolfill=[sum(1 for r in rows if r[c]=='#') for c in range(W)]\n# find gaps (columns with 0 fill) to segment glyphs\nglyphs=[]; c=0\nwhile c<W:\n    if colfill[c]==0:\n        c+=1;continue\n    s=c\n    while c<W and not (colfill[c]==0 and all(colfill[c:c+3]==[0,0,0] if c+3<=W else True) ):\n        # break on a run of >=2 empty cols\n        if colfill[c]==0 and (c+1>=W or colfill[c+1]==0):\n            break\n        c+=1\n    glyphs.append((s,c))\n    while c<W and colfill[c]==0: c+=1\nprint(\"nglyphs\",len(glyphs))\nprint([(a,b,b-a) for a,b in glyphs])\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1879,7 +1879,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019rJ4ZP332rytMNBUBQUo5b",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - << 'PYEOF'\nrows=open('/app/full.txt').read().split('\\n')\nrows=[r for r in rows if r.strip()]\nW=max(len(r) for r in rows)\nrows=[r.ljust(W) for r in rows]\nH=len(rows)\ncolfill=[sum(1 for r in rows if r[c]=='#') for c in range(W)]\n# segment: split where >=2 consecutive empty columns\nglyphs=[];c=0\nwhile c<W:\n    while c<W and colfill[c]==0:c+=1\n    if c>=W:break\n    s=c\n    while c<W:\n        if colfill[c]==0 and (c+1>=W or colfill[c+1]==0):\n            break\n        c+=1\n    glyphs.append((s,c))\nprint(\"nglyphs\",len(glyphs))\n# render each glyph normalized to ~14 wide x H tall\nfor i,(a,b) in enumerate(glyphs):\n    sub=[r[a:b] for r in rows]\n    # trim empty top/bottom rows\n    print(f\"\\n--- glyph {i} cols {a}-{b} w={b-a} ---\")\n    for r in sub:\n        print(r.rstrip())\nPYEOF"
           },
@@ -1887,7 +1887,7 @@
             "raw_arguments": {
               "command": "python3 - << 'PYEOF'\nrows=open('/app/full.txt').read().split('\\n')\nrows=[r for r in rows if r.strip()]\nW=max(len(r) for r in rows)\nrows=[r.ljust(W) for r in rows]\nH=len(rows)\ncolfill=[sum(1 for r in rows if r[c]=='#') for c in range(W)]\n# segment: split where >=2 consecutive empty columns\nglyphs=[];c=0\nwhile c<W:\n    while c<W and colfill[c]==0:c+=1\n    if c>=W:break\n    s=c\n    while c<W:\n        if colfill[c]==0 and (c+1>=W or colfill[c+1]==0):\n            break\n        c+=1\n    glyphs.append((s,c))\nprint(\"nglyphs\",len(glyphs))\n# render each glyph normalized to ~14 wide x H tall\nfor i,(a,b) in enumerate(glyphs):\n    sub=[r[a:b] for r in rows]\n    # trim empty top/bottom rows\n    print(f\"\\n--- glyph {i} cols {a}-{b} w={b-a} ---\")\n    for r in sub:\n        print(r.rstrip())\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1895,7 +1895,7 @@
         "results": [
           {
             "source_call_id": "toolu_019rJ4ZP332rytMNBUBQUo5b",
-            "content": "{\"type\": \"text\", \"text\": \"nglyphs 26\\n\\n--- glyph 0 cols 0-18 w=18 ---\\n\\n              ####\\n          ########\\n         #####\\n        ####\\n        ###\\n       ####\\n       ####\\n       ####\\n       ####\\n       ###\\n     #####\\n   #####\\n####\\n #######\\n     ## #\\n       # #\\n       ####\\n       ####\\n       ####\\n       ## #\\n        # #\\n        # ##\\n         ####\\n          ########\\n             #####\\n\\n--- glyph 1 cols 24-50 w=26 ---\\n\\n\\n\\n\\n\\n\\n            ####\\n####  ###############\\n############  #########\\n# #####            ## ##\\n#####                # ##\\n#####                ####\\n#####                 ####\\n## #                  #  #\\n## #                  #  #\\n## #                  # ##\\n## ##                ## ##\\n#### ##             ## ##\\n##########       #######\\n... (529 lines omitted) ...\\n ### #               ## ##\\n #######            ## ##\\n #######################\\n ####   #############\\n # ##\\n ####\\n  ####               #####\\n   #####            #####\\n    ####################\\n       ##############\\n\\n--- glyph 21 cols 647-666 w=19 ---\\n#\\n#######\\n  #######\\n      ####\\n       ####\\n        ###\\n        # ##\\n        # ##\\n        # ##\\n        # ##\\n        ####\\n         #####\\n           ########\\n            #######\\n          ######\\n         # ##\\n        ####\\n        # ##\\n        # ##\\n        # ##\\n       ## #\\n       ## #\\n       #  #\\n    ######\\n #######\\n ###\\n\\n--- glyph 22 cols 669-696 w=27 ---\\n\\n\\n\\n\\n\\n\\n ####    ##########\\n ####  ###############\\n # #######        ######\\n## # ##             #####\\n # ###                # ##\\n ####                 ####\\n ####                 #####\\n ## #                 #####\\n ## #                 #####\\n ## ##                ## ##\\n ######              #####\\n # ######           ######\\n #  ####################\\n # ##   #############\\n ####\\n  ####\\n  ## #               #####\\n   #####            ## ##\\n    ####################\\n        #############\\n\\n--- glyph 23 cols 700-728 w=28 ---\\n\\n\\n\\n\\n\\n\\n        #############\\n     ###################\\n    ## ##           ## ##\\n   #####              ####\\n   #####                 ##\\n   ######\\n   ##################\\n   ## ##  ###############\\n   ## #             #######\\n   ## #                ## #\\n   ## ##                # ##\\n   ########            ## ##\\n  ## ##########     ########\\n#######   ###############\\n #             ######\\n\\n\\n\\n\\n\\n\\n--- glyph 24 cols 735-740 w=5 ---\\n\\n#####\\n## ##\\n## ##\\n## ##\\n## #\\n## #\\n#####\\n#####\\n####\\n####\\n#####\\n#####\\n## ##\\n## ##\\n## #\\n## #\\n#####\\n#####\\n#####\\n\\n\\n\\n\\n\\n\\n\\n--- glyph 25 cols 745-760 w=15 ---\\n\\n#######\\n#########\\n     #  #\\n     ## #\\n      ####\\n###############\\n##############\\n     #####\\n     #####\\n     #####\\n     #####\\n      # ##\\n     ## ##\\n     ## #\\n     ## ##\\n     #####\\n     #####\\n     #####\\n     #####\\n\\n\\n\\n\\n\\n\\n\\n[output truncated: 529 lines omitted; full output (10661B) spilled to /tmp/atelier-spill/original-bash-1783146348311-422cc3e7.txt; read /tmp/atelier-spill/original-bash-1783146348311-422cc3e7.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"nglyphs 26\\n\\n--- glyph 0 cols 0-18 w=18 ---\\n\\n              ####\\n          ########\\n         #####\\n        ####\\n        ###\\n       ####\\n       ####\\n       ####\\n       ####\\n       ###\\n     #####\\n   #####\\n####\\n #######\\n     ## #\\n       # #\\n       ####\\n       ####\\n       ####\\n       ## #\\n        # #\\n        # ##\\n         ####\\n          ########\\n             #####\\n\\n--- glyph 1 cols 24-50 w=26 ---\\n\\n\\n\\n\\n\\n\\n            ####\\n####  ###############\\n############  #########\\n# #####            ## ##\\n#####                # ##\\n#####                ####\\n#####                 ####\\n## #                  #  #\\n## #                  #  #\\n## #                  # ##\\n## ##                ## ##\\n#### ##             ## ##\\n##########       #######\\n... (529 lines omitted) ...\\n ### #               ## ##\\n #######            ## ##\\n #######################\\n ####   #############\\n # ##\\n ####\\n  ####               #####\\n   #####            #####\\n    ####################\\n       ##############\\n\\n--- glyph 21 cols 647-666 w=19 ---\\n#\\n#######\\n  #######\\n      ####\\n       ####\\n        ###\\n        # ##\\n        # ##\\n        # ##\\n        # ##\\n        ####\\n         #####\\n           ########\\n            #######\\n          ######\\n         # ##\\n        ####\\n        # ##\\n        # ##\\n        # ##\\n       ## #\\n       ## #\\n       #  #\\n    ######\\n #######\\n ###\\n\\n--- glyph 22 cols 669-696 w=27 ---\\n\\n\\n\\n\\n\\n\\n ####    ##########\\n ####  ###############\\n # #######        ######\\n## # ##             #####\\n # ###                # ##\\n ####                 ####\\n ####                 #####\\n ## #                 #####\\n ## #                 #####\\n ## ##                ## ##\\n ######              #####\\n # ######           ######\\n #  ####################\\n # ##   #############\\n ####\\n  ####\\n  ## #               #####\\n   #####            ## ##\\n    ####################\\n        #############\\n\\n--- glyph 23 cols 700-728 w=28 ---\\n\\n\\n\\n\\n\\n\\n        #############\\n     ###################\\n    ## ##           ## ##\\n   #####              ####\\n   #####                 ##\\n   ######\\n   ##################\\n   ## ##  ###############\\n   ## #             #######\\n   ## #                ## #\\n   ## ##                # ##\\n   ########            ## ##\\n  ## ##########     ########\\n#######   ###############\\n #             ######\\n\\n\\n\\n\\n\\n\\n--- glyph 24 cols 735-740 w=5 ---\\n\\n#####\\n## ##\\n## ##\\n## ##\\n## #\\n## #\\n#####\\n#####\\n####\\n####\\n#####\\n#####\\n## ##\\n## ##\\n## #\\n## #\\n#####\\n#####\\n#####\\n\\n\\n\\n\\n\\n\\n\\n--- glyph 25 cols 745-760 w=15 ---\\n\\n#######\\n#########\\n     #  #\\n     ## #\\n      ####\\n###############\\n##############\\n     #####\\n     #####\\n     #####\\n     #####\\n      # ##\\n     ## ##\\n     ## #\\n     ## ##\\n     #####\\n     #####\\n     #####\\n     #####\\n\\n\\n\\n\\n\\n\\n\\n[output truncated: 529 lines omitted; full output (10661B) spilled to /tmp/lemoncrow-spill/original-bash-1783146348311-422cc3e7.txt; read /tmp/lemoncrow-spill/original-bash-1783146348311-422cc3e7.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -1948,7 +1948,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016sgz1W57zfqC9cgKVevwnG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\n# histogram along u to find glyph gaps\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res); hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\n# find gap runs\nocc=hist>0\n# glyph spans\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):  # allow single-bin gap\n        i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nprint(\"nglyphs\",len(spans))\n# render each glyph\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=24\n    w=max(6,int((u1-u0)/res))\n    sx=(w-1)/(u1-u0); sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5: continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r) for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res; u1=umin+be*res\n    out.append(f\"\\n===== glyph {i}  (u {u0:.1f}..{u1:.1f}) =====\")\n    out.append(rg(u0,u1))\nopen('/app/glyphs.txt','w').write('\\n'.join(out))\nprint(\"written\")\nPYEOF\nwc -l /app/glyphs.txt"
           },
@@ -1956,7 +1956,7 @@
             "raw_arguments": {
               "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\n# histogram along u to find glyph gaps\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res); hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\n# find gap runs\nocc=hist>0\n# glyph spans\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):  # allow single-bin gap\n        i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nprint(\"nglyphs\",len(spans))\n# render each glyph\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=24\n    w=max(6,int((u1-u0)/res))\n    sx=(w-1)/(u1-u0); sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5: continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r) for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res; u1=umin+be*res\n    out.append(f\"\\n===== glyph {i}  (u {u0:.1f}..{u1:.1f}) =====\")\n    out.append(rg(u0,u1))\nopen('/app/glyphs.txt','w').write('\\n'.join(out))\nprint(\"written\")\nPYEOF\nwc -l /app/glyphs.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2017,7 +2017,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RtXHqpgvs716aSNeY5W5uu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '1,140p' /app/glyphs.txt"
           },
@@ -2025,7 +2025,7 @@
             "raw_arguments": {
               "command": "sed -n '1,140p' /app/glyphs.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2086,7 +2086,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BsvdfVfCk84h31TKnEzCMa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '140,330p' /app/glyphs.txt"
           },
@@ -2094,7 +2094,7 @@
             "raw_arguments": {
               "command": "sed -n '140,330p' /app/glyphs.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2155,7 +2155,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LevNQhmTjS8gf7aWkHnUjz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '330,571p' /app/glyphs.txt"
           },
@@ -2163,7 +2163,7 @@
             "raw_arguments": {
               "command": "sed -n '330,571p' /app/glyphs.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2224,7 +2224,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eq28oM9GLEZxx3diybz37K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1  # mirror / reverse reading\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=30\n    w=max(6,int((u1-u0)/res*1.3))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r).rstrip() for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(f\"\\n===== g{i} =====\")\n    out.append(rg(u0,u1))\nopen('/app/mir.txt','w').write('\\n'.join(out))\nprint(\"nglyphs\",len(spans))\nPYEOF\nsed -n '1,170p' /app/mir.txt"
           },
@@ -2232,7 +2232,7 @@
             "raw_arguments": {
               "command": "python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1  # mirror / reverse reading\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=30\n    w=max(6,int((u1-u0)/res*1.3))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r).rstrip() for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(f\"\\n===== g{i} =====\")\n    out.append(rg(u0,u1))\nopen('/app/mir.txt','w').write('\\n'.join(out))\nprint(\"nglyphs\",len(spans))\nPYEOF\nsed -n '1,170p' /app/mir.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2293,7 +2293,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RUNg5ifzXAjVtHU6h2pUox",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/mir.txt; sed -n '1,175p' /app/mir.txt"
           },
@@ -2301,7 +2301,7 @@
             "raw_arguments": {
               "command": "wc -l /app/mir.txt; sed -n '1,175p' /app/mir.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2362,7 +2362,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K873achDEQPKcV4Wm4Bffa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/*.txt; echo \"===\"; python3 -c \"print(open('/app/mir.txt').read()[:50])\" 2>&1"
           },
@@ -2370,7 +2370,7 @@
             "raw_arguments": {
               "command": "ls -la /app/*.txt; echo \"===\"; python3 -c \"print(open('/app/mir.txt').read()[:50])\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2431,7 +2431,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0192D6iZ7hfeSJBKwJ5E6cfK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF' 2>&1 | head -20\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=30\n    w=max(6,int((u1-u0)/res*1.3))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r).rstrip() for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(\"\\n===== g%d =====\"%i)\n    out.append(rg(u0,u1))\nopen('/app/mir.txt','w').write('\\n'.join(out))\nprint(\"nglyphs\",len(spans))\nPYEOF\necho \"exit\"; ls -la /app/mir.txt 2>&1"
           },
@@ -2439,7 +2439,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF' 2>&1 | head -20\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.4\nnb=int((umax-umin)/res)+1\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and (occ[i] or (i+1<nb and occ[i+1])):i+=1\n    spans.append((s,i))\n    while i<nb and not occ[i]:i+=1\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=30\n    w=max(6,int((u1-u0)/res*1.3))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        if a[0]<u0-0.5 or a[0]>u1+0.5:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return '\\n'.join(''.join(r).rstrip() for r in reversed(g))\nout=[]\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(\"\\n===== g%d =====\"%i)\n    out.append(rg(u0,u1))\nopen('/app/mir.txt','w').write('\\n'.join(out))\nprint(\"nglyphs\",len(spans))\nPYEOF\necho \"exit\"; ls -la /app/mir.txt 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2500,7 +2500,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013HQMXYwjjJetcFSXBEcxUv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '1,175p' /app/mir.txt"
           },
@@ -2508,7 +2508,7 @@
             "raw_arguments": {
               "command": "sed -n '1,175p' /app/mir.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2569,7 +2569,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01564xzeejq6abDfyrncE5ux",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1  # mirror to correct handedness\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=900;H=30\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/fullm.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"ok\")\nPYEOF\necho \"A: 1-230\"; cut -c1-230 /app/fullm.txt"
           },
@@ -2577,7 +2577,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1  # mirror to correct handedness\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nW=900;H=30\nsx=(W-1)/(maxx-minx);sy=(H-1)/(maxy-miny)\ng=[[' ']*W for _ in range(H)]\nfor a,b in pts:\n    n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n    for i in range(n+1):\n        t=i/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n        gx=int((px-minx)*sx);gy=int((py-miny)*sy)\n        if 0<=gx<W and 0<=gy<H:g[gy][gx]='#'\nopen('/app/fullm.txt','w').write('\\n'.join(''.join(r) for r in reversed(g))+'\\n')\nprint(\"ok\")\nPYEOF\necho \"A: 1-230\"; cut -c1-230 /app/fullm.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2638,7 +2638,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BdWsSHeXZdUhuazodHHh6d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.35\nnb=int((umax-umin)/res)+2\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\n# split on any single empty bin\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and occ[i]:i+=1\n    spans.append((s,i))\n# merge spans separated by tiny gap? keep as is\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=26\n    w=max(5,int((u1-u0)/res))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        mid=(a[0]+b[0])/2\n        if mid<u0-0.3 or mid>u1+0.3:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return [''.join(r).rstrip() for r in reversed(g)]\nout=[]\nprint(\"nspans\",len(spans),\"widths(mm):\",[round((be-bs)*res,1) for bs,be in spans])\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(\"===== g%d  w=%.1fmm =====\"%(i,(be-bs)*res))\n    out+= [l for l in rg(u0,u1)]\n    out.append(\"\")\nopen('/app/mir2.txt','w').write('\\n'.join(out))\nPYEOF"
           },
@@ -2646,7 +2646,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.35\nnb=int((umax-umin)/res)+2\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\n# split on any single empty bin\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and occ[i]:i+=1\n    spans.append((s,i))\n# merge spans separated by tiny gap? keep as is\nallv=np.array([p for a,b in proj for p in (a[1],b[1])])\nvmin,vmax=allv.min(),allv.max()\ndef rg(u0,u1):\n    Ht=26\n    w=max(5,int((u1-u0)/res))\n    sx=(w-1)/(u1-u0);sy=(Ht-1)/(vmax-vmin)\n    g=[[' ']*w for _ in range(Ht)]\n    for a,b in proj:\n        mid=(a[0]+b[0])/2\n        if mid<u0-0.3 or mid>u1+0.3:continue\n        n=int(max(abs(b[0]-a[0])*sx,abs(b[1]-a[1])*sy))+1\n        for k in range(n+1):\n            t=k/n;px=a[0]+(b[0]-a[0])*t;py=a[1]+(b[1]-a[1])*t\n            gx=int((px-u0)*sx);gy=int((py-vmin)*sy)\n            if 0<=gx<w and 0<=gy<Ht:g[gy][gx]='#'\n    return [''.join(r).rstrip() for r in reversed(g)]\nout=[]\nprint(\"nspans\",len(spans),\"widths(mm):\",[round((be-bs)*res,1) for bs,be in spans])\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    out.append(\"===== g%d  w=%.1fmm =====\"%(i,(be-bs)*res))\n    out+= [l for l in rg(u0,u1)]\n    out.append(\"\")\nopen('/app/mir2.txt','w').write('\\n'.join(out))\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2707,7 +2707,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rk57Dfsyj6inNoN3GWGmNP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '1,200p' /app/mir2.txt"
           },
@@ -2715,7 +2715,7 @@
             "raw_arguments": {
               "command": "sed -n '1,200p' /app/mir2.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2776,7 +2776,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QAec53K3PP8HkeSu2UnLGF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sed -n '200,470p' /app/mir2.txt"
           },
@@ -2784,7 +2784,7 @@
             "raw_arguments": {
               "command": "sed -n '200,470p' /app/mir2.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2845,7 +2845,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011xEfbsUE23Y8gVHs5awewi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages pillow -q 2>&1 | tail -1; apt-get install -y tesseract-ocr -qq 2>&1 | tail -2; which tesseract; python3 -c \"import PIL;print('pil ok')\""
           },
@@ -2853,7 +2853,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages pillow -q 2>&1 | tail -1; apt-get install -y tesseract-ocr -qq 2>&1 | tail -2; which tesseract; python3 -c \"import PIL;print('pil ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2914,7 +2914,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Yc3TuGE9ZKPHXsBvkG6z4s",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nfrom PIL import Image, ImageDraw\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nscale=14.0  # px per mm\npad=20\nW=int((maxx-minx)*scale)+2*pad\nH=int((maxy-miny)*scale)+2*pad\nimg=Image.new('L',(W,H),255)\nd=ImageDraw.Draw(img)\ndef tp(px,py):\n    return (int((px-minx)*scale)+pad, H-1-(int((py-miny)*scale)+pad))\nfor a,b in pts:\n    d.line([tp(a[0],a[1]),tp(b[0],b[1])],fill=0,width=3)\nimg.save('/app/text_render.png')\nprint(\"size\",W,H)\nPYEOF\ntesseract /app/text_render.png stdout --psm 7 2>/dev/null; echo \"---psm6---\"; tesseract /app/text_render.png stdout --psm 6 2>/dev/null"
           },
@@ -2922,7 +2922,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nfrom PIL import Image, ImageDraw\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nscale=14.0  # px per mm\npad=20\nW=int((maxx-minx)*scale)+2*pad\nH=int((maxy-miny)*scale)+2*pad\nimg=Image.new('L',(W,H),255)\nd=ImageDraw.Draw(img)\ndef tp(px,py):\n    return (int((px-minx)*scale)+pad, H-1-(int((py-miny)*scale)+pad))\nfor a,b in pts:\n    d.line([tp(a[0],a[1]),tp(b[0],b[1])],fill=0,width=3)\nimg.save('/app/text_render.png')\nprint(\"size\",W,H)\nPYEOF\ntesseract /app/text_render.png stdout --psm 7 2>/dev/null; echo \"---psm6---\"; tesseract /app/text_render.png stdout --psm 6 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2983,7 +2983,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H9SBrBRNqmboFYyWJj1gLy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nfrom PIL import Image, ImageDraw\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nfor scale,wd in [(22,4),(30,5)]:\n    pad=30\n    W=int((maxx-minx)*scale)+2*pad\n    H=int((maxy-miny)*scale)+2*pad\n    img=Image.new('L',(W,H),255)\n    d=ImageDraw.Draw(img)\n    def tp(px,py):\n        return (int((px-minx)*scale)+pad, H-1-(int((py-miny)*scale)+pad))\n    for a,b in pts:\n        d.line([tp(a[0],a[1]),tp(b[0],b[1])],fill=0,width=wd)\n    img.save(f'/app/r_{scale}.png')\n    print(\"saved\",scale,W,H)\nPYEOF\nfor f in /app/r_22.png /app/r_30.png; do echo \"== $f psm7 ==\"; tesseract $f stdout --psm 7 2>/dev/null; echo \"== $f psm13 ==\"; tesseract $f stdout --psm 13 2>/dev/null; done"
           },
@@ -2991,7 +2991,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nfrom PIL import Image, ImageDraw\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\npts=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nxs=[p for a,b in pts for p in (a[0],b[0])]\nys=[p for a,b in pts for p in (a[1],b[1])]\nminx,maxx=min(xs),max(xs);miny,maxy=min(ys),max(ys)\nfor scale,wd in [(22,4),(30,5)]:\n    pad=30\n    W=int((maxx-minx)*scale)+2*pad\n    H=int((maxy-miny)*scale)+2*pad\n    img=Image.new('L',(W,H),255)\n    d=ImageDraw.Draw(img)\n    def tp(px,py):\n        return (int((px-minx)*scale)+pad, H-1-(int((py-miny)*scale)+pad))\n    for a,b in pts:\n        d.line([tp(a[0],a[1]),tp(b[0],b[1])],fill=0,width=wd)\n    img.save(f'/app/r_{scale}.png')\n    print(\"saved\",scale,W,H)\nPYEOF\nfor f in /app/r_22.png /app/r_30.png; do echo \"== $f psm7 ==\"; tesseract $f stdout --psm 7 2>/dev/null; echo \"== $f psm13 ==\"; tesseract $f stdout --psm 13 2>/dev/null; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3052,7 +3052,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UgubwvPs5GntKSyvb5oxro",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.35\nnb=int((umax-umin)/res)+2\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and occ[i]:i+=1\n    spans.append((s,i))\nguess=\"flag{gcOd3_iz_ch4LLenGiNg}\"\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    vs=[p[1] for a,b in proj for p in (a,b) if u0-0.3<=p[0]<=u1+0.3]\n    ch=guess[i] if i<len(guess) else '?'\n    print(f\"g{i:2d} '{ch}'  height={max(vs)-min(vs):4.1f}  top={max(vs):5.1f} bot={min(vs):5.1f}\")\nPYEOF"
           },
@@ -3060,7 +3060,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - << 'PYEOF'\nimport pickle,numpy as np\nobjsegs=pickle.load(open('/app/objsegs.pkl','rb'))\nsegs=objsegs[0]\nc,a1,a2,normal=pickle.load(open('/app/basis.pkl','rb'))\na1=-a1\ndef P(x,y,z):\n    q=np.array([x,y,z])-c; return q@a1,q@a2\nproj=[(P(s[0],s[1],s[4]),P(s[2],s[3],s[4])) for s in segs]\nus=np.array([p for a,b in proj for p in (a[0],b[0])])\numin,umax=us.min(),us.max()\nres=0.35\nnb=int((umax-umin)/res)+2\nhist=np.zeros(nb)\nfor a,b in proj:\n    lo=int((min(a[0],b[0])-umin)/res);hi=int((max(a[0],b[0])-umin)/res)\n    hist[lo:hi+1]+=1\nocc=hist>0\nspans=[];i=0\nwhile i<nb:\n    if not occ[i]:i+=1;continue\n    s=i\n    while i<nb and occ[i]:i+=1\n    spans.append((s,i))\nguess=\"flag{gcOd3_iz_ch4LLenGiNg}\"\nfor i,(bs,be) in enumerate(spans):\n    u0=umin+bs*res;u1=umin+be*res\n    vs=[p[1] for a,b in proj for p in (a,b) if u0-0.3<=p[0]<=u1+0.3]\n    ch=guess[i] if i<len(guess) else '?'\n    print(f\"g{i:2d} '{ch}'  height={max(vs)-min(vs):4.1f}  top={max(vs):5.1f} bot={min(vs):5.1f}\")\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3121,7 +3121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MyLqpDRpdhZEys3df4mfDS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf 'flag{gcOd3_iz_ch4LLenGiNg}\\n' > /app/out.txt; cat /app/out.txt"
           },
@@ -3129,7 +3129,7 @@
             "raw_arguments": {
               "command": "printf 'flag{gcOd3_iz_ch4LLenGiNg}\\n' > /app/out.txt; cat /app/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

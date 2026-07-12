@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019WBRYvdPd71MsYL1HcRaGL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app && printf '%s\\n' 'intfloat/multilingual-e5-large-instruct' > /app/result.txt && cat /app/result.txt"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app && printf '%s\\n' 'intfloat/multilingual-e5-large-instruct' > /app/result.txt && cat /app/result.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

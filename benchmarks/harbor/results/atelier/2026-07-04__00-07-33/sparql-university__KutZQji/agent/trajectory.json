@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QjHqvgPu3oKevEkRQd7cMZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/university_graph.ttl; head -100 /app/university_graph.ttl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014xHpjcowjZRcuGo8keaCaG",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L100-L305"
@@ -114,7 +114,7 @@
                 "/app/university_graph.ttl:L100-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mkco7R8mnLUZATyvC1oDyz",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L300-L305"
@@ -187,7 +187,7 @@
                 "/app/university_graph.ttl:L300-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -248,7 +248,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018rDdfKkAPUNCsGpvNdzRgM",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -268,7 +268,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -329,7 +329,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013iDaE44oEaLBbdznXmUibu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
           },
@@ -337,7 +337,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -398,7 +398,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BnixvZRxwKrrQsHw3i6zeU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages rdflib 2>&1 | tail -3)"
           },
@@ -406,7 +406,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages rdflib 2>&1 | tail -3)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -467,7 +467,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ewxon2PWynNwZ1y4VhgY3v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip -qq 2>&1 | tail -3; python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3"
           },
@@ -475,7 +475,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip -qq 2>&1 | tail -3; python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -536,7 +536,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QwA3Ca1w4YUEzXbfTSoxzJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph()\ng.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '|', row.countries)\n\""
           },
@@ -544,7 +544,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph()\ng.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '|', row.countries)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

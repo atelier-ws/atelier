@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VZxnJsu7sVoxoPor8WTWYy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; python3 --version; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; python3 --version; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R5kt9xeRFKdeDU4qSmNA6Y",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G1d9ZiZTB6d8wYXAcZTA8J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/t.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Hello &amp; World</title>\n  <style>body { color: red; } .x { background: url(a.png); }</style>\n  <meta http-equiv=\"refresh\" content=\"0; url=javascript:alert(1)\">\n</head>\n<body>\n  <h1 class=\"title\">Header</h1>\n  <p style=\"color:blue\">Para with <b>bold</b> &lt;text&gt;</p>\n  <table><tr><td>cell1</td><td>cell2</td></tr></table>\n  <a href=\"https://example.com\" title=\"ok\">safe link</a>\n  <a href=\"javascript:alert(1)\">bad</a>\n  <a href=\"  jaVa\\tscript:alert(2)\">bad2</a>\n  <img src=\"x.png\" onerror=\"alert(3)\" onclick=\"x()\">\n  <div onmouseover=\"steal()\">hover</div>\n  <button ONCLICK=\"go()\">b</button>\n  <p style=\"width:expression(alert(1))\">ie</p>\n  <script>alert('xss')</script>\n  <script src=\"evil.js\"></script>\n  <svg><script>alert(1)</script></svg>\n  <iframe srcdoc=\"<p>hi</p><script>alert(1)</script>\"></iframe>\n  <a href=\"&#106;avascript:alert(4)\">entity</a>\n</body>\n</html>\nEOF\nprintf 'jaVa\\tscript' >/dev/null\npython3 /app/filter.py /tmp/t.html\necho \"=== RESULT ===\"; cat /tmp/t.html"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/t.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Hello &amp; World</title>\n  <style>body { color: red; } .x { background: url(a.png); }</style>\n  <meta http-equiv=\"refresh\" content=\"0; url=javascript:alert(1)\">\n</head>\n<body>\n  <h1 class=\"title\">Header</h1>\n  <p style=\"color:blue\">Para with <b>bold</b> &lt;text&gt;</p>\n  <table><tr><td>cell1</td><td>cell2</td></tr></table>\n  <a href=\"https://example.com\" title=\"ok\">safe link</a>\n  <a href=\"javascript:alert(1)\">bad</a>\n  <a href=\"  jaVa\\tscript:alert(2)\">bad2</a>\n  <img src=\"x.png\" onerror=\"alert(3)\" onclick=\"x()\">\n  <div onmouseover=\"steal()\">hover</div>\n  <button ONCLICK=\"go()\">b</button>\n  <p style=\"width:expression(alert(1))\">ie</p>\n  <script>alert('xss')</script>\n  <script src=\"evil.js\"></script>\n  <svg><script>alert(1)</script></svg>\n  <iframe srcdoc=\"<p>hi</p><script>alert(1)</script>\"></iframe>\n  <a href=\"&#106;avascript:alert(4)\">entity</a>\n</body>\n</html>\nEOF\nprintf 'jaVa\\tscript' >/dev/null\npython3 /app/filter.py /tmp/t.html\necho \"=== RESULT ===\"; cat /tmp/t.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BNStehNHJT6LArUVbfts2Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nopen('/tmp/t2.html','w').write(\n '<a href=\"java\\tscript:alert(1)\">t</a>\\n'\n '<a href=\"jav\\nascript:alert(2)\">n</a>\\n'\n '<a href=\"&#x6a;avascript:alert(3)\">hex</a>\\n'\n '<a href=\"\\x01javascript:alert(4)\">ctl</a>\\n'\n '<a href=\"mailto:x@y.com\">mail</a>\\n'\n '<a href=\"data:image/png;base64,AAAA\">img</a>\\n'\n)\nPY\npython3 /app/filter.py /tmp/t2.html && cat /tmp/t2.html\necho \"=== idempotent check on t.html ===\"\ncp /tmp/t.html /tmp/t_a.html\npython3 /app/filter.py /tmp/t_a.html\ndiff /tmp/t.html /tmp/t_a.html && echo \"IDEMPOTENT-OK\""
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nopen('/tmp/t2.html','w').write(\n '<a href=\"java\\tscript:alert(1)\">t</a>\\n'\n '<a href=\"jav\\nascript:alert(2)\">n</a>\\n'\n '<a href=\"&#x6a;avascript:alert(3)\">hex</a>\\n'\n '<a href=\"\\x01javascript:alert(4)\">ctl</a>\\n'\n '<a href=\"mailto:x@y.com\">mail</a>\\n'\n '<a href=\"data:image/png;base64,AAAA\">img</a>\\n'\n)\nPY\npython3 /app/filter.py /tmp/t2.html && cat /tmp/t2.html\necho \"=== idempotent check on t.html ===\"\ncp /tmp/t.html /tmp/t_a.html\npython3 /app/filter.py /tmp/t_a.html\ndiff /tmp/t.html /tmp/t_a.html && echo \"IDEMPOTENT-OK\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019m8Ge3uywRmjpPZEEQzXgB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tmp/t.html /tmp/t2.html /tmp/t_a.html; ls /app"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "rm -f /tmp/t.html /tmp/t2.html /tmp/t_a.html; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

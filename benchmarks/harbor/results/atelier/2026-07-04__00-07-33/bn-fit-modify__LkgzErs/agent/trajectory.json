@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VeGWAbLDayJt6dRWP89wgd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -20 /app/bn_sample_10k.csv; echo \"---\"; wc -l /app/bn_sample_10k.csv"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "head -20 /app/bn_sample_10k.csv; echo \"---\"; wc -l /app/bn_sample_10k.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_011pnUaYqLU5zjiMANJfH4Me",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pgmpy; print(pgmpy.__version__)\" 2>&1; python3 -c \"import pandas; print('pandas',pandas.__version__)\" 2>&1"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pgmpy; print(pgmpy.__version__)\" 2>&1; python3 -c \"import pandas; print('pandas',pandas.__version__)\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011NkBLBUTsEnB7BVjbFpHwk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q pandas numpy scipy networkx pgmpy 2>&1 | tail -5"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q pandas numpy scipy networkx pgmpy 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y6gJs1ABkijYUBhQfQcEpv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\nprint(d.columns.tolist())\nprint(d.corr().round(3))\nprint('--- inverse (precision) ---')\nprec=np.linalg.inv(d.corr().values)\n# partial correlations\nimport itertools\ncols=d.columns.tolist()\nD=np.sqrt(np.outer(np.diag(prec),np.diag(prec)))\npcorr=-prec/D\nnp.fill_diagonal(pcorr,1)\nprint(pd.DataFrame(pcorr.round(3),index=cols,columns=cols))\n\""
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np\nd=pd.read_csv('bn_sample_10k.csv')\nprint(d.columns.tolist())\nprint(d.corr().round(3))\nprint('--- inverse (precision) ---')\nprec=np.linalg.inv(d.corr().values)\n# partial correlations\nimport itertools\ncols=d.columns.tolist()\nD=np.sqrt(np.outer(np.diag(prec),np.diag(prec)))\npcorr=-prec/D\nnp.fill_diagonal(pcorr,1)\nprint(pd.DataFrame(pcorr.round(3),index=cols,columns=cols))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DLQ3P4edt8bdgLyPiMxVkP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pgmpy; print('pgmpy',pgmpy.__version__)\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nprint('ok')\nimport inspect\nprint([m for m in dir(LG) if not m.startswith('_')])\n\""
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pgmpy; print('pgmpy',pgmpy.__version__)\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nprint('ok')\nimport inspect\nprint([m for m in dir(LG) if not m.startswith('_')])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X2BFMADw2XZm2qu4aJ19Jo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nfor m in ['fit','do','simulate']:\n    print('==',m); print(inspect.signature(getattr(LG,m)))\nfrom pgmpy.factors.continuous import LinearGaussianCPD\nprint('CPD',inspect.signature(LinearGaussianCPD.__init__))\n\""
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nimport inspect\nfor m in ['fit','do','simulate']:\n    print('==',m); print(inspect.signature(getattr(LG,m)))\nfrom pgmpy.factors.continuous import LinearGaussianCPD\nprint('CPD',inspect.signature(LinearGaussianCPD.__init__))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YAk6iEZp54zxZ97gqVvBjP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom pgmpy.factors.continuous import LinearGaussianCPD\nimport inspect\nprint(inspect.getsource(LinearGaussianCPD.__init__))\n\" 2>&1 | head -60"
           },
@@ -403,7 +403,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom pgmpy.factors.continuous import LinearGaussianCPD\nimport inspect\nprint(inspect.getsource(LinearGaussianCPD.__init__))\n\" 2>&1 | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,7 +464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XoH9R2C1AWeaq1Fbsq356s",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nfrom pgmpy.factors.continuous import LinearGaussianCPD\n\ndata = pd.read_csv('bn_sample_10k.csv')\n\n# recovered DAG edges as (parent, child)\nedges = [('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')]\n\n# 1) save learned dag  (to=child, from=parent)\npd.DataFrame([(c,p) for (p,c) in edges], columns=['to','from']).to_csv('learned_dag.csv', index=False)\n\n# 2) learn Linear Gaussian BN\nmodel = LG(edges)\nmodel.fit(data)\nmodel.check_model()\nfor cpd in model.get_cpds():\n    print(cpd.variable, 'evidence=', cpd.evidence, 'beta=', np.round(cpd.beta,3), 'std=', round(cpd.std,3))\nEOF"
           },
@@ -472,7 +472,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nfrom pgmpy.factors.continuous import LinearGaussianCPD\n\ndata = pd.read_csv('bn_sample_10k.csv')\n\n# recovered DAG edges as (parent, child)\nedges = [('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')]\n\n# 1) save learned dag  (to=child, from=parent)\npd.DataFrame([(c,p) for (p,c) in edges], columns=['to','from']).to_csv('learned_dag.csv', index=False)\n\n# 2) learn Linear Gaussian BN\nmodel = LG(edges)\nmodel.fit(data)\nmodel.check_model()\nfor cpd in model.get_cpds():\n    print(cpd.variable, 'evidence=', cpd.evidence, 'beta=', np.round(cpd.beta,3), 'std=', round(cpd.std,3))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -533,7 +533,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S5oGWd85FLE3JjZmynoRmU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nfrom pgmpy.factors.continuous import LinearGaussianCPD\n\ndata = pd.read_csv('bn_sample_10k.csv')\nedges = [('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')]\nmodel = LG(edges); model.fit(data)\n\n# 3) causal intervention do(Y=0.0): remove incoming edges to Y, fix Y=0 with tiny variance\nintervened = model.do('Y', inplace=False)\nintervened.remove_cpds(intervened.get_cpds('Y'))\nstd = (10e-9)**0.5  # variance = 10e-9\nintervened.add_cpds(LinearGaussianCPD('Y', beta=[0.0], std=std, evidence=[]))\nintervened.check_model()\n\n# 4) save intervened dag edges (to=child, from=parent)\npd.DataFrame([(c,p) for (p,c) in intervened.edges()], columns=['to','from']).to_csv('intervened_dag.csv', index=False)\n\n# 5) sample 10k from intervened BN\nsample = intervened.simulate(n_samples=10000, seed=42)\nsample = sample[list(data.columns)]\nsample.to_csv('final_bn_sample.csv', index=False)\n\nprint('intervened edges:', list(intervened.edges()))\nprint(sample.describe().round(3))\nprint('Y mean/std:', sample['Y'].mean(), sample['Y'].std())\nEOF\necho \"=== learned_dag.csv ===\"; cat /app/learned_dag.csv\necho \"=== intervened_dag.csv ===\"; cat /app/intervened_dag.csv"
           },
@@ -541,7 +541,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 << 'EOF'\nimport pandas as pd, numpy as np\nfrom pgmpy.models import LinearGaussianBayesianNetwork as LG\nfrom pgmpy.factors.continuous import LinearGaussianCPD\n\ndata = pd.read_csv('bn_sample_10k.csv')\nedges = [('U','Y'),('U','R'),('U','D'),('U','M'),('Y','D'),('R','M')]\nmodel = LG(edges); model.fit(data)\n\n# 3) causal intervention do(Y=0.0): remove incoming edges to Y, fix Y=0 with tiny variance\nintervened = model.do('Y', inplace=False)\nintervened.remove_cpds(intervened.get_cpds('Y'))\nstd = (10e-9)**0.5  # variance = 10e-9\nintervened.add_cpds(LinearGaussianCPD('Y', beta=[0.0], std=std, evidence=[]))\nintervened.check_model()\n\n# 4) save intervened dag edges (to=child, from=parent)\npd.DataFrame([(c,p) for (p,c) in intervened.edges()], columns=['to','from']).to_csv('intervened_dag.csv', index=False)\n\n# 5) sample 10k from intervened BN\nsample = intervened.simulate(n_samples=10000, seed=42)\nsample = sample[list(data.columns)]\nsample.to_csv('final_bn_sample.csv', index=False)\n\nprint('intervened edges:', list(intervened.edges()))\nprint(sample.describe().round(3))\nprint('Y mean/std:', sample['Y'].mean(), sample['Y'].std())\nEOF\necho \"=== learned_dag.csv ===\"; cat /app/learned_dag.csv\necho \"=== intervened_dag.csv ===\"; cat /app/intervened_dag.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

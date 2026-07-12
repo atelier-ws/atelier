@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015fL2qLYc6jXbSmcskW3cWv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/ssl && cd /app/ssl && openssl genrsa -out server.key 2048 && chmod 600 server.key && openssl req -new -x509 -key server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && cat server.key server.crt > server.pem && echo DONE && ls -la"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/ssl && cd /app/ssl && openssl genrsa -out server.key 2048 && chmod 600 server.key && openssl req -new -x509 -key server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && cat server.key server.crt > server.pem && echo DONE && ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KoZWuYwJgGfweFERwTF2BL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ssl && { echo \"Subject:\"; openssl x509 -in server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/ssl && { echo \"Subject:\"; openssl x509 -in server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0182qT1VRwAoMQ9vZ6gEfYMe",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AgoRutNWZ8ReZLF8nq3zJa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 check_cert.py; echo \"exit=$?\""
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 check_cert.py; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WJmuDriCM1QBb58536c28p",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import py_compile; py_compile.compile('check_cert.py', doraise=True); print('compiles OK')\" && python3 check_cert.py; echo \"exit=$?\"; ls -la /app /app/ssl"
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import py_compile; py_compile.compile('check_cert.py', doraise=True); print('compiles OK')\" && python3 check_cert.py; echo \"exit=$?\"; ls -la /app /app/ssl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

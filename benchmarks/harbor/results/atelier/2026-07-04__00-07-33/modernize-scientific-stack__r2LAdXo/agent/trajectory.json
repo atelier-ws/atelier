@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gf3adSRRo9H5FcgzBQD3Kc",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/climate_analyzer/analyze_climate.py",
@@ -49,7 +49,7 @@
                 "/app/climate_analyzer/sample_data/climate_data.csv"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -110,7 +110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VXxDE1T5hGx6nAPGSrUekH",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -140,7 +140,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -201,7 +201,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DHHoetuJds3cxhUi75NAoL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas, numpy\" 2>&1 | head -5; echo \"---\"; python3 /app/analyze_climate_modern.py"
           },
@@ -209,7 +209,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas, numpy\" 2>&1 | head -5; echo \"---\"; python3 /app/analyze_climate_modern.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fjj1vMCCbz57WESpvkPQgB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find /app -name '*test*' -not -path '*/node_modules/*' 2>/dev/null; echo \"---pytest---\"; ls /app"
           },
@@ -333,7 +333,7 @@
             "raw_arguments": {
               "command": "find /app -name '*test*' -not -path '*/node_modules/*' 2>/dev/null; echo \"---pytest---\"; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -394,7 +394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019drLAvdSse4HMGebd8gLjz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"=== run ===\"; python3 /app/analyze_climate_modern.py; echo \"exit=$?\""
           },
@@ -402,7 +402,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"=== run ===\"; python3 /app/analyze_climate_modern.py; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -410,7 +410,7 @@
         "results": [
           {
             "source_call_id": "toolu_019drLAvdSse4HMGebd8gLjz",
-            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:45 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:45 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:45 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:45 .git\\n-rw------- 1 root root 1807 Jul  3 23:45 analyze_climate_modern.py\\ndrwxr-xr-x 3 root root 4096 Oct 24  2025 climate_analyzer\\n-rw------- 1 root root   52 Jul  3 23:45 requirements.txt\\n=== run ===\\nStarting climate analysis...\\nStation 101 mean temperature: -15.5°C\\nStation 102 mean temperature: 30.3°C\\nAnalysis completed successfully!\\nexit=0\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:45 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:45 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:45 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:45 .git\\n-rw------- 1 root root 1807 Jul  3 23:45 analyze_climate_modern.py\\ndrwxr-xr-x 3 root root 4096 Oct 24  2025 climate_analyzer\\n-rw------- 1 root root   52 Jul  3 23:45 requirements.txt\\n=== run ===\\nStarting climate analysis...\\nStation 101 mean temperature: -15.5°C\\nStation 102 mean temperature: 30.3°C\\nAnalysis completed successfully!\\nexit=0\"}"
           }
         ]
       },

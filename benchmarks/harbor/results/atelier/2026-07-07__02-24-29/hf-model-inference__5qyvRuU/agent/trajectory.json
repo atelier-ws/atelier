@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JP6NDFENM8omzLhJiTKs3w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; pip3 --version 2>/dev/null; python3 -c \"import transformers, torch, flask\" 2>&1 | head; ls /app 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 --version; pip3 --version 2>/dev/null; python3 -c \"import transformers, torch, flask\" 2>&1 | head; ls /app 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RxP8gCAJyoDcGZv9qijGt8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q transformers torch flask 2>&1 | tail -20; echo \"---DONE---\"",
             "timeout": 1800
@@ -112,7 +112,7 @@
               "command": "pip install --break-system-packages -q transformers torch flask 2>&1 | tail -20; echo \"---DONE---\"",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -173,7 +173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VXybZHuuiF26NgvKcLwgrL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import transformers, torch, flask; print(transformers.__version__, torch.__version__, flask.__version__)\""
           },
@@ -181,7 +181,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import transformers, torch, flask; print(transformers.__version__, torch.__version__, flask.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -242,7 +242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ga4RsLqLZdiAbNJZW3rsoN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/model_cache/sentiment_model\npython3 - <<'EOF' 2>&1 | tail -20\nfrom transformers import AutoTokenizer, AutoModelForSequenceClassification\nm=\"distilbert-base-uncased-finetuned-sst-2-english\"\nd=\"/app/model_cache/sentiment_model\"\ntok=AutoTokenizer.from_pretrained(m)\nmod=AutoModelForSequenceClassification.from_pretrained(m)\ntok.save_pretrained(d); mod.save_pretrained(d)\nprint(\"SAVED\")\nEOF",
             "timeout": 1800
@@ -252,7 +252,7 @@
               "command": "mkdir -p /app/model_cache/sentiment_model\npython3 - <<'EOF' 2>&1 | tail -20\nfrom transformers import AutoTokenizer, AutoModelForSequenceClassification\nm=\"distilbert-base-uncased-finetuned-sst-2-english\"\nd=\"/app/model_cache/sentiment_model\"\ntok=AutoTokenizer.from_pretrained(m)\nmod=AutoModelForSequenceClassification.from_pretrained(m)\ntok.save_pretrained(d); mod.save_pretrained(d)\nprint(\"SAVED\")\nEOF",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mhj1cQ3p8wb4CYMoGVB5LU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/model_cache/sentiment_model"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "ls -la /app/model_cache/sentiment_model"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQuz1SPMip3VEeRe9GXbsk",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -402,7 +402,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CgdDAyAbmHHFsCqnbwSrqD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && nohup python3 app.py > /app/server.log 2>&1 &\necho \"started pid $!\"",
             "bg": true
@@ -473,7 +473,7 @@
               "command": "cd /app && nohup python3 app.py > /app/server.log 2>&1 &\necho \"started pid $!\"",
               "bg": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -534,7 +534,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SyrToBTcfsHwPW9tNoiZNE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for i in $(seq 1 30); do curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"ping\"}' 2>/dev/null | grep -q 200 && break; sleep 2; done\necho \"--- positive ---\"\ncurl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"I absolutely love this, wonderful!\"}'\necho; echo \"--- negative ---\"\ncurl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"This is terrible and awful.\"}'\necho; echo \"--- error ---\"\ncurl -s -w \" [%{http_code}]\" http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{}'\necho",
             "timeout": 120
@@ -544,7 +544,7 @@
               "command": "for i in $(seq 1 30); do curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"ping\"}' 2>/dev/null | grep -q 200 && break; sleep 2; done\necho \"--- positive ---\"\ncurl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"I absolutely love this, wonderful!\"}'\necho; echo \"--- negative ---\"\ncurl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"This is terrible and awful.\"}'\necho; echo \"--- error ---\"\ncurl -s -w \" [%{http_code}]\" http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{}'\necho",
               "timeout": 120
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -605,7 +605,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BJ69KkQkAXC9hogigWoSYi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"I absolutely love this, wonderful!\"}'; echo; ps aux | grep \"[a]pp.py\" | awk '{print $2}'"
           },
@@ -613,7 +613,7 @@
             "raw_arguments": {
               "command": "curl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' -d '{\"text\":\"I absolutely love this, wonderful!\"}'; echo; ps aux | grep \"[a]pp.py\" | awk '{print $2}'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -674,7 +674,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HLh5Rzs1m7TrhUF2KbmdkU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' --data-binary '{\"text\":\"I absolutely love this, wonderful!\"}'; echo; echo \"PID:\"; pgrep -f app.py"
           },
@@ -682,7 +682,7 @@
             "raw_arguments": {
               "command": "curl -s http://127.0.0.1:5000/sentiment -X POST -H 'Content-Type: application/json' --data-binary '{\"text\":\"I absolutely love this, wonderful!\"}'; echo; echo \"PID:\"; pgrep -f app.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -743,7 +743,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012FLDBMzwnHftEUpt92co4t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import urllib.request,json; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:5000/sentiment',data=json.dumps({'text':'I absolutely love this, wonderful!'}).encode(),headers={'Content-Type':'application/json'})); print(r.read().decode())\"; echo \"PID:\"; pgrep -f app.py"
           },
@@ -751,7 +751,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import urllib.request,json; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:5000/sentiment',data=json.dumps({'text':'I absolutely love this, wonderful!'}).encode(),headers={'Content-Type':'application/json'})); print(r.read().decode())\"; echo \"PID:\"; pgrep -f app.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -812,7 +812,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014jnpHLFV5YjBYPCikpbfcH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ps aux | grep \"[a]pp.py\""
           },
@@ -820,7 +820,7 @@
             "raw_arguments": {
               "command": "ps aux | grep \"[a]pp.py\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -881,7 +881,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K3VF3FnzdLjcLLEVsHazJz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for p in /proc/[0-9]*; do c=$(tr '\\0' ' ' < $p/cmdline 2>/dev/null); echo \"$c\" | grep -q app.py && echo \"${p##*/}: $c\"; done"
           },
@@ -889,7 +889,7 @@
             "raw_arguments": {
               "command": "for p in /proc/[0-9]*; do c=$(tr '\\0' ' ' < $p/cmdline 2>/dev/null); echo \"$c\" | grep -q app.py && echo \"${p##*/}: $c\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1005,7 +1005,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W89wQkVjk3Az5CqeZjsMwp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request, json\n\ndef call(payload, raw=None):\n    data = raw if raw is not None else json.dumps(payload).encode()\n    req = urllib.request.Request('http://127.0.0.1:5000/sentiment', data=data,\n                                 headers={'Content-Type':'application/json'}, method='POST')\n    try:\n        r = urllib.request.urlopen(req)\n        return r.status, json.loads(r.read().decode())\n    except urllib.error.HTTPError as e:\n        return e.code, json.loads(e.read().decode())\n\nok = True\ndef check(name, cond, detail):\n    global ok\n    ok = ok and cond\n    print((\"PASS\" if cond else \"FAIL\"), name, detail)\n\n# positive\ns,b = call({\"text\":\"I love this, it's fantastic!\"})\ncheck(\"positive\", s==200 and b[\"sentiment\"]==\"positive\" and b[\"confidence\"][\"positive\"]>0.9 and set(b[\"confidence\"])=={\"positive\",\"negative\"}, (s,b))\n# negative\ns,b = call({\"text\":\"This is the worst, I hate it.\"})\ncheck(\"negative\", s==200 and b[\"sentiment\"]==\"negative\" and b[\"confidence\"][\"negative\"]>0.9, (s,b))\n# scores sum ~1\ns,b = call({\"text\":\"okay\"})\ncheck(\"probs_sum1\", abs(b[\"confidence\"][\"positive\"]+b[\"confidence\"][\"negative\"]-1)<1e-4, b[\"confidence\"])\n# missing text\ns,b = call({})\ncheck(\"missing_text_400\", s==400 and \"error\" in b, (s,b))\n# empty text\ns,b = call({\"text\":\"   \"})\ncheck(\"empty_text_400\", s==400 and \"error\" in b, (s,b))\n# non-string text\ns,b = call({\"text\":123})\ncheck(\"nonstring_400\", s==400 and \"error\" in b, (s,b))\n# malformed json\ns,b = call(None, raw=b\"{not json\")\ncheck(\"malformed_400\", s==400 and \"error\" in b, (s,b))\n\nprint(\"ALL_PASS\" if ok else \"SOME_FAIL\")\nEOF"
           },
@@ -1013,7 +1013,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request, json\n\ndef call(payload, raw=None):\n    data = raw if raw is not None else json.dumps(payload).encode()\n    req = urllib.request.Request('http://127.0.0.1:5000/sentiment', data=data,\n                                 headers={'Content-Type':'application/json'}, method='POST')\n    try:\n        r = urllib.request.urlopen(req)\n        return r.status, json.loads(r.read().decode())\n    except urllib.error.HTTPError as e:\n        return e.code, json.loads(e.read().decode())\n\nok = True\ndef check(name, cond, detail):\n    global ok\n    ok = ok and cond\n    print((\"PASS\" if cond else \"FAIL\"), name, detail)\n\n# positive\ns,b = call({\"text\":\"I love this, it's fantastic!\"})\ncheck(\"positive\", s==200 and b[\"sentiment\"]==\"positive\" and b[\"confidence\"][\"positive\"]>0.9 and set(b[\"confidence\"])=={\"positive\",\"negative\"}, (s,b))\n# negative\ns,b = call({\"text\":\"This is the worst, I hate it.\"})\ncheck(\"negative\", s==200 and b[\"sentiment\"]==\"negative\" and b[\"confidence\"][\"negative\"]>0.9, (s,b))\n# scores sum ~1\ns,b = call({\"text\":\"okay\"})\ncheck(\"probs_sum1\", abs(b[\"confidence\"][\"positive\"]+b[\"confidence\"][\"negative\"]-1)<1e-4, b[\"confidence\"])\n# missing text\ns,b = call({})\ncheck(\"missing_text_400\", s==400 and \"error\" in b, (s,b))\n# empty text\ns,b = call({\"text\":\"   \"})\ncheck(\"empty_text_400\", s==400 and \"error\" in b, (s,b))\n# non-string text\ns,b = call({\"text\":123})\ncheck(\"nonstring_400\", s==400 and \"error\" in b, (s,b))\n# malformed json\ns,b = call(None, raw=b\"{not json\")\ncheck(\"malformed_400\", s==400 and \"error\" in b, (s,b))\n\nprint(\"ALL_PASS\" if ok else \"SOME_FAIL\")\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

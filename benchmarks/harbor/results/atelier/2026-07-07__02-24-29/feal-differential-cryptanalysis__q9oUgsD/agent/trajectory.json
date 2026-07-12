@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0136VeEXBSoyHZ8twGPGL9Sr",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.py"
@@ -45,7 +45,7 @@
                 "/app/feal.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -106,7 +106,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CujcJGpz4bBLNrdz1GMjDQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -126,7 +126,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -187,7 +187,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N4mQ4tjozRD1D64qcHJ7G2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport time, random, feal, importlib\nimport attack\nok=0; t0=time.time()\nfor i in range(40):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    assert r==feal.key[5], (hex(r),hex(feal.key[5]))\n    ok+=1\nprint('all', ok, 'passed in', round(time.time()-t0,2),'s total; per-run', round((time.time()-t0)/40,3))\n\""
           },
@@ -195,7 +195,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport time, random, feal, importlib\nimport attack\nok=0; t0=time.time()\nfor i in range(40):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    assert r==feal.key[5], (hex(r),hex(feal.key[5]))\n    ok+=1\nprint('all', ok, 'passed in', round(time.time()-t0,2),'s total; per-run', round((time.time()-t0)/40,3))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -311,7 +311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SK1SWBVRvkywTiiufhBuoE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 attack.py && python3 -c \"\nimport time, feal, attack\nok=0; t0=time.time()\nfor i in range(50):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    assert r==feal.key[5], (hex(r),hex(feal.key[5]))\n    ok+=1\nprint('PASS', ok, 'runs in', round(time.time()-t0,2),'s; max/run well under 30s')\n\""
           },
@@ -319,7 +319,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 attack.py && python3 -c \"\nimport time, feal, attack\nok=0; t0=time.time()\nfor i in range(50):\n    feal.create_random_keys()\n    r=attack.attack(feal.encrypt)\n    assert r==feal.key[5], (hex(r),hex(feal.key[5]))\n    ok+=1\nprint('PASS', ok, 'runs in', round(time.time()-t0,2),'s; max/run well under 30s')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

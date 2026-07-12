@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y2B8TjnSAr3JcMyMF1VQcy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015Zk2NTMJ8h47ikMPXb1LUb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "f=$(ls /app/logs | head -1); echo \"== $f ==\"; head -5 /app/logs/$f"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "f=$(ls /app/logs | head -1); echo \"== $f ==\"; head -5 /app/logs/$f"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JuiP4JNRwb38i7pX3qLBQz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/summarize.py << 'EOF'\nimport os, csv, re\nfrom datetime import date, timedelta\n\nREF = date(2025, 8, 12)\nLOGDIR = \"/app/logs\"\nSEVS = [\"ERROR\", \"WARNING\", \"INFO\"]\n\nperiods = {\n    \"today\": lambda d: d == REF,\n    \"last_7_days\": lambda d: REF - timedelta(days=6) <= d <= REF,\n    \"last_30_days\": lambda d: REF - timedelta(days=29) <= d <= REF,\n    \"month_to_date\": lambda d: d.year == REF.year and d.month == REF.month and d <= REF,\n    \"total\": lambda d: True,\n}\ncounts = {p: {s: 0 for s in SEVS} for p in periods}\nsev_re = re.compile(r\"\\[(ERROR|WARNING|INFO)\\]\")\n\nfor fn in os.listdir(LOGDIR):\n    if not fn.endswith(\".log\"):\n        continue\n    ds = fn.split(\"_\", 1)[0]\n    d = date.fromisoformat(ds)\n    with open(os.path.join(LOGDIR, fn)) as f:\n        for line in f:\n            m = sev_re.search(line)\n            if not m:\n                continue\n            s = m.group(1)\n            for p, cond in periods.items():\n                if cond(d):\n                    counts[p][s] += 1\n\nwith open(\"/app/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"period\", \"severity\", \"count\"])\n    for p in [\"today\", \"last_7_days\", \"last_30_days\", \"month_to_date\", \"total\"]:\n        for s in SEVS:\n            w.writerow([p, s, counts[p][s]])\nprint(open(\"/app/summary.csv\").read())\nEOF\npython3 /app/summarize.py"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cat > /app/summarize.py << 'EOF'\nimport os, csv, re\nfrom datetime import date, timedelta\n\nREF = date(2025, 8, 12)\nLOGDIR = \"/app/logs\"\nSEVS = [\"ERROR\", \"WARNING\", \"INFO\"]\n\nperiods = {\n    \"today\": lambda d: d == REF,\n    \"last_7_days\": lambda d: REF - timedelta(days=6) <= d <= REF,\n    \"last_30_days\": lambda d: REF - timedelta(days=29) <= d <= REF,\n    \"month_to_date\": lambda d: d.year == REF.year and d.month == REF.month and d <= REF,\n    \"total\": lambda d: True,\n}\ncounts = {p: {s: 0 for s in SEVS} for p in periods}\nsev_re = re.compile(r\"\\[(ERROR|WARNING|INFO)\\]\")\n\nfor fn in os.listdir(LOGDIR):\n    if not fn.endswith(\".log\"):\n        continue\n    ds = fn.split(\"_\", 1)[0]\n    d = date.fromisoformat(ds)\n    with open(os.path.join(LOGDIR, fn)) as f:\n        for line in f:\n            m = sev_re.search(line)\n            if not m:\n                continue\n            s = m.group(1)\n            for p, cond in periods.items():\n                if cond(d):\n                    counts[p][s] += 1\n\nwith open(\"/app/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"period\", \"severity\", \"count\"])\n    for p in [\"today\", \"last_7_days\", \"last_30_days\", \"month_to_date\", \"total\"]:\n        for s in SEVS:\n            w.writerow([p, s, counts[p][s]])\nprint(open(\"/app/summary.csv\").read())\nEOF\npython3 /app/summarize.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

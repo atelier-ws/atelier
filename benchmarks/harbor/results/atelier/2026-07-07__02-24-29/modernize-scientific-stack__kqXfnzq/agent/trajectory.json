@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pa11aTWekxVHyQsFEDXrDd",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/climate_analyzer/analyze_climate.py",
@@ -49,7 +49,7 @@
                 "/app/climate_analyzer/sample_data/climate_data.csv"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -110,7 +110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HTV5dEP4mjqmF4fK2aXpjN",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -140,7 +140,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -201,7 +201,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NNGfRPsFV2vmiLcqUjDw4f",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy,pandas\" 2>&1 | head; python3 /app/analyze_climate_modern.py"
           },
@@ -209,7 +209,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import numpy,pandas\" 2>&1 | head; python3 /app/analyze_climate_modern.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011c1oZL1Z9A7gD4UJksPp2E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app; find /app -name 'test*' -o -name '*test*' 2>/dev/null | grep -v climate_analyzer/sample | head"
           },
@@ -333,7 +333,7 @@
             "raw_arguments": {
               "command": "ls /app; find /app -name 'test*' -o -name '*test*' 2>/dev/null | grep -v climate_analyzer/sample | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -394,7 +394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0122VGnw7zwuF3rUbbRTPn4f",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo ---; find /app -name '*test*' 2>/dev/null"
           },
@@ -402,7 +402,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo ---; find /app -name '*test*' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -463,7 +463,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01344Ugg2ocEN3B6872sSDxL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>&1; echo ---FIND---; find /app -iname '*test*' 2>&1"
           },
@@ -471,7 +471,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>&1; echo ---FIND---; find /app -iname '*test*' 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -532,7 +532,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018FQdZaD2yRuRBkNgmkGeTq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo START; ls -la /app; echo END"
           },
@@ -540,7 +540,7 @@
             "raw_arguments": {
               "command": "echo START; ls -la /app; echo END"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -601,7 +601,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0176xdNdzP8jz16CBRvuUGYr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/analyze_climate_modern.py; echo \"exit=$?\"; python3 -c \"import ast;ast.parse(open('/app/analyze_climate_modern.py').read());print('syntax ok')\""
           },
@@ -609,7 +609,7 @@
             "raw_arguments": {
               "command": "python3 /app/analyze_climate_modern.py; echo \"exit=$?\"; python3 -c \"import ast;ast.parse(open('/app/analyze_climate_modern.py').read());print('syntax ok')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

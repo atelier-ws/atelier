@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U3ib3nn8Nb7i66UTs1fTgh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && ls -la /app/trunc.db && xxd /app/trunc.db | head -50"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ && ls -la /app/trunc.db && xxd /app/trunc.db | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L1nUL64v4oVJPEM173eSPG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -A d -t x1z /app/trunc.db | head -80"
           },
@@ -110,12 +110,12 @@
             "raw_arguments": {
               "command": "od -A d -t x1z /app/trunc.db | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01RnqCSVvrYs9QbmBLD9nASf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which sqlite3; sqlite3 /app/trunc.db '.tables' 2>&1; sqlite3 /app/trunc.db '.schema' 2>&1"
           },
@@ -123,7 +123,7 @@
             "raw_arguments": {
               "command": "which sqlite3; sqlite3 /app/trunc.db '.tables' 2>&1; sqlite3 /app/trunc.db '.schema' 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NSLWhQAEmN8qoXbsg3Xh1U",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/rec.py <<'PY'\nimport struct, json\n\ndata = open('/app/trunc.db','rb').read()\nprint(\"filesize\", len(data))\n\ndef parse_leaf_page(page, base=0):\n    # page[0] is b-tree header type\n    ptype = page[0]\n    if ptype != 0x0d:\n        return None\n    ncell = struct.unpack('>H', page[3:5])[0]\n    cellptrs = []\n    off = 8\n    for i in range(ncell):\n        cp = struct.unpack('>H', page[off:off+2])[0]\n        cellptrs.append(cp)\n        off += 2\n    return ncell, cellptrs\n\ndef read_varint(b, i):\n    result = 0\n    for k in range(9):\n        byte = b[i]\n        i += 1\n        if k == 8:\n            result = (result<<8) | byte\n            break\n        result = (result<<7) | (byte & 0x7f)\n        if not (byte & 0x80):\n            break\n    return result, i\n\ndef serial_len(t):\n    if t == 0: return 0\n    if t <= 4: return t\n    if t == 5: return 6\n    if t == 6: return 8\n    if t == 7: return 8\n    if t in (8,9): return 0\n    if t >= 12:\n        if t % 2 == 0: return (t-12)//2\n        else: return (t-13)//2\n    return 0\n\ndef read_value(t, b, i):\n    n = serial_len(t)\n    raw = b[i:i+n]\n    if t == 0: return None\n    if 1 <= t <= 6:\n        # big-endian signed int\n        val = int.from_bytes(raw, 'big', signed=True)\n        return val\n    if t == 7:\n        return struct.unpack('>d', raw)[0]\n    if t == 8: return 0\n    if t == 9: return 1\n    if t >= 12:\n        if t % 2 == 0:\n            return raw  # blob\n        else:\n            return raw.decode('utf-8', 'replace')\n    return None\n\ndef parse_record(payload):\n    hlen, i = read_varint(payload, 0)\n    types = []\n    while i < hlen:\n        t, i = read_varint(payload, i)\n        types.append(t)\n    vals = []\n    for t in types:\n        vals.append(read_value(t, payload, i))\n        i += serial_len(t)\n    return vals\n\nres = parse_leaf_page(data)\nprint(res)\nncell, ptrs = res\nrows = []\nfor cp in ptrs:\n    plen, i = read_varint(data, cp)\n    rowid, i = read_varint(data, i)\n    payload = data[i:i+plen]\n    vals = parse_record(payload)\n    rows.append((rowid, vals))\nfor r in sorted(rows):\n    print(r)\nPY\npython3 /tmp/rec.py"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/rec.py <<'PY'\nimport struct, json\n\ndata = open('/app/trunc.db','rb').read()\nprint(\"filesize\", len(data))\n\ndef parse_leaf_page(page, base=0):\n    # page[0] is b-tree header type\n    ptype = page[0]\n    if ptype != 0x0d:\n        return None\n    ncell = struct.unpack('>H', page[3:5])[0]\n    cellptrs = []\n    off = 8\n    for i in range(ncell):\n        cp = struct.unpack('>H', page[off:off+2])[0]\n        cellptrs.append(cp)\n        off += 2\n    return ncell, cellptrs\n\ndef read_varint(b, i):\n    result = 0\n    for k in range(9):\n        byte = b[i]\n        i += 1\n        if k == 8:\n            result = (result<<8) | byte\n            break\n        result = (result<<7) | (byte & 0x7f)\n        if not (byte & 0x80):\n            break\n    return result, i\n\ndef serial_len(t):\n    if t == 0: return 0\n    if t <= 4: return t\n    if t == 5: return 6\n    if t == 6: return 8\n    if t == 7: return 8\n    if t in (8,9): return 0\n    if t >= 12:\n        if t % 2 == 0: return (t-12)//2\n        else: return (t-13)//2\n    return 0\n\ndef read_value(t, b, i):\n    n = serial_len(t)\n    raw = b[i:i+n]\n    if t == 0: return None\n    if 1 <= t <= 6:\n        # big-endian signed int\n        val = int.from_bytes(raw, 'big', signed=True)\n        return val\n    if t == 7:\n        return struct.unpack('>d', raw)[0]\n    if t == 8: return 0\n    if t == 9: return 1\n    if t >= 12:\n        if t % 2 == 0:\n            return raw  # blob\n        else:\n            return raw.decode('utf-8', 'replace')\n    return None\n\ndef parse_record(payload):\n    hlen, i = read_varint(payload, 0)\n    types = []\n    while i < hlen:\n        t, i = read_varint(payload, i)\n        types.append(t)\n    vals = []\n    for t in types:\n        vals.append(read_value(t, payload, i))\n        i += serial_len(t)\n    return vals\n\nres = parse_leaf_page(data)\nprint(res)\nncell, ptrs = res\nrows = []\nfor cp in ptrs:\n    plen, i = read_varint(data, cp)\n    rowid, i = read_varint(data, i)\n    payload = data[i:i+plen]\n    vals = parse_record(payload)\n    rows.append((rowid, vals))\nfor r in sorted(rows):\n    print(r)\nPY\npython3 /tmp/rec.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L1RWbZzHxPmxMMsKpUmzUs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >> /tmp/rec.py <<'PY'\n\nout = [{\"word\": v[1], \"value\": v[2]} for _,v in sorted(rows)]\njson.dump(out, open('/app/recover.json','w'), indent=2)\nprint(open('/app/recover.json').read())\nPY\npython3 /tmp/rec.py 2>&1 | tail -60"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cat >> /tmp/rec.py <<'PY'\n\nout = [{\"word\": v[1], \"value\": v[2]} for _,v in sorted(rows)]\njson.dump(out, open('/app/recover.json','w'), indent=2)\nprint(open('/app/recover.json').read())\nPY\npython3 /tmp/rec.py 2>&1 | tail -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

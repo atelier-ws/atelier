@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017dMvWbS6Fub94borDuLcQh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout /app/ssl/server.key -out /app/ssl/server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && chmod 600 /app/ssl/server.key && cat /app/ssl/server.key /app/ssl/server.crt > /app/ssl/server.pem && echo DONE"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout /app/ssl/server.key -out /app/ssl/server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && chmod 600 /app/ssl/server.key && cat /app/ssl/server.key /app/ssl/server.crt > /app/ssl/server.pem && echo DONE"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T4FLYNxG47FbEWi4Eaethf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "{ echo \"Subject:\"; openssl x509 -in /app/ssl/server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in /app/ssl/server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in /app/ssl/server.crt -noout -fingerprint -sha256; } > /app/ssl/verification.txt && cat /app/ssl/verification.txt"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "{ echo \"Subject:\"; openssl x509 -in /app/ssl/server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in /app/ssl/server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in /app/ssl/server.crt -noout -fingerprint -sha256; } > /app/ssl/verification.txt && cat /app/ssl/verification.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01McHAToeYLndaShBwYNsk73",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WXZa9BatYucpVd13TjzaWP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import cryptography\" 2>/dev/null && echo have || uv pip install --system --break-system-packages cryptography >/dev/null 2>&1; chmod +x /app/check_cert.py; python3 /app/check_cert.py; echo \"---perms---\"; ls -l /app/ssl/"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import cryptography\" 2>/dev/null && echo have || uv pip install --system --break-system-packages cryptography >/dev/null 2>&1; chmod +x /app/check_cert.py; python3 /app/check_cert.py; echo \"---perms---\"; ls -l /app/ssl/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Agyrqnkf1vsDNFugQ563x5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages cryptography 2>&1 | tail -5"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages cryptography 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WPk6v7CXjE3QwgHbSgwGft",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages cryptography 2>&1 | tail -5 || pip3 install --break-system-packages cryptography 2>&1 | tail -5"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages cryptography 2>&1 | tail -5 || pip3 install --break-system-packages cryptography 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019RRGC92WMJJWhQ5uZ61i6B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/check_cert.py"
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "python3 /app/check_cert.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -583,7 +583,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017URhjwkMhUUNZWeAjJJWZC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/check_cert.py; echo \"exit=$?\""
           },
@@ -591,7 +591,7 @@
             "raw_arguments": {
               "command": "python3 /app/check_cert.py; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -652,7 +652,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018TPEtfCzPdbPBDQov5TZZf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/*test* /app/tests 2>/dev/null; echo \"--- integrity checks ---\"; openssl x509 -in /app/ssl/server.crt -noout -checkend 0 && echo \"cert not expired\"; openssl rsa -in /app/ssl/server.key -check -noout 2>&1 | head -1; echo \"-- key/cert modulus match --\"; k=$(openssl rsa -in /app/ssl/server.key -noout -modulus 2>/dev/null | openssl md5); c=$(openssl x509 -in /app/ssl/server.crt -noout -modulus | openssl md5); echo \"key=$k cert=$c\"; [ \"$k\" = \"$c\" ] && echo MATCH || echo MISMATCH"
           },
@@ -660,7 +660,7 @@
             "raw_arguments": {
               "command": "ls /app/*test* /app/tests 2>/dev/null; echo \"--- integrity checks ---\"; openssl x509 -in /app/ssl/server.crt -noout -checkend 0 && echo \"cert not expired\"; openssl rsa -in /app/ssl/server.key -check -noout 2>&1 | head -1; echo \"-- key/cert modulus match --\"; k=$(openssl rsa -in /app/ssl/server.key -noout -modulus 2>/dev/null | openssl md5); c=$(openssl x509 -in /app/ssl/server.crt -noout -modulus | openssl md5); echo \"key=$k cert=$c\"; [ \"$k\" = \"$c\" ] && echo MATCH || echo MISMATCH"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

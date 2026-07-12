@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019aYZChZrEH7svcrMbUk7ZU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -c 200 image.ppm | xxd | head -20; echo \"---SIZE---\"; ls -la image.ppm"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && head -c 200 image.ppm | xxd | head -20; echo \"---SIZE---\"; ls -la image.ppm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HFDJyrZf6GQmEkdvTwvHuL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -c 60 image.ppm | od -c | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && head -c 60 image.ppm | od -c | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0188CpMSLnpKqhnMgpX7Dae7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nf=open('image.ppm','rb')\nassert f.readline().strip()==b'P3'\nw,h=map(int,f.readline().split())\nmx=int(f.readline())\nprint(w,h,mx)\ndata=np.frombuffer(f.read(),dtype=np.uint8)  # not right, it's ascii\n\" 2>&1 | head"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nf=open('image.ppm','rb')\nassert f.readline().strip()==b'P3'\nw,h=map(int,f.readline().split())\nmx=int(f.readline())\nprint(w,h,mx)\ndata=np.frombuffer(f.read(),dtype=np.uint8)  # not right, it's ascii\n\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012m9JWEtQejPim8mUmcNLBN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q numpy 2>&1 | tail -1; echo done"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q numpy 2>&1 | tail -1; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ac79M2rZgtQmKd7Zkyoyac",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y python3-numpy -qq 2>&1 | tail -2 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages uv && uv pip install --system --break-system-packages numpy); echo done"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "apt-get install -y python3-numpy -qq 2>&1 | tail -2 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages uv && uv pip install --system --break-system-packages numpy); echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019mts8BSddicDKfUSmvc3es",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nf=open('image.ppm','r')\nassert f.readline().strip()=='P3'\nw,h=map(int,f.readline().split())\nmx=int(f.readline())\nprint('dims',w,h,mx)\nvals=np.fromstring(f.read(),sep=' ',dtype=np.int32) if False else np.array(f.read().split(),dtype=np.uint8)\nprint('n',vals.size, w*h*3)\nimg=vals.reshape(h,w,3)\nnp.save('/tmp/img.npy',img)\nprint('saved')\n\""
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nf=open('image.ppm','r')\nassert f.readline().strip()=='P3'\nw,h=map(int,f.readline().split())\nmx=int(f.readline())\nprint('dims',w,h,mx)\nvals=np.fromstring(f.read(),sep=' ',dtype=np.int32) if False else np.array(f.read().split(),dtype=np.uint8)\nprint('n',vals.size, w*h*3)\nimg=vals.reshape(h,w,3)\nnp.save('/tmp/img.npy',img)\nprint('saved')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rq3Qd4UbENCZUkhyGkjJnn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nprint('shape',img.shape)\nprint('mean',img.mean(0).mean(0))\n# corners\nfor (y,x) in [(0,0),(0,w-1),(h-1,0),(h-1,w-1),(h//2,w//2)]:\n    print(y,x,img[y,x])\n# unique colors count\nq=(img//16).astype(int)\nflat=q.reshape(-1,3)\nu,c=np.unique(flat,axis=0,return_counts=True)\nprint('approx unique(16-quant):',len(u))\nidx=np.argsort(-c)[:10]\nfor i in idx:\n    print(u[i]*16,c[i])\n\""
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nprint('shape',img.shape)\nprint('mean',img.mean(0).mean(0))\n# corners\nfor (y,x) in [(0,0),(0,w-1),(h-1,0),(h-1,w-1),(h//2,w//2)]:\n    print(y,x,img[y,x])\n# unique colors count\nq=(img//16).astype(int)\nflat=q.reshape(-1,3)\nu,c=np.unique(flat,axis=0,return_counts=True)\nprint('approx unique(16-quant):',len(u))\nidx=np.argsort(-c)[:10]\nfor i in idx:\n    print(u[i]*16,c[i])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MjK63rHnCDdnU7bCNKDKtE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# downsample to 40x30 and print brightness map + color\nsy,sx=h//30,w//40\nfor j in range(30):\n    row=''\n    for i in range(40):\n        b=img[j*sy:(j+1)*sy, i*sx:(i+1)*sx].reshape(-1,3).mean(0)\n        r,g,bl=b\n        # classify\n        if r>140 and g>170 and bl>230: c='S'  # sky\n        elif abs(r-g)<20 and abs(g-bl)<20 and 120<r<180: c='.'  # gray ground\n        elif abs(r-g)<20 and abs(g-bl)<20 and r<110: c='#'  # dark gray\n        elif r>g+30 and r>bl+30: c='R'  # red\n        else: c='?'\n        row+=c\n    print(row)\n\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# downsample to 40x30 and print brightness map + color\nsy,sx=h//30,w//40\nfor j in range(30):\n    row=''\n    for i in range(40):\n        b=img[j*sy:(j+1)*sy, i*sx:(i+1)*sx].reshape(-1,3).mean(0)\n        r,g,bl=b\n        # classify\n        if r>140 and g>170 and bl>230: c='S'  # sky\n        elif abs(r-g)<20 and abs(g-bl)<20 and 120<r<180: c='.'  # gray ground\n        elif abs(r-g)<20 and abs(g-bl)<20 and r<110: c='#'  # dark gray\n        elif r>g+30 and r>bl+30: c='R'  # red\n        else: c='?'\n        row+=c\n    print(row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DWEM5jpbDXYMwekFK6aoDt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# sky vertical gradient at x=100\nfor y in range(0,900,100):\n    print('sky y',y,img[y,100])\nprint('---horizon search col 100---')\nfor y in range(850,950,10):\n    print(y,img[y,100])\n\""
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# sky vertical gradient at x=100\nfor y in range(0,900,100):\n    print('sky y',y,img[y,100])\nprint('---horizon search col 100---')\nfor y in range(850,950,10):\n    print(y,img[y,100])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GrzZnu9rLdYyMDprNkzyUX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nredmask=(r>g+25)&(r>b+25)\nys,xs=np.nonzero(redmask)\nprint('sphere bbox x',xs.min(),xs.max(),'y',ys.min(),ys.max())\nprint('center approx',(xs.min()+xs.max())/2,(ys.min()+ys.max())/2)\nprint('radius x',(xs.max()-xs.min())/2,'y',(ys.max()-ys.min())/2)\n# sample sphere shading: brightest red point\nidx=np.argmax((r-(g+b)/2)*redmask)\nprint('most red at',np.unravel_index(idx,r.shape))\n# sphere colors range\nprint('red r range',r[redmask].min(),r[redmask].max())\n\""
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nredmask=(r>g+25)&(r>b+25)\nys,xs=np.nonzero(redmask)\nprint('sphere bbox x',xs.min(),xs.max(),'y',ys.min(),ys.max())\nprint('center approx',(xs.min()+xs.max())/2,(ys.min()+ys.max())/2)\nprint('radius x',(xs.max()-xs.min())/2,'y',(ys.max()-ys.min())/2)\n# sample sphere shading: brightest red point\nidx=np.argmax((r-(g+b)/2)*redmask)\nprint('most red at',np.unravel_index(idx,r.shape))\n# sphere colors range\nprint('red r range',r[redmask].min(),r[redmask].max())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S6HZY4V4QJt5H6g63CmAiz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\n# sample grid, compute normal z, and record color\npts=[]\nfor y in range(int(cy-R),int(cy+R),8):\n  for x in range(int(cx-R),int(cx+R),8):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>1: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    c=img[y,x]\n    pts.append((dx,dy,nz,c[0],c[1],c[2]))\npts=np.array(pts)\n# fit r = a + b*(l.n). unknown light dir (lx,ly,lz). r ~ diffuse\n# just print some samples across\nprint('n',len(pts))\nfor dxq in [-0.8,-0.4,0,0.4,0.8]:\n  sel=pts[np.abs(pts[:,0]-dxq)<0.1]\n  if len(sel):\n    print('dx~',dxq,'meanRGB',sel[:,3:].mean(0))\nprint('--- vertical ---')\nfor dyq in [-0.8,-0.4,0,0.4,0.8]:\n  sel=pts[np.abs(pts[:,1]-dyq)<0.1]\n  if len(sel):\n    print('dy~',dyq,'meanRGB',sel[:,3:].mean(0))\n\""
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\n# sample grid, compute normal z, and record color\npts=[]\nfor y in range(int(cy-R),int(cy+R),8):\n  for x in range(int(cx-R),int(cx+R),8):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>1: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    c=img[y,x]\n    pts.append((dx,dy,nz,c[0],c[1],c[2]))\npts=np.array(pts)\n# fit r = a + b*(l.n). unknown light dir (lx,ly,lz). r ~ diffuse\n# just print some samples across\nprint('n',len(pts))\nfor dxq in [-0.8,-0.4,0,0.4,0.8]:\n  sel=pts[np.abs(pts[:,0]-dxq)<0.1]\n  if len(sel):\n    print('dx~',dxq,'meanRGB',sel[:,3:].mean(0))\nprint('--- vertical ---')\nfor dyq in [-0.8,-0.4,0,0.4,0.8]:\n  sel=pts[np.abs(pts[:,1]-dyq)<0.1]\n  if len(sel):\n    print('dy~',dyq,'meanRGB',sel[:,3:].mean(0))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MkMtrENHH6GyVeteX8fJxv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\nX=[];Y=[]\nfor y in range(int(cy-R),int(cy+R),3):\n  for x in range(int(cx-R),int(cx+R),3):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>0.98: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    X.append([1,dx,-dy,nz]); Y.append(img[y,x,0])\nX=np.array(X);Y=np.array(Y)\ncoef,res,*_=np.linalg.lstsq(X,Y,rcond=None)\nprint('coef a,nx,nyup,nz',coef)\npred=X@coef\nprint('rms',np.sqrt(np.mean((pred-Y)**2)),'ymax',Y.max())\n# try clamped model: r=amb+diff*max(0,l.n); guess light\n\""
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\nX=[];Y=[]\nfor y in range(int(cy-R),int(cy+R),3):\n  for x in range(int(cx-R),int(cx+R),3):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>0.98: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    X.append([1,dx,-dy,nz]); Y.append(img[y,x,0])\nX=np.array(X);Y=np.array(Y)\ncoef,res,*_=np.linalg.lstsq(X,Y,rcond=None)\nprint('coef a,nx,nyup,nz',coef)\npred=X@coef\nprint('rms',np.sqrt(np.mean((pred-Y)**2)),'ymax',Y.max())\n# try clamped model: r=amb+diff*max(0,l.n); guess light\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FZNeyvSeY5Bac4aEaQWXvM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\nN=[];Y=[]\nfor y in range(int(cy-R),int(cy+R),3):\n  for x in range(int(cx-R),int(cx+R),3):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>0.99: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    N.append([dx,-dy,nz]); Y.append(img[y,x,0])\nN=np.array(N);Y=np.array(Y)\nbest=None\nfor th in np.linspace(0,np.pi,19):\n for ph in np.linspace(0,2*np.pi,37):\n  L=np.array([np.sin(th)*np.cos(ph),np.sin(th)*np.sin(ph),np.cos(th)])\n  d=np.maximum(0,N@L)\n  A=np.stack([np.ones_like(d),d],1)\n  coef,*_=np.linalg.lstsq(A,Y,rcond=None)\n  pred=A@coef\n  rms=np.sqrt(np.mean((pred-Y)**2))\n  if best is None or rms<best[0]: best=(rms,L,coef,th,ph)\nprint('diffuse best rms',best[0],'L',best[1],'amb,kd',best[2])\n# add specular\nrms0,L,coef,th,ph=best\nbest2=None\nfor p in [4,8,16,32,64]:\n  d=np.maximum(0,N@L); s=d**p\n  A=np.stack([np.ones_like(d),d,s],1)\n  c,*_=np.linalg.lstsq(A,Y,rcond=None)\n  pred=A@c; rms=np.sqrt(np.mean((pred-Y)**2))\n  if best2 is None or rms<best2[0]: best2=(rms,p,c)\nprint('with spec best',best2[0],'p',best2[1],'coef',best2[2])\n\""
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ncx,cy,R=1199.5,993.0,184.0\nN=[];Y=[]\nfor y in range(int(cy-R),int(cy+R),3):\n  for x in range(int(cx-R),int(cx+R),3):\n    dx=(x-cx)/R; dy=(y-cy)/R\n    if dx*dx+dy*dy>0.99: continue\n    nz=np.sqrt(1-dx*dx-dy*dy)\n    N.append([dx,-dy,nz]); Y.append(img[y,x,0])\nN=np.array(N);Y=np.array(Y)\nbest=None\nfor th in np.linspace(0,np.pi,19):\n for ph in np.linspace(0,2*np.pi,37):\n  L=np.array([np.sin(th)*np.cos(ph),np.sin(th)*np.sin(ph),np.cos(th)])\n  d=np.maximum(0,N@L)\n  A=np.stack([np.ones_like(d),d],1)\n  coef,*_=np.linalg.lstsq(A,Y,rcond=None)\n  pred=A@coef\n  rms=np.sqrt(np.mean((pred-Y)**2))\n  if best is None or rms<best[0]: best=(rms,L,coef,th,ph)\nprint('diffuse best rms',best[0],'L',best[1],'amb,kd',best[2])\n# add specular\nrms0,L,coef,th,ph=best\nbest2=None\nfor p in [4,8,16,32,64]:\n  d=np.maximum(0,N@L); s=d**p\n  A=np.stack([np.ones_like(d),d,s],1)\n  c,*_=np.linalg.lstsq(A,Y,rcond=None)\n  pred=A@c; rms=np.sqrt(np.mean((pred-Y)**2))\n  if best2 is None or rms<best2[0]: best2=(rms,p,c)\nprint('with spec best',best2[0],'p',best2[1],'coef',best2[2])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UrodJhpQG6y8XeWPTZ8h6k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# floor rows: detect transitions. Use column x=0 for horizontal (constant z) bands\ncol=g[900:,0]\n# find where value ~152 vs ~67\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+900\nprint('z-band transitions at x=0 (rows):',tr[:40])\n\""
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# floor rows: detect transitions. Use column x=0 for horizontal (constant z) bands\ncol=g[900:,0]\n# find where value ~152 vs ~67\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+900\nprint('z-band transitions at x=0 (rows):',tr[:40])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014fCCfADfixtknaRU5n3RjX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\ncol=g[900:,10]\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+900\n# only keep transitions in lower half where spacing>15\nprint('all tr rows:')\nprev=900\nfor t in tr:\n  if t-prev>18: print(t, 'gap',t-prev)\n  prev=t\nprint('bottom rows values col10:', [int(g[900+ i*50,10]) for i in range(18)])\n\""
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\ncol=g[900:,10]\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+900\n# only keep transitions in lower half where spacing>15\nprint('all tr rows:')\nprev=900\nfor t in tr:\n  if t-prev>18: print(t, 'gap',t-prev)\n  prev=t\nprint('bottom rows values col10:', [int(g[900+ i*50,10]) for i in range(18)])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014y6GfKfNtoHtvAwf7Xeeo1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nx=200\ncol=g[900:,x]\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+901\n# keep transitions with gap>=10\nres=[];prev=900\nfor t in tr:\n  if t-prev>=10: res.append(t)\n  prev=t\nres=np.array(res)\nprint('transitions rows x=200:',res)\nprint('y-900:',res-900)\nprint('inv (900->0):', [round(1.0/(t-900),4) for t in res])\n\""
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nx=200\ncol=g[900:,x]\nb=(col>110).astype(int)\ntr=np.where(np.diff(b)!=0)[0]+901\n# keep transitions with gap>=10\nres=[];prev=900\nfor t in tr:\n  if t-prev>=10: res.append(t)\n  prev=t\nres=np.array(res)\nprint('transitions rows x=200:',res)\nprint('y-900:',res-900)\nprint('inv (900->0):', [round(1.0/(t-900),4) for t in res])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1137,7 +1137,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N4fsJj45VFHjjkjyTsfPfy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nfloor=(ys>905)\n# exclude sphere region + shadow (dark near sphere). Just exclude a box around sphere\nbox=(xs>1000)&(xs<1400)&(ys>800)\n# binary light\nlite=(g>110)\nmask=floor&(~box)\nYv=ys[mask].astype(float);Xv=xs[mask].astype(float);Lv=lite[mask]\n# subsample\nsel=np.random.RandomState(0).choice(len(Yv),40000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];Lv=Lv[sel]\ndef score(Ap,Kp,px,pz):\n  u=Ap*(Xv-1200)/(Yv-900)+px\n  v=Kp/(Yv-900)+pz\n  c=((np.floor(u)+np.floor(v)).astype(int)&1)==0\n  return np.mean(c==Lv)\nbest=None\nfor Kp in np.linspace(50,400,36):\n for Ap in np.linspace(0.2,2.0,19):\n   s=score(Ap,Kp,0.0,0.0)\n   s=max(s,1-s)\n   if best is None or s>best[0]: best=(s,Ap,Kp)\nprint('coarse',best)\n\""
           },
@@ -1145,7 +1145,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nfloor=(ys>905)\n# exclude sphere region + shadow (dark near sphere). Just exclude a box around sphere\nbox=(xs>1000)&(xs<1400)&(ys>800)\n# binary light\nlite=(g>110)\nmask=floor&(~box)\nYv=ys[mask].astype(float);Xv=xs[mask].astype(float);Lv=lite[mask]\n# subsample\nsel=np.random.RandomState(0).choice(len(Yv),40000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];Lv=Lv[sel]\ndef score(Ap,Kp,px,pz):\n  u=Ap*(Xv-1200)/(Yv-900)+px\n  v=Kp/(Yv-900)+pz\n  c=((np.floor(u)+np.floor(v)).astype(int)&1)==0\n  return np.mean(c==Lv)\nbest=None\nfor Kp in np.linspace(50,400,36):\n for Ap in np.linspace(0.2,2.0,19):\n   s=score(Ap,Kp,0.0,0.0)\n   s=max(s,1-s)\n   if best is None or s>best[0]: best=(s,Ap,Kp)\nprint('coarse',best)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1206,7 +1206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WRZ481GLEAaqjjT64kKen8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# print floor region 900..1800 x full, downsample to 80 cols x 30 rows\nfor j in range(30):\n  y=900+j*30\n  row=''\n  for i in range(80):\n    x=i*30\n    v=g[y,x]\n    row+= ('#' if v>110 else '.')\n  print(row)\n\""
           },
@@ -1214,7 +1214,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# print floor region 900..1800 x full, downsample to 80 cols x 30 rows\nfor j in range(30):\n  y=900+j*30\n  row=''\n  for i in range(80):\n    x=i*30\n    v=g[y,x]\n    row+= ('#' if v>110 else '.')\n  print(row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1275,7 +1275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N6jwgcYbTwkfFQafJHSjXf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nbox=(xs>980)&(xs<1420)&(ys>800)\nlite=(g>110)\nmask=(ys>1150)&(~box)\nYv=ys[mask].astype(float);Xv=xs[mask].astype(float);Lv=lite[mask]\nsel=np.random.RandomState(0).choice(len(Yv),60000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];Lv=Lv[sel]\ndef score(Ap,Kp,px,pz):\n  u=Ap*(Xv-1200)/(Yv-900)+px\n  v=Kp/(Yv-900)+pz\n  c=((np.floor(u)+np.floor(v)).astype(int)&1)==0\n  m=np.mean(c==Lv); return max(m,1-m)\nbest=None\nfor Kp in np.linspace(100,600,51):\n for Ap in np.linspace(0.3,3.0,28):\n  for px in [0,0.5]:\n   for pz in [0,0.5]:\n    s=score(Ap,Kp,px,pz)\n    if best is None or s>best[0]: best=(s,Ap,Kp,px,pz)\nprint('best',best)\n\""
           },
@@ -1283,7 +1283,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nbox=(xs>980)&(xs<1420)&(ys>800)\nlite=(g>110)\nmask=(ys>1150)&(~box)\nYv=ys[mask].astype(float);Xv=xs[mask].astype(float);Lv=lite[mask]\nsel=np.random.RandomState(0).choice(len(Yv),60000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];Lv=Lv[sel]\ndef score(Ap,Kp,px,pz):\n  u=Ap*(Xv-1200)/(Yv-900)+px\n  v=Kp/(Yv-900)+pz\n  c=((np.floor(u)+np.floor(v)).astype(int)&1)==0\n  m=np.mean(c==Lv); return max(m,1-m)\nbest=None\nfor Kp in np.linspace(100,600,51):\n for Ap in np.linspace(0.3,3.0,28):\n  for px in [0,0.5]:\n   for pz in [0,0.5]:\n    s=score(Ap,Kp,px,pz)\n    if best is None or s>best[0]: best=(s,Ap,Kp,px,pz)\nprint('best',best)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1344,7 +1344,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DuqsAGyWrpQhFgjrTRVbgc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# horizontal seams: for each row, count sign changes across x in floor -> but better detect rows with strong vertical-direction transition\n# detect z-seams: rows y where g[y] differs a lot from g[y-4] averaged over columns away from sphere\ncols=np.r_[0:980,1420:2400]\nrows=range(905,1799)\nprof=[]\nfor y in rows:\n  d=np.mean(np.abs(g[y,cols]-g[y-3,cols]))\n  prof.append(d)\nprof=np.array(prof)\n# peaks\nfrom numpy import where\nth=prof.mean()+prof.std()\npk=[list(rows)[i] for i in range(1,len(prof)-1) if prof[i]>prof[i-1] and prof[i]>=prof[i+1] and prof[i]>th]\nprint('z-seam rows:',pk)\n\""
           },
@@ -1352,7 +1352,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\n# horizontal seams: for each row, count sign changes across x in floor -> but better detect rows with strong vertical-direction transition\n# detect z-seams: rows y where g[y] differs a lot from g[y-4] averaged over columns away from sphere\ncols=np.r_[0:980,1420:2400]\nrows=range(905,1799)\nprof=[]\nfor y in rows:\n  d=np.mean(np.abs(g[y,cols]-g[y-3,cols]))\n  prof.append(d)\nprof=np.array(prof)\n# peaks\nfrom numpy import where\nth=prof.mean()+prof.std()\npk=[list(rows)[i] for i in range(1,len(prof)-1) if prof[i]>prof[i-1] and prof[i]>=prof[i+1] and prof[i]>th]\nprint('z-seam rows:',pk)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1413,7 +1413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EUDh8s8TCkgoBJVn8zLtTA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nfor y in [1700,1500,1300]:\n  row=g[y]\n  b=(row>110).astype(int)\n  tr=np.where(np.diff(b)!=0)[0]+1\n  print('y',y,'seams x:',tr)\n\""
           },
@@ -1421,7 +1421,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nfor y in [1700,1500,1300]:\n  row=g[y]\n  b=(row>110).astype(int)\n  tr=np.where(np.diff(b)!=0)[0]+1\n  print('y',y,'seams x:',tr)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1482,7 +1482,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B9Mga6mtz5L9sU2Snv8SBz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nfl=ys>900\nY=(ys-900).astype(float); \nm=np.floor(1.5*(xs-1200)/np.where(Y==0,1,Y))\nn=np.floor(1350.0/np.where(Y==0,1,Y))\npar=((m+n).astype(np.int64)&1)\nmodel_light=(par==0)\nlite=(g>110)\nbox=(xs>980)&(xs<1420)&(ys>800)\nmask=fl&(~box)\nacc=np.mean(model_light[mask]==lite[mask])\nprint('parity0 acc',acc, 'flip',1-acc)\n# by region\nfor lo in [900,1000,1100,1300,1500]:\n  mm=mask&(ys>=lo)&(ys<lo+100 if lo<1500 else ys<1800)\n  print(lo, np.mean(model_light[mm]==lite[mm]))\n\""
           },
@@ -1490,7 +1490,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\nys,xs=np.mgrid[0:h,0:w]\nfl=ys>900\nY=(ys-900).astype(float); \nm=np.floor(1.5*(xs-1200)/np.where(Y==0,1,Y))\nn=np.floor(1350.0/np.where(Y==0,1,Y))\npar=((m+n).astype(np.int64)&1)\nmodel_light=(par==0)\nlite=(g>110)\nbox=(xs>980)&(xs<1420)&(ys>800)\nmask=fl&(~box)\nacc=np.mean(model_light[mask]==lite[mask])\nprint('parity0 acc',acc, 'flip',1-acc)\n# by region\nfor lo in [900,1000,1100,1300,1500]:\n  mm=mask&(ys>=lo)&(ys<lo+100 if lo<1500 else ys<1800)\n  print(lo, np.mean(model_light[mm]==lite[mm]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1551,7 +1551,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XvD5PUgjRd8UVBwRN4gd3V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\ndef model(x,y):\n  Y=y-900.0\n  m=np.floor(1.5*(x-1200)/Y)\n  n=np.floor(1350.0/Y)\n  return ((m+n).astype(int)&1)==1  # flipped => light\nfor j in range(20):\n  y=1000+j*40\n  a='';b=''\n  for i in range(80):\n    x=i*30\n    a+= '#' if g[y,x]>110 else '.'\n    b+= '#' if model(np.float64(x),np.float64(y)) else '.'\n  print(y,'A',a)\n  print(y,'M',b)\n\""
           },
@@ -1559,7 +1559,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\ng=img[:,:,0]\ndef model(x,y):\n  Y=y-900.0\n  m=np.floor(1.5*(x-1200)/Y)\n  n=np.floor(1350.0/Y)\n  return ((m+n).astype(int)&1)==1  # flipped => light\nfor j in range(20):\n  y=1000+j*40\n  a='';b=''\n  for i in range(80):\n    x=i*30\n    a+= '#' if g[y,x]>110 else '.'\n    b+= '#' if model(np.float64(x),np.float64(y)) else '.'\n  print(y,'A',a)\n  print(y,'M',b)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1620,7 +1620,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016o8cPNJym2cqSupMtXz7Ax",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# sky fit: sample many y, check x-independence\nfor y in [0,200,400,600,800,880]:\n  print(y, img[y,50], img[y,1200], img[y,2350])\nprint('--- floor exact colors ---')\n# gather floor non-boundary\ng=img[900:,:,0]\nu,c=np.unique(img[1600:1790,0:900].reshape(-1,3),axis=0,return_counts=True)\nidx=np.argsort(-c)[:6]\nfor i in idx: print(u[i],c[i])\n\""
           },
@@ -1628,7 +1628,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# sky fit: sample many y, check x-independence\nfor y in [0,200,400,600,800,880]:\n  print(y, img[y,50], img[y,1200], img[y,2350])\nprint('--- floor exact colors ---')\n# gather floor non-boundary\ng=img[900:,:,0]\nu,c=np.unique(img[1600:1790,0:900].reshape(-1,3),axis=0,return_counts=True)\nidx=np.argsort(-c)[:6]\nfor i in idx: print(u[i],c[i])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1689,7 +1689,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MUyZwMtg6Dzh96y6x9Jefx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nys,xs=np.mgrid[0:880,0:w]\n# exclude sphere top (none above 809). sphere top y=809 so sky y<800 safe; use y<800\nm=ys<800\nY=ys[m].astype(float);X=xs[m].astype(float)\nR=img[:800,:,0].reshape(-1);G=img[:800,:,1].reshape(-1);B=img[:800,:,2].reshape(-1)\n# features\nu=(X-1200)/1200.0; v=(Y-900)/900.0\nfor name,T in [('R',R),('G',G),('B',B)]:\n  A=np.stack([np.ones_like(Y),Y,np.abs(X-1200),(X-1200)**2,Y*np.abs(X-1200)],1)\n  c,res,*_=np.linalg.lstsq(A,T,rcond=None)\n  pred=A@c\n  print(name,'coef',c,'rms',np.sqrt(np.mean((pred-T)**2)))\n\""
           },
@@ -1697,7 +1697,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nys,xs=np.mgrid[0:880,0:w]\n# exclude sphere top (none above 809). sphere top y=809 so sky y<800 safe; use y<800\nm=ys<800\nY=ys[m].astype(float);X=xs[m].astype(float)\nR=img[:800,:,0].reshape(-1);G=img[:800,:,1].reshape(-1);B=img[:800,:,2].reshape(-1)\n# features\nu=(X-1200)/1200.0; v=(Y-900)/900.0\nfor name,T in [('R',R),('G',G),('B',B)]:\n  A=np.stack([np.ones_like(Y),Y,np.abs(X-1200),(X-1200)**2,Y*np.abs(X-1200)],1)\n  c,res,*_=np.linalg.lstsq(A,T,rcond=None)\n  pred=A@c\n  print(name,'coef',c,'rms',np.sqrt(np.mean((pred-T)**2)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1758,7 +1758,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YFXSqdRn6JsccRLYfysCAJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nR=img[:760,:,0].astype(float)\ndiry=3-4*R/255.0\nys,xs=np.mgrid[0:760,0:w]\n# model diry = (cy0-y)*py / sqrt(((x-cx)*px)^2+((cy0-y)*py)^2+f^2)\n# assume cx=1200. fit cy0,py,px,f via least squares grid\nYv=ys.reshape(-1).astype(float);Xv=xs.reshape(-1).astype(float);D=diry.reshape(-1)\nsel=np.random.RandomState(0).choice(len(D),50000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];D=D[sel]\nbest=None\nfor cy0 in [900]:\n for f in np.linspace(0.5,3,26):\n  for py in np.linspace(0.5,3,26):\n   for px in np.linspace(0.5,3,11):\n     dvy=(cy0-Yv)/900.0*py\n     dvx=(Xv-1200)/1200.0*px\n     pred=dvy/np.sqrt(dvx**2+dvy**2+f**2)\n     e=np.mean((pred-D)**2)\n     if best is None or e<best[0]: best=(e,cy0,f,py,px)\nprint('best',best, 'rms',np.sqrt(best[0]))\n\""
           },
@@ -1766,7 +1766,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\nR=img[:760,:,0].astype(float)\ndiry=3-4*R/255.0\nys,xs=np.mgrid[0:760,0:w]\n# model diry = (cy0-y)*py / sqrt(((x-cx)*px)^2+((cy0-y)*py)^2+f^2)\n# assume cx=1200. fit cy0,py,px,f via least squares grid\nYv=ys.reshape(-1).astype(float);Xv=xs.reshape(-1).astype(float);D=diry.reshape(-1)\nsel=np.random.RandomState(0).choice(len(D),50000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];D=D[sel]\nbest=None\nfor cy0 in [900]:\n for f in np.linspace(0.5,3,26):\n  for py in np.linspace(0.5,3,26):\n   for px in np.linspace(0.5,3,11):\n     dvy=(cy0-Yv)/900.0*py\n     dvx=(Xv-1200)/1200.0*px\n     pred=dvy/np.sqrt(dvx**2+dvy**2+f**2)\n     e=np.mean((pred-D)**2)\n     if best is None or e<best[0]: best=(e,cy0,f,py,px)\nprint('best',best, 'rms',np.sqrt(best[0]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1827,7 +1827,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015SEv1rUAxw6DUuLuoRS1ev",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# refine camera\nR=img[:760,:,0].astype(float)\ndiry=3-4*R/255.0\nys,xs=np.mgrid[0:760,0:w]\nYv=ys.reshape(-1).astype(float);Xv=xs.reshape(-1).astype(float);D=diry.reshape(-1)\nsel=np.random.RandomState(1).choice(len(D),80000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];D=D[sel]\nbest=None\nfor f in np.linspace(0.9,1.3,41):\n  for py in np.linspace(0.9,1.3,41):\n   for px in np.linspace(1.3,1.7,21):\n     dvy=(900-Yv)/900.0*py\n     dvx=(Xv-1200)/1200.0*px\n     pred=dvy/np.sqrt(dvx**2+dvy**2+f**2)\n     e=np.mean((pred-D)**2)\n     if best is None or e<best[0]: best=(e,f,py,px)\nprint('refined f,py,px',best[1:],'rms',np.sqrt(best[0]))\nprint('--- floor value vs depth (light squares) ---')\ng=img[:,:,0]\nfor y in [1000,1100,1300,1500,1700,1790]:\n  row=g[y]; print(y,'lightmax',row[row>110].max() if (row>110).any() else None,'darkmin', row[(row<110)&(row>30)].min() if ((row<110)&(row>30)).any() else None)\n\""
           },
@@ -1835,7 +1835,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w,_=img.shape\n# refine camera\nR=img[:760,:,0].astype(float)\ndiry=3-4*R/255.0\nys,xs=np.mgrid[0:760,0:w]\nYv=ys.reshape(-1).astype(float);Xv=xs.reshape(-1).astype(float);D=diry.reshape(-1)\nsel=np.random.RandomState(1).choice(len(D),80000,replace=False)\nYv=Yv[sel];Xv=Xv[sel];D=D[sel]\nbest=None\nfor f in np.linspace(0.9,1.3,41):\n  for py in np.linspace(0.9,1.3,41):\n   for px in np.linspace(1.3,1.7,21):\n     dvy=(900-Yv)/900.0*py\n     dvx=(Xv-1200)/1200.0*px\n     pred=dvy/np.sqrt(dvx**2+dvy**2+f**2)\n     e=np.mean((pred-D)**2)\n     if best is None or e<best[0]: best=(e,f,py,px)\nprint('refined f,py,px',best[1:],'rms',np.sqrt(best[0]))\nprint('--- floor value vs depth (light squares) ---')\ng=img[:,:,0]\nfor y in [1000,1100,1300,1500,1700,1790]:\n  row=g[y]; print(y,'lightmax',row[row>110].max() if (row>110).any() else None,'darkmin', row[(row<110)&(row>30)].min() if ((row<110)&(row>30)).any() else None)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1896,7 +1896,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014rcgTikfLhwtbZNSzaxKai",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# region around sphere base, print values to find shadow\nfor y in range(1150,1350,15):\n  row=''\n  for x in range(950,1470,13):\n    v=g[y,x]\n    if v>110: row+='L'\n    elif v>55: row+='d'  # normal dark 67\n    else: row+='X'  # shadow <55\n  print(y,row)\n\""
           },
@@ -1904,7 +1904,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# region around sphere base, print values to find shadow\nfor y in range(1150,1350,15):\n  row=''\n  for x in range(950,1470,13):\n    v=g[y,x]\n    if v>110: row+='L'\n    elif v>55: row+='d'  # normal dark 67\n    else: row+='X'  # shadow <55\n  print(y,row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1965,7 +1965,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019GVaa5nCXaio3FqsNBMovZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# sphere g vs r\ncx,cy,R=1199.5,993.0,184.0\nys,xs=np.mgrid[0:1800,0:2400]\ndx=(xs-cx)/R; dy=(ys-cy)/R\ninside=dx*dx+dy*dy<=0.985\nr=img[:,:,0][inside];g=img[:,:,1][inside];b=img[:,:,2][inside]\nprint('g/r mean',(g/np.maximum(r,1)).mean(),'b/r',(b/np.maximum(r,1)).mean())\n# fit g = k*r\nk=np.sum(g*r)/np.sum(r*r); print('g=k*r k=',k)\nprint('sample r,g,b at bright:', img[860,1300],img[900,1250])\n\""
           },
@@ -1973,7 +1973,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# sphere g vs r\ncx,cy,R=1199.5,993.0,184.0\nys,xs=np.mgrid[0:1800,0:2400]\ndx=(xs-cx)/R; dy=(ys-cy)/R\ninside=dx*dx+dy*dy<=0.985\nr=img[:,:,0][inside];g=img[:,:,1][inside];b=img[:,:,2][inside]\nprint('g/r mean',(g/np.maximum(r,1)).mean(),'b/r',(b/np.maximum(r,1)).mean())\n# fit g = k*r\nk=np.sum(g*r)/np.sum(r*r); print('g=k*r k=',k)\nprint('sample r,g,b at bright:', img[860,1300],img[900,1250])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2034,7 +2034,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019vrN8bvoF131udpn9EgvNw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/ref.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w].astype(float)\nout=np.zeros((h,w,3))\n# camera dir.y for sky\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\n# floor\nY=ys-900.0\nYsafe=np.where(Y==0,1e-6,Y)\nm=np.floor(1.5*(xs-1200)/Ysafe)\nn=np.floor(1350.0/Ysafe)\npar=((m+n).astype(np.int64)&1)\nfloor_light=(par==1)\nfloor=np.where(floor_light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\n# sphere\ncx,cy,R=1199.5,993.0,184.0\ndx=(xs-cx)/R; dy=(ys-cy)/R\nrr=dx*dx+dy*dy\ninside=rr<=1.0\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx+(-dy)*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out.npy',out)\n# metrics\na=img.reshape(-1);b=out.reshape(-1)\ndiff=a-b\nprint('per-channel RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2 (||d||/||a||)',1-np.linalg.norm(diff)/np.linalg.norm(a))\nprint('1-||d||/(||a||+||b||)',1-np.linalg.norm(diff)/(np.linalg.norm(a)+np.linalg.norm(b)))\nEOF\npython3 /tmp/ref.py"
           },
@@ -2042,7 +2042,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/ref.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w].astype(float)\nout=np.zeros((h,w,3))\n# camera dir.y for sky\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\n# floor\nY=ys-900.0\nYsafe=np.where(Y==0,1e-6,Y)\nm=np.floor(1.5*(xs-1200)/Ysafe)\nn=np.floor(1350.0/Ysafe)\npar=((m+n).astype(np.int64)&1)\nfloor_light=(par==1)\nfloor=np.where(floor_light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\n# sphere\ncx,cy,R=1199.5,993.0,184.0\ndx=(xs-cx)/R; dy=(ys-cy)/R\nrr=dx*dx+dy*dy\ninside=rr<=1.0\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx+(-dy)*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out.npy',out)\n# metrics\na=img.reshape(-1);b=out.reshape(-1)\ndiff=a-b\nprint('per-channel RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2 (||d||/||a||)',1-np.linalg.norm(diff)/np.linalg.norm(a))\nprint('1-||d||/(||a||+||b||)',1-np.linalg.norm(diff)/(np.linalg.norm(a)+np.linalg.norm(b)))\nEOF\npython3 /tmp/ref.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2103,7 +2103,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TAP57gUZaF5SQMUUVNf6Mt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\nerr=np.sqrt(((img-out)**2).sum(2))  # per-pixel vector error\nh,w=1800,2400\n# error by row bands\nfor lo in range(0,1800,150):\n  print(lo,lo+150,'meanErr',round(err[lo:lo+150].mean(),1))\nprint('total SSE',(err**2).sum())\n# contribution: sky vs floor vs sphere\nprint('sky band 0-900 sse',((err[:900]**2).sum()))\nprint('floor 900-1800 sse',((err[900:]**2).sum()))\n\""
           },
@@ -2111,7 +2111,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\nerr=np.sqrt(((img-out)**2).sum(2))  # per-pixel vector error\nh,w=1800,2400\n# error by row bands\nfor lo in range(0,1800,150):\n  print(lo,lo+150,'meanErr',round(err[lo:lo+150].mean(),1))\nprint('total SSE',(err**2).sum())\n# contribution: sky vs floor vs sphere\nprint('sky band 0-900 sse',((err[:900]**2).sum()))\nprint('floor 900-1800 sse',((err[900:]**2).sum()))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2172,7 +2172,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FWbB4bfpwhUPYSEE6xhxWe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\nerr=np.abs(img-out).sum(2)\nfor j in range(24):\n  y=900+j*38\n  row=''\n  for i in range(80):\n    x=i*30\n    e=err[y,x]\n    row+= ' ' if e<40 else ('.' if e<150 else '#')\n  print(y,row)\n\""
           },
@@ -2180,7 +2180,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\nerr=np.abs(img-out).sum(2)\nfor j in range(24):\n  y=900+j*38\n  row=''\n  for i in range(80):\n    x=i*30\n    e=err[y,x]\n    row+= ' ' if e<40 else ('.' if e<150 else '#')\n  print(y,row)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2241,7 +2241,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UuAAnXxDMB6wV3ZJ8TsP1u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')  # model floor colors 152/67\ng=img[:,:,0]\nmg=out[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.02\nfl=(ys>=900)&(~inside)\n# shadow: model says light(152) but actual much lower; or model dark(67) actual lower\nlightmask=fl&(mg>110)\ndarkmask=fl&(mg<110)\n# in shadow blob region\nblob=(xs>1000)&(xs<1400)&(ys>1140)&(ys<1420)\nsl=g[lightmask&blob]; sd=g[darkmask&blob]\nprint('light sq in blob: min',sl.min(),'median',np.median(sl),'frac<130',np.mean(sl<130))\nprint('dark sq in blob: values unique', np.unique(sd)[:10])\n# shadow appears to set to specific darker value. sample a light square known in shadow\nprint('shadow light vals hist', np.unique(sl[sl<130])[:15])\n\""
           },
@@ -2249,7 +2249,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')  # model floor colors 152/67\ng=img[:,:,0]\nmg=out[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.02\nfl=(ys>=900)&(~inside)\n# shadow: model says light(152) but actual much lower; or model dark(67) actual lower\nlightmask=fl&(mg>110)\ndarkmask=fl&(mg<110)\n# in shadow blob region\nblob=(xs>1000)&(xs<1400)&(ys>1140)&(ys<1420)\nsl=g[lightmask&blob]; sd=g[darkmask&blob]\nprint('light sq in blob: min',sl.min(),'median',np.median(sl),'frac<130',np.mean(sl<130))\nprint('dark sq in blob: values unique', np.unique(sd)[:10])\n# shadow appears to set to specific darker value. sample a light square known in shadow\nprint('shadow light vals hist', np.unique(sl[sl<130])[:15])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2310,7 +2310,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SvU7yyxB1rpFd4EvidKdXC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\ng=img[:,:,0]; mg=out[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.05\nfl=(ys>=900)&(~inside)\nshadow=fl&(g<0.55*mg)\nYs,Xs=np.nonzero(shadow)\nprint('shadow px',len(Ys),'x range',Xs.min(),Xs.max(),'y',Ys.min(),Ys.max())\nprint('centroid',Xs.mean(),Ys.mean())\n# outline: for sampled rows, min/max x\nfor yy in range(Ys.min(),Ys.max(),20):\n  sel=Xs[Ys==yy]\n  if len(sel): print(yy, sel.min(), sel.max())\n\" 2>&1 | head -40"
           },
@@ -2318,7 +2318,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy')\ng=img[:,:,0]; mg=out[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.05\nfl=(ys>=900)&(~inside)\nshadow=fl&(g<0.55*mg)\nYs,Xs=np.nonzero(shadow)\nprint('shadow px',len(Ys),'x range',Xs.min(),Xs.max(),'y',Ys.min(),Ys.max())\nprint('centroid',Xs.mean(),Ys.mean())\n# outline: for sampled rows, min/max x\nfor yy in range(Ys.min(),Ys.max(),20):\n  sel=Xs[Ys==yy]\n  if len(sel): print(yy, sel.min(), sel.max())\n\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2379,7 +2379,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WoR17ubuQJcsXBNrmkVcdN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.05\nfl=(ys>=900)&(~inside)\nsh=fl&(g<56)\n# per row count and extent\nfor yy in range(1140,1460,12):\n  sel=xs[0][sh[yy]]\n  if len(sel)>20:\n    print(yy,'n',len(sel),'x',sel.min(),sel.max())\n\""
           },
@@ -2387,7 +2387,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.05\nfl=(ys>=900)&(~inside)\nsh=fl&(g<56)\n# per row count and extent\nfor yy in range(1140,1460,12):\n  sel=xs[0][sh[yy]]\n  if len(sel)>20:\n    print(yy,'n',len(sel),'x',sel.min(),sel.max())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2448,7 +2448,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CXG2jivA9NSHXMdpx1NH9x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.08\nfl=(ys>=900)&(~inside)\nsh=fl&(g<56)\n# clean: keep only shadow blob via requiring in y 1150-1430\nsh=sh&(ys>1150)&(ys<1435)\npts=[]\nfor yy in range(1155,1425):\n  sel=np.nonzero(sh[yy])[0]\n  if len(sel)>5:\n    pts.append((sel.min(),yy)); pts.append((sel.max(),yy))\nP=np.array(pts,float)\nX=P[:,0];Y=P[:,1]\n# fit conic Ax2+Bxy+Cy2+Dx+Ey+F=0, normalize F=-1 -> solve\nM=np.stack([X*X,X*Y,Y*Y,X,Y],1)\ncoef,*_=np.linalg.lstsq(M,np.ones(len(X)),rcond=None)\nA,B,C,D,E=coef; F=-1\nprint('conic',A,B,C,D,E,F)\n# verify: sign inside(centroid)\nxc,yc=X.mean(),Y.mean()\nval=A*xc*xc+B*xc*yc+C*yc*yc+D*xc+E*yc+F\nprint('centroid conic val',val)\n# residual\nr=M@coef-1\nprint('rms residual(normalized)',np.sqrt(np.mean(r*r)))\nnp.save('/tmp/conic.npy',np.array([A,B,C,D,E,F]))\n\""
           },
@@ -2456,7 +2456,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.08\nfl=(ys>=900)&(~inside)\nsh=fl&(g<56)\n# clean: keep only shadow blob via requiring in y 1150-1430\nsh=sh&(ys>1150)&(ys<1435)\npts=[]\nfor yy in range(1155,1425):\n  sel=np.nonzero(sh[yy])[0]\n  if len(sel)>5:\n    pts.append((sel.min(),yy)); pts.append((sel.max(),yy))\nP=np.array(pts,float)\nX=P[:,0];Y=P[:,1]\n# fit conic Ax2+Bxy+Cy2+Dx+Ey+F=0, normalize F=-1 -> solve\nM=np.stack([X*X,X*Y,Y*Y,X,Y],1)\ncoef,*_=np.linalg.lstsq(M,np.ones(len(X)),rcond=None)\nA,B,C,D,E=coef; F=-1\nprint('conic',A,B,C,D,E,F)\n# verify: sign inside(centroid)\nxc,yc=X.mean(),Y.mean()\nval=A*xc*xc+B*xc*yc+C*yc*yc+D*xc+E*yc+F\nprint('centroid conic val',val)\n# residual\nr=M@coef-1\nprint('rms residual(normalized)',np.sqrt(np.mean(r*r)))\nnp.save('/tmp/conic.npy',np.array([A,B,C,D,E,F]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2517,7 +2517,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WMmqLvPxchc4A7RP569UQr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy').copy()\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w].astype(float)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnp.save('/tmp/out2.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nerr=np.abs(img-out).sum(2)\nfor lo in range(900,1500,100):\n  print(lo,round(err[lo:lo+100].mean(),1))\n\""
           },
@@ -2525,7 +2525,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out.npy').copy()\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w].astype(float)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1199.5,993.0,184.0\ninside=((xs-cx)/R)**2+((ys-cy)/R)**2<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnp.save('/tmp/out2.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nerr=np.abs(img-out).sum(2)\nfor lo in range(900,1500,100):\n  print(lo,round(err[lo:lo+100].mean(),1))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2586,7 +2586,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PhBTYxCogYM38iN3CLP9rT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out2.npy')\ng=img[:,:,0]; mg=out[:,:,0]\n# look at row 905, 910, 950 actual vs model along x\nfor y in [902,905,910,920,940,970,1000]:\n  print('y',y)\n  print(' A', ''.join('#' if g[y,x]>110 else ('.' if g[y,x]>40 else ' ') for x in range(0,2400,25)))\n  print(' M', ''.join('#' if mg[y,x]>110 else '.' for x in range(0,2400,25)))\n\""
           },
@@ -2594,7 +2594,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out2.npy')\ng=img[:,:,0]; mg=out[:,:,0]\n# look at row 905, 910, 950 actual vs model along x\nfor y in [902,905,910,920,940,970,1000]:\n  print('y',y)\n  print(' A', ''.join('#' if g[y,x]>110 else ('.' if g[y,x]>40 else ' ') for x in range(0,2400,25)))\n  print(' M', ''.join('#' if mg[y,x]>110 else '.' for x in range(0,2400,25)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2655,7 +2655,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RULra1aXwN99mpoiVLLHK5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# near horizon values distribution rows 901-960\nband=img[901:960,:,0]\nu,c=np.unique(band,return_counts=True)\nprint('unique vals near horizon:',list(zip(u.astype(int),c))[:20])\nprint('...')\n# is it just 67/152? fraction\nprint('frac 67',np.mean(band==67),'frac152',np.mean(band==152),'other',np.mean((band!=67)&(band!=152)))\n\""
           },
@@ -2663,7 +2663,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# near horizon values distribution rows 901-960\nband=img[901:960,:,0]\nu,c=np.unique(band,return_counts=True)\nprint('unique vals near horizon:',list(zip(u.astype(int),c))[:20])\nprint('...')\n# is it just 67/152? fraction\nprint('frac 67',np.mean(band==67),'frac152',np.mean(band==152),'other',np.mean((band!=67)&(band!=152)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2724,7 +2724,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gam5QbqipQEsJw3KkDGguw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# detect z-seams cleanly at a clean column x=1195 (near center avoids x-seam movement? no). use average over left columns 0..300 far from sphere, but x-seams move. Instead detect using column where value pattern is stable. Use x=1200 exactly? that's a vertical seam line, ambiguous. use x=0.\n# Better: detect z-seam as row where majority of columns flip. compute per-row the correlation flip\n# Simple: at x=5\ndef seams(x):\n  col=g[900:1799,x]; b=(col>110).astype(int)\n  tr=np.where(np.diff(b)!=0)[0]+901\n  return tr\n# collect seam rows that appear across many columns => z-seams\nfrom collections import Counter\ncnt=Counter()\nfor x in range(0,2400,7):\n  if 1000<x<1400: continue\n  for t in seams(x): cnt[t]+=1\nrows=sorted([r for r,c in cnt.items() if c>150])\nprint('strong z-seam rows',rows)\n\""
           },
@@ -2732,7 +2732,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# detect z-seams cleanly at a clean column x=1195 (near center avoids x-seam movement? no). use average over left columns 0..300 far from sphere, but x-seams move. Instead detect using column where value pattern is stable. Use x=1200 exactly? that's a vertical seam line, ambiguous. use x=0.\n# Better: detect z-seam as row where majority of columns flip. compute per-row the correlation flip\n# Simple: at x=5\ndef seams(x):\n  col=g[900:1799,x]; b=(col>110).astype(int)\n  tr=np.where(np.diff(b)!=0)[0]+901\n  return tr\n# collect seam rows that appear across many columns => z-seams\nfrom collections import Counter\ncnt=Counter()\nfor x in range(0,2400,7):\n  if 1000<x<1400: continue\n  for t in seams(x): cnt[t]+=1\nrows=sorted([r for r,c in cnt.items() if c>150])\nprint('strong z-seam rows',rows)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2793,7 +2793,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WWr1pRUWZcCA5WSajNwmqa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out2.npy')\nsse=((img-out)**2).sum(2)\ntot=sse.sum()\nprint('total SSE',tot,'RMSE',np.sqrt(tot/(2400*1800*3)))\nfor lo in [900,905,915,930,950,975,1000,1050,1100]:\n  hi=lo+ (5 if lo<905 else (10 if lo<930 else (20 if lo<950 else (25 if lo<1000 else 50))))\n  print(lo,hi,'SSE',round(sse[lo:hi].sum()/1e6,1),'M  meanErrVec',round(np.sqrt(sse[lo:hi].mean()),1))\nprint('band900-955 share', sse[900:955].sum()/tot)\nprint('band955-1100 share', sse[955:1100].sum()/tot)\nprint('sphere region check y809-1177 x1016-1383 sse', sse[809:1178,1016:1384].sum()/1e6)\n\""
           },
@@ -2801,7 +2801,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out2.npy')\nsse=((img-out)**2).sum(2)\ntot=sse.sum()\nprint('total SSE',tot,'RMSE',np.sqrt(tot/(2400*1800*3)))\nfor lo in [900,905,915,930,950,975,1000,1050,1100]:\n  hi=lo+ (5 if lo<905 else (10 if lo<930 else (20 if lo<950 else (25 if lo<1000 else 50))))\n  print(lo,hi,'SSE',round(sse[lo:hi].sum()/1e6,1),'M  meanErrVec',round(np.sqrt(sse[lo:hi].mean()),1))\nprint('band900-955 share', sse[900:955].sum()/tot)\nprint('band955-1100 share', sse[955:1100].sum()/tot)\nprint('sphere region check y809-1177 x1016-1383 sse', sse[809:1178,1016:1384].sum()/1e6)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2862,7 +2862,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RPviPcLqncZ4tvJNzTCX59",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\n# supersample floor SxS, only rows 900..1200 to test\ndef floorcolor(fx,fy):\n  m=np.floor(1.5*(fx-1200)/(fy-900))\n  n=np.floor(1350.0/(fy-900))\n  light=((m+n).astype(np.int64)&1)==1\n  return np.where(light,152.0,67.0)\nfor S in [1,2,4,8]:\n  acc=np.zeros((300,w))\n  offs=(np.arange(S)+0.5)/S\n  for oy in offs:\n    for ox in offs:\n      ys,xs=np.mgrid[900:1200,0:w].astype(float)\n      acc+=floorcolor(xs+ox,ys+oy)\n  acc/=S*S\n  # compare (ignore sphere/shadow cols? just floor). compare to actual grayscale approx: but actual has shadow. compare only where actual is floor-ish (r==g==b)\n  act=img[900:1200,:,0]\n  isfloor=(np.abs(img[900:1200,:,0]-img[900:1200,:,1])<3)&(np.abs(img[900:1200,:,1]-img[900:1200,:,2])<3)\n  e=((acc-act)**2)[isfloor].mean()\n  print('S',S,'floor-only RMSE band900-1200',round(np.sqrt(e),2))\n\""
           },
@@ -2870,7 +2870,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\n# supersample floor SxS, only rows 900..1200 to test\ndef floorcolor(fx,fy):\n  m=np.floor(1.5*(fx-1200)/(fy-900))\n  n=np.floor(1350.0/(fy-900))\n  light=((m+n).astype(np.int64)&1)==1\n  return np.where(light,152.0,67.0)\nfor S in [1,2,4,8]:\n  acc=np.zeros((300,w))\n  offs=(np.arange(S)+0.5)/S\n  for oy in offs:\n    for ox in offs:\n      ys,xs=np.mgrid[900:1200,0:w].astype(float)\n      acc+=floorcolor(xs+ox,ys+oy)\n  acc/=S*S\n  # compare (ignore sphere/shadow cols? just floor). compare to actual grayscale approx: but actual has shadow. compare only where actual is floor-ish (r==g==b)\n  act=img[900:1200,:,0]\n  isfloor=(np.abs(img[900:1200,:,0]-img[900:1200,:,1])<3)&(np.abs(img[900:1200,:,1]-img[900:1200,:,2])<3)\n  e=((acc-act)**2)[isfloor].mean()\n  print('S',S,'floor-only RMSE band900-1200',round(np.sqrt(e),2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2931,7 +2931,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J31s2ij7KsHWeKJR82c74P",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/ref2.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\nout=np.zeros((h,w,3))\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y)\nn=np.floor(1350.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\n# shadow\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\n# sphere\ncx,cy,R=1199.5,993.0,184.0\ndx=(xs-cx)/R; dy=(ys-cy)/R\nrr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx+(-dy)*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out3.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nsse=((img-out)**2).sum(2)\nfor lo in [900,955,1000,1100,1300]:\n  print(lo, round(sse[lo:lo+55].sum()/1e6,1))\nEOF\npython3 /tmp/ref2.py"
           },
@@ -2939,7 +2939,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/ref2.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\nout=np.zeros((h,w,3))\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y)\nn=np.floor(1350.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\n# shadow\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\n# sphere\ncx,cy,R=1199.5,993.0,184.0\ndx=(xs-cx)/R; dy=(ys-cy)/R\nrr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx+(-dy)*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out3.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nsse=((img-out)**2).sum(2)\nfor lo in [900,955,1000,1100,1300]:\n  print(lo, round(sse[lo:lo+55].sum()/1e6,1))\nEOF\npython3 /tmp/ref2.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3000,7 +3000,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SLn5nE9pB4b7CxuKxpohF7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy').copy()\nh,w=1800,2400\ndef floorcolor(fx,fy):\n  m=np.floor(1.5*(fx-1200)/(fy-900)); n=np.floor(1350.0/(fy-900))\n  light=((m+n).astype(np.int64)&1)==1\n  return np.where(light,152.0,67.0)\nfor R0,S in [(960,4),(960,8),(1000,8),(1000,16),(940,8)]:\n  o=out.copy()\n  acc=np.zeros((R0-900,w)); offs=(np.arange(S)+0.5)/S\n  for oy in offs:\n    for ox in offs:\n      ys,xs=np.mgrid[900:R0,0:w].astype(float)\n      acc+=floorcolor(xs+ox,ys+oy)\n  acc/=S*S\n  # only overwrite floor pixels that are not shadow/sphere: keep where current out equals 67/152 exactly\n  cur=o[900:R0]\n  isplain=(np.abs(cur[:,:,0]-cur[:,:,1])<1)&((np.abs(cur[:,:,0]-67)<1)|(np.abs(cur[:,:,0]-152)<1))\n  for c in range(3):\n    ch=o[900:R0,:,c]; ch[isplain]=acc[isplain]; o[900:R0,:,c]=ch\n  a=img.reshape(-1);b=o.reshape(-1);diff=a-b\n  print('R0',R0,'S',S,'RMSE',round(np.sqrt(np.mean(diff**2)),3),'cos',round(np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)),5))\n\""
           },
@@ -3008,7 +3008,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy').copy()\nh,w=1800,2400\ndef floorcolor(fx,fy):\n  m=np.floor(1.5*(fx-1200)/(fy-900)); n=np.floor(1350.0/(fy-900))\n  light=((m+n).astype(np.int64)&1)==1\n  return np.where(light,152.0,67.0)\nfor R0,S in [(960,4),(960,8),(1000,8),(1000,16),(940,8)]:\n  o=out.copy()\n  acc=np.zeros((R0-900,w)); offs=(np.arange(S)+0.5)/S\n  for oy in offs:\n    for ox in offs:\n      ys,xs=np.mgrid[900:R0,0:w].astype(float)\n      acc+=floorcolor(xs+ox,ys+oy)\n  acc/=S*S\n  # only overwrite floor pixels that are not shadow/sphere: keep where current out equals 67/152 exactly\n  cur=o[900:R0]\n  isplain=(np.abs(cur[:,:,0]-cur[:,:,1])<1)&((np.abs(cur[:,:,0]-67)<1)|(np.abs(cur[:,:,0]-152)<1))\n  for c in range(3):\n    ch=o[900:R0,:,c]; ch[isplain]=acc[isplain]; o[900:R0,:,c]=ch\n  a=img.reshape(-1);b=o.reshape(-1);diff=a-b\n  print('R0',R0,'S',S,'RMSE',round(np.sqrt(np.mean(diff**2)),3),'cos',round(np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)),5))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3069,7 +3069,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SaABNdDrBNPS5WVZs5tZCs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2); tot=sse.sum()\nprint('total',tot/1e6,'M')\nprint('y<900 sky',sse[:900].sum()/1e6)\nprint('y900-955',sse[900:955].sum()/1e6, 'share',sse[900:955].sum()/tot)\nprint('y955-1100',sse[955:1100].sum()/1e6)\nprint('y1100+',sse[1100:].sum()/1e6)\n# sphere region\nys,xs=np.mgrid[0:1800,0:2400]\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2<=1.02\nprint('sphere sse',sse[inside].sum()/1e6)\nprint('shadow-ish sse y1150-1450 x400-1400', sse[1150:1450,400:1400].sum()/1e6)\n\""
           },
@@ -3077,7 +3077,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2); tot=sse.sum()\nprint('total',tot/1e6,'M')\nprint('y<900 sky',sse[:900].sum()/1e6)\nprint('y900-955',sse[900:955].sum()/1e6, 'share',sse[900:955].sum()/tot)\nprint('y955-1100',sse[955:1100].sum()/1e6)\nprint('y1100+',sse[1100:].sum()/1e6)\n# sphere region\nys,xs=np.mgrid[0:1800,0:2400]\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2<=1.02\nprint('sphere sse',sse[inside].sum()/1e6)\nprint('shadow-ish sse y1150-1450 x400-1400', sse[1150:1450,400:1400].sum()/1e6)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3138,7 +3138,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WTzWf3wN5K7s4FWNYkowhV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# actual floor label in band, exclude sphere/shadow: use only pure 67/152 pixels\nYi,Xi=np.mgrid[900:1010,0:2400]\nact=g[900:1010]\npure=(act==67)|(act==152)\nactL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float)\ndef match(cxx,ax,cz,y0):\n  Y=ys-y0\n  m=np.floor(ax*(xs-cxx)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nimport numpy as np\nfor ax in np.linspace(1.494,1.506,13):\n for cxx in [1199.5,1200.0,1200.5]:\n  for cz in np.linspace(1347,1353,7):\n   for y0 in [899.5,900.0,900.5]:\n    a=match(cxx,ax,cz,y0)\n    if best is None or a>best[0]: best=(a,ax,cxx,cz,y0)\nprint('best band900-1010 match',best)\nprint('baseline',match(1200.0,1.5,1350.0,900.0))\n\""
           },
@@ -3146,7 +3146,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# actual floor label in band, exclude sphere/shadow: use only pure 67/152 pixels\nYi,Xi=np.mgrid[900:1010,0:2400]\nact=g[900:1010]\npure=(act==67)|(act==152)\nactL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float)\ndef match(cxx,ax,cz,y0):\n  Y=ys-y0\n  m=np.floor(ax*(xs-cxx)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nimport numpy as np\nfor ax in np.linspace(1.494,1.506,13):\n for cxx in [1199.5,1200.0,1200.5]:\n  for cz in np.linspace(1347,1353,7):\n   for y0 in [899.5,900.0,900.5]:\n    a=match(cxx,ax,cz,y0)\n    if best is None or a>best[0]: best=(a,ax,cxx,cz,y0)\nprint('best band900-1010 match',best)\nprint('baseline',match(1200.0,1.5,1350.0,900.0))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3207,7 +3207,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019hSWkQPCmPqfyymXp32FR3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nYi,Xi=np.mgrid[900:1800,0:2400]\nact=g[900:1800]\npure=(act==67)|(act==152)\nactL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float)\nY=ys-900.0\ndef match(ax,cz):\n  m=np.floor(ax*(xs-1200.0)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nfor ax in np.linspace(1.497,1.503,25):\n for cz in np.linspace(1348,1352,41):\n    a=match(ax,cz)\n    if best is None or a>best[0]: best=(a,ax,cz)\nprint('full-floor best',best)\nprint('at 1.5,1350',match(1.5,1350.0))\nprint('at 1.5,1349',match(1.5,1349.0))\n# far field check\ndef far(ax,cz):\n  mask=pure&(Yi>1300)\n  m=np.floor(ax*(xs-1200.0)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[mask]==actL[mask])\nprint('far 1.5/1350',far(1.5,1350),'far best',far(best[1],best[2]))\n\""
           },
@@ -3215,7 +3215,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nYi,Xi=np.mgrid[900:1800,0:2400]\nact=g[900:1800]\npure=(act==67)|(act==152)\nactL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float)\nY=ys-900.0\ndef match(ax,cz):\n  m=np.floor(ax*(xs-1200.0)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nfor ax in np.linspace(1.497,1.503,25):\n for cz in np.linspace(1348,1352,41):\n    a=match(ax,cz)\n    if best is None or a>best[0]: best=(a,ax,cz)\nprint('full-floor best',best)\nprint('at 1.5,1350',match(1.5,1350.0))\nprint('at 1.5,1349',match(1.5,1349.0))\n# far field check\ndef far(ax,cz):\n  mask=pure&(Yi>1300)\n  m=np.floor(ax*(xs-1200.0)/Y); n=np.floor(cz/Y)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[mask]==actL[mask])\nprint('far 1.5/1350',far(1.5,1350),'far best',far(best[1],best[2]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3276,7 +3276,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ApggB8YFrAFpKBn7JFg5ss",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nYi,Xi=np.mgrid[900:1800,0:2400]\nact=g[900:1800]; pure=(act==67)|(act==152); actL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float); Y=ys-900.0\ndef match(ax,cz,pz,px_):\n  m=np.floor(ax*(xs-1200.0)/Y+px_); n=np.floor(cz/Y+pz)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nfor cz in np.linspace(1348.5,1349.6,12):\n for pz in [0]:\n  for px_ in [0]:\n   for ax in np.linspace(1.4985,1.5015,13):\n    a=match(ax,cz,pz,px_)\n    if best is None or a>best[0]: best=(a,ax,cz)\nprint('best',best)\n\""
           },
@@ -3284,7 +3284,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nYi,Xi=np.mgrid[900:1800,0:2400]\nact=g[900:1800]; pure=(act==67)|(act==152); actL=(act==152)\nxs=(Xi+0.5).astype(float); ys=(Yi+0.5).astype(float); Y=ys-900.0\ndef match(ax,cz,pz,px_):\n  m=np.floor(ax*(xs-1200.0)/Y+px_); n=np.floor(cz/Y+pz)\n  light=((m+n).astype(np.int64)&1)==1\n  return np.mean(light[pure]==actL[pure])\nbest=None\nfor cz in np.linspace(1348.5,1349.6,12):\n for pz in [0]:\n  for px_ in [0]:\n   for ax in np.linspace(1.4985,1.5015,13):\n    a=match(ax,cz,pz,px_)\n    if best is None or a>best[0]: best=(a,ax,cz)\nprint('best',best)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3345,7 +3345,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TjzQmW2vVqqsf5WbdPRo11",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed 's/1350.0/1349.0/g' /tmp/ref2.py > /tmp/ref3.py && python3 /tmp/ref3.py"
           },
@@ -3353,7 +3353,7 @@
             "raw_arguments": {
               "command": "cd /app && sed 's/1350.0/1349.0/g' /tmp/ref2.py > /tmp/ref3.py && python3 /tmp/ref3.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3414,7 +3414,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BJfsZzAXzqJnmH8AhajQ96",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2); tot=sse.sum()\nprint('total',tot/1e6,'M RMSE',np.sqrt(tot/(2400*1800*3)))\nprint('sky y<900',sse[:900].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2<=1.03\nprint('sphere',sse[inside].sum()/1e6)\nsh=(ys>1150)&(ys<1450)&(xs>350)&(xs<1400)\nprint('shadow-region',sse[sh].sum()/1e6)\nrest=sse.copy(); rest[:900]=0; rest[inside]=0; rest[sh]=0\nprint('rest(floor)',rest.sum()/1e6)\n# where is rest concentrated\nfor lo in range(900,1800,150):\n  print(lo, round(rest[lo:lo+150].sum()/1e6,2))\n\""
           },
@@ -3422,7 +3422,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2); tot=sse.sum()\nprint('total',tot/1e6,'M RMSE',np.sqrt(tot/(2400*1800*3)))\nprint('sky y<900',sse[:900].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2<=1.03\nprint('sphere',sse[inside].sum()/1e6)\nsh=(ys>1150)&(ys<1450)&(xs>350)&(xs<1400)\nprint('shadow-region',sse[sh].sum()/1e6)\nrest=sse.copy(); rest[:900]=0; rest[inside]=0; rest[sh]=0\nprint('rest(floor)',rest.sum()/1e6)\n# where is rest concentrated\nfor lo in range(900,1800,150):\n  print(lo, round(rest[lo:lo+150].sum()/1e6,2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3483,7 +3483,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F18QkteM4pfkVAcdiifmr4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=np.abs(img-out).sum(2)\n# sphere region ascii error\nprint('SPHERE err map')\nfor j in range(24):\n  y=805+j*16\n  print(''.join('#' if err[y,x]>60 else ('.' if err[y,x]>15 else ' ') for x in range(1000,1400,7)))\n\""
           },
@@ -3491,7 +3491,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=np.abs(img-out).sum(2)\n# sphere region ascii error\nprint('SPHERE err map')\nfor j in range(24):\n  y=805+j*16\n  print(''.join('#' if err[y,x]>60 else ('.' if err[y,x]>15 else ' ') for x in range(1000,1400,7)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3552,7 +3552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018GHnJtev1naQreZWnMTpRV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+20)&(r>b+20)\nys,xs=np.nonzero(red)\n# fit circle: minimize algebraic. x^2+y^2+Dx+Ey+F=0\nA=np.stack([xs,ys,np.ones_like(xs)],1).astype(float)\nrhs=-(xs.astype(float)**2+ys.astype(float)**2)\nc,*_=np.linalg.lstsq(A,rhs,rcond=None)\nD,E,F=c; cx=-D/2; cy=-E/2; R=np.sqrt(cx*cx+cy*cy-F)\nprint('circle fit cx,cy,R',cx,cy,R)\n# per-row width to check ellipse\nfor yy in range(int(cy)-160,int(cy)+161,40):\n  sel=xs[ys==yy]\n  if len(sel): print('y',yy,'xc',(sel.min()+sel.max())/2,'halfw',(sel.max()-sel.min())/2)\n\""
           },
@@ -3560,7 +3560,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+20)&(r>b+20)\nys,xs=np.nonzero(red)\n# fit circle: minimize algebraic. x^2+y^2+Dx+Ey+F=0\nA=np.stack([xs,ys,np.ones_like(xs)],1).astype(float)\nrhs=-(xs.astype(float)**2+ys.astype(float)**2)\nc,*_=np.linalg.lstsq(A,rhs,rcond=None)\nD,E,F=c; cx=-D/2; cy=-E/2; R=np.sqrt(cx*cx+cy*cy-F)\nprint('circle fit cx,cy,R',cx,cy,R)\n# per-row width to check ellipse\nfor yy in range(int(cy)-160,int(cy)+161,40):\n  sel=xs[ys==yy]\n  if len(sel): print('y',yy,'xc',(sel.min()+sel.max())/2,'halfw',(sel.max()-sel.min())/2)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3621,7 +3621,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0151VEm67mEH9FuRwiYgmRDc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=np.abs(img-out).sum(2)\nys,xs=np.mgrid[0:1800,0:2400]\n# sphere interior only\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2\nsse=((img-out)**2).sum(2)\nfor lim in [0.85,0.92,0.97,1.0,1.03]:\n  m=inside<=lim\n  print('sphere r<=',lim,'sse',round(sse[m].sum()/1e6,2))\nprint('--- SHADOW err map (X=big) ---')\nfor j in range(20):\n  y=1150+j*16\n  print(''.join('#' if err[y,x]>40 else ' ' for x in range(400,1420,16)))\n\""
           },
@@ -3629,7 +3629,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=np.abs(img-out).sum(2)\nys,xs=np.mgrid[0:1800,0:2400]\n# sphere interior only\ninside=((xs-1199.5)/184)**2+((ys-993)/184)**2\nsse=((img-out)**2).sum(2)\nfor lim in [0.85,0.92,0.97,1.0,1.03]:\n  m=inside<=lim\n  print('sphere r<=',lim,'sse',round(sse[m].sum()/1e6,2))\nprint('--- SHADOW err map (X=big) ---')\nfor j in range(20):\n  y=1150+j*16\n  print(''.join('#' if err[y,x]>40 else ' ' for x in range(400,1420,16)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3690,7 +3690,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Tk5RMH2u5zAbnhWr5w7ZVL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# look at sphere right edge at center row y=993, x around 1383\ny=993\nfor x in range(1378,1392):\n  print(x, img[y,x])\nprint('--- left edge ---')\nfor x in range(1012,1022):\n  print(x, img[y,x])\n\""
           },
@@ -3698,7 +3698,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\n# look at sphere right edge at center row y=993, x around 1383\ny=993\nfor x in range(1378,1392):\n  print(x, img[y,x])\nprint('--- left edge ---')\nfor x in range(1012,1022):\n  print(x, img[y,x])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3759,7 +3759,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CtFzdPVXGNB3TeEGdsH1B4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\n# region around sphere\ny0,y1,x0,x1=790,1200,990,1410\nsub=img[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]\nxs=Xi+0.5; ys=Yi+0.5\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\n# background under sphere = floor/shadow from out3\nbg=np.load('/tmp/out3.npy')[y0:y1,x0:x1].copy()\ndef render(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o=bg.copy()\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return o\nbest=None\nfor cx in np.arange(1199.0,1200.1,0.25):\n for cy in np.arange(992.0,994.1,0.25):\n  for R in np.arange(183.0,185.6,0.25):\n    o=render(cx,cy,R,51,188.6)\n    e=((o-sub)**2).sum()\n    if best is None or e<best[0]: best=(e/1e6,cx,cy,R)\nprint('best sphere',best)\n\""
           },
@@ -3767,7 +3767,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\n# region around sphere\ny0,y1,x0,x1=790,1200,990,1410\nsub=img[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]\nxs=Xi+0.5; ys=Yi+0.5\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\n# background under sphere = floor/shadow from out3\nbg=np.load('/tmp/out3.npy')[y0:y1,x0:x1].copy()\ndef render(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o=bg.copy()\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return o\nbest=None\nfor cx in np.arange(1199.0,1200.1,0.25):\n for cy in np.arange(992.0,994.1,0.25):\n  for R in np.arange(183.0,185.6,0.25):\n    o=render(cx,cy,R,51,188.6)\n    e=((o-sub)**2).sum()\n    if best is None or e<best[0]: best=(e/1e6,cx,cy,R)\nprint('best sphere',best)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3828,7 +3828,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y3fBVHb237pwARF9TDEMvp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5;ys=Yi+0.5\n# sky-only error analysis: recompute sky and compare where actual is sky (above horizon, not sphere)\ndvx=(xs-1200)/1200.0*(4.0/3.0); dvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nskyR=255*(1-0.5*t)\nskymask=(ys<900)&(((xs-1199.5)/184)**2+((ys-993)/184)**2>1.1)\nerr=skyR-img[:,:,0]\nprint('sky R channel: mean err',err[skymask].mean(),'rms',np.sqrt((err[skymask]**2).mean()))\n# maybe better fit: search a scale on the 0.5 coeff and gamma. Actual r=255*(1-0.5t). fit c: r=255-a*t\ntt=t[skymask]; rr=img[:,:,0][skymask]\n# fit r = p0 + p1*tt\nA=np.stack([np.ones_like(tt),tt],1); c,*_=np.linalg.lstsq(A,rr,rcond=None)\nprint('fit r=p0+p1*t',c,'rms',np.sqrt(np.mean((A@c-rr)**2)))\ngg=img[:,:,1][skymask]\ncg,*_=np.linalg.lstsq(A,gg,rcond=None); print('g fit',cg,'rms',np.sqrt(np.mean((A@cg-gg)**2)))\n\""
           },
@@ -3836,7 +3836,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5;ys=Yi+0.5\n# sky-only error analysis: recompute sky and compare where actual is sky (above horizon, not sphere)\ndvx=(xs-1200)/1200.0*(4.0/3.0); dvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nskyR=255*(1-0.5*t)\nskymask=(ys<900)&(((xs-1199.5)/184)**2+((ys-993)/184)**2>1.1)\nerr=skyR-img[:,:,0]\nprint('sky R channel: mean err',err[skymask].mean(),'rms',np.sqrt((err[skymask]**2).mean()))\n# maybe better fit: search a scale on the 0.5 coeff and gamma. Actual r=255*(1-0.5t). fit c: r=255-a*t\ntt=t[skymask]; rr=img[:,:,0][skymask]\n# fit r = p0 + p1*tt\nA=np.stack([np.ones_like(tt),tt],1); c,*_=np.linalg.lstsq(A,rr,rcond=None)\nprint('fit r=p0+p1*t',c,'rms',np.sqrt(np.mean((A@c-rr)**2)))\ngg=img[:,:,1][skymask]\ncg,*_=np.linalg.lstsq(A,gg,rcond=None); print('g fit',cg,'rms',np.sqrt(np.mean((A@cg-gg)**2)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3897,7 +3897,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Sq2v68BDi3kwLcuPv5Lkd7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\nskymask=(ys<900)&(((xs-1199.5)/184.)**2+((ys-993)/184.)**2>1.1)\nsse=((img-out)**2).sum(2)\nprint('sky-only sse',sse[skymask].sum()/1e6)\n# per channel\nfor c in range(3):\n  e=((img[:,:,c]-out[:,:,c])**2)[skymask]\n  print('ch',c,'sse',e.sum()/1e6,'rms',np.sqrt(e.mean()))\n# check b actual\nprint('b unique in sky',np.unique(img[:,:,2][skymask])[:5], np.unique(img[:,:,2][skymask])[-5:])\n# where is sky error - maybe near horizon rows\nfor lo in range(0,900,150):\n  m=skymask&(ys>=lo)&(ys<lo+150)\n  print(lo,round(sse[m].sum()/1e6,2))\n\""
           },
@@ -3905,7 +3905,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\nskymask=(ys<900)&(((xs-1199.5)/184.)**2+((ys-993)/184.)**2>1.1)\nsse=((img-out)**2).sum(2)\nprint('sky-only sse',sse[skymask].sum()/1e6)\n# per channel\nfor c in range(3):\n  e=((img[:,:,c]-out[:,:,c])**2)[skymask]\n  print('ch',c,'sse',e.sum()/1e6,'rms',np.sqrt(e.mean()))\n# check b actual\nprint('b unique in sky',np.unique(img[:,:,2][skymask])[:5], np.unique(img[:,:,2][skymask])[-5:])\n# where is sky error - maybe near horizon rows\nfor lo in range(0,900,150):\n  m=skymask&(ys>=lo)&(ys<lo+150)\n  print(lo,round(sse[m].sum()/1e6,2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3966,7 +3966,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Wj2tysimVL9JWWHjqggpGX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ny0,y1,x0,x1=800,1190,1005,1395\nsub=img[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\ndef err(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o=sub.copy()\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return ((o-sub)**2).sum()/1e6\nbest=None\nfor cx in np.arange(1199.0,1200.51,0.25):\n for cy in np.arange(992.0,994.01,0.25):\n  for R in np.arange(182.5,185.51,0.25):\n    e=err(cx,cy,R,51,188.6)\n    if best is None or e<best[0]: best=(e,cx,cy,R)\nprint('best',best)\n# refine amb,kd at best geom\n_,cx,cy,R=best; b2=None\nfor amb in np.arange(48,54,1):\n for kd in np.arange(183,195,2):\n  e=err(cx,cy,R,amb,kd)\n  if b2 is None or e<b2[0]: b2=(e,amb,kd)\nprint('amb,kd',b2)\n\""
           },
@@ -3974,7 +3974,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ny0,y1,x0,x1=800,1190,1005,1395\nsub=img[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\ndef err(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o=sub.copy()\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return ((o-sub)**2).sum()/1e6\nbest=None\nfor cx in np.arange(1199.0,1200.51,0.25):\n for cy in np.arange(992.0,994.01,0.25):\n  for R in np.arange(182.5,185.51,0.25):\n    e=err(cx,cy,R,51,188.6)\n    if best is None or e<best[0]: best=(e,cx,cy,R)\nprint('best',best)\n# refine amb,kd at best geom\n_,cx,cy,R=best; b2=None\nfor amb in np.arange(48,54,1):\n for kd in np.arange(183,195,2):\n  e=err(cx,cy,R,amb,kd)\n  if b2 is None or e<b2[0]: b2=(e,amb,kd)\nprint('amb,kd',b2)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4035,7 +4035,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011YeuY2oAX8FEcQrQWsGbPe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/ref4.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y)\nn=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1200.0,992.25,183.0\ndx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+187*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out4.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nsse=(diff**2).sum()\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',sse/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref4.py"
           },
@@ -4043,7 +4043,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/ref4.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y)\nn=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1200.0,992.25,183.0\ndx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+187*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out4.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nsse=(diff**2).sum()\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',sse/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref4.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4104,7 +4104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WQVuLmrAozFiN8LwnkQHZe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nbase=np.load('/tmp/out3.npy')  # full render with sphere cx1199.5 cy993 R184\n# We'll recompute sphere region on top of a 'background' = render WITHOUT sphere.\n# background: take out3 but where inside sphere restore floor/shadow. Hard. Instead build bg by rendering floor/shadow only in a box.\nh,w=1800,2400\ny0,y1,x0,x1=800,1195,1000,1400\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\n# floor+shadow bg\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlightm=((m+n).astype(np.int64)&1)==1\nbg=np.where(lightm[...,None],np.array([152.,152,152]),np.array([67.,67,67])).astype(float)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\n# sphere for shadow test uses inside; approximate shadow where cv>0 & not inside(any). Use R=184 for shadow mask consistency\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nsub=img[y0:y1,x0:x1]\noutside_sse_fixed=None\ndef full(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  o=bg.copy()\n  sh=(cv>0)&(~inside)\n  o[sh]*=0.303\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return ((o-sub)**2).sum()/1e6\nbest=None\nfor cx in np.arange(1199.0,1200.51,0.25):\n for cy in np.arange(991.5,994.01,0.25):\n  for R in np.arange(182.5,185.01,0.25):\n    e=full(cx,cy,R,51,188.6)\n    if best is None or e<best[0]: best=(e,cx,cy,R)\nprint('best full-box',best)\nprint('at 1199.5,993,184',full(1199.5,993,184,51,188.6))\n\""
           },
@@ -4112,7 +4112,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nbase=np.load('/tmp/out3.npy')  # full render with sphere cx1199.5 cy993 R184\n# We'll recompute sphere region on top of a 'background' = render WITHOUT sphere.\n# background: take out3 but where inside sphere restore floor/shadow. Hard. Instead build bg by rendering floor/shadow only in a box.\nh,w=1800,2400\ny0,y1,x0,x1=800,1195,1000,1400\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\n# floor+shadow bg\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlightm=((m+n).astype(np.int64)&1)==1\nbg=np.where(lightm[...,None],np.array([152.,152,152]),np.array([67.,67,67])).astype(float)\nA,B,C,D,E,F=np.load('/tmp/conic.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\n# sphere for shadow test uses inside; approximate shadow where cv>0 & not inside(any). Use R=184 for shadow mask consistency\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nsub=img[y0:y1,x0:x1]\noutside_sse_fixed=None\ndef full(cx,cy,R,amb,kd):\n  dx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\n  inside=rr<=1.0\n  o=bg.copy()\n  sh=(cv>0)&(~inside)\n  o[sh]*=0.303\n  nz=np.sqrt(np.maximum(0,1-rr))\n  d=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\n  rc=np.minimum(255,amb+kd*d)\n  o[inside,0]=rc[inside]; o[inside,1]=0.196*rc[inside]; o[inside,2]=0.196*rc[inside]\n  return ((o-sub)**2).sum()/1e6\nbest=None\nfor cx in np.arange(1199.0,1200.51,0.25):\n for cy in np.arange(991.5,994.01,0.25):\n  for R in np.arange(182.5,185.01,0.25):\n    e=full(cx,cy,R,51,188.6)\n    if best is None or e<best[0]: best=(e,cx,cy,R)\nprint('best full-box',best)\nprint('at 1199.5,993,184',full(1199.5,993,184,51,188.6))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4173,7 +4173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FFhmLHhoGAjjPho4GN1MQP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\n# 60x45 grid of SSE to locate hotspots\nH,W=1800,2400\ngy,gx=45,60\nimport numpy as np\ngrid=sse[:H//gy*gy].reshape(gy,H//gy,W).sum(1).reshape(gy,gx,W//gx).sum(2)/1e6\n# print top cells\nflat=[(grid[j,i],j,i) for j in range(gy) for i in range(gx)]\nflat.sort(reverse=True)\nprint('top hotspot cells (sse_M, ypix, xpix):')\nfor v,j,i in flat[:15]:\n  print(round(v,2), 'y',j*40,'x',i*40)\n\""
           },
@@ -4181,7 +4181,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\n# 60x45 grid of SSE to locate hotspots\nH,W=1800,2400\ngy,gx=45,60\nimport numpy as np\ngrid=sse[:H//gy*gy].reshape(gy,H//gy,W).sum(1).reshape(gy,gx,W//gx).sum(2)/1e6\n# print top cells\nflat=[(grid[j,i],j,i) for j in range(gy) for i in range(gx)]\nflat.sort(reverse=True)\nprint('top hotspot cells (sse_M, ypix, xpix):')\nfor v,j,i in flat[:15]:\n  print(round(v,2), 'y',j*40,'x',i*40)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4242,7 +4242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011Lynbxn41EazA9qndpxv5c",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=((img-out)**2).sum(2)\n# examine cell y840-880 x1040-1080\nprint('actual vs model at y840-880 x1040-1080 sample')\nfor y in range(835,885,8):\n  for x in range(1038,1082,8):\n    print('y',y,'x',x,'A',img[y,x],'M',out[y,x])\n  print()\n\""
           },
@@ -4250,7 +4250,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out3.npy')\nerr=((img-out)**2).sum(2)\n# examine cell y840-880 x1040-1080\nprint('actual vs model at y840-880 x1040-1080 sample')\nfor y in range(835,885,8):\n  for x in range(1038,1082,8):\n    print('y',y,'x',x,'A',img[y,x],'M',out[y,x])\n  print()\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4311,7 +4311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019G5V3C1FjucdmArRiV6Rtm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+15)&(r>b+15)\n# per-row left/right boundary points\npts=[]\nfor y in range(810,1177):\n  sel=np.nonzero(red[y])[0]\n  if len(sel)>3:\n    pts.append((sel.min()+0.5,y+0.5)); pts.append((sel.max()+0.5,y+0.5))\n# per-col top/bottom\nfor x in range(1017,1383):\n  sel=np.nonzero(red[:,x])[0]\n  if len(sel)>3:\n    pts.append((x+0.5,sel.min()+0.5)); pts.append((x+0.5,sel.max()+0.5))\nP=np.array(pts,float); X=P[:,0];Y=P[:,1]\nA=np.stack([X,Y,np.ones_like(X)],1); rhs=-(X*X+Y*Y)\nc,*_=np.linalg.lstsq(A,rhs,rcond=None)\nD,E,F=c; cx=-D/2; cy=-E/2; R=np.sqrt(cx*cx+cy*cy-F)\nprint('circle cx,cy,R',cx,cy,R)\n# residual\nres=np.sqrt((X-cx)**2+(Y-cy)**2)-R\nprint('boundary radial rms',np.sqrt(np.mean(res**2)),'max',np.abs(res).max())\n\""
           },
@@ -4319,7 +4319,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+15)&(r>b+15)\n# per-row left/right boundary points\npts=[]\nfor y in range(810,1177):\n  sel=np.nonzero(red[y])[0]\n  if len(sel)>3:\n    pts.append((sel.min()+0.5,y+0.5)); pts.append((sel.max()+0.5,y+0.5))\n# per-col top/bottom\nfor x in range(1017,1383):\n  sel=np.nonzero(red[:,x])[0]\n  if len(sel)>3:\n    pts.append((x+0.5,sel.min()+0.5)); pts.append((x+0.5,sel.max()+0.5))\nP=np.array(pts,float); X=P[:,0];Y=P[:,1]\nA=np.stack([X,Y,np.ones_like(X)],1); rhs=-(X*X+Y*Y)\nc,*_=np.linalg.lstsq(A,rhs,rcond=None)\nD,E,F=c; cx=-D/2; cy=-E/2; R=np.sqrt(cx*cx+cy*cy-F)\nprint('circle cx,cy,R',cx,cy,R)\n# residual\nres=np.sqrt((X-cx)**2+(Y-cy)**2)-R\nprint('boundary radial rms',np.sqrt(np.mean(res**2)),'max',np.abs(res).max())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4380,7 +4380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GBoXGn3MF1bELvpXu83Bbw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -e 's/cx,cy,R=1200.0,992.25,183.0/cx,cy,R=1200.0,993.7,183.72/' -e 's/51+187\\*d/51+188.6*d/' /tmp/ref4.py > /tmp/ref5.py && python3 /tmp/ref5.py"
           },
@@ -4388,7 +4388,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -e 's/cx,cy,R=1200.0,992.25,183.0/cx,cy,R=1200.0,993.7,183.72/' -e 's/51+187\\*d/51+188.6*d/' /tmp/ref4.py > /tmp/ref5.py && python3 /tmp/ref5.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4449,7 +4449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019aqwxoppLy56tpyDcjkNhW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# shadow left boundary at y=1350: scan x\ny=1350\nprint('y1350 x480-520:',[int(g[y,x]) for x in range(480,525)])\n# shadow bottom boundary at x=700 scan y\nx=700\nprint('x700 y1380-1420:',[int(g[x*0+yy,x]) for yy in range(1380,1425)])\n# check: is shadow value exactly 0.303*base or soft\n\""
           },
@@ -4457,7 +4457,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\n# shadow left boundary at y=1350: scan x\ny=1350\nprint('y1350 x480-520:',[int(g[y,x]) for x in range(480,525)])\n# shadow bottom boundary at x=700 scan y\nx=700\nprint('x700 y1380-1420:',[int(g[x*0+yy,x]) for yy in range(1380,1425)])\n# check: is shadow value exactly 0.303*base or soft\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4518,7 +4518,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017kLcrvHPALe3AEvfb61Fnm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\nsh=((g==46)|(g==20))&(ys>=900)\n# exclude sphere interior\ncx,cy,R=1200.0,993.7,183.72\ninside=((xs-cx)**2+(ys-cy)**2)<=(R+1)**2\nsh=sh&(~inside)\nYs,Xs=np.nonzero(sh)\nprint('shadow px',len(Ys),'y',Ys.min(),Ys.max(),'x',Xs.min(),Xs.max())\n# boundary points: per row min/max, per col min/max\npts=[]\nfor yy in range(Ys.min(),Ys.max()+1):\n  sel=Xs[Ys==yy]\n  if len(sel)>2:\n    pts.append((sel.min()+0.5,yy+0.5));pts.append((sel.max()+0.5,yy+0.5))\nfor xx in range(Xs.min(),Xs.max()+1):\n  sel=Ys[Xs==xx]\n  if len(sel)>2:\n    pts.append((xx+0.5,sel.min()+0.5));pts.append((xx+0.5,sel.max()+0.5))\nP=np.array(pts,float);X=P[:,0];Y=P[:,1]\n# but boundary points where shadow is occluded by sphere are not real conic. filter those adjacent to sphere\nd2=(X-cx)**2+(Y-cy)**2\nkeep=d2>(R+8)**2\nX=X[keep];Y=Y[keep]\nM=np.stack([X*X,X*Y,Y*Y,X,Y,np.ones_like(X)],1)\n# solve homogeneous: smallest singular vector\n_,_,Vt=np.linalg.svd(M)\ncoef=Vt[-1]\nA,B,C,D,E,F=coef\n# eval residual algebraic; check ellipse\nxc,yc=X.mean(),Y.mean()\nval=A*xc*xc+B*xc*yc+C*yc*yc+D*xc+E*yc+F\nprint('conic',coef,'centroidval',val)\nnp.save('/tmp/conic2.npy',coef*np.sign(val))\n# geometric residual approx: sample\nr=M@coef\nprint('alg residual rms',np.sqrt(np.mean(r*r)))\n\""
           },
@@ -4526,7 +4526,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\ng=img[:,:,0]\nh,w=1800,2400\nys,xs=np.mgrid[0:h,0:w]\nsh=((g==46)|(g==20))&(ys>=900)\n# exclude sphere interior\ncx,cy,R=1200.0,993.7,183.72\ninside=((xs-cx)**2+(ys-cy)**2)<=(R+1)**2\nsh=sh&(~inside)\nYs,Xs=np.nonzero(sh)\nprint('shadow px',len(Ys),'y',Ys.min(),Ys.max(),'x',Xs.min(),Xs.max())\n# boundary points: per row min/max, per col min/max\npts=[]\nfor yy in range(Ys.min(),Ys.max()+1):\n  sel=Xs[Ys==yy]\n  if len(sel)>2:\n    pts.append((sel.min()+0.5,yy+0.5));pts.append((sel.max()+0.5,yy+0.5))\nfor xx in range(Xs.min(),Xs.max()+1):\n  sel=Ys[Xs==xx]\n  if len(sel)>2:\n    pts.append((xx+0.5,sel.min()+0.5));pts.append((xx+0.5,sel.max()+0.5))\nP=np.array(pts,float);X=P[:,0];Y=P[:,1]\n# but boundary points where shadow is occluded by sphere are not real conic. filter those adjacent to sphere\nd2=(X-cx)**2+(Y-cy)**2\nkeep=d2>(R+8)**2\nX=X[keep];Y=Y[keep]\nM=np.stack([X*X,X*Y,Y*Y,X,Y,np.ones_like(X)],1)\n# solve homogeneous: smallest singular vector\n_,_,Vt=np.linalg.svd(M)\ncoef=Vt[-1]\nA,B,C,D,E,F=coef\n# eval residual algebraic; check ellipse\nxc,yc=X.mean(),Y.mean()\nval=A*xc*xc+B*xc*yc+C*yc*yc+D*xc+E*yc+F\nprint('conic',coef,'centroidval',val)\nnp.save('/tmp/conic2.npy',coef*np.sign(val))\n# geometric residual approx: sample\nr=M@coef\nprint('alg residual rms',np.sqrt(np.mean(r*r)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4587,7 +4587,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011b91wdzskqAZD6gQcPFVgn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/ref6.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic2.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1200.0,993.7,183.72\ndx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out6.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref6.py"
           },
@@ -4595,7 +4595,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/ref6.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]\nxs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0)\ndvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0)\nt=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic2.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,R=1200.0,993.7,183.72\ndx=(xs-cx)/R; dy=(ys-cy)/R; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out6.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref6.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4656,7 +4656,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Ayd55M3JNa2wFqxJseuC3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out6.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\nH,W=1800,2400; gy,gx=45,60\ngrid=sse[:1800].reshape(gy,40,W).sum(1).reshape(gy,gx,40).sum(2)/1e6\nflat=sorted([(grid[j,i],j*40,i*40) for j in range(gy) for i in range(gx)],reverse=True)\nfor v,y,x in flat[:14]: print(round(v,2),'y',y,'x',x)\n# band sums\nprint('horizon y900-950',sse[900:950].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\nring=(((xs-1200)/183.72)**2+((ys-993.7)/183.72)**2)\nprint('sphere ring 0.9-1.1',sse[(ring>0.9)&(ring<1.15)].sum()/1e6)\n\""
           },
@@ -4664,7 +4664,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out6.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\nH,W=1800,2400; gy,gx=45,60\ngrid=sse[:1800].reshape(gy,40,W).sum(1).reshape(gy,gx,40).sum(2)/1e6\nflat=sorted([(grid[j,i],j*40,i*40) for j in range(gy) for i in range(gx)],reverse=True)\nfor v,y,x in flat[:14]: print(round(v,2),'y',y,'x',x)\n# band sums\nprint('horizon y900-950',sse[900:950].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\nring=(((xs-1200)/183.72)**2+((ys-993.7)/183.72)**2)\nprint('sphere ring 0.9-1.1',sse[(ring>0.9)&(ring<1.15)].sum()/1e6)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4725,7 +4725,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0125sxBEET1Z33Upk2AUNdte",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+15)&(r>b+15)\n# topmost red per column near center\nfor x in range(1160,1245,8):\n  col=np.nonzero(red[:,x])[0]\n  print('x',x,'top red y',col.min(),'val',img[col.min(),x])\n# my circle top at x: y=cy - sqrt(R^2-(x-cx)^2)\ncx,cy,R=1200.0,993.7,183.72\nfor x in range(1160,1245,8):\n  dy=np.sqrt(max(0,R*R-(x+0.5-cx)**2))\n  print('x',x,'model top y', cy-dy)\n\""
           },
@@ -4733,7 +4733,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+15)&(r>b+15)\n# topmost red per column near center\nfor x in range(1160,1245,8):\n  col=np.nonzero(red[:,x])[0]\n  print('x',x,'top red y',col.min(),'val',img[col.min(),x])\n# my circle top at x: y=cy - sqrt(R^2-(x-cx)^2)\ncx,cy,R=1200.0,993.7,183.72\nfor x in range(1160,1245,8):\n  dy=np.sqrt(max(0,R*R-(x+0.5-cx)**2))\n  print('x',x,'model top y', cy-dy)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4794,7 +4794,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MkhyGiy7P87xfEe5K2577r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+14)&(r>b+14)\ny0,y1,x0,x1=795,1190,1005,1395\ntruth=red[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nbest=None\nfor cx in np.arange(1199.5,1200.6,0.1):\n for cy in np.arange(992.5,994.5,0.1):\n  for R in np.arange(183.5,185.01,0.1):\n    inside=((xs-cx)**2+(ys-cy)**2)<=R*R\n    mm=(inside!=truth).sum()\n    if best is None or mm<best[0]: best=(mm,round(cx,2),round(cy,2),round(R,2))\nprint('min mismatch',best)\n# baseline\ninside=((xs-1200.0)**2+(ys-993.7)**2)<=183.72**2\nprint('baseline mismatch',(inside!=truth).sum())\n\""
           },
@@ -4802,7 +4802,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+14)&(r>b+14)\ny0,y1,x0,x1=795,1190,1005,1395\ntruth=red[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nbest=None\nfor cx in np.arange(1199.5,1200.6,0.1):\n for cy in np.arange(992.5,994.5,0.1):\n  for R in np.arange(183.5,185.01,0.1):\n    inside=((xs-cx)**2+(ys-cy)**2)<=R*R\n    mm=(inside!=truth).sum()\n    if best is None or mm<best[0]: best=(mm,round(cx,2),round(cy,2),round(R,2))\nprint('min mismatch',best)\n# baseline\ninside=((xs-1200.0)**2+(ys-993.7)**2)<=183.72**2\nprint('baseline mismatch',(inside!=truth).sum())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4863,7 +4863,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MCKf2ahrUoV49z3wYa5KpK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed 's/cx,cy,R=1200.0,993.7,183.72/cx,cy,R=1200.0,993.6,184.2/' /tmp/ref6.py | sed 's|/tmp/out6.npy|/tmp/out7.npy|' > /tmp/ref7.py && python3 /tmp/ref7.py"
           },
@@ -4871,7 +4871,7 @@
             "raw_arguments": {
               "command": "cd /app && sed 's/cx,cy,R=1200.0,993.7,183.72/cx,cy,R=1200.0,993.6,184.2/' /tmp/ref6.py | sed 's|/tmp/out6.npy|/tmp/out7.npy|' > /tmp/ref7.py && python3 /tmp/ref7.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4932,7 +4932,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N3izvM8Y4ijhzkWv5f5HkU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out7.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\ngy,gx=45,60\ngrid=sse[:1800].reshape(gy,40,2400).sum(1).reshape(gy,gx,40).sum(2)/1e6\nflat=sorted([(grid[j,i],j*40,i*40) for j in range(gy) for i in range(gx)],reverse=True)\nfor v,y,x in flat[:12]: print(round(v,2),'y',y,'x',x)\nprint('horizon 900-950',sse[900:950].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\nring=(((xs-1200)/184.2)**2+((ys-993.6)/184.2)**2)\nprint('sphere ring',sse[(ring>0.85)&(ring<1.2)].sum()/1e6)\n\""
           },
@@ -4940,7 +4940,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out7.npy')\nsse=((img-out)**2).sum(2)\nprint('total',sse.sum()/1e6)\ngy,gx=45,60\ngrid=sse[:1800].reshape(gy,40,2400).sum(1).reshape(gy,gx,40).sum(2)/1e6\nflat=sorted([(grid[j,i],j*40,i*40) for j in range(gy) for i in range(gx)],reverse=True)\nfor v,y,x in flat[:12]: print(round(v,2),'y',y,'x',x)\nprint('horizon 900-950',sse[900:950].sum()/1e6)\nys,xs=np.mgrid[0:1800,0:2400]\nring=(((xs-1200)/184.2)**2+((ys-993.6)/184.2)**2)\nprint('sphere ring',sse[(ring>0.85)&(ring<1.2)].sum()/1e6)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5001,7 +5001,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PbZABbXMEeWF44upeqs8M2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+14)&(r>b+14)\ny0,y1,x0,x1=795,1190,1005,1395\ntruth=red[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nbest=None\nfor cx in np.arange(1199.9,1200.2,0.05):\n for cy in np.arange(993.2,994.2,0.05):\n  for Rx in np.arange(183.8,184.8,0.05):\n   for Ry in np.arange(183.8,184.8,0.1):\n    inside=((xs-cx)/Rx)**2+((ys-cy)/Ry)**2<=1.0\n    mm=(inside!=truth).sum()\n    if best is None or mm<best[0]: best=(mm,round(cx,3),round(cy,3),round(Rx,3),round(Ry,3))\nprint('ellipse min mismatch',best)\n\""
           },
@@ -5009,7 +5009,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nr,g,b=img[:,:,0],img[:,:,1],img[:,:,2]\nred=(r>g+14)&(r>b+14)\ny0,y1,x0,x1=795,1190,1005,1395\ntruth=red[y0:y1,x0:x1]\nYi,Xi=np.mgrid[y0:y1,x0:x1]; xs=Xi+0.5; ys=Yi+0.5\nbest=None\nfor cx in np.arange(1199.9,1200.2,0.05):\n for cy in np.arange(993.2,994.2,0.05):\n  for Rx in np.arange(183.8,184.8,0.05):\n   for Ry in np.arange(183.8,184.8,0.1):\n    inside=((xs-cx)/Rx)**2+((ys-cy)/Ry)**2<=1.0\n    mm=(inside!=truth).sum()\n    if best is None or mm<best[0]: best=(mm,round(cx,3),round(cy,3),round(Rx,3),round(Ry,3))\nprint('ellipse min mismatch',best)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5070,7 +5070,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YH3aBvuXhaMzJFf1ip4h5Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/ref8.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]; xs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0); dvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0); t=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic2.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,Rx,Ry=1200.0,993.7,183.8,184.5\ndx=(xs-cx)/Rx; dy=(ys-cy)/Ry; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out8.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref8.py"
           },
@@ -5078,7 +5078,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/ref8.py <<'EOF'\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nh,w=1800,2400\nYi,Xi=np.mgrid[0:h,0:w]; xs=Xi+0.5; ys=Yi+0.5\ndvx=(xs-1200)/1200.0*(4.0/3.0); dvy=(900.0-ys)/900.0\ndiry=dvy/np.sqrt(dvx*dvx+dvy*dvy+1.0); t=0.5*(diry+1.0)\nsky=np.stack([255*(1-0.5*t),255*(1-0.3*t),255*np.ones_like(t)],2)\nY=ys-900.0\nm=np.floor(1.5*(xs-1200)/Y); n=np.floor(1349.0/Y)\nlight=((m+n).astype(np.int64)&1)==1\nfloor=np.where(light[...,None],np.array([152.,152,152]),np.array([67.,67,67]))\nout=np.where((ys>=900)[...,None],floor,sky)\nA,B,C,D,E,F=np.load('/tmp/conic2.npy')\ncv=A*xs*xs+B*xs*ys+C*ys*ys+D*xs+E*ys+F\ncx,cy,Rx,Ry=1200.0,993.7,183.8,184.5\ndx=(xs-cx)/Rx; dy=(ys-cy)/Ry; rr=dx*dx+dy*dy\ninside=rr<=1.0\nshadow=(cv>0)&(ys>=900)&(~inside)\nout[shadow]*=0.303\nnz=np.sqrt(np.maximum(0,1-rr))\nLx,Ly,Lz=0.49240388,0.58682409,-0.64278761\nd=np.maximum(0,dx*Lx-dy*Ly+nz*Lz)\nrc=np.minimum(255,51+188.6*d)\nsph=np.stack([rc,0.196*rc,0.196*rc],2)\nout=np.where(inside[...,None],sph,out)\nnp.save('/tmp/out8.npy',out)\na=img.reshape(-1);b=out.reshape(-1);diff=a-b\nprint('RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\nEOF\npython3 /tmp/ref8.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5139,7 +5139,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GheCYG6MKC8B9Vxoiz1ZT9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out8.npy')\nouti=np.clip(np.round(out),0,255)\na=img.reshape(-1);b=outi.reshape(-1);diff=a-b\nprint('int RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\n# check some sphere g values: 0.196*rc rounding vs actual\n\""
           },
@@ -5147,7 +5147,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nimg=np.load('/tmp/img.npy').astype(float)\nout=np.load('/tmp/out8.npy')\nouti=np.clip(np.round(out),0,255)\na=img.reshape(-1);b=outi.reshape(-1);diff=a-b\nprint('int RMSE',np.sqrt(np.mean(diff**2)),'SSE',(diff**2).sum()/1e6)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(diff)/np.linalg.norm(a))\n# check some sphere g values: 0.196*rc rounding vs actual\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5208,7 +5208,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FknfwaXwSC7NAwRasEoyRm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nc=np.load('/tmp/conic2.npy')\nprint(repr(list(c)))\n\""
           },
@@ -5216,7 +5216,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nc=np.load('/tmp/conic2.npy')\nprint(repr(list(c)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5277,7 +5277,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018H31QWKDp38fZConqJbth3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -5297,7 +5297,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -5358,7 +5358,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BumqKhcG94NZe4RhA8nwj9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -static -o image image.c -lm && time ./image && ls -la reconstructed.ppm && echo \"--- gzip size ---\" && cat image.c | gzip | wc -c"
           },
@@ -5366,7 +5366,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -static -o image image.c -lm && time ./image && ls -la reconstructed.ppm && echo \"--- gzip size ---\" && cat image.c | gzip | wc -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5427,7 +5427,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S2tLeEPnb3fSMXJDyuu91j",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\ndef load(p):\n    f=open(p); assert f.readline().split()[0]=='P3'; w,h=map(int,f.readline().split()); f.readline()\n    return np.array(f.read().split(),dtype=np.float64).reshape(h,w,3)\na=load('image.ppm').reshape(-1); b=load('reconstructed.ppm').reshape(-1)\ndiff=a-b\nprint('shapes',a.shape,b.shape)\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2 (||d||/||a||)',1-np.linalg.norm(diff)/np.linalg.norm(a))\nprint('1-||d||/(||a||+||b||)',1-np.linalg.norm(diff)/(np.linalg.norm(a)+np.linalg.norm(b)))\n\""
           },
@@ -5435,7 +5435,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\ndef load(p):\n    f=open(p); assert f.readline().split()[0]=='P3'; w,h=map(int,f.readline().split()); f.readline()\n    return np.array(f.read().split(),dtype=np.float64).reshape(h,w,3)\na=load('image.ppm').reshape(-1); b=load('reconstructed.ppm').reshape(-1)\ndiff=a-b\nprint('shapes',a.shape,b.shape)\nprint('RMSE',np.sqrt(np.mean(diff**2)))\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2 (||d||/||a||)',1-np.linalg.norm(diff)/np.linalg.norm(a))\nprint('1-||d||/(||a||+||b||)',1-np.linalg.norm(diff)/(np.linalg.norm(a)+np.linalg.norm(b)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5496,7 +5496,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VicppAPnRdLFdsDzeKV5HD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f image reconstructed.ppm /tmp/img.npy /tmp/out*.npy /tmp/conic*.npy /tmp/ref*.py && ls -la /app"
           },
@@ -5504,7 +5504,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f image reconstructed.ppm /tmp/img.npy /tmp/out*.npy /tmp/conic*.npy /tmp/ref*.py && ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -5620,7 +5620,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RTHKD9LeA5Kdbkv5hWptBU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -static -o image image.c -lm && ./image && python3 -c \"\nimport numpy as np\ndef load(p):\n    f=open(p); assert f.readline().split()[0]=='P3'; w,h=map(int,f.readline().split()); f.readline()\n    return np.array(f.read().split(),dtype=np.float64)\na=load('image.ppm'); b=load('reconstructed.ppm'); d=a-b\nprint('len',a.size,b.size)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(d)/np.linalg.norm(a))\nprint('1-d/(a+b)',1-np.linalg.norm(d)/(np.linalg.norm(a)+np.linalg.norm(b)))\n\" && rm -f image reconstructed.ppm"
           },
@@ -5628,7 +5628,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -static -o image image.c -lm && ./image && python3 -c \"\nimport numpy as np\ndef load(p):\n    f=open(p); assert f.readline().split()[0]=='P3'; w,h=map(int,f.readline().split()); f.readline()\n    return np.array(f.read().split(),dtype=np.float64)\na=load('image.ppm'); b=load('reconstructed.ppm'); d=a-b\nprint('len',a.size,b.size)\nprint('cosine',np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)))\nprint('1-relL2',1-np.linalg.norm(d)/np.linalg.norm(a))\nprint('1-d/(a+b)',1-np.linalg.norm(d)/(np.linalg.norm(a)+np.linalg.norm(b)))\n\" && rm -f image reconstructed.ppm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

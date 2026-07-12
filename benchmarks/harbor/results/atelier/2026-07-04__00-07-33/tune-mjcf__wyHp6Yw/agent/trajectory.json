@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xp6BfmzTGrVWUgpkAMzcV4",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/model_ref.xml",
@@ -47,7 +47,7 @@
                 "/app/eval.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VDNFA9sYknwBzVbVASyB1Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import mujoco; print(mujoco.__version__)\" 2>&1 | head; echo \"---\"; ls /app"
           },
@@ -116,7 +116,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import mujoco; print(mujoco.__version__)\" 2>&1 | head; echo \"---\"; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -177,7 +177,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UDiJg9Dv5hYjCt8cBkjkDD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\no=m.opt\nprint('timestep',o.timestep,'integrator',o.integrator,'solver',o.solver,'iterations',o.iterations,'ls_iter',o.ls_iterations)\nprint('tol',o.tolerance,'ls_tol',o.ls_tolerance)\nprint('cone',o.cone,'jacobian',o.jacobian)\nprint('nq',m.nq,'nv',m.nv,'nbody',m.nbody,'neq',m.neq,'nefc?')\nd=mujoco.MjData(m)\nmujoco.mj_forward(m,d)\nprint('nefc',d.nefc)\n\""
           },
@@ -185,7 +185,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\no=m.opt\nprint('timestep',o.timestep,'integrator',o.integrator,'solver',o.solver,'iterations',o.iterations,'ls_iter',o.ls_iterations)\nprint('tol',o.tolerance,'ls_tol',o.ls_tolerance)\nprint('cone',o.cone,'jacobian',o.jacobian)\nprint('nq',m.nq,'nv',m.nv,'nbody',m.nbody,'neq',m.neq,'nefc?')\nd=mujoco.MjData(m)\nmujoco.mj_forward(m,d)\nprint('nefc',d.nefc)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -246,7 +246,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qjwj5Vv4TDEF18DJ2jpGrt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\ndef sim(ts, seed, tot=2.0):\n    m = mujoco.MjModel.from_xml_path('model_ref.xml')\n    m.opt.timestep=ts\n    d=mujoco.MjData(m)\n    n=int(tot/ts)\n    rng=np.random.default_rng(seed)\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape)\n    mujoco.mj_forward(m,d)\n    for _ in range(n): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS\n    s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp)\n    return s,d\nfor seed in [1,2,3]:\n    s0,d0=sim(0.002,seed)\n    print('seed',seed,'|qvel|',np.linalg.norm(d0.qvel),'final|state|',np.linalg.norm(s0))\n    for ts in [0.0025,0.003,0.004]:\n        s,_=sim(ts,seed)\n        # state layout may differ length? same nq so same\n        print('  ts',ts,'diff',np.linalg.norm(s-s0))\n\""
           },
@@ -254,7 +254,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\ndef sim(ts, seed, tot=2.0):\n    m = mujoco.MjModel.from_xml_path('model_ref.xml')\n    m.opt.timestep=ts\n    d=mujoco.MjData(m)\n    n=int(tot/ts)\n    rng=np.random.default_rng(seed)\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape)\n    mujoco.mj_forward(m,d)\n    for _ in range(n): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS\n    s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp)\n    return s,d\nfor seed in [1,2,3]:\n    s0,d0=sim(0.002,seed)\n    print('seed',seed,'|qvel|',np.linalg.norm(d0.qvel),'final|state|',np.linalg.norm(s0))\n    for ts in [0.0025,0.003,0.004]:\n        s,_=sim(ts,seed)\n        # state layout may differ length? same nq so same\n        print('  ts',ts,'diff',np.linalg.norm(s-s0))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -315,7 +315,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SB11bc4gqEiwu3j58EF84d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\nd=mujoco.MjData(m)\nrng=np.random.default_rng(1)\nd.qpos+=rng.normal(0,0.01,size=d.qpos.shape)\nmujoco.mj_forward(m,d)\nmaxcon=0\nfor i in range(1000):\n    mujoco.mj_step(m,d)\n    maxcon=max(maxcon,d.ncon)\nprint('max ncon',maxcon,'final ncon',d.ncon)\nprint('ngeom',m.ngeom)\n\""
           },
@@ -323,7 +323,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\nd=mujoco.MjData(m)\nrng=np.random.default_rng(1)\nd.qpos+=rng.normal(0,0.01,size=d.qpos.shape)\nmujoco.mj_forward(m,d)\nmaxcon=0\nfor i in range(1000):\n    mujoco.mj_step(m,d)\n    maxcon=max(maxcon,d.ncon)\nprint('max ncon',maxcon,'final ncon',d.ncon)\nprint('ngeom',m.ngeom)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -384,7 +384,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MccNcYFmgE2z266Fz4k4t7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\nopt='  <option>\\n    <flag contact=\\\"disable\\\"/>\\n  </option>\\n'\nmod=base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, tot=2.0, runs=15):\n    m=mujoco.MjModel.from_xml_string(xml)\n    ts=[]\n    for r in range(runs):\n        seed=np.random.randint(0,10000)\n        d=mujoco.MjData(m); rng=np.random.default_rng(seed)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(tot/m.opt.timestep)\n        t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.array(ts)\ntr=timeit(base); tm=timeit(mod)\nprint('ref',tr.mean(),'mod',tm.mean(),'pctg',(tm/tr).mean())\n# correctness\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nfor seed in [1,2,3]:\n    print('diff',np.linalg.norm(final(base,seed)-final(mod,seed)))\n\""
           },
@@ -392,7 +392,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\nopt='  <option>\\n    <flag contact=\\\"disable\\\"/>\\n  </option>\\n'\nmod=base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, tot=2.0, runs=15):\n    m=mujoco.MjModel.from_xml_string(xml)\n    ts=[]\n    for r in range(runs):\n        seed=np.random.randint(0,10000)\n        d=mujoco.MjData(m); rng=np.random.default_rng(seed)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(tot/m.opt.timestep)\n        t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.array(ts)\ntr=timeit(base); tm=timeit(mod)\nprint('ref',tr.mean(),'mod',tm.mean(),'pctg',(tm/tr).mean())\n# correctness\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nfor seed in [1,2,3]:\n    print('diff',np.linalg.norm(final(base,seed)-final(mod,seed)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -453,7 +453,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TMNTT2oZaJ9hnmkHzPLRF5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef timeit(xml, runs=12):\n    m=mujoco.MjModel.from_xml_string(xml)\n    ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep)\n        t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ntr=timeit(base)\ndef variant(opt):\n    xml=base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\n    return timeit(xml)\nprint('ref',tr)\nfor name,opt in [\n ('contact off','  <option><flag contact=\\\"disable\\\"/></option>\\n'),\n ('iter1','  <option iterations=\\\"1\\\" ls_iterations=\\\"5\\\"/>\\n'),\n ('constraint off','  <option><flag constraint=\\\"disable\\\"/></option>\\n'),\n ('passive off','  <option><flag passive=\\\"disable\\\"/></option>\\n'),\n ('sensor/mid off','  <option><flag midphase=\\\"disable\\\"/></option>\\n'),\n ('rk4','  <option integrator=\\\"RK4\\\"/>\\n'),\n ('implicitfast','  <option integrator=\\\"implicitfast\\\"/>\\n'),\n]:\n    try:\n        t=variant(opt); print(f'{name:16s} {t:.4f} pctg {t/tr:.3f}')\n    except Exception as e: print(name,'ERR',str(e)[:80])\n\""
           },
@@ -461,7 +461,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef timeit(xml, runs=12):\n    m=mujoco.MjModel.from_xml_string(xml)\n    ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep)\n        t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ntr=timeit(base)\ndef variant(opt):\n    xml=base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\n    return timeit(xml)\nprint('ref',tr)\nfor name,opt in [\n ('contact off','  <option><flag contact=\\\"disable\\\"/></option>\\n'),\n ('iter1','  <option iterations=\\\"1\\\" ls_iterations=\\\"5\\\"/>\\n'),\n ('constraint off','  <option><flag constraint=\\\"disable\\\"/></option>\\n'),\n ('passive off','  <option><flag passive=\\\"disable\\\"/></option>\\n'),\n ('sensor/mid off','  <option><flag midphase=\\\"disable\\\"/></option>\\n'),\n ('rk4','  <option integrator=\\\"RK4\\\"/>\\n'),\n ('implicitfast','  <option integrator=\\\"implicitfast\\\"/>\\n'),\n]:\n    try:\n        t=variant(opt); print(f'{name:16s} {t:.4f} pctg {t/tr:.3f}')\n    except Exception as e: print(name,'ERR',str(e)[:80])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -522,7 +522,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TrmbbbUsYu7QMNzATS7vN6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\nd=mujoco.MjData(m); rng=np.random.default_rng(1)\nd.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\nnit=[]\nfor i in range(1000):\n    mujoco.mj_step(m,d); nit.append(int(d.solver_niter[0]))\nprint('solver_niter min/mean/max',min(nit),np.mean(nit),max(nit))\n\" 2>&1 | grep -v WARNING"
           },
@@ -530,7 +530,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np\nm = mujoco.MjModel.from_xml_path('model_ref.xml')\nd=mujoco.MjData(m); rng=np.random.default_rng(1)\nd.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\nnit=[]\nfor i in range(1000):\n    mujoco.mj_step(m,d); nit.append(int(d.solver_niter[0]))\nprint('solver_niter min/mean/max',min(nit),np.mean(nit),max(nit))\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -591,7 +591,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S8KG2Ksk6HFL6gpNAjyRPS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt):\n    return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, runs=12):\n    m=mujoco.MjModel.from_xml_string(xml); ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(1000+r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\ntr=timeit(base)\nrefs={s:final(base,s) for s in [1,2,3,7,42]}\nfor name,opt in [\n ('pgs','  <option solver=\\\"PGS\\\"/>\\n'),\n ('cg','  <option solver=\\\"CG\\\"/>\\n'),\n ('ls5','  <option ls_iterations=\\\"5\\\"/>\\n'),\n ('ls1','  <option ls_iterations=\\\"1\\\"/>\\n'),\n ('cg+contact','  <option solver=\\\"CG\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs+contact','  <option solver=\\\"PGS\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n]:\n    try:\n        xml=build(opt); t=timeit(xml)\n        md=max(np.linalg.norm(final(xml,s)-refs[s]) for s in refs)\n        print(f'{name:14s} pctg {t/tr:.3f}  maxdiff {md:.2e}')\n    except Exception as e: print(name,'ERR',str(e)[:80])\n\" 2>&1 | grep -v WARNING"
           },
@@ -599,7 +599,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt):\n    return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, runs=12):\n    m=mujoco.MjModel.from_xml_string(xml); ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(1000+r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\ntr=timeit(base)\nrefs={s:final(base,s) for s in [1,2,3,7,42]}\nfor name,opt in [\n ('pgs','  <option solver=\\\"PGS\\\"/>\\n'),\n ('cg','  <option solver=\\\"CG\\\"/>\\n'),\n ('ls5','  <option ls_iterations=\\\"5\\\"/>\\n'),\n ('ls1','  <option ls_iterations=\\\"1\\\"/>\\n'),\n ('cg+contact','  <option solver=\\\"CG\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs+contact','  <option solver=\\\"PGS\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n]:\n    try:\n        xml=build(opt); t=timeit(xml)\n        md=max(np.linalg.norm(final(xml,s)-refs[s]) for s in refs)\n        print(f'{name:14s} pctg {t/tr:.3f}  maxdiff {md:.2e}')\n    except Exception as e: print(name,'ERR',str(e)[:80])\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -660,7 +660,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014ZscU4nuqFPzRHn2o2HaKV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt):\n    return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, runs=15):\n    m=mujoco.MjModel.from_xml_string(xml); ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(5000+r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nmref=lambda s: final(base,s)\nseeds=list(np.random.default_rng(0).integers(0,10000,40))\nrefs={s:mref(s) for s in seeds}\ntr=timeit(base)\nfor name,opt in [\n ('pgs+contact','  <option solver=\\\"PGS\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs200+contact','  <option solver=\\\"PGS\\\" iterations=\\\"200\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs+ct+tol1e-10','  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n]:\n    xml=build(opt); t=timeit(xml)\n    diffs=[np.linalg.norm(final(xml,s)-refs[s]) for s in seeds]\n    print(f'{name:18s} pctg {t/tr:.3f} maxdiff {max(diffs):.2e} meandiff {np.mean(diffs):.2e}')\n\" 2>&1 | grep -v WARNING"
           },
@@ -668,7 +668,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt):\n    return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef timeit(xml, runs=15):\n    m=mujoco.MjModel.from_xml_string(xml); ts=[]\n    for r in range(runs):\n        d=mujoco.MjData(m); rng=np.random.default_rng(5000+r)\n        d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n        n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n        for _ in range(n): mujoco.mj_step(m,d)\n        ts.append(time.perf_counter()-t0)\n    return np.median(ts)\ndef final(xml,seed):\n    m=mujoco.MjModel.from_xml_string(xml); d=mujoco.MjData(m)\n    rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nmref=lambda s: final(base,s)\nseeds=list(np.random.default_rng(0).integers(0,10000,40))\nrefs={s:mref(s) for s in seeds}\ntr=timeit(base)\nfor name,opt in [\n ('pgs+contact','  <option solver=\\\"PGS\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs200+contact','  <option solver=\\\"PGS\\\" iterations=\\\"200\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n ('pgs+ct+tol1e-10','  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n'),\n]:\n    xml=build(opt); t=timeit(xml)\n    diffs=[np.linalg.norm(final(xml,s)-refs[s]) for s in seeds]\n    print(f'{name:18s} pctg {t/tr:.3f} maxdiff {max(diffs):.2e} meandiff {np.mean(diffs):.2e}')\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -729,7 +729,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cmxy7S9Go8idJmJgnK1QdE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ncand=build('  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n')\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\nmr=mujoco.MjModel.from_xml_string(base); mc=mujoco.MjModel.from_xml_string(cand)\n# niter check\nd=mujoco.MjData(mc); rng=np.random.default_rng(1); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(mc,d)\nnit=[]\nfor i in range(1000): mujoco.mj_step(mc,d); nit.append(int(d.solver_niter[0]))\nprint('PGS niter mean/max',np.mean(nit),max(nit))\nfor _ in range(3): run_once(mr); run_once(mc)  # warmup\nfor trial in range(3):\n    tm=np.array([run_once(mc) for _ in range(20)])\n    trf=np.array([run_once(mr) for _ in range(20)])\n    print('trial',trial,'pctg',(tm/trf).mean(),'model',tm.mean(),'ref',trf.mean())\n\" 2>&1 | grep -v WARNING"
           },
@@ -737,7 +737,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ncand=build('  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n')\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\nmr=mujoco.MjModel.from_xml_string(base); mc=mujoco.MjModel.from_xml_string(cand)\n# niter check\nd=mujoco.MjData(mc); rng=np.random.default_rng(1); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(mc,d)\nnit=[]\nfor i in range(1000): mujoco.mj_step(mc,d); nit.append(int(d.solver_niter[0]))\nprint('PGS niter mean/max',np.mean(nit),max(nit))\nfor _ in range(3): run_once(mr); run_once(mc)  # warmup\nfor trial in range(3):\n    tm=np.array([run_once(mc) for _ in range(20)])\n    trf=np.array([run_once(mr) for _ in range(20)])\n    print('trial',trial,'pctg',(tm/trf).mean(),'model',tm.mean(),'ref',trf.mean())\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -798,7 +798,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TaQeMaNqXiywkKfwvH7ifY",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -818,7 +818,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -879,7 +879,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J7TJERKzQVrqdY5Su4Nb6u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 eval.py 2>&1 | grep -v WARNING"
           },
@@ -887,7 +887,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 eval.py 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -948,7 +948,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PK8izEt1FNxwZWchVsN3bY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\ndef final(m,seed):\n    d=mujoco.MjData(m); rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nmr=mujoco.MjModel.from_xml_string(base)\nseeds=list(np.random.default_rng(0).integers(0,10000,40))\nrefs={s:final(mr,s) for s in seeds}\nvariants={\n 'pgs':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n',\n 'pgs+act':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\" actuation=\\\"disable\\\"/></option>\\n',\n 'pgs+act+eul':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\" jacobian=\\\"sparse\\\"><flag contact=\\\"disable\\\" actuation=\\\"disable\\\"/></option>\\n',\n}\nmodels={k:mujoco.MjModel.from_xml_string(build(v)) for k,v in variants.items()}\n# warmup\nfor _ in range(3):\n    run_once(mr)\n    for m in models.values(): run_once(m)\nfor k,m in models.items():\n    md=max(np.linalg.norm(final(m,s)-refs[s]) for s in seeds)\n    ratios=[]\n    for trial in range(4):\n        tm=np.array([run_once(m) for _ in range(20)]); trf=np.array([run_once(mr) for _ in range(20)])\n        ratios.append((tm/trf).mean())\n    print(f'{k:14s} maxdiff {md:.2e} pctg(elemmean) {np.mean(ratios):.3f} +-{np.std(ratios):.3f}')\n\" 2>&1 | grep -v WARNING"
           },
@@ -956,7 +956,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\ndef final(m,seed):\n    d=mujoco.MjData(m); rng=np.random.default_rng(seed); d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    for _ in range(int(2.0/m.opt.timestep)): mujoco.mj_step(m,d)\n    fp=mujoco.mjtState.mjSTATE_FULLPHYSICS; s=np.zeros(mujoco.mj_stateSize(m,fp)); mujoco.mj_getState(m,d,s,fp); return s\nmr=mujoco.MjModel.from_xml_string(base)\nseeds=list(np.random.default_rng(0).integers(0,10000,40))\nrefs={s:final(mr,s) for s in seeds}\nvariants={\n 'pgs':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\"/></option>\\n',\n 'pgs+act':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\" actuation=\\\"disable\\\"/></option>\\n',\n 'pgs+act+eul':'  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\" jacobian=\\\"sparse\\\"><flag contact=\\\"disable\\\" actuation=\\\"disable\\\"/></option>\\n',\n}\nmodels={k:mujoco.MjModel.from_xml_string(build(v)) for k,v in variants.items()}\n# warmup\nfor _ in range(3):\n    run_once(mr)\n    for m in models.values(): run_once(m)\nfor k,m in models.items():\n    md=max(np.linalg.norm(final(m,s)-refs[s]) for s in seeds)\n    ratios=[]\n    for trial in range(4):\n        tm=np.array([run_once(m) for _ in range(20)]); trf=np.array([run_once(mr) for _ in range(20)])\n        ratios.append((tm/trf).mean())\n    print(f'{k:14s} maxdiff {md:.2e} pctg(elemmean) {np.mean(ratios):.3f} +-{np.std(ratios):.3f}')\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1017,7 +1017,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014edHbRKJVSFFhcdYdvagdR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && for i in 1 2 3 4 5; do python3 eval.py 2>&1 | grep -E \"Time pctg|difference\"; done"
           },
@@ -1025,7 +1025,7 @@
             "raw_arguments": {
               "command": "cd /app && for i in 1 2 3 4 5; do python3 eval.py 2>&1 | grep -E \"Time pctg|difference\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1086,7 +1086,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SQGLT4km4Vk25wBYVENrVi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\nmr=mujoco.MjModel.from_xml_string(base)\nmfloor=mujoco.MjModel.from_xml_string(build('  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\" constraint=\\\"disable\\\" passive=\\\"disable\\\"/></option>\\n'))\nmcand=mujoco.MjModel.from_xml_string(open('model.xml').read())\nfor _ in range(3): run_once(mr); run_once(mcand); run_once(mfloor)\nfor name,m in [('cand',mcand),('floor(no solver/plugin)',mfloor)]:\n    r=[]\n    for _ in range(4):\n        tm=np.array([run_once(m) for _ in range(20)]); trf=np.array([run_once(mr) for _ in range(20)]); r.append((tm/trf).mean())\n    print(f'{name:24s} {np.mean(r):.3f}')\n\" 2>&1 | grep -v WARNING"
           },
@@ -1094,7 +1094,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mujoco, numpy as np, time\nbase=open('model_ref.xml').read()\ndef build(opt): return base.replace('  <size memory=\\\"2M\\\"/>\\n', '  <size memory=\\\"2M\\\"/>\\n'+opt)\ndef run_once(m):\n    d=mujoco.MjData(m); rng=np.random.default_rng(np.random.randint(0,10000))\n    d.qpos+=rng.normal(0,0.01,size=d.qpos.shape); mujoco.mj_forward(m,d)\n    n=int(2.0/m.opt.timestep); t0=time.perf_counter()\n    for _ in range(n): mujoco.mj_step(m,d)\n    return time.perf_counter()-t0\nmr=mujoco.MjModel.from_xml_string(base)\nmfloor=mujoco.MjModel.from_xml_string(build('  <option solver=\\\"PGS\\\" tolerance=\\\"1e-10\\\"><flag contact=\\\"disable\\\" constraint=\\\"disable\\\" passive=\\\"disable\\\"/></option>\\n'))\nmcand=mujoco.MjModel.from_xml_string(open('model.xml').read())\nfor _ in range(3): run_once(mr); run_once(mcand); run_once(mfloor)\nfor name,m in [('cand',mcand),('floor(no solver/plugin)',mfloor)]:\n    r=[]\n    for _ in range(4):\n        tm=np.array([run_once(m) for _ in range(20)]); trf=np.array([run_once(mr) for _ in range(20)]); r.append((tm/trf).mean())\n    print(f'{name:24s} {np.mean(r):.3f}')\n\" 2>&1 | grep -v WARNING"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

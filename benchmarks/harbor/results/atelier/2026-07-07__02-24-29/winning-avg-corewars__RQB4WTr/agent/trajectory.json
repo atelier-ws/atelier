@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VTWpygphH5Wi4VpA3fHZ3P",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat warriors/stone.red warriors/paper.red warriors/vampire.red warriors/snake.red warriors/g2-clear.red; echo \"---\"; which pmars; pmars --version 2>&1 | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cat warriors/stone.red warriors/paper.red warriors/vampire.red warriors/snake.red warriors/g2-clear.red; echo \"---\"; which pmars; pmars --version 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Ne8zogTgfmEJJPTwni8k2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo \"== paper vs $w ==\"; pmars -b -r 100 warriors/paper.red warriors/$w.red 2>&1 | tail -5; done"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo \"== paper vs $w ==\"; pmars -b -r 100 warriors/paper.red warriors/$w.red 2>&1 | tail -5; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016oto2QT82sJAuToLmUWBsM",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "my_warrior.red",
             "new": ";redcode-94\n;name Mice\n;author Chip Wendell (adapted)\n;strategy replicator / paper\n;assert CORESIZE==8000\n\nptr     dat     #0,     #0\nstart   mov     #12,    ptr\nloop    mov     @ptr,   <dest\n        djn     loop,   ptr\n        spl     @dest,  0\n        add     #653,   dest\n        jmz     start,  ptr\ndest    dat     #0,     #833\n\n        end     start\n"
@@ -181,7 +181,7 @@
               "path": "my_warrior.red",
               "new": ";redcode-94\n;name Mice\n;author Chip Wendell (adapted)\n;strategy replicator / paper\n;assert CORESIZE==8000\n\nptr     dat     #0,     #0\nstart   mov     #12,    ptr\nloop    mov     @ptr,   <dest\n        djn     loop,   ptr\n        spl     @dest,  0\n        add     #653,   dest\n        jmz     start,  ptr\ndest    dat     #0,     #833\n\n        end     start\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -242,7 +242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Zk8EJeq4yHVLKm5M6s8ju",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo -n \"vs $w: \"; pmars -b -r 100 -f my_warrior.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -250,7 +250,7 @@
             "raw_arguments": {
               "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo -n \"vs $w: \"; pmars -b -r 100 -f my_warrior.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -311,7 +311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TAknjCC64AsziqTwXoaHH5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd); for a in stone vampire snake g2-clear; do for b in stone vampire paper snake g2-clear; do [ \"$a\" = \"$b\" ] && continue; echo -n \"$a vs $b: \"; pmars -b -r 50 warriors/$a.red warriors/$b.red 2>&1 | grep Results; done; echo; done"
           },
@@ -319,7 +319,7 @@
             "raw_arguments": {
               "command": "cd $(pwd); for a in stone vampire snake g2-clear; do for b in stone vampire paper snake g2-clear; do [ \"$a\" = \"$b\" ] && continue; echo -n \"$a vs $b: \"; pmars -b -r 50 warriors/$a.red warriors/$b.red 2>&1 | grep Results; done; echo; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -380,7 +380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014mixqTnEzf9DufMLztDXZu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo -n \"g2 vs $w: \"; pmars -b -r 100 warriors/g2-clear.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -388,7 +388,7 @@
             "raw_arguments": {
               "command": "cd $(pwd); for w in stone vampire paper snake g2-clear; do echo -n \"g2 vs $w: \"; pmars -b -r 100 warriors/g2-clear.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -449,7 +449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VkwXR5qvj5R7QxvBgqpscN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/clearA.red <<'EOF'\n;redcode-94\n;name ClearA\n;assert CORESIZE==8000\ndec     equ     2667\ngate    equ     clear-4\n        org     boot\nbptr    dat     bomb,   9\nbomb    spl     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\nboot    spl     clear,  0\n        jmp     clear,  0\n        end\nEOF\ncat > /tmp/clearB.red <<'EOF'\n;redcode-94\n;name ClearB\n;assert CORESIZE==8000\ndec     equ     2667\ngate    equ     clear-4\n        org     boot\nbptr    dat     bomb,   9\nbomb    dat     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\nboot    spl     clear,  0\n        jmp     clear,  0\n        end\nEOF\nfor f in clearA clearB; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -457,7 +457,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/clearA.red <<'EOF'\n;redcode-94\n;name ClearA\n;assert CORESIZE==8000\ndec     equ     2667\ngate    equ     clear-4\n        org     boot\nbptr    dat     bomb,   9\nbomb    spl     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\nboot    spl     clear,  0\n        jmp     clear,  0\n        end\nEOF\ncat > /tmp/clearB.red <<'EOF'\n;redcode-94\n;name ClearB\n;assert CORESIZE==8000\ndec     equ     2667\ngate    equ     clear-4\n        org     boot\nbptr    dat     bomb,   9\nbomb    dat     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\nboot    spl     clear,  0\n        jmp     clear,  0\n        end\nEOF\nfor f in clearA clearB; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -518,7 +518,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019BfXnTGyKiyP1wmjxNsXt9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\nmk(){ cat > /tmp/$1.red <<EOF\n;redcode-94\n;name $1\n;assert CORESIZE==8000\ndec     equ     $2\ngate    equ     clear-4\n        org     clear\nbptr    dat     bomb,   9\nbomb    dat     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\n        end\nEOF\n}\nmk D1 2700; mk D2 2667; mk D3 4000\nfor f in D1 D2 D3; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -526,7 +526,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\nmk(){ cat > /tmp/$1.red <<EOF\n;redcode-94\n;name $1\n;assert CORESIZE==8000\ndec     equ     $2\ngate    equ     clear-4\n        org     clear\nbptr    dat     bomb,   9\nbomb    dat     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\n        end\nEOF\n}\nmk D1 2700; mk D2 2667; mk D3 4000\nfor f in D1 D2 D3; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -587,7 +587,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WoGYbMGRPT6NdN8zoK2SqG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/s2.red <<'EOF'\n;redcode-94\n;name s2\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n     org start\nbptr dat bomb, 9\nbomb dat #dec, 11\nstart spl clear, 0\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\ncat > /tmp/s3.red <<'EOF'\n;redcode-94\n;name s3\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n     org start\nbptr dat bomb, 9\nbomb dat #dec, 11\nstart spl clear, 0\n      spl clear, 0\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\ncat > /tmp/tri.red <<'EOF'\n;redcode-94\n;name tri\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-3\n     org clear\nbptr dat bomb, 9\nbomb dat #dec, 11\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\nfor f in s2 s3 tri; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -595,7 +595,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/s2.red <<'EOF'\n;redcode-94\n;name s2\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n     org start\nbptr dat bomb, 9\nbomb dat #dec, 11\nstart spl clear, 0\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\ncat > /tmp/s3.red <<'EOF'\n;redcode-94\n;name s3\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n     org start\nbptr dat bomb, 9\nbomb dat #dec, 11\nstart spl clear, 0\n      spl clear, 0\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\ncat > /tmp/tri.red <<'EOF'\n;redcode-94\n;name tri\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-3\n     org clear\nbptr dat bomb, 9\nbomb dat #dec, 11\nclear mov *bptr, >gate\n      mov *bptr, >gate\n      mov *bptr, >gate\n      djn.f clear, }bomb\n     end\nEOF\nfor f in s2 s3 tri; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -656,7 +656,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PtKjTH9nmNnwejCqpw4YQX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\n# test a single crawling/spaced imp survivability vs stone\ncat > /tmp/imp1.red <<'EOF'\n;redcode-94\n;name Imp1\n;assert CORESIZE==8000\nimp   mov.i 0, 2667\n      end imp\nEOF\ncat > /tmp/imp3.red <<'EOF'\n;redcode-94\n;name Imp3\n;assert CORESIZE==8000\nstep equ 2667\nstart spl 1, 0\n      spl 1, 0\n      mov.i imp, imp+step\nimp   mov.i 0, step\n      end start\nEOF\nfor f in imp1 imp3; do echo \"== $f ==\"; for w in stone paper snake; do echo -n \"  vs $w: \"; pmars -b -r 20 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -664,7 +664,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\n# test a single crawling/spaced imp survivability vs stone\ncat > /tmp/imp1.red <<'EOF'\n;redcode-94\n;name Imp1\n;assert CORESIZE==8000\nimp   mov.i 0, 2667\n      end imp\nEOF\ncat > /tmp/imp3.red <<'EOF'\n;redcode-94\n;name Imp3\n;assert CORESIZE==8000\nstep equ 2667\nstart spl 1, 0\n      spl 1, 0\n      mov.i imp, imp+step\nimp   mov.i 0, step\n      end start\nEOF\nfor f in imp1 imp3; do echo \"== $f ==\"; for w in stone paper snake; do echo -n \"  vs $w: \"; pmars -b -r 20 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -725,7 +725,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TCFuPFHTkdr1AJeimzJktG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\n# crawler\ncat > /tmp/a.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nimp mov.i 0, 1\n    end imp\nEOF\n# 3-way imp ring launched with spl tree, imp block of 3 consecutive\ncat > /tmp/b.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nstart spl 1,0\n      spl 1,0\n      jmp imp\nimp   mov.i 0, step\n      mov.i 0, step\n      mov.i 0, step\n      end start\nEOF\n# gate imp: process jumps into imp then imp copies forward; single instruction repeated via djn?\ncat > /tmp/c.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nlaunch jmp imp\nimp   mov.i imp, imp+step\n      end launch\nEOF\nfor f in a b c; do echo \"== $f ==\"; for w in stone paper snake g2-clear vampire; do echo -n \"  vs $w: \"; pmars -b -r 20 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -733,7 +733,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\n# crawler\ncat > /tmp/a.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nimp mov.i 0, 1\n    end imp\nEOF\n# 3-way imp ring launched with spl tree, imp block of 3 consecutive\ncat > /tmp/b.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nstart spl 1,0\n      spl 1,0\n      jmp imp\nimp   mov.i 0, step\n      mov.i 0, step\n      mov.i 0, step\n      end start\nEOF\n# gate imp: process jumps into imp then imp copies forward; single instruction repeated via djn?\ncat > /tmp/c.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nlaunch jmp imp\nimp   mov.i imp, imp+step\n      end launch\nEOF\nfor f in a b c; do echo \"== $f ==\"; for w in stone paper snake g2-clear vampire; do echo -n \"  vs $w: \"; pmars -b -r 20 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -794,7 +794,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q1ZFJeVQTNippntRVA1ZBv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/combo.red <<'EOF'\n;redcode-94\n;name Combo\n;assert CORESIZE==8000\n        org start\n; --- stone bomber ---\nsbomb   dat     #0,     #0\nstone   add     #2667,  sptr\n        mov     sbomb,  @sptr\n        jmp     stone,  0\nsptr    dat     #0,     #3000\n; --- mice paper ---\nptr     dat     #0,     #0\nmstart  mov     #12,    ptr\nmloop   mov     @ptr,   <dest\n        djn     mloop,  ptr\n        spl     @dest,  0\n        add     #653,   dest\n        jmz     mstart, ptr\ndest    dat     #0,     #833\nstart   spl     stone,  0\n        jmp     mstart, 0\n        end     start\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"combo vs $w: \"; pmars -b -r 100 -f /tmp/combo.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -802,7 +802,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/combo.red <<'EOF'\n;redcode-94\n;name Combo\n;assert CORESIZE==8000\n        org start\n; --- stone bomber ---\nsbomb   dat     #0,     #0\nstone   add     #2667,  sptr\n        mov     sbomb,  @sptr\n        jmp     stone,  0\nsptr    dat     #0,     #3000\n; --- mice paper ---\nptr     dat     #0,     #0\nmstart  mov     #12,    ptr\nmloop   mov     @ptr,   <dest\n        djn     mloop,  ptr\n        spl     @dest,  0\n        add     #653,   dest\n        jmz     mstart, ptr\ndest    dat     #0,     #833\nstart   spl     stone,  0\n        jmp     mstart, 0\n        end     start\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"combo vs $w: \"; pmars -b -r 100 -f /tmp/combo.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -863,7 +863,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PKBZfE7JpaY5bhJL3Rass1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\n# 3-point spiral, launch procs at imp, imp+step, imp+2step (adjacent processes via spl tree)\ncat > /tmp/sp.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nlaunch spl 2, 0\n       spl 1, 0\n       jmp imp, 0\n       jmp imp+step, 0\n       jmp imp+2*step, 0\nimp    mov.i 0, step\n       end launch\nEOF\n# continuous imp gun: spl generates stream into imp block\ncat > /tmp/gun.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\ngun   spl 0, 0\n      mov imp, @gpt\n      add #step, gpt\n      jmp gun\ngpt   dat #0, #imp\nimp   mov.i 0, step\n      end gun\nEOF\nfor f in sp gun; do echo \"== $f ==\"; for w in stone paper snake g2-clear vampire; do echo -n \"  vs $w: \"; pmars -b -r 30 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -871,7 +871,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\n# 3-point spiral, launch procs at imp, imp+step, imp+2step (adjacent processes via spl tree)\ncat > /tmp/sp.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\nlaunch spl 2, 0\n       spl 1, 0\n       jmp imp, 0\n       jmp imp+step, 0\n       jmp imp+2*step, 0\nimp    mov.i 0, step\n       end launch\nEOF\n# continuous imp gun: spl generates stream into imp block\ncat > /tmp/gun.red <<'EOF'\n;redcode-94\n;assert CORESIZE==8000\nstep equ 2667\ngun   spl 0, 0\n      mov imp, @gpt\n      add #step, gpt\n      jmp gun\ngpt   dat #0, #imp\nimp   mov.i 0, step\n      end gun\nEOF\nfor f in sp gun; do echo \"== $f ==\"; for w in stone paper snake g2-clear vampire; do echo -n \"  vs $w: \"; pmars -b -r 30 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -932,7 +932,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GjjuJZps19Q91kSQ8N8428",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/scan.red <<'EOF'\n;redcode-94\n;name Scan\n;assert CORESIZE==8000\nstep    equ 271\n        org scan\ndbomb   dat #0, #0\nincr    dat #step, #step\np       dat #0, #0\nscan    add incr, p\n        jmn hit, @p\n        jmp scan\nhit     mov dbomb, @p\n        add #1, p\n        jmn hit, @p\n        jmp scan\n        end\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"scan vs $w: \"; pmars -b -r 100 -f /tmp/scan.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -940,7 +940,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/scan.red <<'EOF'\n;redcode-94\n;name Scan\n;assert CORESIZE==8000\nstep    equ 271\n        org scan\ndbomb   dat #0, #0\nincr    dat #step, #step\np       dat #0, #0\nscan    add incr, p\n        jmn hit, @p\n        jmp scan\nhit     mov dbomb, @p\n        add #1, p\n        jmn hit, @p\n        jmp scan\n        end\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"scan vs $w: \"; pmars -b -r 100 -f /tmp/scan.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1001,7 +1001,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R6eP28xBx2pLTUW7SUgHrH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/cb.red <<'EOF'\n;redcode-94\n;name ClearBomb\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\n; --- clear (spl-bomb, g2 style) ---\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\n; --- DAT stone-bomber to finish off neutralized stone ---\nbd    dat  #0, #0\nstr   add  #2667, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"cb vs $w: \"; pmars -b -r 100 -f /tmp/cb.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -1009,7 +1009,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/cb.red <<'EOF'\n;redcode-94\n;name ClearBomb\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\n; --- clear (spl-bomb, g2 style) ---\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\n; --- DAT stone-bomber to finish off neutralized stone ---\nbd    dat  #0, #0\nstr   add  #2667, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\nfor w in stone vampire paper snake g2-clear; do echo -n \"cb vs $w: \"; pmars -b -r 100 -f /tmp/cb.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1070,7 +1070,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NWKWNTo2WBjnn3ah6zrqUX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ngen(){ # $1=name $2=boot-extra $3=bomberbody(sed marker) $4=step\ncat > /tmp/$1.red <<EOF\n;redcode-94\n;name $1\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$4, bp\n      mov  bd, @bp\n$3\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  $2\n      jmp  bomb, 0\n      end\nEOF\n}\ngen B \"spl str, 0\"$'\\n''      spl clear, 0' \"\" 2667\ngen D \"spl str, 0\" \"      add #0, bp\" 2667\ngen E \"spl str, 0\" \"\" 1499\ngen F \"spl str, 0\" \"\" 3517\nfor f in B D E F; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
           },
@@ -1078,7 +1078,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ngen(){ # $1=name $2=boot-extra $3=bomberbody(sed marker) $4=step\ncat > /tmp/$1.red <<EOF\n;redcode-94\n;name $1\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$4, bp\n      mov  bd, @bp\n$3\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  $2\n      jmp  bomb, 0\n      end\nEOF\n}\ngen B \"spl str, 0\"$'\\n''      spl clear, 0' \"\" 2667\ngen D \"spl str, 0\" \"      add #0, bp\" 2667\ngen E \"spl str, 0\" \"\" 1499\ngen F \"spl str, 0\" \"\" 3517\nfor f in B D E F; do echo \"== $f ==\"; for w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/$f.red warriors/$w.red 2>&1 | grep Results; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1139,7 +1139,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xu3eUMbjcQqr448WgLTJny",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\n# slowed bomber using nop; test nop support + vary nop count\nfor n in 0 1 2; do\ncat > /tmp/n$n.red <<EOF\n;redcode-94\n;name n$n\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #2667, bp\n      mov  bd, @bp\n$(for i in $(seq 1 $n); do echo \"      nop 0, 0\"; done)\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\necho \"== n$n ==\"\nfor w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/n$n.red warriors/$w.red 2>&1 | grep Results; done\ndone"
           },
@@ -1147,7 +1147,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\n# slowed bomber using nop; test nop support + vary nop count\nfor n in 0 1 2; do\ncat > /tmp/n$n.red <<EOF\n;redcode-94\n;name n$n\n;assert CORESIZE==8000\ndec  equ 2700\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #2667, bp\n      mov  bd, @bp\n$(for i in $(seq 1 $n); do echo \"      nop 0, 0\"; done)\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\necho \"== n$n ==\"\nfor w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/n$n.red warriors/$w.red 2>&1 | grep Results; done\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1208,7 +1208,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014joFKaMWrD7x1ww1RrSzjp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ncat > /tmp/bc.red <<'EOF'\n;redcode-94\n;name BootClear\n;assert CORESIZE==8000\no1   equ 2000\no2   equ 4000\n        org boot\n; --- position-independent DAT clear block (7 words) ---\ngate  dat  #0,   #0\nbomb  dat  #0,   #0\ncnt   dat  #0,   #4001\nclr   mov  bomb, >gate\n      mov  bomb, >gate\n      djn.f clr,  cnt\n      jmp  clr,   #4001         ; note: relies on cnt not fully draining; simple continuous\n; --- boot: copy block to o1 and o2, launch all three ---\nboot  mov.i gate,  gate+o1\n      mov.i bomb,  bomb+o1\n      mov.i cnt,   cnt+o1\n      mov.i clr,   clr+o1\n      mov.i clr+1, clr+1+o1\n      mov.i clr+2, clr+2+o1\n      mov.i clr+3, clr+3+o1\n      mov.i gate,  gate+o2\n      mov.i bomb,  bomb+o2\n      mov.i cnt,   cnt+o2\n      mov.i clr,   clr+o2\n      mov.i clr+1, clr+1+o2\n      mov.i clr+2, clr+2+o2\n      mov.i clr+3, clr+3+o2\n      spl  clr+o1, 0\n      spl  clr+o2, 0\n      jmp  clr,    0\n      end\nEOF\npmars -b -r 1 -f /tmp/bc.red warriors/stone.red 2>&1 | tail -3\nfor w in stone vampire paper snake g2-clear; do echo -n \"bc vs $w: \"; pmars -b -r 100 -f /tmp/bc.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -1216,7 +1216,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ncat > /tmp/bc.red <<'EOF'\n;redcode-94\n;name BootClear\n;assert CORESIZE==8000\no1   equ 2000\no2   equ 4000\n        org boot\n; --- position-independent DAT clear block (7 words) ---\ngate  dat  #0,   #0\nbomb  dat  #0,   #0\ncnt   dat  #0,   #4001\nclr   mov  bomb, >gate\n      mov  bomb, >gate\n      djn.f clr,  cnt\n      jmp  clr,   #4001         ; note: relies on cnt not fully draining; simple continuous\n; --- boot: copy block to o1 and o2, launch all three ---\nboot  mov.i gate,  gate+o1\n      mov.i bomb,  bomb+o1\n      mov.i cnt,   cnt+o1\n      mov.i clr,   clr+o1\n      mov.i clr+1, clr+1+o1\n      mov.i clr+2, clr+2+o1\n      mov.i clr+3, clr+3+o1\n      mov.i gate,  gate+o2\n      mov.i bomb,  bomb+o2\n      mov.i cnt,   cnt+o2\n      mov.i clr,   clr+o2\n      mov.i clr+1, clr+1+o2\n      mov.i clr+2, clr+2+o2\n      mov.i clr+3, clr+3+o2\n      spl  clr+o1, 0\n      spl  clr+o2, 0\n      jmp  clr,    0\n      end\nEOF\npmars -b -r 1 -f /tmp/bc.red warriors/stone.red 2>&1 | tail -3\nfor w in stone vampire paper snake g2-clear; do echo -n \"bc vs $w: \"; pmars -b -r 100 -f /tmp/bc.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1277,7 +1277,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YSrTAn2nGJqqjVqh2Avpjo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nfor dec in 2000 2700 3000 3500; do for st in 2000 2667 3000 3359; do\n gen $dec $st\n r=\"\"\n for w in stone vampire paper snake g2-clear; do\n   x=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n   r=\"$r $w=$x\"\n done\n echo \"dec=$dec step=$st :$r\"\ndone; done"
           },
@@ -1285,7 +1285,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nfor dec in 2000 2700 3000 3500; do for st in 2000 2667 3000 3359; do\n gen $dec $st\n r=\"\"\n for w in stone vampire paper snake g2-clear; do\n   x=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n   r=\"$r $w=$x\"\n done\n echo \"dec=$dec step=$st :$r\"\ndone; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1346,7 +1346,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WAYSNNPpDQ6LhZFwh52yw2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\ngen 3500 3000\necho \"determinism check (same cmd x3, vs snake):\"\nfor i in 1 2 3; do pmars -b -r 100 -f /tmp/g.red warriors/snake.red 2>&1 | grep Results; done\necho \"vs stone x3:\"\nfor i in 1 2 3; do pmars -b -r 100 -f /tmp/g.red warriors/stone.red 2>&1 | grep Results; done"
           },
@@ -1354,7 +1354,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\ngen 3500 3000\necho \"determinism check (same cmd x3, vs snake):\"\nfor i in 1 2 3; do pmars -b -r 100 -f /tmp/g.red warriors/snake.red 2>&1 | grep Results; done\necho \"vs stone x3:\"\nfor i in 1 2 3; do pmars -b -r 100 -f /tmp/g.red warriors/stone.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1415,7 +1415,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019UN2g7ZwSB9pWkkYuFPref",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nfor dec in 3400 3600 3800 4000; do for st in 2800 2900 3000 3100 3200; do\n gen $dec $st\n declare -A v\n for w in stone vampire paper snake g2-clear; do\n   v[$w]=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n done\n # min margin\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"dec=$dec step=$st  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  minmargin=$min\"\ndone; done"
           },
@@ -1423,7 +1423,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nfor dec in 3400 3600 3800 4000; do for st in 2800 2900 3000 3100 3200; do\n gen $dec $st\n declare -A v\n for w in stone vampire paper snake g2-clear; do\n   v[$w]=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n done\n # min margin\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"dec=$dec step=$st  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  minmargin=$min\"\ndone; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1484,7 +1484,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011BJmGmqKvUtYJbPZBrYJLD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\n# clean clear standalone\ncat > /tmp/cc.red <<'EOF'\n;redcode-94\n;name CC\n;assert CORESIZE==8000\n        org clr\ngate  dat  #0, #0\nbomb  spl  #0, 0\ncnt   dat  #0, #30000\nclr   mov  bomb, >gate\n      mov  bomb, >gate\n      djn.b clr, cnt\n      end\nEOF\necho \"clean clear standalone:\"\nfor w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/cc.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -1492,7 +1492,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\n# clean clear standalone\ncat > /tmp/cc.red <<'EOF'\n;redcode-94\n;name CC\n;assert CORESIZE==8000\n        org clr\ngate  dat  #0, #0\nbomb  spl  #0, 0\ncnt   dat  #0, #30000\nclr   mov  bomb, >gate\n      mov  bomb, >gate\n      djn.b clr, cnt\n      end\nEOF\necho \"clean clear standalone:\"\nfor w in stone vampire paper snake g2-clear; do echo -n \"  vs $w: \"; pmars -b -r 100 -f /tmp/cc.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1553,7 +1553,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DqAMd1AtcyuopT8ikCYWLE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nbest=-100; bestc=\"\"\nfor dec in 3450 3500 3550 3600 3650; do for st in 2700 2800 2850 2900 2950 3000 3050 3100 3150 3200 3250 3300; do\n gen $dec $st\n declare -A v\n for w in stone vampire paper snake g2-clear; do\n   v[$w]=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n if [ $min -ge 0 ]; then echo \"dec=$dec step=$st  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  min=$min\"; fi\n if [ $min -gt $best ]; then best=$min; bestc=\"dec=$dec step=$st\"; fi\ndone; done\necho \"BEST: $bestc minmargin=$best\""
           },
@@ -1561,7 +1561,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ngen(){ cat > /tmp/g.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ $1\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$2, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\n}\nbest=-100; bestc=\"\"\nfor dec in 3450 3500 3550 3600 3650; do for st in 2700 2800 2850 2900 2950 3000 3050 3100 3150 3200 3250 3300; do\n gen $dec $st\n declare -A v\n for w in stone vampire paper snake g2-clear; do\n   v[$w]=$(pmars -b -r 100 -f /tmp/g.red warriors/$w.red 2>&1 | grep Results | awk '{print $2}')\n done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n if [ $min -ge 0 ]; then echo \"dec=$dec step=$st  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  min=$min\"; fi\n if [ $min -gt $best ]; then best=$min; bestc=\"dec=$dec step=$st\"; fi\ndone; done\necho \"BEST: $bestc minmargin=$best\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1622,7 +1622,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015oELAf47CrDBhQvEucbnR7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  min=$min\"; }\n# B: extra clear start\ncat > /tmp/B.red <<'EOF'\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      spl  bomb, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/B.red \"B(2clr)\"\nfor bpv in 17 2000 1000 6000; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"bp=$bpv\"\ndone"
           },
@@ -1630,7 +1630,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2  s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]}  min=$min\"; }\n# B: extra clear start\ncat > /tmp/B.red <<'EOF'\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #4001\nboot  spl  str, 0\n      spl  bomb, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/B.red \"B(2clr)\"\nfor bpv in 17 2000 1000 6000; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"bp=$bpv\"\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1691,7 +1691,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011LkifRfNT3Zu3Rcjs3BDGp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor bpv in 3600 3700 3800 3850 3900 3950 4001 4050 4100 4200 4300 4500 100 500; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"bp=$bpv\"\ndone"
           },
@@ -1699,7 +1699,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor bpv in 3600 3700 3800 3850 3900 3950 4001 4050 4100 4200 4300 4500 100 500; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #3000, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"bp=$bpv\"\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1760,7 +1760,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019nadUB18HuVcgv2x6o3mG1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor st in 2900 3000 3100; do for bpv in 300 350 400 450 500 550 600 650 700; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$st, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"st=$st bp=$bpv\"\ndone; done"
           },
@@ -1768,7 +1768,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor st in 2900 3000 3100; do for bpv in 300 350 400 450 500 550 600 650 700; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$st, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"st=$st bp=$bpv\"\ndone; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1829,7 +1829,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Siqpz7kqPSaPCQHr1qsuY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor st in 2820 2850 2880 2900 2920 2950; do for bpv in 330 340 350 360 370; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$st, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"st=$st bp=$bpv\"\ndone; done"
           },
@@ -1837,7 +1837,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\ntest5(){ f=$1; declare -A v; for w in stone vampire paper snake g2-clear; do v[$w]=$(pmars -b -r 100 -f $f warriors/$w.red 2>&1 | grep Results | awk '{print $2}'); done\n ms=$((${v[stone]}-75)); mv=$((${v[vampire]}-75)); mp=$((${v[paper]}-75)); mn=$((${v[snake]}-33)); mg=$((${v[g2-clear]}-33))\n min=$ms; for x in $mv $mp $mn $mg; do [ $x -lt $min ] && min=$x; done\n echo \"$2 s=${v[stone]} v=${v[vampire]} p=${v[paper]} sn=${v[snake]} g=${v[g2-clear]} min=$min\"; }\nfor st in 2820 2850 2880 2900 2920 2950; do for bpv in 330 340 350 360 370; do\ncat > /tmp/bp.red <<EOF\n;redcode-94\n;name W\n;assert CORESIZE==8000\ndec  equ 3500\ngate equ clear-4\n        org boot\nbptr  dat  bomb, 9\nbomb  spl  #dec, 11\nclear mov  *bptr, >gate\n      mov  *bptr, >gate\n      djn.f clear, }bomb\nbd    dat  #0, #0\nstr   add  #$st, bp\n      mov  bd, @bp\n      jmp  str, 0\nbp    dat  #0, #$bpv\nboot  spl  str, 0\n      jmp  bomb, 0\n      end\nEOF\ntest5 /tmp/bp.red \"st=$st bp=$bpv\"\ndone; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1898,7 +1898,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HxRB92vmATJXtxFrd9qLSN",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "my_warrior.red",
             "new": ";redcode-94\n;name ClearStrike\n;author solver\n;strategy g2-style spl core-clear (beats paper/vampire/snake/clear) plus a\n;         DAT finisher-bomber that kills a neutralised stone -> converts the\n;         stone stalemate into a win.\n;assert CORESIZE==8000 && MAXCYCLES==80000\n\ndec     equ     3500\ngate    equ     clear-4\n\n        org     boot\n\n; --- core clear: sweeps the whole core dropping spl bombs (neutralises foes) ---\nbptr    dat     bomb,   9\nbomb    spl     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\n\n; --- DAT finisher bomber: carpets the core to destroy a stalled opponent ---\nbd      dat     #0,     #0\nstr     add     #2900,  bp\n        mov     bd,     @bp\n        jmp     str,    0\nbp      dat     #0,     #350\n\n; --- launcher: start bomber, then run the clear ---\nboot    spl     str,    0\n        jmp     bomb,   0\n\n        end\n"
@@ -1908,7 +1908,7 @@
               "path": "my_warrior.red",
               "new": ";redcode-94\n;name ClearStrike\n;author solver\n;strategy g2-style spl core-clear (beats paper/vampire/snake/clear) plus a\n;         DAT finisher-bomber that kills a neutralised stone -> converts the\n;         stone stalemate into a win.\n;assert CORESIZE==8000 && MAXCYCLES==80000\n\ndec     equ     3500\ngate    equ     clear-4\n\n        org     boot\n\n; --- core clear: sweeps the whole core dropping spl bombs (neutralises foes) ---\nbptr    dat     bomb,   9\nbomb    spl     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\n\n; --- DAT finisher bomber: carpets the core to destroy a stalled opponent ---\nbd      dat     #0,     #0\nstr     add     #2900,  bp\n        mov     bd,     @bp\n        jmp     str,    0\nbp      dat     #0,     #350\n\n; --- launcher: start bomber, then run the clear ---\nboot    spl     str,    0\n        jmp     bomb,   0\n\n        end\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1969,7 +1969,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DbpksYLhUeQTKSutzbeDmy",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "my_warrior.red",
             "replace": "true",
@@ -1981,7 +1981,7 @@
               "replace": "true",
               "new": ";redcode-94\n;name ClearStrike\n;author solver\n;strategy g2-style spl core-clear (beats paper/vampire/snake/clear) plus a\n;         DAT finisher-bomber that kills a neutralised stone -> converts the\n;         stone stalemate into a win.\n;assert CORESIZE==8000 && MAXCYCLES==80000\n\ndec     equ     3500\ngate    equ     clear-4\n\n        org     boot\n\n; --- core clear: sweeps the whole core dropping spl bombs (neutralises foes) ---\nbptr    dat     bomb,   9\nbomb    spl     #dec,   11\nclear   mov     *bptr,  >gate\n        mov     *bptr,  >gate\n        djn.f   clear,  }bomb\n\n; --- DAT finisher bomber: carpets the core to destroy a stalled opponent ---\nbd      dat     #0,     #0\nstr     add     #2900,  bp\n        mov     bd,     @bp\n        jmp     str,    0\nbp      dat     #0,     #350\n\n; --- launcher: start bomber, then run the clear ---\nboot    spl     str,    0\n        jmp     bomb,   0\n\n        end\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2042,7 +2042,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019UTViUzR9sYnFGT5yEBNYV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd $(pwd)\nfor w in stone vampire paper snake g2-clear; do echo -n \"vs $w: \"; pmars -b -r 100 -f my_warrior.red warriors/$w.red 2>&1 | grep Results; done"
           },
@@ -2050,7 +2050,7 @@
             "raw_arguments": {
               "command": "cd $(pwd)\nfor w in stone vampire paper snake g2-clear; do echo -n \"vs $w: \"; pmars -b -r 100 -f my_warrior.red warriors/$w.red 2>&1 | grep Results; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

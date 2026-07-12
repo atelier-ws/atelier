@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QjscfmjHt6St4Xp3wCiDtc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd && ls && git log --oneline -10 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "pwd && ls && git log --oneline -10 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017vEYwgjQaAW9QgzvcvYqVz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && git log --oneline -15 && echo \"---STATUS---\" && git status"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && git log --oneline -15 && echo \"---STATUS---\" && git status"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BAUFRX5uPpQ64v1Q7P3JGp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && ls && echo \"---\" && cat HACKING.adoc 2>/dev/null | head -80"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && ls && echo \"---\" && cat HACKING.adoc 2>/dev/null | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TRBhrKX5PGUnRGggD8r6B6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && cat HACKING.adoc"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && cat HACKING.adoc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PSaLxAKZQmFHjEW6r6ASag",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && sed -n '1,60p' HACKING.adoc"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && sed -n '1,60p' HACKING.adoc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MkX7FmgVZsK1oDUX3uQiMw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && awk 'NR>=1 && NR<=60' HACKING.adoc"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && awk 'NR>=1 && NR<=60' HACKING.adoc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NNYyacDoN28x7gbyFjSmH6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ocaml/HACKING.adoc:L1-L60"
@@ -459,7 +459,7 @@
                 "ocaml/HACKING.adoc:L1-L60"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RgpsfiACZHXCxfnYkpZdue",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && ls runtime/ | head -50 && echo \"---\" && ls runtime/caml/ | head"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && ls runtime/ | head -50 && echo \"---\" && ls runtime/caml/ | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019Hy7V5KxP1aqEQtyrMpHkY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && grep -rln \"run.length\\|run_length\\|runlength\\|compress\" runtime/ 2>/dev/null; echo \"---sweep files---\"; ls runtime/ | grep -i \"sweep\\|free\\|pool\\|alloc\\|shared\""
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && grep -rln \"run.length\\|run_length\\|runlength\\|compress\" runtime/ 2>/dev/null; echo \"---sweep files---\"; ls runtime/ | grep -i \"sweep\\|free\\|pool\\|alloc\\|shared\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017zKA4e1WK4dauUNfLmsUUq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && grep -n \"run.length\\|run_length\\|runlength\\|compress\\|RLE\\|rle\" runtime/major_gc.c runtime/shared_heap.c"
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && grep -n \"run.length\\|run_length\\|runlength\\|compress\\|RLE\\|rle\" runtime/major_gc.c runtime/shared_heap.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012NJ52aaF2Foki5C9zJU1A8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && grep -n \"sweep\\|free\\|run\\|len\\|Free\\|FREE\" runtime/shared_heap.c | head -60"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && grep -n \"sweep\\|free\\|run\\|len\\|Free\\|FREE\" runtime/shared_heap.c | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TcwMUjBBebHmLpRTMxDBLq",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "runtime/shared_heap.c:L55-L120"
@@ -808,7 +808,7 @@
                 "runtime/shared_heap.c:L55-L120"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -869,7 +869,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B4efKvpsZF3dBEAR92BoQ6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ocaml/runtime/shared_heap.c:L55-L120"
@@ -881,7 +881,7 @@
                 "ocaml/runtime/shared_heap.c:L55-L120"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -942,7 +942,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GmmK7e3ZJocXJtPqhZsAPa",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ocaml/runtime/shared_heap.c:L40-L56",
@@ -956,7 +956,7 @@
                 "ocaml/runtime/shared_heap.c:L276-L520"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1017,7 +1017,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NZSJxWjBjAMUwNLDG1JV4d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && grep -n \"pool_sweep\\|pool_finalise\" runtime/shared_heap.c"
           },
@@ -1025,7 +1025,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && grep -n \"pool_sweep\\|pool_finalise\" runtime/shared_heap.c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1086,7 +1086,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NvojRuGAfSQcJYLu44UCws",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ocaml/runtime/shared_heap.c:L543-L660"
@@ -1098,7 +1098,7 @@
                 "ocaml/runtime/shared_heap.c:L543-L660"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1159,7 +1159,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WuRoGwjJQMPxqcP1FAeZzn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ocaml/runtime/shared_heap.c:L640-L810"
@@ -1171,7 +1171,7 @@
                 "ocaml/runtime/shared_heap.c:L640-L810"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1232,7 +1232,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XrG2NnRzz3AN7edQa9n3NW",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1252,7 +1252,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1313,7 +1313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CYgPCHLW7EVTZXN6vkonyn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && ls config.status Makefile.config 2>/dev/null && echo \"configured\" || echo \"not-configured\""
           },
@@ -1321,7 +1321,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && ls config.status Makefile.config 2>/dev/null && echo \"configured\" || echo \"not-configured\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1382,7 +1382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013Lra3fEFMeNtk1MzMSFkDG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && ./configure > /tmp/configure.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/configure.log"
           },
@@ -1390,7 +1390,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && ./configure > /tmp/configure.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/configure.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1451,7 +1451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0157m8VbSKJqHGT9MHh4WrkG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && nproc && make -j 4 > /tmp/build.log 2>&1; echo \"exit=$?\"; tail -20 /tmp/build.log"
           },
@@ -1459,7 +1459,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && nproc && make -j 4 > /tmp/build.log 2>&1; echo \"exit=$?\"; tail -20 /tmp/build.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1520,7 +1520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W2dF53oyeh1FXVKFddCb9m",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ocaml && make -C testsuite one DIR=tests/basic > /tmp/test.log 2>&1; echo \"exit=$?\"; tail -30 /tmp/test.log"
           },
@@ -1528,7 +1528,7 @@
             "raw_arguments": {
               "command": "cd /app/ocaml && make -C testsuite one DIR=tests/basic > /tmp/test.log 2>&1; echo \"exit=$?\"; tail -30 /tmp/test.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

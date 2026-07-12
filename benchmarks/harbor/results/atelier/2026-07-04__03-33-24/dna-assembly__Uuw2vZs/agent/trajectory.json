@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0111KEskHnURunBRR56MABvc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name sequences.fasta 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "find / -name sequences.fasta 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019JS52MPCvRTbS91FpfBWMD",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sequences.fasta"
@@ -114,7 +114,7 @@
                 "/app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HjudGA7SVRpq9eukx2YpLp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import primer3; print(primer3.__version__)\" 2>&1; which oligotm 2>&1; which primer3_core 2>&1"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import primer3; print(primer3.__version__)\" 2>&1; which oligotm 2>&1; which primer3_core 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D3ZBB7fAM8HMuvAJctL3bw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq primer3 2>&1 | tail -5; echo \"---\"; which oligotm ntthal primer3_core 2>&1; ls /usr/bin | grep -i -E \"oligo|primer\" 2>&1"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq primer3 2>&1 | tail -5; echo \"---\"; which oligotm ntthal primer3_core 2>&1; ls /usr/bin | grep -i -E \"oligo|primer\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014U15PynMLneFFhz9zt7XUs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 atgagcaagggcgaggagctg 2>&1"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 atgagcaagggcgaggagctg 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CZGsDY1Rzts2EBY1F8TMaW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/design.py <<'PY'\nimport subprocess, re\n\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g','A':'T','T':'A','G':'C','C':'G','n':'n'}\n    return ''.join(c[b] for b in reversed(s))\n\ndef tm(seq):\n    out=subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq]).decode().strip()\n    return float(out)\n\n# read fasta\nseqs={}\nname=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'):\n        name=line[1:].strip(); seqs[name]=''\n    elif name:\n        seqs[name]+=line.lower()\n\negfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; inp=seqs['input']\n\n# sanity\nprint('lens', {k:len(v) for k,v in seqs.items()})\nprint('egfp tail', egfp[-12:], 'flag tail', flag[-12:], 'snap tail', snap[-12:])\n\n# locate backbone anchors\ni_tgag=inp.find('tgaggatccc'); print('tgaggatccc idx', i_tgag)\ni_gag=inp.find('gagatatacatatg'); print('gagatatacatatg idx', i_gag)\n\n# anneal region generators; tune length to reach target Tm within [58,72]\ndef pick_fwd(template, start, tmin=62, tmax=70):\n    # grow from 15..45\n    best=None\n    for L in range(15,46):\n        s=template[start:start+L]\n        if len(s)<L: break\n        t=tm(s)\n        if tmin<=t<=tmax:\n            return s,t\n        best=(s,t)\n    return best\n\ndef pick_rev(topstrand_end_seq, tmin=62, tmax=70):\n    # topstrand_end_seq: the top-strand region whose 3'-end is the fragment end; rev anneal=rc(last L)\n    best=None\n    for L in range(15,46):\n        if L>len(topstrand_end_seq): break\n        top=topstrand_end_seq[-L:]\n        s=rc(top)\n        t=tm(s)\n        if tmin<=t<=tmax:\n            return s,t\n        best=(s,t)\n    return best\n\n# overhangs\nJ1='acat'  # backbone|egfp  (egfp fwd owns)\nJ2='caaa'  # egfp|flag      (flag fwd owns)\nJ3='ttca'  # flag|snap      (snap fwd owns)\nJ4='tgag'  # snap|backbone  (backbone fwd owns)\n\n# fwd anneal starts\n# egfp fwd: overhang J1(acat), anneal = egfp from atg\negfp_fwd_an=pick_fwd(egfp,0)\n# egfp rev: fragment top ends at egfp[:-7] (remove 'caaataa')\negfp_top_end=egfp[:len(egfp)-7]\negfp_rev_an=pick_rev(egfp_top_end)\n# flag fwd: overhang J2(caaa), anneal = flag[3:]\nflag_fwd_an=pick_fwd(flag,3)\n# flag rev: flag top ends at flag[:-7] (remove stop 'taa' + overhang 'ttca')\nflag_top_end=flag[:len(flag)-7]\nflag_rev_an=pick_rev(flag_top_end)\n# snap fwd: overhang J3(ttca), anneal = snap[3:]\nsnap_fwd_an=pick_fwd(snap,3)\n# snap rev: snap top ends at full snap (keeps stop)\nsnap_rev_an=pick_rev(snap)\n# backbone fwd: overhang J4(tgag), anneal = inp after 'tgag'\nbb_fwd_an=pick_fwd(inp,i_tgag+4)\n# backbone rev: backbone top ends at inp[:i_gag+7]  (…gagatat)\nbb_top_end=inp[:i_gag+7]\nbb_rev_an=pick_rev(bb_top_end)\n\nfor nm,(s,t) in [('egfp_fwd',egfp_fwd_an),('egfp_rev',egfp_rev_an),\n                 ('flag_fwd',flag_fwd_an),('flag_rev',flag_rev_an),\n                 ('snap_fwd',snap_fwd_an),('snap_rev',snap_rev_an),\n                 ('input_fwd',bb_fwd_an),('input_rev',bb_rev_an)]:\n    print(nm, len(s), round(t,2), s)\nPY\npython3 /app/design.py"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "cat > /app/design.py <<'PY'\nimport subprocess, re\n\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g','A':'T','T':'A','G':'C','C':'G','n':'n'}\n    return ''.join(c[b] for b in reversed(s))\n\ndef tm(seq):\n    out=subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq]).decode().strip()\n    return float(out)\n\n# read fasta\nseqs={}\nname=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'):\n        name=line[1:].strip(); seqs[name]=''\n    elif name:\n        seqs[name]+=line.lower()\n\negfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; inp=seqs['input']\n\n# sanity\nprint('lens', {k:len(v) for k,v in seqs.items()})\nprint('egfp tail', egfp[-12:], 'flag tail', flag[-12:], 'snap tail', snap[-12:])\n\n# locate backbone anchors\ni_tgag=inp.find('tgaggatccc'); print('tgaggatccc idx', i_tgag)\ni_gag=inp.find('gagatatacatatg'); print('gagatatacatatg idx', i_gag)\n\n# anneal region generators; tune length to reach target Tm within [58,72]\ndef pick_fwd(template, start, tmin=62, tmax=70):\n    # grow from 15..45\n    best=None\n    for L in range(15,46):\n        s=template[start:start+L]\n        if len(s)<L: break\n        t=tm(s)\n        if tmin<=t<=tmax:\n            return s,t\n        best=(s,t)\n    return best\n\ndef pick_rev(topstrand_end_seq, tmin=62, tmax=70):\n    # topstrand_end_seq: the top-strand region whose 3'-end is the fragment end; rev anneal=rc(last L)\n    best=None\n    for L in range(15,46):\n        if L>len(topstrand_end_seq): break\n        top=topstrand_end_seq[-L:]\n        s=rc(top)\n        t=tm(s)\n        if tmin<=t<=tmax:\n            return s,t\n        best=(s,t)\n    return best\n\n# overhangs\nJ1='acat'  # backbone|egfp  (egfp fwd owns)\nJ2='caaa'  # egfp|flag      (flag fwd owns)\nJ3='ttca'  # flag|snap      (snap fwd owns)\nJ4='tgag'  # snap|backbone  (backbone fwd owns)\n\n# fwd anneal starts\n# egfp fwd: overhang J1(acat), anneal = egfp from atg\negfp_fwd_an=pick_fwd(egfp,0)\n# egfp rev: fragment top ends at egfp[:-7] (remove 'caaataa')\negfp_top_end=egfp[:len(egfp)-7]\negfp_rev_an=pick_rev(egfp_top_end)\n# flag fwd: overhang J2(caaa), anneal = flag[3:]\nflag_fwd_an=pick_fwd(flag,3)\n# flag rev: flag top ends at flag[:-7] (remove stop 'taa' + overhang 'ttca')\nflag_top_end=flag[:len(flag)-7]\nflag_rev_an=pick_rev(flag_top_end)\n# snap fwd: overhang J3(ttca), anneal = snap[3:]\nsnap_fwd_an=pick_fwd(snap,3)\n# snap rev: snap top ends at full snap (keeps stop)\nsnap_rev_an=pick_rev(snap)\n# backbone fwd: overhang J4(tgag), anneal = inp after 'tgag'\nbb_fwd_an=pick_fwd(inp,i_tgag+4)\n# backbone rev: backbone top ends at inp[:i_gag+7]  (…gagatat)\nbb_top_end=inp[:i_gag+7]\nbb_rev_an=pick_rev(bb_top_end)\n\nfor nm,(s,t) in [('egfp_fwd',egfp_fwd_an),('egfp_rev',egfp_rev_an),\n                 ('flag_fwd',flag_fwd_an),('flag_rev',flag_rev_an),\n                 ('snap_fwd',snap_fwd_an),('snap_rev',snap_rev_an),\n                 ('input_fwd',bb_fwd_an),('input_rev',bb_rev_an)]:\n    print(nm, len(s), round(t,2), s)\nPY\npython3 /app/design.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F6bBktr7wDPYd3txBhAsoR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >> /app/design.py <<'PY'\n\nprint(\"\\n=== VERIFY ASSEMBLY RECONSTRUCTS OUTPUT ===\")\nassembled = (inp[0:i_gag+7] + J1 + egfp[0:len(egfp)-7] + J2 +\n             flag[3:len(flag)-7] + J3 + snap[3:len(snap)] + J4 + inp[i_tgag+4:])\nout=seqs['output']\nprint('assembled len', len(assembled), 'output len', len(out), 'EQUAL:', assembled==out)\nif assembled!=out:\n    for k in range(min(len(assembled),len(out))):\n        if assembled[k]!=out[k]:\n            print('first diff at',k, assembled[max(0,k-10):k+10],'|',out[max(0,k-10):k+10]); break\n\nprint(\"\\n=== internal BsaI sites (GGTCTC/GAGACC) in templates ===\")\nfor k,v in seqs.items():\n    if k=='output': continue\n    print(k, 'GGTCTC:', [m.start() for m in re.finditer('ggtctc',v)], 'GAGACC:', [m.start() for m in re.finditer('gagacc',v)])\nPY\npython3 /app/design.py 2>&1 | tail -20"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cat >> /app/design.py <<'PY'\n\nprint(\"\\n=== VERIFY ASSEMBLY RECONSTRUCTS OUTPUT ===\")\nassembled = (inp[0:i_gag+7] + J1 + egfp[0:len(egfp)-7] + J2 +\n             flag[3:len(flag)-7] + J3 + snap[3:len(snap)] + J4 + inp[i_tgag+4:])\nout=seqs['output']\nprint('assembled len', len(assembled), 'output len', len(out), 'EQUAL:', assembled==out)\nif assembled!=out:\n    for k in range(min(len(assembled),len(out))):\n        if assembled[k]!=out[k]:\n            print('first diff at',k, assembled[max(0,k-10):k+10],'|',out[max(0,k-10):k+10]); break\n\nprint(\"\\n=== internal BsaI sites (GGTCTC/GAGACC) in templates ===\")\nfor k,v in seqs.items():\n    if k=='output': continue\n    print(k, 'GGTCTC:', [m.start() for m in re.finditer('ggtctc',v)], 'GAGACC:', [m.start() for m in re.finditer('gagacc',v)])\nPY\npython3 /app/design.py 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GAHVcSq8gTesFnTsnVxUQz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat >> /app/design.py <<'PY'\n\nprint(\"\\n=== FULL END-TO-END BsaI SIMULATION ===\")\nflank='aattac'; spacer='a'; site='ggtctc'\ndef fwd_full(ov, an): return flank+site+spacer+ov+an\ndef rev_full(ov_rc, an): return flank+site+spacer+ov_rc+an\n\nprimers={\n 'egfp_fwd': fwd_full(J1, egfp_fwd_an[0]),\n 'egfp_rev': rev_full(rc(J2), egfp_rev_an[0]),\n 'flag_fwd': fwd_full(J2, flag_fwd_an[0]),\n 'flag_rev': rev_full(rc(J3), flag_rev_an[0]),\n 'snap_fwd': fwd_full(J3, snap_fwd_an[0]),\n 'snap_rev': rev_full(rc(J4), snap_rev_an[0]),\n 'input_fwd': fwd_full(J4, bb_fwd_an[0]),\n 'input_rev': rev_full(rc(J1), bb_rev_an[0]),\n}\n\n# build PCR product top strands\negfp_topend=len(egfp)-7\nflag_topend=len(flag)-7\nsnap_topend=len(snap)\nbb_seg = inp[i_tgag+4:] + inp[0:i_gag+7]   # circular kept backbone top strand\nproducts={\n 'egfp': primers['egfp_fwd'] + egfp[len(egfp_fwd_an[0]):egfp_topend] + rc(primers['egfp_rev']),\n 'flag': primers['flag_fwd'] + flag[3+len(flag_fwd_an[0]):flag_topend] + rc(primers['flag_rev']),\n 'snap': primers['snap_fwd'] + snap[3+len(snap_fwd_an[0]):snap_topend] + rc(primers['snap_rev']),\n 'input': primers['input_fwd'] + bb_seg[len(bb_fwd_an[0]): len(bb_seg)-len(bb_rev_an[0])] + rc(primers['input_rev']),\n}\n\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    loh=top[p+7:p+11]; roh=top[q-5:q-1]; contrib=top[p+7:q-5]\n    return loh, roh, contrib\n\nfrag={}\nfor k,t in products.items():\n    loh,roh,contrib=digest(t)\n    frag[k]=(loh,roh,contrib)\n    print(k,'loh',loh,'roh',roh,'contrib_len',len(contrib))\n\n# assemble order input->egfp->flag->snap (circular)\norder=['input','egfp','flag','snap']\n# check overhang matches: roh of i == loh of next\nfor a,b in zip(order, order[1:]+order[:1]):\n    print(a,'roh',frag[a][1],'==','loh',b,frag[b][0], frag[a][1]==frag[b][0])\n\n# build circular top: each contrib = loh+core; concatenate contribs\ncirc=''.join(frag[k][2] for k in order)\nprint('circular assembled len', len(circ))\nout=seqs['output']\ndoubled=out+out\nprint('assembled is rotation of output:', circ in doubled and len(circ)==len(out))\nPY\npython3 /app/design.py 2>&1 | tail -18"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cat >> /app/design.py <<'PY'\n\nprint(\"\\n=== FULL END-TO-END BsaI SIMULATION ===\")\nflank='aattac'; spacer='a'; site='ggtctc'\ndef fwd_full(ov, an): return flank+site+spacer+ov+an\ndef rev_full(ov_rc, an): return flank+site+spacer+ov_rc+an\n\nprimers={\n 'egfp_fwd': fwd_full(J1, egfp_fwd_an[0]),\n 'egfp_rev': rev_full(rc(J2), egfp_rev_an[0]),\n 'flag_fwd': fwd_full(J2, flag_fwd_an[0]),\n 'flag_rev': rev_full(rc(J3), flag_rev_an[0]),\n 'snap_fwd': fwd_full(J3, snap_fwd_an[0]),\n 'snap_rev': rev_full(rc(J4), snap_rev_an[0]),\n 'input_fwd': fwd_full(J4, bb_fwd_an[0]),\n 'input_rev': rev_full(rc(J1), bb_rev_an[0]),\n}\n\n# build PCR product top strands\negfp_topend=len(egfp)-7\nflag_topend=len(flag)-7\nsnap_topend=len(snap)\nbb_seg = inp[i_tgag+4:] + inp[0:i_gag+7]   # circular kept backbone top strand\nproducts={\n 'egfp': primers['egfp_fwd'] + egfp[len(egfp_fwd_an[0]):egfp_topend] + rc(primers['egfp_rev']),\n 'flag': primers['flag_fwd'] + flag[3+len(flag_fwd_an[0]):flag_topend] + rc(primers['flag_rev']),\n 'snap': primers['snap_fwd'] + snap[3+len(snap_fwd_an[0]):snap_topend] + rc(primers['snap_rev']),\n 'input': primers['input_fwd'] + bb_seg[len(bb_fwd_an[0]): len(bb_seg)-len(bb_rev_an[0])] + rc(primers['input_rev']),\n}\n\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    loh=top[p+7:p+11]; roh=top[q-5:q-1]; contrib=top[p+7:q-5]\n    return loh, roh, contrib\n\nfrag={}\nfor k,t in products.items():\n    loh,roh,contrib=digest(t)\n    frag[k]=(loh,roh,contrib)\n    print(k,'loh',loh,'roh',roh,'contrib_len',len(contrib))\n\n# assemble order input->egfp->flag->snap (circular)\norder=['input','egfp','flag','snap']\n# check overhang matches: roh of i == loh of next\nfor a,b in zip(order, order[1:]+order[:1]):\n    print(a,'roh',frag[a][1],'==','loh',b,frag[b][0], frag[a][1]==frag[b][0])\n\n# build circular top: each contrib = loh+core; concatenate contribs\ncirc=''.join(frag[k][2] for k in order)\nprint('circular assembled len', len(circ))\nout=seqs['output']\ndoubled=out+out\nprint('assembled is rotation of output:', circ in doubled and len(circ)==len(out))\nPY\npython3 /app/design.py 2>&1 | tail -18"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RnGqrrRj4Mq1WbMo4wXXX2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PY'\nimport subprocess\nexec(open('/app/design.py').read().split('=== FULL END-TO-END')[0])\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(s))\nflank='aattac'; spacer='a'; site='ggtctc'\nLf={'egfp':len(egfp_fwd_an[0]),'flag':len(flag_fwd_an[0]),'snap':len(snap_fwd_an[0]),'input':len(bb_fwd_an[0])}\nLr={'egfp':len(egfp_rev_an[0]),'flag':len(flag_rev_an[0]),'snap':len(snap_rev_an[0]),'input':len(bb_rev_an[0])}\nprimers={\n 'egfp_fwd': flank+site+spacer+J1+egfp_fwd_an[0],\n 'egfp_rev': flank+site+spacer+rc(J2)+egfp_rev_an[0],\n 'flag_fwd': flank+site+spacer+J2+flag_fwd_an[0],\n 'flag_rev': flank+site+spacer+rc(J3)+flag_rev_an[0],\n 'snap_fwd': flank+site+spacer+J3+snap_fwd_an[0],\n 'snap_rev': flank+site+spacer+rc(J4)+snap_rev_an[0],\n 'input_fwd': flank+site+spacer+J4+bb_fwd_an[0],\n 'input_rev': flank+site+spacer+rc(J1)+bb_rev_an[0],\n}\negfp_topend=len(egfp)-7; flag_topend=len(flag)-7; snap_topend=len(snap)\nbb_seg = inp[i_tgag+4:] + inp[0:i_gag+7]\nmids={\n 'egfp': egfp[Lf['egfp']:egfp_topend-Lr['egfp']],\n 'flag': flag[3+Lf['flag']:flag_topend-Lr['flag']],\n 'snap': snap[3+Lf['snap']:snap_topend-Lr['snap']],\n 'input': bb_seg[Lf['input']:len(bb_seg)-Lr['input']],\n}\nproducts={k: primers[k+'_fwd']+mids[k]+rc(primers[k+'_rev']) for k in ['egfp','flag','snap','input']}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    return top[p+7:p+11], top[q-5:q-1], top[p+7:q-5]\nfrag={k:digest(v) for k,v in products.items()}\norder=['input','egfp','flag','snap']\nfor k in order: print(k,'loh',frag[k][0],'roh',frag[k][1],'len',len(frag[k][2]))\ncirc=''.join(frag[k][2] for k in order)\nout=seqs['output']\nprint('assembled len',len(circ),'rotation-of-output:', len(circ)==len(out) and circ in out+out)\n\n# write primers.fasta\norder2=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nwith open('/app/primers.fasta','w') as f:\n    for nm in order2:\n        f.write('>%s\\n%s\\n' % (nm, primers[nm]))\nprint('--- primers.fasta ---')\nprint(open('/app/primers.fasta').read())\n# report anneal Tm\nan={'egfp_fwd':egfp_fwd_an,'egfp_rev':egfp_rev_an,'flag_fwd':flag_fwd_an,'flag_rev':flag_rev_an,\n    'snap_fwd':snap_fwd_an,'snap_rev':snap_rev_an,'input_fwd':bb_fwd_an,'input_rev':bb_rev_an}\nfor nm in order2:\n    s,t=an[nm]; print(nm,'anneal_len',len(s),'Tm',round(t,3))\nPY"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PY'\nimport subprocess\nexec(open('/app/design.py').read().split('=== FULL END-TO-END')[0])\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(s))\nflank='aattac'; spacer='a'; site='ggtctc'\nLf={'egfp':len(egfp_fwd_an[0]),'flag':len(flag_fwd_an[0]),'snap':len(snap_fwd_an[0]),'input':len(bb_fwd_an[0])}\nLr={'egfp':len(egfp_rev_an[0]),'flag':len(flag_rev_an[0]),'snap':len(snap_rev_an[0]),'input':len(bb_rev_an[0])}\nprimers={\n 'egfp_fwd': flank+site+spacer+J1+egfp_fwd_an[0],\n 'egfp_rev': flank+site+spacer+rc(J2)+egfp_rev_an[0],\n 'flag_fwd': flank+site+spacer+J2+flag_fwd_an[0],\n 'flag_rev': flank+site+spacer+rc(J3)+flag_rev_an[0],\n 'snap_fwd': flank+site+spacer+J3+snap_fwd_an[0],\n 'snap_rev': flank+site+spacer+rc(J4)+snap_rev_an[0],\n 'input_fwd': flank+site+spacer+J4+bb_fwd_an[0],\n 'input_rev': flank+site+spacer+rc(J1)+bb_rev_an[0],\n}\negfp_topend=len(egfp)-7; flag_topend=len(flag)-7; snap_topend=len(snap)\nbb_seg = inp[i_tgag+4:] + inp[0:i_gag+7]\nmids={\n 'egfp': egfp[Lf['egfp']:egfp_topend-Lr['egfp']],\n 'flag': flag[3+Lf['flag']:flag_topend-Lr['flag']],\n 'snap': snap[3+Lf['snap']:snap_topend-Lr['snap']],\n 'input': bb_seg[Lf['input']:len(bb_seg)-Lr['input']],\n}\nproducts={k: primers[k+'_fwd']+mids[k]+rc(primers[k+'_rev']) for k in ['egfp','flag','snap','input']}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    return top[p+7:p+11], top[q-5:q-1], top[p+7:q-5]\nfrag={k:digest(v) for k,v in products.items()}\norder=['input','egfp','flag','snap']\nfor k in order: print(k,'loh',frag[k][0],'roh',frag[k][1],'len',len(frag[k][2]))\ncirc=''.join(frag[k][2] for k in order)\nout=seqs['output']\nprint('assembled len',len(circ),'rotation-of-output:', len(circ)==len(out) and circ in out+out)\n\n# write primers.fasta\norder2=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nwith open('/app/primers.fasta','w') as f:\n    for nm in order2:\n        f.write('>%s\\n%s\\n' % (nm, primers[nm]))\nprint('--- primers.fasta ---')\nprint(open('/app/primers.fasta').read())\n# report anneal Tm\nan={'egfp_fwd':egfp_fwd_an,'egfp_rev':egfp_rev_an,'flag_fwd':flag_fwd_an,'flag_rev':flag_rev_an,\n    'snap_fwd':snap_fwd_an,'snap_rev':snap_rev_an,'input_fwd':bb_fwd_an,'input_rev':bb_rev_an}\nfor nm in order2:\n    s,t=an[nm]; print(nm,'anneal_len',len(s),'Tm',round(t,3))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U857GwbXWJjrWJdMoehShM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/design.py <<'PY'\nimport subprocess, re\n\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g'}\n    return ''.join(c[b] for b in reversed(s))\n\ndef tm(seq):\n    return float(subprocess.check_output(\n        ['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq]).decode().strip())\n\nseqs={}; name=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'): name=line[1:].strip(); seqs[name]=''\n    elif name: seqs[name]+=line.lower()\negfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; inp=seqs['input']; out=seqs['output']\ni_tgag=inp.find('tgaggatccc'); i_gag=inp.find('gagatatacatatg')\n\ndef pick_fwd(t,start,tmin=62,tmax=70):\n    best=None\n    for L in range(15,46):\n        s=t[start:start+L]\n        if len(s)<L: break\n        v=tm(s); best=(s,v)\n        if tmin<=v<=tmax: return s,v\n    return best\ndef pick_rev(topend,tmin=62,tmax=70):\n    best=None\n    for L in range(15,46):\n        if L>len(topend): break\n        s=rc(topend[-L:]); v=tm(s); best=(s,v)\n        if tmin<=v<=tmax: return s,v\n    return best\n\nJ1,J2,J3,J4='acat','caaa','ttca','tgag'\negfp_topend=len(egfp)-7; flag_topend=len(flag)-7; snap_topend=len(snap)\nbb_seg=inp[i_tgag+4:]+inp[0:i_gag+7]\n\nan={\n 'egfp_fwd':pick_fwd(egfp,0),\n 'egfp_rev':pick_rev(egfp[:egfp_topend]),\n 'flag_fwd':pick_fwd(flag,3),\n 'flag_rev':pick_rev(flag[:flag_topend]),\n 'snap_fwd':pick_fwd(snap,3),\n 'snap_rev':pick_rev(snap[:snap_topend]),\n 'input_fwd':pick_fwd(bb_seg,0),\n 'input_rev':pick_rev(bb_seg),\n}\nflank='aattac'; spacer='a'; site='ggtctc'\nprimers={\n 'input_fwd':flank+site+spacer+J4+an['input_fwd'][0],\n 'input_rev':flank+site+spacer+rc(J1)+an['input_rev'][0],\n 'egfp_fwd':flank+site+spacer+J1+an['egfp_fwd'][0],\n 'egfp_rev':flank+site+spacer+rc(J2)+an['egfp_rev'][0],\n 'flag_fwd':flank+site+spacer+J2+an['flag_fwd'][0],\n 'flag_rev':flank+site+spacer+rc(J3)+an['flag_rev'][0],\n 'snap_fwd':flank+site+spacer+J3+an['snap_fwd'][0],\n 'snap_rev':flank+site+spacer+rc(J4)+an['snap_rev'][0],\n}\n# simulate\nLf={'egfp':0,'flag':3,'snap':3,'input':0}\nteend={'egfp':egfp_topend,'flag':flag_topend,'snap':snap_topend,'input':len(bb_seg)}\ntpl={'egfp':egfp,'flag':flag,'snap':snap,'input':bb_seg}\nmids={k: tpl[k][Lf[k]+len(an[k+'_fwd'][0]) : teend[k]-len(an[k+'_rev'][0])] for k in tpl}\nprod={k: primers[k+'_fwd']+mids[k]+rc(primers[k+'_rev']) for k in tpl}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    return top[p+7:p+11],top[q-5:q-1],top[p+7:q-5]\nfrag={k:digest(v) for k,v in prod.items()}\norder=['input','egfp','flag','snap']\ncirc=''.join(frag[k][2] for k in order)\nprint('overhang chain:', [ (k,frag[k][0],frag[k][1]) for k in order])\nprint('junctions match:', all(frag[a][1]==frag[b][0] for a,b in zip(order,order[1:]+order[:1])))\nprint('assembled==output(rotation):', len(circ)==len(out) and circ in out+out)\n# internal BsaI check in full primers/products\nfor k,v in prod.items():\n    print(k,'#GGTCTC',v.count('ggtctc'),'#GAGACC',v.count('gagacc'))\n# write file\no=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nwith open('/app/primers.fasta','w') as f:\n    f.write(''.join('>%s\\n%s\\n'%(n,primers[n]) for n in o))\nprint('\\n--- primers.fasta ---')\nprint(open('/app/primers.fasta').read())\nprint('anneal Tm / len (constraints: len15-45, Tm58-72, pair<=5):')\nfor n in o:\n    s,t=an[n]; print(' ',n,'len',len(s),'Tm',round(t,3),'annealseq',s)\nfor pr in ['input','egfp','flag','snap']:\n    tf=an[pr+'_fwd'][1]; tr=an[pr+'_rev'][1]\n    print('  pair',pr,'dTm',round(abs(tf-tr),3))\nPY\npython3 /app/design.py"
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cat > /app/design.py <<'PY'\nimport subprocess, re\n\ndef rc(s):\n    c={'a':'t','t':'a','g':'c','c':'g'}\n    return ''.join(c[b] for b in reversed(s))\n\ndef tm(seq):\n    return float(subprocess.check_output(\n        ['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq]).decode().strip())\n\nseqs={}; name=None\nfor line in open('/app/sequences.fasta'):\n    line=line.strip()\n    if not line or line.startswith('##'): continue\n    if line.startswith('>'): name=line[1:].strip(); seqs[name]=''\n    elif name: seqs[name]+=line.lower()\negfp=seqs['egfp']; flag=seqs['flag']; snap=seqs['snap']; inp=seqs['input']; out=seqs['output']\ni_tgag=inp.find('tgaggatccc'); i_gag=inp.find('gagatatacatatg')\n\ndef pick_fwd(t,start,tmin=62,tmax=70):\n    best=None\n    for L in range(15,46):\n        s=t[start:start+L]\n        if len(s)<L: break\n        v=tm(s); best=(s,v)\n        if tmin<=v<=tmax: return s,v\n    return best\ndef pick_rev(topend,tmin=62,tmax=70):\n    best=None\n    for L in range(15,46):\n        if L>len(topend): break\n        s=rc(topend[-L:]); v=tm(s); best=(s,v)\n        if tmin<=v<=tmax: return s,v\n    return best\n\nJ1,J2,J3,J4='acat','caaa','ttca','tgag'\negfp_topend=len(egfp)-7; flag_topend=len(flag)-7; snap_topend=len(snap)\nbb_seg=inp[i_tgag+4:]+inp[0:i_gag+7]\n\nan={\n 'egfp_fwd':pick_fwd(egfp,0),\n 'egfp_rev':pick_rev(egfp[:egfp_topend]),\n 'flag_fwd':pick_fwd(flag,3),\n 'flag_rev':pick_rev(flag[:flag_topend]),\n 'snap_fwd':pick_fwd(snap,3),\n 'snap_rev':pick_rev(snap[:snap_topend]),\n 'input_fwd':pick_fwd(bb_seg,0),\n 'input_rev':pick_rev(bb_seg),\n}\nflank='aattac'; spacer='a'; site='ggtctc'\nprimers={\n 'input_fwd':flank+site+spacer+J4+an['input_fwd'][0],\n 'input_rev':flank+site+spacer+rc(J1)+an['input_rev'][0],\n 'egfp_fwd':flank+site+spacer+J1+an['egfp_fwd'][0],\n 'egfp_rev':flank+site+spacer+rc(J2)+an['egfp_rev'][0],\n 'flag_fwd':flank+site+spacer+J2+an['flag_fwd'][0],\n 'flag_rev':flank+site+spacer+rc(J3)+an['flag_rev'][0],\n 'snap_fwd':flank+site+spacer+J3+an['snap_fwd'][0],\n 'snap_rev':flank+site+spacer+rc(J4)+an['snap_rev'][0],\n}\n# simulate\nLf={'egfp':0,'flag':3,'snap':3,'input':0}\nteend={'egfp':egfp_topend,'flag':flag_topend,'snap':snap_topend,'input':len(bb_seg)}\ntpl={'egfp':egfp,'flag':flag,'snap':snap,'input':bb_seg}\nmids={k: tpl[k][Lf[k]+len(an[k+'_fwd'][0]) : teend[k]-len(an[k+'_rev'][0])] for k in tpl}\nprod={k: primers[k+'_fwd']+mids[k]+rc(primers[k+'_rev']) for k in tpl}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    return top[p+7:p+11],top[q-5:q-1],top[p+7:q-5]\nfrag={k:digest(v) for k,v in prod.items()}\norder=['input','egfp','flag','snap']\ncirc=''.join(frag[k][2] for k in order)\nprint('overhang chain:', [ (k,frag[k][0],frag[k][1]) for k in order])\nprint('junctions match:', all(frag[a][1]==frag[b][0] for a,b in zip(order,order[1:]+order[:1])))\nprint('assembled==output(rotation):', len(circ)==len(out) and circ in out+out)\n# internal BsaI check in full primers/products\nfor k,v in prod.items():\n    print(k,'#GGTCTC',v.count('ggtctc'),'#GAGACC',v.count('gagacc'))\n# write file\no=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nwith open('/app/primers.fasta','w') as f:\n    f.write(''.join('>%s\\n%s\\n'%(n,primers[n]) for n in o))\nprint('\\n--- primers.fasta ---')\nprint(open('/app/primers.fasta').read())\nprint('anneal Tm / len (constraints: len15-45, Tm58-72, pair<=5):')\nfor n in o:\n    s,t=an[n]; print(' ',n,'len',len(s),'Tm',round(t,3),'annealseq',s)\nfor pr in ['input','egfp','flag','snap']:\n    tf=an[pr+'_fwd'][1]; tr=an[pr+'_rev'][1]\n    print('  pair',pr,'dTm',round(abs(tf-tr),3))\nPY\npython3 /app/design.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019SdYtLtHdKH3SP1nZ8k7SZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f design.py && awk 'NF==0{print \"BLANK LINE at \"NR}' primers.fasta && grep -c \"^>\" primers.fasta && echo \"lines:\" && wc -l primers.fasta && echo \"== final ==\" && cat primers.fasta"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f design.py && awk 'NF==0{print \"BLANK LINE at \"NR}' primers.fasta && grep -c \"^>\" primers.fasta && echo \"lines:\" && wc -l primers.fasta && echo \"== final ==\" && cat primers.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

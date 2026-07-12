@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L6EFZQc6AVYqSMNmeaedCU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name plus_comm.v 2>/dev/null; which coqc"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "find / -name plus_comm.v 2>/dev/null; which coqc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017hg4LvhdPS7bLJ8uyrsPT7",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "workspace/plus_comm.v"
@@ -114,12 +114,12 @@
                 "workspace/plus_comm.v"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01XahgaQkUbsyBp8FLhayseX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; which coqc coq_makefile 2>/dev/null; coqc --version 2>/dev/null; echo done",
             "cwd": "workspace"
@@ -129,7 +129,7 @@
               "command": "ls -la; which coqc coq_makefile 2>/dev/null; coqc --version 2>/dev/null; echo done",
               "cwd": "workspace"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -206,7 +206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QL6QerYBJcHaADdDkUKmQs",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/workspace/plus_comm.v"
@@ -218,12 +218,12 @@
                 "/workspace/plus_comm.v"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_018yWQ9KJLiK95hbYmsbvwSq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; which coqc; coqc --version 2>/dev/null; echo done",
             "cwd": "/workspace"
@@ -233,7 +233,7 @@
               "command": "ls -la; which coqc; coqc --version 2>/dev/null; echo done",
               "cwd": "/workspace"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -245,7 +245,7 @@
           },
           {
             "source_call_id": "toolu_018yWQ9KJLiK95hbYmsbvwSq",
-            "content": "{\"type\": \"text\", \"text\": \"total 20\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:32 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:31 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:32 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:32 .git\\n-rw-r--r-- 1 root root  277 Oct 24  2025 plus_comm.v\\n/usr/bin/coqc\\nThe Coq Proof Assistant, version 8.18.0\\ncompiled with OCaml 4.14.1\\ndone\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 20\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:32 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:31 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:32 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:32 .git\\n-rw-r--r-- 1 root root  277 Oct 24  2025 plus_comm.v\\n/usr/bin/coqc\\nThe Coq Proof Assistant, version 8.18.0\\ncompiled with OCaml 4.14.1\\ndone\"}"
           }
         ]
       },
@@ -298,7 +298,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ExWrkPhFiUMc52Msck3wQt",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -318,7 +318,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -379,7 +379,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012JWKafWe9shEcUd48uFS5t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "coqc plus_comm.v && ls -la plus_comm.vo && echo OK",
             "cwd": "/workspace"
@@ -389,7 +389,7 @@
               "command": "coqc plus_comm.v && ls -la plus_comm.vo && echo OK",
               "cwd": "/workspace"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

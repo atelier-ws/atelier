@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HQ31dMpGrEKAvRqFeBuRoB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && python3 -c \"from PIL import Image; im=Image.open('chess_board.png'); print(im.size, im.mode)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && python3 -c \"from PIL import Image; im=Image.open('chess_board.png'); print(im.size, im.mode)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dj7Wj3NT2UdsbUTCZRKvhM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nimport collections\n# sample corner colors\nfor (x,y) in [(40,40),(120,40),(40,120)]:\n    print((x,y), im.getpixel((x,y)))\n# count unique colors\nc=collections.Counter(im.getdata())\nfor col,n in c.most_common(10):\n    print(col,n)\n\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nimport collections\n# sample corner colors\nfor (x,y) in [(40,40),(120,40),(40,120)]:\n    print((x,y), im.getpixel((x,y)))\n# count unique colors\nc=collections.Counter(im.getdata())\nfor col,n in c.most_common(10):\n    print(col,n)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LKcWU1X7KW4JB7qR1mVeSu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef cls(p):\n    r,g,b=p\n    if r<60 and g<60 and b<60: return 'B'  # black\n    if r>230 and g>230 and b>230: return 'W' # white\n    return '.'\nfor row in range(8):\n    line=''\n    for col in range(8):\n        nb=nw=0\n        for y in range(row*80+8,row*80+72):\n            for x in range(col*80+8,col*80+72):\n                c=cls(W[x,y])\n                if c=='B':nb+=1\n                elif c=='W':nw+=1\n        if nb<40 and nw<40:\n            line+=' .. '\n        elif nw>nb:\n            line+=' w%d'%0\n        else:\n            line+=' b%d'%0\n    print(row,line)\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef cls(p):\n    r,g,b=p\n    if r<60 and g<60 and b<60: return 'B'  # black\n    if r>230 and g>230 and b>230: return 'W' # white\n    return '.'\nfor row in range(8):\n    line=''\n    for col in range(8):\n        nb=nw=0\n        for y in range(row*80+8,row*80+72):\n            for x in range(col*80+8,col*80+72):\n                c=cls(W[x,y])\n                if c=='B':nb+=1\n                elif c=='W':nw+=1\n        if nb<40 and nw<40:\n            line+=' .. '\n        elif nw>nb:\n            line+=' w%d'%0\n        else:\n            line+=' b%d'%0\n    print(row,line)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Aoct3a5CpawdaCs8NLa7G",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\ndef occ(row,col):\n    n=0\n    for y in range(row*80+6,row*80+74):\n        for x in range(col*80+6,col*80+74):\n            if not isbg(W[x,y]): n+=1\n    return n\nfor row in range(8):\n    print(row,[occ(row,col) for col in range(8)])\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\ndef occ(row,col):\n    n=0\n    for y in range(row*80+6,row*80+74):\n        for x in range(col*80+6,col*80+74):\n            if not isbg(W[x,y]): n+=1\n    return n\nfor row in range(8):\n    print(row,[occ(row,col) for col in range(8)])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011njvsqiz9eJQXGSS4vub56",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\ndef col_of(p):\n    r,g,b=p\n    return 'W' if (r>150 and g>150 and b>150) else 'K'\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nfor (row,col) in occ:\n    # determine piece color by majority ink color\n    wc=kc=0\n    grid=[]\n    N=22\n    for gy in range(N):\n        line=''\n        for gx in range(N):\n            x=col*80+4+int(gx*72/N)\n            y=row*80+4+int(gy*72/N)\n            p=W[x,y]\n            if isbg(p):\n                line+=' '\n            else:\n                c=col_of(p)\n                if c=='W':wc+=1\n                else:kc+=1\n                line+='#'\n        grid.append(line)\n    sq=files[col]+str(8-row)\n    color='white' if wc>kc else 'black'\n    print('==== square',sq,'color',color,'wc',wc,'kc',kc)\n    print(chr(10).join(grid))\n\" "
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\ndef col_of(p):\n    r,g,b=p\n    return 'W' if (r>150 and g>150 and b>150) else 'K'\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nfor (row,col) in occ:\n    # determine piece color by majority ink color\n    wc=kc=0\n    grid=[]\n    N=22\n    for gy in range(N):\n        line=''\n        for gx in range(N):\n            x=col*80+4+int(gx*72/N)\n            y=row*80+4+int(gy*72/N)\n            p=W[x,y]\n            if isbg(p):\n                line+=' '\n            else:\n                c=col_of(p)\n                if c=='W':wc+=1\n                else:kc+=1\n                line+='#'\n        grid.append(line)\n    sq=files[col]+str(8-row)\n    color='white' if wc>kc else 'black'\n    print('==== square',sq,'color',color,'wc',wc,'kc',kc)\n    print(chr(10).join(grid))\n\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
         "results": [
           {
             "source_call_id": "toolu_011njvsqiz9eJQXGSS4vub56",
-            "content": "{\"type\": \"text\", \"text\": \"==== square a8 color black wc 0 kc 78\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n       #########      \\n      #         #     \\n                      \\n==== square c8 color black wc 0 kc 60\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n           #          \\n           #          \\n         ## ##        \\n        ### ###       \\n        ### ###       \\n        ### ###       \\n        ### ###       \\n         #####        \\n         #   #        \\n         #   #        \\n          ###         \\n     #############    \\n     ##         ##    \\n==== square d8 color black wc 0 kc 88\\n                      \\n                      \\n                      \\n... (375 lines omitted) ...\\n      #  # # #  #     \\n     #     #     #    \\n         # # #        \\n       # #   # #      \\n       #       #      \\n        ### ###       \\n         ## ##        \\n        #     #       \\n        ##   ##       \\n        #     #       \\n        #     #       \\n        #######       \\n==== square f2 color white wc 38 kc 4\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n          ###         \\n          # #         \\n          # #         \\n         #   #        \\n        ##   ##       \\n        #     #       \\n         #   #        \\n        ##   ##       \\n        #     #       \\n       #       #      \\n      ##       ##     \\n      #         #     \\n      ###########     \\n                      \\n==== square g2 color white wc 36 kc 0\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n          # #         \\n          # #         \\n         #   #        \\n        #     #       \\n        #     #       \\n         #   #        \\n         ## ##        \\n        #     #       \\n       #       #      \\n       #       #      \\n      #         #     \\n      ###########     \\n                      \\n==== square a1 color white wc 36 kc 2\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #     #       \\n  #     #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #######       \\n        #     #       \\n       #       #      \\n      #    #    #     \\n                      \\n==== square c1 color white wc 24 kc 2\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n                      \\n           #          \\n         # # #        \\n          ###         \\n        #  #  #       \\n        #  #  #       \\n        #  #  #       \\n         #   #        \\n         #   #        \\n         #   #        \\n                      \\n      #    #    #     \\n                      \\n==== square e1 color white wc 32 kc 10\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n           #          \\n           #          \\n        ##   ##       \\n       # ## ## #      \\n           #          \\n      #    #    #     \\n       #   #   #      \\n           #  #       \\n        # # # #       \\n        ## # ##       \\n        #     #       \\n        ##   ##       \\n         #####        \\n==== square h1 color white wc 34 kc 0\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #######       \\n                      \\n       #       #      \\n      #         #     \\n                      \\n\\n[output truncated: 375 lines omitted; full output (13601B) spilled to /tmp/atelier-spill/original-bash-1783148093059-4fccc180.txt; read /tmp/atelier-spill/original-bash-1783148093059-4fccc180.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"==== square a8 color black wc 0 kc 78\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n        #######       \\n       #########      \\n      #         #     \\n                      \\n==== square c8 color black wc 0 kc 60\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n           #          \\n           #          \\n         ## ##        \\n        ### ###       \\n        ### ###       \\n        ### ###       \\n        ### ###       \\n         #####        \\n         #   #        \\n         #   #        \\n          ###         \\n     #############    \\n     ##         ##    \\n==== square d8 color black wc 0 kc 88\\n                      \\n                      \\n                      \\n... (375 lines omitted) ...\\n      #  # # #  #     \\n     #     #     #    \\n         # # #        \\n       # #   # #      \\n       #       #      \\n        ### ###       \\n         ## ##        \\n        #     #       \\n        ##   ##       \\n        #     #       \\n        #     #       \\n        #######       \\n==== square f2 color white wc 38 kc 4\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n          ###         \\n          # #         \\n          # #         \\n         #   #        \\n        ##   ##       \\n        #     #       \\n         #   #        \\n        ##   ##       \\n        #     #       \\n       #       #      \\n      ##       ##     \\n      #         #     \\n      ###########     \\n                      \\n==== square g2 color white wc 36 kc 0\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n          # #         \\n          # #         \\n         #   #        \\n        #     #       \\n        #     #       \\n         #   #        \\n         ## ##        \\n        #     #       \\n       #       #      \\n       #       #      \\n      #         #     \\n      ###########     \\n                      \\n==== square a1 color white wc 36 kc 2\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #     #       \\n  #     #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #######       \\n        #     #       \\n       #       #      \\n      #    #    #     \\n                      \\n==== square c1 color white wc 24 kc 2\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n                      \\n           #          \\n         # # #        \\n          ###         \\n        #  #  #       \\n        #  #  #       \\n        #  #  #       \\n         #   #        \\n         #   #        \\n         #   #        \\n                      \\n      #    #    #     \\n                      \\n==== square e1 color white wc 32 kc 10\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n           #          \\n           #          \\n           #          \\n        ##   ##       \\n       # ## ## #      \\n           #          \\n      #    #    #     \\n       #   #   #      \\n           #  #       \\n        # # # #       \\n        ## # ##       \\n        #     #       \\n        ##   ##       \\n         #####        \\n==== square h1 color white wc 34 kc 0\\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n                      \\n       #########      \\n       #       #      \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #     #       \\n        #######       \\n                      \\n       #       #      \\n      #         #     \\n                      \\n\\n[output truncated: 375 lines omitted; full output (13601B) spilled to /tmp/lemoncrow-spill/original-bash-1783148093059-4fccc180.txt; read /tmp/lemoncrow-spill/original-bash-1783148093059-4fccc180.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -378,19 +378,19 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YWQUEzuibM2k8z4QrqjehN",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
-              "/tmp/atelier-spill/original-bash-1783148093059-4fccc180.txt"
+              "/tmp/lemoncrow-spill/original-bash-1783148093059-4fccc180.txt"
             ]
           },
           "extra": {
             "raw_arguments": {
               "files": [
-                "/tmp/atelier-spill/original-bash-1783148093059-4fccc180.txt"
+                "/tmp/lemoncrow-spill/original-bash-1783148093059-4fccc180.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -398,7 +398,7 @@
         "results": [
           {
             "source_call_id": "toolu_01YWQUEzuibM2k8z4QrqjehN",
-            "content": "{\"type\": \"text\", \"text\": \"## /tmp/atelier-spill/original-bash-1783148093059-4fccc180.txt\\nProjection: compact\\n\\n==== square a8 color black wc 0 kc 78\\n\\n       #########\\n       #       #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      #         #\\n\\n==== square c8 color black wc 0 kc 60\\n\\n           #\\n           #\\n           #\\n         ## ##\\n        ### ###\\n        ### ###\\n        ### ###\\n        ### ###\\n         #####\\n         #   #\\n         #   #\\n          ###\\n     #############\\n     ##         ##\\n==== square d8 color black wc 0 kc 88\\n\\n           #\\n        #######\\n     ## ## # ## ##\\n     ####  #  ####\\n         # # #\\n       # # # # #\\n       # # # # #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n==== square f8 color black wc 0 kc 78\\n\\n       #########\\n       #       #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      #         #\\n\\n==== square b7 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square f7 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square g7 color black wc 0 kc 90\\n\\n          ###\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      ###########\\n      # #########\\n      ###########\\n\\n==== square a6 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square c6 color black wc 0 kc 86\\n\\n          #\\n         ###\\n         ####\\n        #######\\n       # ######\\n       ####### #\\n      ##########\\n      # ####### #\\n      ###  #### #\\n      ##  ##### #\\n          ##### #\\n         ###### #\\n         ########\\n\\n==== square e6 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square d5 color black wc 0 kc 86\\n\\n          #\\n         ###\\n         ####\\n        #######\\n       # ######\\n       ####### #\\n      ##########\\n      # ####### #\\n      ###  #### #\\n      ##  ##### #\\n          ##### #\\n         ###### #\\n         ########\\n\\n==== square e5 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square f5 color black wc 0 kc 74\\n\\n           #\\n           #\\n           #\\n        #######\\n       # ##### #\\n      # ### ### #\\n      ###########\\n       #########\\n        #  #  #\\n        #######\\n        #     #\\n        #    ##\\n        #######\\n        #######\\n==== square g5 color black wc 0 kc 60\\n\\n           #\\n           #\\n           #\\n         ## ##\\n        ### ###\\n        ### ###\\n        ### ###\\n        ### ###\\n         #####\\n         #   #\\n         #   #\\n          ###\\n     #############\\n     ##         ##\\n==== square h5 color white wc 36 kc 0\\n\\n           #\\n          # #\\n          # #\\n         #   #\\n        #     #\\n        #     #\\n         #   #\\n         ## ##\\n        #     #\\n       #       #\\n       #       #\\n      #         #\\n      ###########\\n\\n==== square a3 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square c3 color white wc 32 kc 2\\n\\n           #\\n           #\\n          ##\\n              #\\n             ##\\n       #       #\\n               #\\n      ##   #    #\\n      #    #    #\\n       #        #\\n         ##    ##\\n         #     ##\\n         ########\\n\\n==== square b2 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square e2 color white wc 49 kc 0\\n\\n           #\\n         ## ##\\n      #  # # #  #\\n     #     #     #\\n         # # #\\n       # #   # #\\n       #       #\\n        ### ###\\n         ## ##\\n        #     #\\n        ##   ##\\n        #     #\\n        #     #\\n        #######\\n==== square f2 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square g2 color white wc 36 kc 0\\n\\n           #\\n          # #\\n          # #\\n         #   #\\n        #     #\\n        #     #\\n         #   #\\n         ## ##\\n        #     #\\n       #       #\\n       #       #\\n      #         #\\n      ###########\\n\\n==== square a1 color white wc 36 kc 2\\n\\n       #########\\n       #       #\\n        #     #\\n  #     #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #######\\n        #     #\\n       #       #\\n      #    #    #\\n\\n==== square c1 color white wc 24 kc 2\\n\\n           #\\n\\n           #\\n         # # #\\n          ###\\n        #  #  #\\n        #  #  #\\n        #  #  #\\n         #   #\\n         #   #\\n         #   #\\n\\n      #    #    #\\n\\n==== square e1 color white wc 32 kc 10\\n\\n           #\\n           #\\n           #\\n        ##   ##\\n       # ## ## #\\n           #\\n      #    #    #\\n       #   #   #\\n           #  #\\n        # # # #\\n        ## # ##\\n        #     #\\n        ##   ##\\n         #####\\n==== square h1 color white wc 34 kc 0\\n\\n       #########\\n       #       #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #######\\n\\n       #       #\\n      #         #\\n\\n\"}"
+            "content": "{\"type\": \"text\", \"text\": \"## /tmp/lemoncrow-spill/original-bash-1783148093059-4fccc180.txt\\nProjection: compact\\n\\n==== square a8 color black wc 0 kc 78\\n\\n       #########\\n       #       #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      #         #\\n\\n==== square c8 color black wc 0 kc 60\\n\\n           #\\n           #\\n           #\\n         ## ##\\n        ### ###\\n        ### ###\\n        ### ###\\n        ### ###\\n         #####\\n         #   #\\n         #   #\\n          ###\\n     #############\\n     ##         ##\\n==== square d8 color black wc 0 kc 88\\n\\n           #\\n        #######\\n     ## ## # ## ##\\n     ####  #  ####\\n         # # #\\n       # # # # #\\n       # # # # #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n==== square f8 color black wc 0 kc 78\\n\\n       #########\\n       #       #\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      #         #\\n\\n==== square b7 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square f7 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square g7 color black wc 0 kc 90\\n\\n          ###\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n      ###########\\n      # #########\\n      ###########\\n\\n==== square a6 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square c6 color black wc 0 kc 86\\n\\n          #\\n         ###\\n         ####\\n        #######\\n       # ######\\n       ####### #\\n      ##########\\n      # ####### #\\n      ###  #### #\\n      ##  ##### #\\n          ##### #\\n         ###### #\\n         ########\\n\\n==== square e6 color black wc 0 kc 86\\n\\n           #\\n          ###\\n          ###\\n         #####\\n        #######\\n        #######\\n        #######\\n        #######\\n        #######\\n       #########\\n       #########\\n      # #########\\n      ###########\\n\\n==== square d5 color black wc 0 kc 86\\n\\n          #\\n         ###\\n         ####\\n        #######\\n       # ######\\n       ####### #\\n      ##########\\n      # ####### #\\n      ###  #### #\\n      ##  ##### #\\n          ##### #\\n         ###### #\\n         ########\\n\\n==== square e5 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square f5 color black wc 0 kc 74\\n\\n           #\\n           #\\n           #\\n        #######\\n       # ##### #\\n      # ### ### #\\n      ###########\\n       #########\\n        #  #  #\\n        #######\\n        #     #\\n        #    ##\\n        #######\\n        #######\\n==== square g5 color black wc 0 kc 60\\n\\n           #\\n           #\\n           #\\n         ## ##\\n        ### ###\\n        ### ###\\n        ### ###\\n        ### ###\\n         #####\\n         #   #\\n         #   #\\n          ###\\n     #############\\n     ##         ##\\n==== square h5 color white wc 36 kc 0\\n\\n           #\\n          # #\\n          # #\\n         #   #\\n        #     #\\n        #     #\\n         #   #\\n         ## ##\\n        #     #\\n       #       #\\n       #       #\\n      #         #\\n      ###########\\n\\n==== square a3 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square c3 color white wc 32 kc 2\\n\\n           #\\n           #\\n          ##\\n              #\\n             ##\\n       #       #\\n               #\\n      ##   #    #\\n      #    #    #\\n       #        #\\n         ##    ##\\n         #     ##\\n         ########\\n\\n==== square b2 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square e2 color white wc 49 kc 0\\n\\n           #\\n         ## ##\\n      #  # # #  #\\n     #     #     #\\n         # # #\\n       # #   # #\\n       #       #\\n        ### ###\\n         ## ##\\n        #     #\\n        ##   ##\\n        #     #\\n        #     #\\n        #######\\n==== square f2 color white wc 38 kc 4\\n\\n          ###\\n          # #\\n          # #\\n         #   #\\n        ##   ##\\n        #     #\\n         #   #\\n        ##   ##\\n        #     #\\n       #       #\\n      ##       ##\\n      #         #\\n      ###########\\n\\n==== square g2 color white wc 36 kc 0\\n\\n           #\\n          # #\\n          # #\\n         #   #\\n        #     #\\n        #     #\\n         #   #\\n         ## ##\\n        #     #\\n       #       #\\n       #       #\\n      #         #\\n      ###########\\n\\n==== square a1 color white wc 36 kc 2\\n\\n       #########\\n       #       #\\n        #     #\\n  #     #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #######\\n        #     #\\n       #       #\\n      #    #    #\\n\\n==== square c1 color white wc 24 kc 2\\n\\n           #\\n\\n           #\\n         # # #\\n          ###\\n        #  #  #\\n        #  #  #\\n        #  #  #\\n         #   #\\n         #   #\\n         #   #\\n\\n      #    #    #\\n\\n==== square e1 color white wc 32 kc 10\\n\\n           #\\n           #\\n           #\\n        ##   ##\\n       # ## ## #\\n           #\\n      #    #    #\\n       #   #   #\\n           #  #\\n        # # # #\\n        ## # ##\\n        #     #\\n        ##   ##\\n         #####\\n==== square h1 color white wc 34 kc 0\\n\\n       #########\\n       #       #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #     #\\n        #######\\n\\n       #       #\\n      #         #\\n\\n\"}"
           }
         ]
       },
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DpKzgJ9jb1dT6yqqKWbKBS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && (uv pip install --system --break-system-packages python-chess cairosvg 2>&1 | tail -5); python3 -c \"import chess, chess.svg; print('chess ok')\" 2>&1 | tail -3; python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -3"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app && (uv pip install --system --break-system-packages python-chess cairosvg 2>&1 | tail -5); python3 -c \"import chess, chess.svg; print('chess ok')\" 2>&1 | tail -3; python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VFjm3z7qgwSiVUush6gehZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages python-chess cairosvg 2>&1 | tail -6; python3 -c \"import chess; print('chess', chess.__version__)\" 2>&1 | tail -2; python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -2"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages python-chess cairosvg 2>&1 | tail -6; python3 -c \"import chess; print('chess', chess.__version__)\" 2>&1 | tail -2; python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ToSm9UJU8R3Ak5spnSjoMF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y libcairo2 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y libcairo2 2>&1 | tail -3); python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -2"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "apt-get install -y libcairo2 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y libcairo2 2>&1 | tail -3); python3 -c \"import cairosvg; print('cairo ok')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0143o1JsfJizRgMsHhDREHvj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image\nboard=Image.open('chess_board.png').convert('RGB')\nlight=(240,217,181); dark=(181,136,99)\ndef render_piece(sym):\n    svg=chess.svg.piece(chess.Piece.from_symbol(sym))\n    png=cairosvg.svg2png(bytestring=svg.encode(),output_width=80,output_height=80)\n    return Image.open(io.BytesIO(png)).convert('RGBA')\nsyms=['P','N','B','R','Q','K','p','n','b','r','q','k']\npieces={s:render_piece(s) for s in syms}\ndef sq_img(row,col):\n    return board.crop((col*80,row*80,col*80+80,row*80+80))\ndef diff(a,b):\n    pa=a.load(); pb=b.load(); s=0\n    for y in range(0,80,2):\n        for x in range(0,80,2):\n            r1,g1,b1=pa[x,y]; r2,g2,b2=pb[x,y]\n            s+=(r1-r2)**2+(g1-g2)**2+(b1-b2)**2\n    return s\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nres={}\nfor (row,col) in occ:\n    bg=light if (row+col)%2==0 else dark\n    target=sq_img(row,col)\n    best=None;bs=1e18\n    for s in syms:\n        comp=Image.new('RGB',(80,80),bg)\n        comp.paste(pieces[s],(0,0),pieces[s])\n        d=diff(target,comp)\n        if d<bs:bs=d;best=s\n    sq=files[col]+str(8-row)\n    res[sq]=best\n    print(sq,best,bs)\nimport json\nprint(json.dumps(res))\n\""
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image\nboard=Image.open('chess_board.png').convert('RGB')\nlight=(240,217,181); dark=(181,136,99)\ndef render_piece(sym):\n    svg=chess.svg.piece(chess.Piece.from_symbol(sym))\n    png=cairosvg.svg2png(bytestring=svg.encode(),output_width=80,output_height=80)\n    return Image.open(io.BytesIO(png)).convert('RGBA')\nsyms=['P','N','B','R','Q','K','p','n','b','r','q','k']\npieces={s:render_piece(s) for s in syms}\ndef sq_img(row,col):\n    return board.crop((col*80,row*80,col*80+80,row*80+80))\ndef diff(a,b):\n    pa=a.load(); pb=b.load(); s=0\n    for y in range(0,80,2):\n        for x in range(0,80,2):\n            r1,g1,b1=pa[x,y]; r2,g2,b2=pb[x,y]\n            s+=(r1-r2)**2+(g1-g2)**2+(b1-b2)**2\n    return s\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nres={}\nfor (row,col) in occ:\n    bg=light if (row+col)%2==0 else dark\n    target=sq_img(row,col)\n    best=None;bs=1e18\n    for s in syms:\n        comp=Image.new('RGB',(80,80),bg)\n        comp.paste(pieces[s],(0,0),pieces[s])\n        d=diff(target,comp)\n        if d<bs:bs=d;best=s\n    sq=files[col]+str(8-row)\n    res[sq]=best\n    print(sq,best,bs)\nimport json\nprint(json.dumps(res))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DbREEYgNgjQ1nAMw1TzSBk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image\nboard=Image.open('chess_board.png').convert('RGB')\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5','border':'#f0d9b5'}\ndef render_board(fen):\n    b=chess.Board(fen)\n    svg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\n    png=cairosvg.svg2png(bytestring=svg.encode())\n    return Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\n# put each piece on both a light and dark square: use squares e5(light? e=file4,rank5 ->(4+5) )\n# We'll place piece on d5 and e5 to get both colors.\ndef sq_template(sym):\n    # d5 and e5\n    fen_pieces=[]\n    b=chess.Board(None)\n    b.set_piece_at(chess.D5, chess.Piece.from_symbol(sym))\n    b.set_piece_at(chess.E5, chess.Piece.from_symbol(sym))\n    svg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\n    png=cairosvg.svg2png(bytestring=svg.encode())\n    img=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\n    # d5: file3 rank5 -> col3, row=8-5=3 ; e5 col4 row3\n    d5=img.crop((3*80,3*80,3*80+80,3*80+80))  # dark\n    e5=img.crop((4*80,3*80,4*80+80,3*80+80))  # light\n    return {'dark':d5,'light':e5}\nsyms=['P','N','B','R','Q','K','p','n','b','r','q','k']\ntempl={s:sq_template(s) for s in syms}\ndef diff(a,b):\n    pa=a.load(); pb=b.load(); s=0\n    for y in range(0,80):\n        for x in range(0,80):\n            r1,g1,b1=pa[x,y]; r2,g2,b2=pb[x,y]\n            s+=(r1-r2)**2+(g1-g2)**2+(b1-b2)**2\n    return s\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nres={}\nfor (row,col) in occ:\n    tone='light' if (row+col)%2==0 else 'dark'\n    target=board.crop((col*80,row*80,col*80+80,row*80+80))\n    best=None;bs=1e18;second=None\n    scores=[]\n    for s in syms:\n        d=diff(target,templ[s][tone])\n        scores.append((d,s))\n    scores.sort()\n    sq=files[col]+str(8-row)\n    res[sq]=scores[0][1]\n    print(sq,tone,scores[0],scores[1])\nimport json;print(json.dumps(res))\n\""
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image\nboard=Image.open('chess_board.png').convert('RGB')\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5','border':'#f0d9b5'}\ndef render_board(fen):\n    b=chess.Board(fen)\n    svg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\n    png=cairosvg.svg2png(bytestring=svg.encode())\n    return Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\n# put each piece on both a light and dark square: use squares e5(light? e=file4,rank5 ->(4+5) )\n# We'll place piece on d5 and e5 to get both colors.\ndef sq_template(sym):\n    # d5 and e5\n    fen_pieces=[]\n    b=chess.Board(None)\n    b.set_piece_at(chess.D5, chess.Piece.from_symbol(sym))\n    b.set_piece_at(chess.E5, chess.Piece.from_symbol(sym))\n    svg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\n    png=cairosvg.svg2png(bytestring=svg.encode())\n    img=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\n    # d5: file3 rank5 -> col3, row=8-5=3 ; e5 col4 row3\n    d5=img.crop((3*80,3*80,3*80+80,3*80+80))  # dark\n    e5=img.crop((4*80,3*80,4*80+80,3*80+80))  # light\n    return {'dark':d5,'light':e5}\nsyms=['P','N','B','R','Q','K','p','n','b','r','q','k']\ntempl={s:sq_template(s) for s in syms}\ndef diff(a,b):\n    pa=a.load(); pb=b.load(); s=0\n    for y in range(0,80):\n        for x in range(0,80):\n            r1,g1,b1=pa[x,y]; r2,g2,b2=pb[x,y]\n            s+=(r1-r2)**2+(g1-g2)**2+(b1-b2)**2\n    return s\nocc=[(0,0),(0,2),(0,3),(0,5),(1,1),(1,5),(1,6),(2,0),(2,2),(2,4),(3,3),(3,4),(3,5),(3,6),(3,7),(5,0),(5,2),(6,1),(6,4),(6,5),(6,6),(7,0),(7,2),(7,4),(7,7)]\nfiles='abcdefgh'\nres={}\nfor (row,col) in occ:\n    tone='light' if (row+col)%2==0 else 'dark'\n    target=board.crop((col*80,row*80,col*80+80,row*80+80))\n    best=None;bs=1e18;second=None\n    scores=[]\n    for s in syms:\n        d=diff(target,templ[s][tone])\n        scores.append((d,s))\n    scores.sort()\n    sq=files[col]+str(8-row)\n    res[sq]=scores[0][1]\n    print(sq,tone,scores[0],scores[1])\nimport json;print(json.dumps(res))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Har15AvBV7G4KA9YqhHk5t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\nocc=[('a8',0,0),('c8',0,2),('d8',0,3),('f8',0,5),('b7',1,1),('f7',1,5),('g7',1,6),('a6',2,0),('c6',2,2),('e6',2,4),('d5',3,3),('e5',3,4),('f5',3,5),('g5',3,6),('h5',3,7),('a3',5,0),('c3',5,2),('b2',6,1),('e2',6,4),('f2',6,5),('g2',6,6),('a1',7,0),('c1',7,2),('e1',7,4),('h1',7,7)]\nfor name,row,col in occ:\n    rows=[];cols=[]\n    for y in range(row*80,row*80+80):\n        for x in range(col*80,col*80+80):\n            if not isbg(W[x,y]):\n                rows.append(y-row*80);cols.append(x-col*80)\n    print(name,'ytop',min(rows),'ybot',max(rows),'h',max(rows)-min(rows),'w',max(cols)-min(cols),'n',len(rows))\n\""
           },
@@ -804,7 +804,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom PIL import Image\nim=Image.open('chess_board.png').convert('RGB')\nW=im.load()\ndef isbg(p):\n    for bg in [(181,136,99),(240,217,181)]:\n        if abs(p[0]-bg[0])<30 and abs(p[1]-bg[1])<30 and abs(p[2]-bg[2])<30:\n            return True\n    return False\nocc=[('a8',0,0),('c8',0,2),('d8',0,3),('f8',0,5),('b7',1,1),('f7',1,5),('g7',1,6),('a6',2,0),('c6',2,2),('e6',2,4),('d5',3,3),('e5',3,4),('f5',3,5),('g5',3,6),('h5',3,7),('a3',5,0),('c3',5,2),('b2',6,1),('e2',6,4),('f2',6,5),('g2',6,6),('a1',7,0),('c1',7,2),('e1',7,4),('h1',7,7)]\nfor name,row,col in occ:\n    rows=[];cols=[]\n    for y in range(row*80,row*80+80):\n        for x in range(col*80,col*80+80):\n            if not isbg(W[x,y]):\n                rows.append(y-row*80);cols.append(x-col*80)\n    print(name,'ytop',min(rows),'ybot',max(rows),'h',max(rows)-min(rows),'w',max(cols)-min(cols),'n',len(rows))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -865,7 +865,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PHxrjXfMAp5cWL2KG6FyFg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\nprint('valid:',b.is_valid(),'status',b.status())\n# render and compare\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\nsvg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\npng=cairosvg.svg2png(bytestring=svg.encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\ndiff=ImageChops.difference(rend,real)\nimport numpy as np\nd=np.asarray(diff).astype(int)\nprint('mean abs diff per channel:', d.mean())\nprint('frac pixels with big diff:', (d.sum(axis=2)>60).mean())\n\""
           },
@@ -873,7 +873,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\nprint('valid:',b.is_valid(),'status',b.status())\n# render and compare\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\nsvg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\npng=cairosvg.svg2png(bytestring=svg.encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\ndiff=ImageChops.difference(rend,real)\nimport numpy as np\nd=np.asarray(diff).astype(int)\nprint('mean abs diff per channel:', d.mean())\nprint('frac pixels with big diff:', (d.sum(axis=2)>60).mean())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RU2bH1SJwJR89puNuTmHKi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\nsvg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\npng=cairosvg.svg2png(bytestring=svg.encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\ndiff=ImageChops.difference(rend,real)\nbig=0; tot=640*640\npd=diff.load()\ns=0\nfor y in range(640):\n    for x in range(640):\n        r,g,bl=pd[x,y]; v=r+g+bl; s+=v\n        if v>60:big+=1\nprint('mean sum diff', s/tot, 'frac big', big/tot)\nprint('--- mating / winning moves ---')\nmates=[]\nfor m in b.legal_moves:\n    b.push(m)\n    if b.is_checkmate(): mates.append(m.uci())\n    b.pop()\nprint('checkmates:',mates)\nprint('num legal', b.legal_moves.count())\nprint('in check now?', b.is_check())\n\""
           },
@@ -942,7 +942,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\nsvg=chess.svg.board(b,size=640,coordinates=False,colors=colors)\npng=cairosvg.svg2png(bytestring=svg.encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\ndiff=ImageChops.difference(rend,real)\nbig=0; tot=640*640\npd=diff.load()\ns=0\nfor y in range(640):\n    for x in range(640):\n        r,g,bl=pd[x,y]; v=r+g+bl; s+=v\n        if v>60:big+=1\nprint('mean sum diff', s/tot, 'frac big', big/tot)\nprint('--- mating / winning moves ---')\nmates=[]\nfor m in b.legal_moves:\n    b.push(m)\n    if b.is_checkmate(): mates.append(m.uci())\n    b.pop()\nprint('checkmates:',mates)\nprint('num legal', b.legal_moves.count())\nprint('in check now?', b.is_check())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1003,7 +1003,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KCXYFHY4JLEZqCX7SMPzFN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\npng=cairosvg.svg2png(bytestring=chess.svg.board(b,size=640,coordinates=False,colors=colors).encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\nfiles='abcdefgh'\nworst=[]\nfor row in range(8):\n    for col in range(8):\n        box=(col*80,row*80,col*80+80,row*80+80)\n        d=ImageChops.difference(rend.crop(box),real.crop(box))\n        pd=d.load(); s=0\n        for y in range(80):\n            for x in range(80): \n                r,g,bl=pd[x,y]; s+=r+g+bl\n        worst.append((s, files[col]+str(8-row)))\nworst.sort(reverse=True)\nprint('worst squares (sum diff):', worst[:8])\n\""
           },
@@ -1011,7 +1011,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport chess, chess.svg, cairosvg, io\nfrom PIL import Image, ImageChops\nfen='r1bq1r2/1p3pp1/p1n1p3/3nPkbP/8/P1N5/1P2QPP1/R1B1K2R w KQ - 0 1'\nb=chess.Board(fen)\ncolors={'square light':'#f0d9b5','square dark':'#b58863','margin':'#f0d9b5','coord':'#f0d9b5','inner border':'#f0d9b5','outer border':'#f0d9b5'}\npng=cairosvg.svg2png(bytestring=chess.svg.board(b,size=640,coordinates=False,colors=colors).encode())\nrend=Image.open(io.BytesIO(png)).convert('RGB').resize((640,640))\nreal=Image.open('chess_board.png').convert('RGB')\nfiles='abcdefgh'\nworst=[]\nfor row in range(8):\n    for col in range(8):\n        box=(col*80,row*80,col*80+80,row*80+80)\n        d=ImageChops.difference(rend.crop(box),real.crop(box))\n        pd=d.load(); s=0\n        for y in range(80):\n            for x in range(80): \n                r,g,bl=pd[x,y]; s+=r+g+bl\n        worst.append((s, files[col]+str(8-row)))\nworst.sort(reverse=True)\nprint('worst squares (sum diff):', worst[:8])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1072,7 +1072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HrNrADMwVMW5i2gGG6PsYd",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1092,7 +1092,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1153,7 +1153,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ES3av4rLnj1bVc6Mnjhf8C",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/move.txt"
@@ -1165,7 +1165,7 @@
                 "/app/move.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],

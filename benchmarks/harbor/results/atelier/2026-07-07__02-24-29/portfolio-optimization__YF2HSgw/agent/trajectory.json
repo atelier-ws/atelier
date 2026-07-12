@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015GbkCUdGqaJupuEzBfCydA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01JqGkAYV4Zv9Ue1Y8dnHPXJ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "portfolio_baseline.py",
@@ -66,7 +66,7 @@
                 "benchmark.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -131,7 +131,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SHLxgeANjT1CBeLFaqfUud",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -181,7 +181,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -242,7 +242,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015bmuqMcxGBz3M6J2qdozKS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy\" 2>&1 | head; python3 setup.py build_ext --inplace 2>&1 | tail -20"
           },
@@ -250,7 +250,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import numpy\" 2>&1 | head; python3 setup.py build_ext --inplace 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -311,7 +311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qc8394aN3nMYivVBcSMY5K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1 | tail -30"
           },
@@ -319,7 +319,7 @@
             "raw_arguments": {
               "command": "python3 benchmark.py 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -435,7 +435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VpS8FdNZbSNmKpmrswbvr4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 benchmark.py 2>&1 | tail -8"
           },
@@ -443,7 +443,7 @@
             "raw_arguments": {
               "command": "python3 benchmark.py 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

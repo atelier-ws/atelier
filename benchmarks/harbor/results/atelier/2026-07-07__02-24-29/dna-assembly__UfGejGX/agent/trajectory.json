@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y2w7N9Gjx7qphdtvH5Jz5K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name sequences.fasta 2>/dev/null; echo \"---\"; ls"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "find / -name sequences.fasta 2>/dev/null; echo \"---\"; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
@@ -140,7 +140,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011CZMnaTGsAYxW3Lvf88GrE",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "app/sequences.fasta"
@@ -152,7 +152,7 @@
                 "app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -213,7 +213,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AxaQAP8J2TP3FjjSqUj2xQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && wc -l sequences.fasta && grep \">\" sequences.fasta && for h in input egfp flag snap output; do echo \"=== $h ===\"; awk \"/^>$h/{f=1;next}/^>/{f=0}f\" sequences.fasta | tr -d '\\n' | wc -c; done"
           },
@@ -221,7 +221,7 @@
             "raw_arguments": {
               "command": "cd /app && wc -l sequences.fasta && grep \">\" sequences.fasta && for h in input egfp flag snap output; do echo \"=== $h ===\"; awk \"/^>$h/{f=1;next}/^>/{f=0}f\" sequences.fasta | tr -d '\\n' | wc -c; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -282,7 +282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014w53GUMcjFCiugJ4ZmpG7j",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat sequences.fasta"
           },
@@ -290,7 +290,7 @@
             "raw_arguments": {
               "command": "cd /app && cat sequences.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -351,7 +351,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012a8uvkUpeoUSMbjCdmko6N",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'): name=line[1:]; seqs[name]=''\n    elif line: seqs[name]+=line.lower()\nfor k,v in seqs.items(): print(k,len(v))\nimport json\nopen('/tmp/seqs.json','w').write(json.dumps(seqs))\nprint('OUTPUT:'); print(seqs['output'])\n\""
           },
@@ -359,7 +359,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'): name=line[1:]; seqs[name]=''\n    elif line: seqs[name]+=line.lower()\nfor k,v in seqs.items(): print(k,len(v))\nimport json\nopen('/tmp/seqs.json','w').write(json.dumps(seqs))\nprint('OUTPUT:'); print(seqs['output'])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -420,7 +420,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FtAVTJPKrSW5PdjDVoKDtA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\nfor name in ['egfp','flag','snap']:\n    seq=s[name]\n    i=out.find(seq)\n    print(name, 'full-match at', i, 'len', len(seq))\n# find input pieces in output\nprint('--- input search ---')\n# find longest prefix/suffix of input present in output\ndef find(sub): return out.find(sub)\n# locate a chunk of input start\nprint('input[0:60] in out:', out.find(inp[:60]))\nprint('input[-60:] in out:', out.find(inp[-60:]))\n\""
           },
@@ -428,7 +428,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\nfor name in ['egfp','flag','snap']:\n    seq=s[name]\n    i=out.find(seq)\n    print(name, 'full-match at', i, 'len', len(seq))\n# find input pieces in output\nprint('--- input search ---')\n# find longest prefix/suffix of input present in output\ndef find(sub): return out.find(sub)\n# locate a chunk of input start\nprint('input[0:60] in out:', out.find(inp[:60]))\nprint('input[-60:] in out:', out.find(inp[-60:]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -489,7 +489,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016JieX23bphF4KtChnyMgsP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\n# find divergence point input vs output from start\ni=0\nwhile i<len(inp) and i<len(out) and inp[i]==out[i]: i+=1\nprint('input==output up to index',i)\nprint('out around:', out[i-15:i+15])\nprint('inp around:', inp[i-15:i+15])\n# egfp start in out\nprint('egfp in out at', out.find(egfp[:30]))\nprint('egfp[:30]',egfp[:30])\n\""
           },
@@ -497,7 +497,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\n# find divergence point input vs output from start\ni=0\nwhile i<len(inp) and i<len(out) and inp[i]==out[i]: i+=1\nprint('input==output up to index',i)\nprint('out around:', out[i-15:i+15])\nprint('inp around:', inp[i-15:i+15])\n# egfp start in out\nprint('egfp in out at', out.find(egfp[:30]))\nprint('egfp[:30]',egfp[:30])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -558,7 +558,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MV8r4KYmUp5XJ81Q7vCbEo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\n# egfp starts at out 210\nml=matchlen(out,210,egfp,0)\nprint('egfp matches out from 210 for',ml,'of',len(egfp))\nprint('egfp end region egfp[',ml-10,':]',egfp[ml-10:])\nprint('out at',210+ml,':',out[210+ml-10:210+ml+20])\n\""
           },
@@ -566,7 +566,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\n# egfp starts at out 210\nml=matchlen(out,210,egfp,0)\nprint('egfp matches out from 210 for',ml,'of',len(egfp))\nprint('egfp end region egfp[',ml-10,':]',egfp[ml-10:])\nprint('out at',210+ml,':',out[210+ml-10:210+ml+20])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -627,7 +627,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011mtxc3R98tRvgjKTStKyJ9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\n# flag: which offset matches out at 924?\nfor off in range(0,6):\n    print('flag off',off, matchlen(out,924,flag,off))\n\""
           },
@@ -635,7 +635,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\n# flag: which offset matches out at 924?\nfor off in range(0,6):\n    print('flag off',off, matchlen(out,924,flag,off))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -696,7 +696,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TqGEedNrsXVUFGbkZZ2bMF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\np=1008\nfor off in range(0,4):\n    print('snap off',off, matchlen(out,p,snap,off))\nml=matchlen(out,p,snap,0)\nprint('snap end: snap[',ml-6,':]',snap[ml-6:])\nprint('out at',p+ml,':',out[p+ml-6:p+ml+30])\n# now after snap, back to input backbone. Find where output rejoins input.\nprint('---backbone rejoin---')\nend=p+ml\n# input original gene region: input diverged at 214 (atc...). find input tail matching output tail\n# output tail matches input[-60:] at 3531 => out[3531:]=inp[-60:]. \n# find full rejoin\ni=len(inp)-1; j=len(out)-1\nn=0\nwhile inp[i]==out[j]: i-=1;j-=1;n+=1\nprint('input/output identical tail length',n)\nprint('rejoin out index', j+1, 'inp index', i+1)\nprint('out around rejoin:', out[j+1-15:j+1+15])\nprint('inp around rejoin:', inp[i+1-15:i+1+15])\n\""
           },
@@ -704,7 +704,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']\negfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef matchlen(a,astart,b,bstart):\n    n=0\n    while astart+n<len(a) and bstart+n<len(b) and a[astart+n]==b[bstart+n]: n+=1\n    return n\np=1008\nfor off in range(0,4):\n    print('snap off',off, matchlen(out,p,snap,off))\nml=matchlen(out,p,snap,0)\nprint('snap end: snap[',ml-6,':]',snap[ml-6:])\nprint('out at',p+ml,':',out[p+ml-6:p+ml+30])\n# now after snap, back to input backbone. Find where output rejoins input.\nprint('---backbone rejoin---')\nend=p+ml\n# input original gene region: input diverged at 214 (atc...). find input tail matching output tail\n# output tail matches input[-60:] at 3531 => out[3531:]=inp[-60:]. \n# find full rejoin\ni=len(inp)-1; j=len(out)-1\nn=0\nwhile inp[i]==out[j]: i-=1;j-=1;n+=1\nprint('input/output identical tail length',n)\nprint('rejoin out index', j+1, 'inp index', i+1)\nprint('out around rejoin:', out[j+1-15:j+1+15])\nprint('inp around rejoin:', inp[i+1-15:i+1+15])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -765,7 +765,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Kb9P3EvdU3vjnqkwnZfAdr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\nJ=[210,924,1008,1554]\nfor p in J:\n    print(p, 'window', out[p-4:p+8], 'overhang', out[p:p+4])\nprint('O1..O4:', [out[p:p+4] for p in J])\n# check palindrome / revcomp relations\nO=[out[p:p+4] for p in J]\nfor i,o in enumerate(O):\n    print(o,'rc',rc(o),'palindrome' if o==rc(o) else '')\n\""
           },
@@ -773,7 +773,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\nJ=[210,924,1008,1554]\nfor p in J:\n    print(p, 'window', out[p-4:p+8], 'overhang', out[p:p+4])\nprint('O1..O4:', [out[p:p+4] for p in J])\n# check palindrome / revcomp relations\nO=[out[p:p+4] for p in J]\nfor i,o in enumerate(O):\n    print(o,'rc',rc(o),'palindrome' if o==rc(o) else '')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -834,7 +834,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EDRjFLAkPLGcBeRrcCDLsh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nfor k,v in s.items():\n    print(k, 'ggtctc:',v.count('ggtctc'),'gagacc:',v.count('gagacc'))\n\""
           },
@@ -842,7 +842,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\nfor k,v in s.items():\n    print(k, 'ggtctc:',v.count('ggtctc'),'gagacc:',v.count('gagacc'))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -903,7 +903,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013xVHeDkxcrxuomahouWxs2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which oligotm primer3_core 2>/dev/null; echo \"---\"; pip show primer3-py 2>/dev/null | head -2; echo \"===\"; ls /usr/bin | grep -i prim; apt-cache policy primer3 2>/dev/null | head -3"
           },
@@ -911,7 +911,7 @@
             "raw_arguments": {
               "command": "which oligotm primer3_core 2>/dev/null; echo \"---\"; pip show primer3-py 2>/dev/null | head -2; echo \"===\"; ls /usr/bin | grep -i prim; apt-cache policy primer3 2>/dev/null | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -972,7 +972,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0177VK3tB5VqHNPhg6w7MwpY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y primer3 2>&1 | tail -3; echo \"===\"; which oligotm; dpkg -L primer3 2>/dev/null | grep -i oligotm"
           },
@@ -980,7 +980,7 @@
             "raw_arguments": {
               "command": "apt-get install -y primer3 2>&1 | tail -3; echo \"===\"; which oligotm; dpkg -L primer3 2>/dev/null | grep -i oligotm"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1041,7 +1041,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QJ1vJDUzGopcVsrC8vJhEM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "oligotm 2>&1 | head -30; echo \"==test==\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 ATGAGCAAGGGCGAGGAGCTGTTCACC"
           },
@@ -1049,7 +1049,7 @@
             "raw_arguments": {
               "command": "oligotm 2>&1 | head -30; echo \"==test==\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 ATGAGCAAGGGCGAGGAGCTGTTCACC"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1110,7 +1110,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WuQYvWuKRpQZ9bfpbYPDRi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/design.py <<'PY'\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n    r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\n\n# fragment annealing anchors: (name, fwd_template_from_start_func, rev_template_end_func)\n# fwd anneal = template[a: a+L]; rev anneal = rc(template[b-L: b])\nfrags={\n 'egfp':(egfp,0,714),\n 'flag':(flag,3,87),\n 'snap':(snap,3,549),\n 'input':(inp,690,210),  # rev end index 210 in inp; fwd start 690\n}\n# For input rev, template region is inp[210-L:210]; fwd inp[690:690+L]\ndef anneal_fwd(tmpl,a,L): return tmpl[a:a+L]\ndef anneal_rev(tmpl,b,L): return rc(tmpl[b-L:b])\n\nresults={}\nfor name,(tmpl,a,b) in frags.items():\n    # gather Tm by length\n    fwdTm={}; revTm={}\n    for L in range(15,37):\n        fwdTm[L]=tm(anneal_fwd(tmpl,a,L))\n        revTm[L]=tm(anneal_rev(tmpl,b,L))\n    # pick pair: both in [58,72], diff<=5, minimize diff then minimize max length\n    best=None\n    for Lf in range(15,37):\n        if not(58<=fwdTm[Lf]<=72): continue\n        for Lr in range(15,37):\n            if not(58<=revTm[Lr]<=72): continue\n            d=abs(fwdTm[Lf]-revTm[Lr])\n            if d>5: continue\n            score=(round(d,3),Lf+Lr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,fwdTm[Lf],revTm[Lr])\n    results[name]=best\n    print(name,'fwd L,Tm rev L,Tm diff:',best[1],round(best[3],2),best[2],round(best[4],2),round(abs(best[3]-best[4]),2))\njson.dump({k:(v[1],v[2]) for k,v in results.items()},open('/tmp/lens.json','w'))\nPY\npython3 /tmp/design.py"
           },
@@ -1118,7 +1118,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/design.py <<'PY'\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\nout=s['output']; inp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n    r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\n\n# fragment annealing anchors: (name, fwd_template_from_start_func, rev_template_end_func)\n# fwd anneal = template[a: a+L]; rev anneal = rc(template[b-L: b])\nfrags={\n 'egfp':(egfp,0,714),\n 'flag':(flag,3,87),\n 'snap':(snap,3,549),\n 'input':(inp,690,210),  # rev end index 210 in inp; fwd start 690\n}\n# For input rev, template region is inp[210-L:210]; fwd inp[690:690+L]\ndef anneal_fwd(tmpl,a,L): return tmpl[a:a+L]\ndef anneal_rev(tmpl,b,L): return rc(tmpl[b-L:b])\n\nresults={}\nfor name,(tmpl,a,b) in frags.items():\n    # gather Tm by length\n    fwdTm={}; revTm={}\n    for L in range(15,37):\n        fwdTm[L]=tm(anneal_fwd(tmpl,a,L))\n        revTm[L]=tm(anneal_rev(tmpl,b,L))\n    # pick pair: both in [58,72], diff<=5, minimize diff then minimize max length\n    best=None\n    for Lf in range(15,37):\n        if not(58<=fwdTm[Lf]<=72): continue\n        for Lr in range(15,37):\n            if not(58<=revTm[Lr]<=72): continue\n            d=abs(fwdTm[Lf]-revTm[Lr])\n            if d>5: continue\n            score=(round(d,3),Lf+Lr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,fwdTm[Lf],revTm[Lr])\n    results[name]=best\n    print(name,'fwd L,Tm rev L,Tm diff:',best[1],round(best[3],2),best[2],round(best[4],2),round(abs(best[3]-best[4]),2))\njson.dump({k:(v[1],v[2]) for k,v in results.items()},open('/tmp/lens.json','w'))\nPY\npython3 /tmp/design.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1179,7 +1179,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L4FDfG1sjJfniCbGWrmJv6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/design2.py <<'PY'\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n    r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\nfrags={'egfp':(egfp,0,714),'flag':(flag,3,87),'snap':(snap,3,549),'input':(inp,690,210)}\ndef af(t,a,L): return t[a:a+L]\ndef ar(t,b,L): return rc(t[b-L:b])\nres={}\nfor name,(t,a,b) in frags.items():\n    fT={L:tm(af(t,a,L)) for L in range(15,37)}\n    rT={L:tm(ar(t,b,L)) for L in range(15,37)}\n    best=None\n    for Lf in range(15,37):\n        if not(58<=fT[Lf]<=72):continue\n        for Lr in range(15,37):\n            if not(58<=rT[Lr]<=72):continue\n            if abs(fT[Lf]-rT[Lr])>5:continue\n            score=(round(max(abs(fT[Lf]-65),abs(rT[Lr]-65)),3),round(abs(fT[Lf]-rT[Lr]),3),Lf+Lr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,fT[Lf],rT[Lr])\n    res[name]=(best[1],best[2])\n    print(name,'Lf',best[1],round(best[3],2),'Lr',best[2],round(best[4],2),'diff',round(abs(best[3]-best[4]),2))\njson.dump(res,open('/tmp/lens.json','w'))\nPY\npython3 /tmp/design2.py"
           },
@@ -1187,7 +1187,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/design2.py <<'PY'\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input']; egfp=s['egfp']; flag=s['flag']; snap=s['snap']\ndef rc(x):\n    c={'a':'t','t':'a','g':'c','c':'g'}; return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n    r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True)\n    return float(r.stdout.strip())\nfrags={'egfp':(egfp,0,714),'flag':(flag,3,87),'snap':(snap,3,549),'input':(inp,690,210)}\ndef af(t,a,L): return t[a:a+L]\ndef ar(t,b,L): return rc(t[b-L:b])\nres={}\nfor name,(t,a,b) in frags.items():\n    fT={L:tm(af(t,a,L)) for L in range(15,37)}\n    rT={L:tm(ar(t,b,L)) for L in range(15,37)}\n    best=None\n    for Lf in range(15,37):\n        if not(58<=fT[Lf]<=72):continue\n        for Lr in range(15,37):\n            if not(58<=rT[Lr]<=72):continue\n            if abs(fT[Lf]-rT[Lr])>5:continue\n            score=(round(max(abs(fT[Lf]-65),abs(rT[Lr]-65)),3),round(abs(fT[Lf]-rT[Lr]),3),Lf+Lr)\n            if best is None or score<best[0]:\n                best=(score,Lf,Lr,fT[Lf],rT[Lr])\n    res[name]=(best[1],best[2])\n    print(name,'Lf',best[1],round(best[3],2),'Lr',best[2],round(best[4],2),'diff',round(abs(best[3]-best[4]),2))\njson.dump(res,open('/tmp/lens.json','w'))\nPY\npython3 /tmp/design2.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1329,7 +1329,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VZeWRHAQQQG7Uo5tqS8CmM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/build.py"
           },
@@ -1337,7 +1337,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1398,7 +1398,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011qvhBhxyKfPV92ECia3YSr",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1418,7 +1418,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1479,7 +1479,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JzMccaUBr5teEVv75mkg89",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/build.py"
           },
@@ -1487,7 +1487,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1548,7 +1548,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A3qCb1ZyC5H2oPk3UtRbRt",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1568,7 +1568,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1629,7 +1629,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WdtSGNZCVLueLR8xsKiBWr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/build.py"
           },
@@ -1637,7 +1637,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1698,7 +1698,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01754MsEsxyvpZfFkyS13f6W",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1718,7 +1718,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1779,7 +1779,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016K3PjQ1oPy7n6gQ64HtMxj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/build.py"
           },
@@ -1787,7 +1787,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1848,7 +1848,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SGnMByNJzXXuRhdddi6spt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\np=json.load(open('/tmp/primers.json'))\norder=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nlines=[]\nfor k in order:\n    lines.append('>'+k)\n    lines.append(p[k].upper())\nopen('primers.fasta','w').write('\\n'.join(lines)+'\\n')\nprint(open('primers.fasta').read())\n\""
           },
@@ -1856,7 +1856,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\np=json.load(open('/tmp/primers.json'))\norder=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nlines=[]\nfor k in order:\n    lines.append('>'+k)\n    lines.append(p[k].upper())\nopen('primers.fasta','w').write('\\n'.join(lines)+'\\n')\nprint(open('primers.fasta').read())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1917,7 +1917,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U75r3Rp2Z8RzzcmXdk7zNw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\n# fwd: char just 5' of annealing start in template (template[start-1]) vs N1='a'\nprint('N1=a. fwd boundary template[start-1]:')\nprint('egfp',egfp[-1] if 0==0 else '', 'start0 prev=NA(start)')\nprint('flag prev(flag[2])',flag[2])\nprint('snap prev(snap[2])',snap[2])\nprint('input prev(inp[689])',inp[689])\n# rev: overhang rc(ro) 3'-most char adjacency: template continues? annealing is rc(template[b-L:b]); the tail rc(ro) sits 5'. On template side, char just past b (template[b]) vs ro[0]?\n# For rev primer, 3' end anneals template[b-L:b]. The 5' extension is rc(ro). In genomic terms, the nt just beyond fragment 3' end on template is template[b]. rc(ro) first templated? ro=downstream frag first4, template[b] is this frag's own next nt.\nfor name,t,b,ro in [('egfp',egfp,714,'ggta'),('flag',flag,87,'gaca'),('snap',snap,549,'tgag'),('input',inp,210,'atga')]:\n    nextnt = t[b] if b<len(t) else 'END'\n    print('rev',name,'template[b]=',nextnt,'ro[0]=',ro[0], 'match-extend?' , (nextnt==ro[0]))\n\""
           },
@@ -1925,7 +1925,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\n# fwd: char just 5' of annealing start in template (template[start-1]) vs N1='a'\nprint('N1=a. fwd boundary template[start-1]:')\nprint('egfp',egfp[-1] if 0==0 else '', 'start0 prev=NA(start)')\nprint('flag prev(flag[2])',flag[2])\nprint('snap prev(snap[2])',snap[2])\nprint('input prev(inp[689])',inp[689])\n# rev: overhang rc(ro) 3'-most char adjacency: template continues? annealing is rc(template[b-L:b]); the tail rc(ro) sits 5'. On template side, char just past b (template[b]) vs ro[0]?\n# For rev primer, 3' end anneals template[b-L:b]. The 5' extension is rc(ro). In genomic terms, the nt just beyond fragment 3' end on template is template[b]. rc(ro) first templated? ro=downstream frag first4, template[b] is this frag's own next nt.\nfor name,t,b,ro in [('egfp',egfp,714,'ggta'),('flag',flag,87,'gaca'),('snap',snap,549,'tgag'),('input',inp,210,'atga')]:\n    nextnt = t[b] if b<len(t) else 'END'\n    print('rev',name,'template[b]=',nextnt,'ro[0]=',ro[0], 'match-extend?' , (nextnt==ro[0]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1986,7 +1986,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AcCAb7Sj2aDSfZuZRwubJX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True);return float(r.stdout.strip())\ntmpl={'input':inp,'egfp':egfp,'flag':flag,'snap':snap}\n# build circular template concatenation for matching (fwd matches top strand, rev matches revcomp)\np=json.load(open('/tmp/primers.json'))\ndef maxanneal(primer, tstrand):\n    # circular tstrand: find max 3'-anchored suffix of primer present in tstrand (and its wrap)\n    circ=tstrand+tstrand\n    best=0\n    for L in range(len(primer),0,-1):\n        suf=primer[-L:]\n        if suf in circ:\n            best=L;break\n    return best\nfor name in ['input','egfp','flag','snap']:\n    t=tmpl[name]\n    f=p[name+'_fwd']; r=p[name+'_rev']\n    Lf=maxanneal(f,t); Lr=maxanneal(r,rc(t))\n    af=f[-Lf:]; ar=r[-Lr:]\n    print(name,'fwd anneal',Lf,round(tm(af),2),'|rev anneal',Lr,round(tm(ar),2),'diff',round(abs(tm(af)-tm(ar)),2))\n\""
           },
@@ -1994,7 +1994,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True);return float(r.stdout.strip())\ntmpl={'input':inp,'egfp':egfp,'flag':flag,'snap':snap}\n# build circular template concatenation for matching (fwd matches top strand, rev matches revcomp)\np=json.load(open('/tmp/primers.json'))\ndef maxanneal(primer, tstrand):\n    # circular tstrand: find max 3'-anchored suffix of primer present in tstrand (and its wrap)\n    circ=tstrand+tstrand\n    best=0\n    for L in range(len(primer),0,-1):\n        suf=primer[-L:]\n        if suf in circ:\n            best=L;break\n    return best\nfor name in ['input','egfp','flag','snap']:\n    t=tmpl[name]\n    f=p[name+'_fwd']; r=p[name+'_rev']\n    Lf=maxanneal(f,t); Lr=maxanneal(r,rc(t))\n    af=f[-Lf:]; ar=r[-Lr:]\n    print(name,'fwd anneal',Lf,round(tm(af),2),'|rev anneal',Lr,round(tm(ar),2),'diff',round(abs(tm(af)-tm(ar)),2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2055,7 +2055,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017mnLjFKSGHSWSz5KymzvFF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2075,7 +2075,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2136,7 +2136,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LoSVzijAXWY8dgHSin1TgT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/build.py 2>&1 | tail -3 && python3 -c \"\nimport json\np=json.load(open('/tmp/primers.json'))\norder=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nopen('primers.fasta','w').write('\\n'.join('>'+k+'\\n'+p[k].upper() for k in order)+'\\n')\nprint(open('primers.fasta').read())\n\""
           },
@@ -2144,7 +2144,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/build.py 2>&1 | tail -3 && python3 -c \"\nimport json\np=json.load(open('/tmp/primers.json'))\norder=['input_fwd','input_rev','egfp_fwd','egfp_rev','flag_fwd','flag_rev','snap_fwd','snap_rev']\nopen('primers.fasta','w').write('\\n'.join('>'+k+'\\n'+p[k].upper() for k in order)+'\\n')\nprint(open('primers.fasta').read())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2205,7 +2205,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0119dEnu17Htf6SXerkRfhds",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True);return float(r.stdout.strip())\ntmpl={'input':(inp,True),'egfp':(egfp,False),'flag':(flag,False),'snap':(snap,False)}\ndef maxanneal(primer,t,circ):\n    space=(t+t) if circ else t\n    for L in range(len(primer),0,-1):\n        if primer[-L:] in space: return L\n    return 0\np=json.load(open('/tmp/primers.json'))\nallok=True\nfor name,(t,circ) in tmpl.items():\n    for d,strand in [('fwd',t),('rev',rc(t))]:\n        pr=p[name+'_'+d]\n        L=maxanneal(pr,strand,circ); a=pr[-L:]; T=tm(a)\n        inr=58<=T<=72 and 15<=L<=45\n        allok&=inr\n        print(name,d,'len',L,'Tm',round(T,2),'' if inr else 'OUT')\nprint('ALL PASS(maximal-match interp):',allok)\nprint('lengths of full primers:',{k:len(v) for k,v in p.items()})\n\""
           },
@@ -2213,7 +2213,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport json,subprocess\ns=json.load(open('/tmp/seqs.json'))\ninp=s['input'];egfp=s['egfp'];flag=s['flag'];snap=s['snap']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\ndef tm(seq):\n r=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',seq.upper()],capture_output=True,text=True);return float(r.stdout.strip())\ntmpl={'input':(inp,True),'egfp':(egfp,False),'flag':(flag,False),'snap':(snap,False)}\ndef maxanneal(primer,t,circ):\n    space=(t+t) if circ else t\n    for L in range(len(primer),0,-1):\n        if primer[-L:] in space: return L\n    return 0\np=json.load(open('/tmp/primers.json'))\nallok=True\nfor name,(t,circ) in tmpl.items():\n    for d,strand in [('fwd',t),('rev',rc(t))]:\n        pr=p[name+'_'+d]\n        L=maxanneal(pr,strand,circ); a=pr[-L:]; T=tm(a)\n        inr=58<=T<=72 and 15<=L<=45\n        allok&=inr\n        print(name,d,'len',L,'Tm',round(T,2),'' if inr else 'OUT')\nprint('ALL PASS(maximal-match interp):',allok)\nprint('lengths of full primers:',{k:len(v) for k,v in p.items()})\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2274,7 +2274,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UYvthLUYjaxsWBkSo12hWx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"blank lines:\" $(grep -c '^$' primers.fasta); echo \"records:\" $(grep -c '^>' primers.fasta); echo \"overhangs distinct/non-palindrome check:\"; python3 -c \"\nO=['atga','ggta','gaca','tgag']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\nprint('set size',len(set(O)),'palindromes',[o for o in O if o==rc(o)],'rc-collisions',[(a,b) for a in O for b in O if a!=b and a==rc(b)])\n\"; echo \"---file---\"; cat primers.fasta"
           },
@@ -2282,7 +2282,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"blank lines:\" $(grep -c '^$' primers.fasta); echo \"records:\" $(grep -c '^>' primers.fasta); echo \"overhangs distinct/non-palindrome check:\"; python3 -c \"\nO=['atga','ggta','gaca','tgag']\ndef rc(x):\n c={'a':'t','t':'a','g':'c','c':'g'};return ''.join(c[b] for b in reversed(x))\nprint('set size',len(set(O)),'palindromes',[o for o in O if o==rc(o)],'rc-collisions',[(a,b) for a in O for b in O if a!=b and a==rc(b)])\n\"; echo \"---file---\"; cat primers.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2398,7 +2398,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015FsPpc3YTrGnd6xAyLCuj7",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2418,7 +2418,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2479,7 +2479,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011hYzfcT4YYcab3UE5eYury",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/verify.py"
           },
@@ -2487,7 +2487,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2548,7 +2548,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011PXL9ga1PSDQdip5aAHS8B",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2568,7 +2568,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2629,7 +2629,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LX5nMUUndvyZjzTLGMTPxf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/verify.py"
           },
@@ -2637,7 +2637,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2698,7 +2698,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018NAQMVZyCuKpSMuGeshFyG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2718,7 +2718,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2779,7 +2779,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UkLxrXQHrYYuhYrGjyV1jS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/verify.py"
           },
@@ -2787,7 +2787,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

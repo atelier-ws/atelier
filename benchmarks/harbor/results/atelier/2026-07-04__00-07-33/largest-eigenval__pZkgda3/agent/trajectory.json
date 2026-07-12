@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4AbTthGJVYB5okL8wTzee",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/eigen.py",
@@ -47,7 +47,7 @@
                 "/app/eval.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ad9oQVM7pqCAoDZNBMHJaF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -128,7 +128,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -189,7 +189,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GWhwtfzNVwAzpzCF6CQAht",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python eval.py"
           },
@@ -197,7 +197,7 @@
             "raw_arguments": {
               "command": "cd /app && python eval.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -258,7 +258,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FzeAqqsydHXg3yL3ytTioC",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -278,7 +278,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -339,7 +339,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FqXHFYZMxt6jZ1AZKCiM6k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python eval.py"
           },
@@ -347,7 +347,7 @@
             "raw_arguments": {
               "command": "cd /app && python eval.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -408,7 +408,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q2ej7s6gmVKDhkxJp92T2Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages scipy 2>&1 | tail -3"
           },
@@ -416,7 +416,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages scipy 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -477,7 +477,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TBeEAHYm9f8rHwYx4EAR9d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages scipy 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip 2>&1 | tail -2 && pip install --break-system-packages scipy 2>&1 | tail -5)"
           },
@@ -485,7 +485,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages scipy 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip 2>&1 | tail -2 && pip install --break-system-packages scipy 2>&1 | tail -5)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -546,7 +546,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018W46vJg375ygedc29w47NP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python eval.py"
           },
@@ -554,7 +554,7 @@
             "raw_arguments": {
               "command": "cd /app && python eval.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -615,7 +615,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016KT2LM9nGuLfHyFz9KZn8k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"\nimport numpy as np\nfrom eigen import find_dominant_eigenvalue_and_eigenvector as f\nnp.random.seed(0)\nbad=0\nfor t in range(20000):\n    n=np.random.randint(2,11)\n    A=np.random.normal(size=(n,n)).astype(np.float64)\n    if t%5==0: A=A@A.T  # symmetric real case\n    l,v=f(A)\n    if np.allclose(v,0) or np.isnan(l) or np.isinf(l) or not np.allclose(A@v, l*v):\n        bad+=1\n        if bad<5: print('FAIL',n)\n    # also confirm it is truly the dominant magnitude\n    ref=np.linalg.eigvals(A); \n    if not np.isclose(abs(l), np.max(np.abs(ref))): bad+=1\nprint('bad',bad)\n\""
           },
@@ -623,7 +623,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"\nimport numpy as np\nfrom eigen import find_dominant_eigenvalue_and_eigenvector as f\nnp.random.seed(0)\nbad=0\nfor t in range(20000):\n    n=np.random.randint(2,11)\n    A=np.random.normal(size=(n,n)).astype(np.float64)\n    if t%5==0: A=A@A.T  # symmetric real case\n    l,v=f(A)\n    if np.allclose(v,0) or np.isnan(l) or np.isinf(l) or not np.allclose(A@v, l*v):\n        bad+=1\n        if bad<5: print('FAIL',n)\n    # also confirm it is truly the dominant magnitude\n    ref=np.linalg.eigvals(A); \n    if not np.isclose(abs(l), np.max(np.abs(ref))): bad+=1\nprint('bad',bad)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -739,7 +739,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QTakcPPayhzucmxAHjENHc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python eval.py"
           },
@@ -747,7 +747,7 @@
             "raw_arguments": {
               "command": "cd /app && python eval.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

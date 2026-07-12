@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WV3EPChZy2HpuQA9Nvf61J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; python3 -c \"import mobile_sam; print('mobile_sam OK', mobile_sam.__file__)\"; echo \"---\"; head -c 800 /app/demo_metadata.csv"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; python3 -c \"import mobile_sam; print('mobile_sam OK', mobile_sam.__file__)\"; echo \"---\"; head -c 800 /app/demo_metadata.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01EXZacErbYyP8oMtUcgUvN9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv'); print(df.columns.tolist()); print(df.shape); print(df.iloc[0].to_dict())\""
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv'); print(df.columns.tolist()); print(df.shape); print(df.iloc[0].to_dict())\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A9Dxm6wcHmKfWRauFoWU3k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; which pip pip3 uv; python3 -c \"import torch\" 2>&1 | head -1; python3 -c \"import cv2\" 2>&1 | head -1; python3 -c \"import numpy\" 2>&1 | head -1"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "python3 --version; which pip pip3 uv; python3 -c \"import torch\" 2>&1 | head -1; python3 -c \"import cv2\" 2>&1 | head -1; python3 -c \"import numpy\" 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pj2NvZ4PWbiWS6AcmLudao",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -20"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011Q6HKp4XUZrE3gn4hGpBZy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages uv 2>&1 | tail -5; which uv"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages uv 2>&1 | tail -5; which uv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UZRZFDmKhmLzXarCs7FwZh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -25"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "cd /app && uv pip install --system --break-system-packages numpy pandas torch torchvision opencv-python-headless Pillow tqdm timm 2>&1 | tail -25"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013LqmFJ2WPH9HmEAhBNsELg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && uv pip install --system --break-system-packages \"git+https://github.com/ChaoningZhang/MobileSAM.git\" 2>&1 | tail -15"
           },
@@ -403,7 +403,7 @@
             "raw_arguments": {
               "command": "cd /tmp && uv pip install --system --break-system-packages \"git+https://github.com/ChaoningZhang/MobileSAM.git\" 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,7 +464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YKwhvnMpbQjHDsFixHsHa9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && git clone --depth 1 https://github.com/ChaoningZhang/MobileSAM.git 2>&1 | tail -3; ls -la /tmp/MobileSAM/weights/"
           },
@@ -472,7 +472,7 @@
             "raw_arguments": {
               "command": "cd /tmp && git clone --depth 1 https://github.com/ChaoningZhang/MobileSAM.git 2>&1 | tail -3; ls -la /tmp/MobileSAM/weights/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -533,7 +533,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DnG3zYRVn6qDviKdaJL4pD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import mobile_sam, os; print(os.path.dirname(mobile_sam.__file__)); print([x for x in dir(mobile_sam) if not x.startswith('_')]); from mobile_sam import sam_model_registry; print(list(sam_model_registry.keys()))\""
           },
@@ -541,7 +541,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import mobile_sam, os; print(os.path.dirname(mobile_sam.__file__)); print([x for x in dir(mobile_sam) if not x.startswith('_')]); from mobile_sam import sam_model_registry; print(list(sam_model_registry.keys()))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -602,7 +602,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XpWLdwea8Quh8hP7rUqe3V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\nimg=cv2.imread('demo_rgb.png')\nprint('shape',img.shape,'dtype',img.dtype)\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint('rows',len(df))\nprint('types',df['type'].value_counts().to_dict())\nprint('bbox ranges x',df.xmin.min(),df.xmax.max(),'y',df.ymin.min(),df.ymax.max())\n\" 2>&1 | grep -v Warning | grep -v warn"
           },
@@ -610,7 +610,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\nimg=cv2.imread('demo_rgb.png')\nprint('shape',img.shape,'dtype',img.dtype)\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nprint('rows',len(df))\nprint('types',df['type'].value_counts().to_dict())\nprint('bbox ranges x',df.xmin.min(),df.xmax.max(),'y',df.ymin.min(),df.ymax.max())\n\" 2>&1 | grep -v Warning | grep -v warn"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -671,7 +671,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QhoTwztKMeyhciDGy1RX7D",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -691,7 +691,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -752,7 +752,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013kXLu8Hkf5BZ2Eamr4V46u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | grep -vi \"warn(\" | tail -15"
           },
@@ -760,7 +760,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -vi warning | grep -vi \"warn(\" | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -821,7 +821,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018aPyG5NPu2P54NCxoMexAc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nprint('cols match:', list(df.columns))\nprint('types:', df['type'].value_counts().to_dict())\nocc=np.zeros((H,W),dtype=np.int32)\noverlap=0; noncontig=0; rect=0; empty=0\nfor i,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    m=np.zeros((H,W),dtype=np.uint8)\n    cv2.fillPoly(m,[np.array(list(zip(xs,ys)),dtype=np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m); \n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum())\n    occ[m>0]+=1\n    # rectangle check: only 4 unique corners\n    pts=set(zip(xs,ys))\n    if len(pts)<=4: rect+=1\n    # bbox consistency\nprint('total overlap px:', overlap)\nprint('noncontiguous masks:', noncontig)\nprint('empty masks:', empty)\nprint('rectangle-like (<=4 pts):', rect)\nprint('max overlap count:', occ.max())\nr=df.iloc[0]; print('row0 coords_x:', r['coords_x'][:80])\nprint('bbox row0:', r['xmin'],r['ymin'],r['xmax'],r['ymax'])\n\""
           },
@@ -829,7 +829,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndf=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nprint('cols match:', list(df.columns))\nprint('types:', df['type'].value_counts().to_dict())\nocc=np.zeros((H,W),dtype=np.int32)\noverlap=0; noncontig=0; rect=0; empty=0\nfor i,r in df.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    m=np.zeros((H,W),dtype=np.uint8)\n    cv2.fillPoly(m,[np.array(list(zip(xs,ys)),dtype=np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m); \n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum())\n    occ[m>0]+=1\n    # rectangle check: only 4 unique corners\n    pts=set(zip(xs,ys))\n    if len(pts)<=4: rect+=1\n    # bbox consistency\nprint('total overlap px:', overlap)\nprint('noncontiguous masks:', noncontig)\nprint('empty masks:', empty)\nprint('rectangle-like (<=4 pts):', rect)\nprint('max overlap count:', occ.max())\nr=df.iloc[0]; print('row0 coords_x:', r['coords_x'][:80])\nprint('bbox row0:', r['xmin'],r['ymin'],r['xmax'],r['ymax'])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -890,7 +890,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EGBMF9m9oKKUS35RUHM8yK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport time,numpy as np,cv2,torch\ntorch.set_grad_enabled(False)\nfrom mobile_sam import SamPredictor, sam_model_registry\nm=sam_model_registry['vit_t'](checkpoint='/tmp/MobileSAM/weights/mobile_sam.pt'); m.to('cpu'); m.eval()\np=SamPredictor(m)\nimg=cv2.cvtColor(cv2.imread('demo_rgb.png'),cv2.COLOR_BGR2RGB)\nt=time.time(); p.set_image(img); print('set_image',round(time.time()-t,2))\nt=time.time()\nfor _ in range(5):\n    p.predict(point_coords=np.array([[100,100]],dtype=np.float32),point_labels=np.array([1]),box=np.array([50,50,150,150],dtype=np.float32),multimask_output=True)\nprint('predict avg',round((time.time()-t)/5,3))\n\" 2>&1 | grep -Ev 'warn|register|Warning'"
           },
@@ -898,7 +898,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport time,numpy as np,cv2,torch\ntorch.set_grad_enabled(False)\nfrom mobile_sam import SamPredictor, sam_model_registry\nm=sam_model_registry['vit_t'](checkpoint='/tmp/MobileSAM/weights/mobile_sam.pt'); m.to('cpu'); m.eval()\np=SamPredictor(m)\nimg=cv2.cvtColor(cv2.imread('demo_rgb.png'),cv2.COLOR_BGR2RGB)\nt=time.time(); p.set_image(img); print('set_image',round(time.time()-t,2))\nt=time.time()\nfor _ in range(5):\n    p.predict(point_coords=np.array([[100,100]],dtype=np.float32),point_labels=np.array([1]),box=np.array([50,50,150,150],dtype=np.float32),multimask_output=True)\nprint('predict avg',round((time.time()-t)/5,3))\n\" 2>&1 | grep -Ev 'warn|register|Warning'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -959,7 +959,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016zisjL2yF8kkp5uTeExBZ2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport time,numpy as np,cv2,torch\ntorch.set_grad_enabled(False)\nprint('threads',torch.get_num_threads())\nfrom mobile_sam import SamPredictor, sam_model_registry\nm=sam_model_registry['vit_t'](checkpoint='/tmp/MobileSAM/weights/mobile_sam.pt'); m.to('cpu'); m.eval()\np=SamPredictor(m)\nimg=cv2.cvtColor(cv2.imread('demo_rgb.png'),cv2.COLOR_BGR2RGB)\np.set_image(img)\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nboxes=df[['xmin','ymin','xmax','ymax']].values.astype(np.float32)\nbt=torch.as_tensor(boxes)\ntb=p.transform.apply_boxes_torch(bt,img.shape[:2])\nt=time.time()\nmasks,scores,_=p.predict_torch(point_coords=None,point_labels=None,boxes=tb,multimask_output=True)\nprint('batch48 predict_torch',round(time.time()-t,2),'masks',masks.shape,'scores',scores.shape)\n\" 2>&1 | grep -Ev 'warn|register|Warning'"
           },
@@ -967,7 +967,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport time,numpy as np,cv2,torch\ntorch.set_grad_enabled(False)\nprint('threads',torch.get_num_threads())\nfrom mobile_sam import SamPredictor, sam_model_registry\nm=sam_model_registry['vit_t'](checkpoint='/tmp/MobileSAM/weights/mobile_sam.pt'); m.to('cpu'); m.eval()\np=SamPredictor(m)\nimg=cv2.cvtColor(cv2.imread('demo_rgb.png'),cv2.COLOR_BGR2RGB)\np.set_image(img)\nimport pandas as pd\ndf=pd.read_csv('demo_metadata.csv')\nboxes=df[['xmin','ymin','xmax','ymax']].values.astype(np.float32)\nbt=torch.as_tensor(boxes)\ntb=p.transform.apply_boxes_torch(bt,img.shape[:2])\nt=time.time()\nmasks,scores,_=p.predict_torch(point_coords=None,point_labels=None,boxes=tb,multimask_output=True)\nprint('batch48 predict_torch',round(time.time()-t,2),'masks',masks.shape,'scores',scores.shape)\n\" 2>&1 | grep -Ev 'warn|register|Warning'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1028,7 +1028,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HWwTp18cKJZ4FzvzZhvENK",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1048,7 +1048,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1121,7 +1121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A6jotC1u6w4CCU6BYWrxR6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:L1-L20"
@@ -1133,7 +1133,7 @@
                 "/app/convert_masks.py:L1-L20"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1194,7 +1194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BgKvYvdB5rchWXAbAxSqS9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1214,7 +1214,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1287,7 +1287,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015hLVTN2FTegUdY7SPbzPB6",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:expand"
@@ -1299,7 +1299,7 @@
                 "/app/convert_masks.py:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1360,7 +1360,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W3sbFnLc4FNSdFtju2x2RD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1380,7 +1380,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1453,7 +1453,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018jYuedxXS5k6AMNqhYBAio",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "predict_cell_mask run_sam main convert_masks",
             "paths": "/app/convert_masks.py"
@@ -1463,7 +1463,7 @@
               "query": "predict_cell_mask run_sam main convert_masks",
               "paths": "/app/convert_masks.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1524,7 +1524,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XbRaeE8sjkN57Sv1nJvTwm",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1576,7 +1576,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1649,7 +1649,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017HvV1iDL9FAdPCy8witkX2",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:L66-L86"
@@ -1661,7 +1661,7 @@
                 "/app/convert_masks.py:L66-L86"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1722,7 +1722,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TiWNwPLSWEq8MzJx1D3sa9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1772,7 +1772,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1845,7 +1845,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WCs5X9UGeW3HDyG9BqcBdJ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:L18-L22"
@@ -1857,12 +1857,12 @@
                 "/app/convert_masks.py:L18-L22"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_019ti6L9PqYz2BFdQFBXEuHR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1882,7 +1882,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1959,7 +1959,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bo4kbpwrrGTuq6frB1ZV9E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"predict_cell_mask\\|BOX_PAD\\|def main\" /app/convert_masks.py"
           },
@@ -1967,7 +1967,7 @@
             "raw_arguments": {
               "command": "grep -n \"predict_cell_mask\\|BOX_PAD\\|def main\" /app/convert_masks.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2028,7 +2028,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015qivoJbGsijQb5Bf7TrEwT",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2048,7 +2048,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2121,7 +2121,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AHpVK94pBLTvDYU8kN4t63",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:expand"
@@ -2135,7 +2135,7 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2196,7 +2196,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T437T9JcnRGwWPjJpg2sPp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2216,7 +2216,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2289,7 +2289,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0153ysbHFXDMWjziLSP4s5J1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2309,7 +2309,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2382,7 +2382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MrjDWu2HMfL3VLeFV7RyAP",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "symbol": "predict_cell_mask"
           },
@@ -2390,7 +2390,7 @@
             "raw_arguments": {
               "symbol": "predict_cell_mask"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
@@ -2484,7 +2484,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01122SfvbzFoHBeReRB3WkH9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2504,7 +2504,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2565,7 +2565,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MjN7zsbNMKyPNbh4hrDdnQ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "symbol": [
               "predict_cell_mask",
@@ -2581,7 +2581,7 @@
                 "main"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2642,7 +2642,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EkQZ5ri2nYtjW9BUDMc2Q3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2682,7 +2682,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2743,7 +2743,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TobC65f3qzWC4eSjbdrLRo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && time python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -Ev 'warn|register|Warning|it/s|it\\]' | tail -5"
           },
@@ -2751,7 +2751,7 @@
             "raw_arguments": {
               "command": "cd /app && time python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -Ev 'warn|register|Warning|it/s|it\\]' | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2812,7 +2812,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HphfUnkbvQunUoNiibQinv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nassert list(di.columns)==list(do.columns), 'columns differ'\nassert len(di)==len(do), 'row count differ'\nprint('rows',len(do),'types',do['type'].value_counts().to_dict())\nocc=np.zeros((H,W),dtype=np.int32)\noverlap=0; noncontig=0; rect=0; empty=0; bad=0\nfor i,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),dtype=np.uint8)\n    cv2.fillPoly(m,[np.array(list(zip(xs,ys)),dtype=np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum())\n    occ[m>0]+=1\n    if int(min(xs))!=r['xmin'] or int(max(xs))!=r['xmax'] or int(min(ys))!=r['ymin'] or int(max(ys))!=r['ymax']: bad+=1\nprint('overlap px',overlap,'max stack',occ.max())\nprint('noncontig',noncontig,'empty',empty,'rect(<=4pts)',rect,'bbox_mismatch',bad)\n\""
           },
@@ -2820,7 +2820,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nassert list(di.columns)==list(do.columns), 'columns differ'\nassert len(di)==len(do), 'row count differ'\nprint('rows',len(do),'types',do['type'].value_counts().to_dict())\nocc=np.zeros((H,W),dtype=np.int32)\noverlap=0; noncontig=0; rect=0; empty=0; bad=0\nfor i,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]\n    ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),dtype=np.uint8)\n    cv2.fillPoly(m,[np.array(list(zip(xs,ys)),dtype=np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum())\n    occ[m>0]+=1\n    if int(min(xs))!=r['xmin'] or int(max(xs))!=r['xmax'] or int(min(ys))!=r['ymin'] or int(max(ys))!=r['ymax']: bad+=1\nprint('overlap px',overlap,'max stack',occ.max())\nprint('noncontig',noncontig,'empty',empty,'rect(<=4pts)',rect,'bbox_mismatch',bad)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2881,7 +2881,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012prjrieurhHLqsJc8v12g1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && head -1 demo_metadata.csv; echo \"---OUT---\"; head -1 /tmp/out.csv; echo \"---rows---\"; sed -n '2p' /tmp/out.csv | cut -c1-120"
           },
@@ -2889,7 +2889,7 @@
             "raw_arguments": {
               "command": "cd /app && head -1 demo_metadata.csv; echo \"---OUT---\"; head -1 /tmp/out.csv; echo \"---rows---\"; sed -n '2p' /tmp/out.csv | cut -c1-120"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2950,7 +2950,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XdXZNtSrf2Ff5UuMWsVS17",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfor f in ['demo_metadata.csv','/tmp/out.csv']:\n    with open(f) as fh:\n        print(repr(fh.readline()))\n\""
           },
@@ -2958,7 +2958,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfor f in ['demo_metadata.csv','/tmp/out.csv']:\n    with open(f) as fh:\n        print(repr(fh.readline()))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3019,7 +3019,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pw5Qym2GLXrtufQaiRRD8u",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "symbol": "main"
           },
@@ -3027,7 +3027,7 @@
             "raw_arguments": {
               "symbol": "main"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3088,7 +3088,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FngWFEn8BuBWvHKyeawCVQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -3108,7 +3108,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -3169,7 +3169,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WCwjLszTDPktvn7E5eTeos",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -Ev 'warn|register|Warning|it/s|it\\]|it,' | tail -3\necho \"=== header check ===\"\npython3 -c \"\nfor f in ['demo_metadata.csv','/tmp/out.csv']:\n    print(repr(open(f).readline()))\n\""
           },
@@ -3177,7 +3177,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | grep -Ev 'warn|register|Warning|it/s|it\\]|it,' | tail -3\necho \"=== header check ===\"\npython3 -c \"\nfor f in ['demo_metadata.csv','/tmp/out.csv']:\n    print(repr(open(f).readline()))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3238,7 +3238,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017pymtQCnQgz2D3Tst1LdiY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nassert list(di.columns)==list(do.columns)\nassert len(di)==len(do)\nocc=np.zeros((H,W),np.int32); overlap=noncontig=rect=empty=bad=0\nfor i,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]; ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum()); occ[m>0]+=1\n    if (int(min(xs)),int(max(xs)),int(min(ys)),int(max(ys)))!=(r['xmin'],r['xmax'],r['ymin'],r['ymax']): bad+=1\nprint('rows',len(do),'| all polyline:',(do.type=='polyline').all())\nprint('overlap_px',overlap,'| noncontig',noncontig,'| empty',empty,'| rect<=4pts',rect,'| bbox_mismatch',bad)\n\""
           },
@@ -3246,7 +3246,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nassert list(di.columns)==list(do.columns)\nassert len(di)==len(do)\nocc=np.zeros((H,W),np.int32); overlap=noncontig=rect=empty=bad=0\nfor i,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]; ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum()); occ[m>0]+=1\n    if (int(min(xs)),int(max(xs)),int(min(ys)),int(max(ys)))!=(r['xmin'],r['xmax'],r['ymin'],r['ymax']): bad+=1\nprint('rows',len(do),'| all polyline:',(do.type=='polyline').all())\nprint('overlap_px',overlap,'| noncontig',noncontig,'| empty',empty,'| rect<=4pts',rect,'| bbox_mismatch',bad)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3307,7 +3307,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BspFPcskcRESvA3567ohJT",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/convert_masks.py:expand"
@@ -3319,7 +3319,7 @@
                 "/app/convert_masks.py:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3435,7 +3435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NsJeVa79SPbsmXhZgNpxyN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; find / -name \"test_*.py\" -o -name \"*_test.py\" 2>/dev/null | grep -iv site-packages | grep -iv dist-packages | head; echo \"--- pytest? ---\"; python3 -c \"import pytest; print(pytest.__version__)\" 2>&1 | head -1"
           },
@@ -3443,7 +3443,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; find / -name \"test_*.py\" -o -name \"*_test.py\" 2>/dev/null | grep -iv site-packages | grep -iv dist-packages | head; echo \"--- pytest? ---\"; python3 -c \"import pytest; print(pytest.__version__)\" 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3451,7 +3451,7 @@
         "results": [
           {
             "source_call_id": "toolu_01NsJeVa79SPbsmXhZgNpxyN",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/test_utils.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/annotated_types/test_cases.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_base.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_example.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_pack.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_stream.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_util.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_contextvars.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_cpp.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_extension_interface.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_gc.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator_nested.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet_trash.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_interpreter_shutdown.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_leaks.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_stack_saved.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_throw.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_tracing.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_version.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_weakref.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_cli.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_deprecations.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_exceptions.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_format.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_jsonschema_test_suite.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_types.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_utils.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_validators.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/typing/test_all_concrete_validators_match_protocol.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema_specifications/tests/test_jsonschema_specifications.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/litellm/integrations/test_httpx.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/test_eval.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_diff_helper.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_parse_data.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_update_data.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_config_parser.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_diff_cache.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_find_sources.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_nativeparse.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_ref_info.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_alwaysdefined.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_analysis.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_annotate.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_capsule_deps.py\\natelier/.claude/worktrees/agent-a82f\\n...[summary clipped; full output is in spill]...\\nerators/tests/test_lattice.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_line.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_mycielski.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_nonisomorphic_trees.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_random_clustered.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_random_graphs.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_small.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_spectral_graph_forge.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_stochastic.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_sudoku.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_time_series.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_trees.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_triads.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_algebraic_connectivity.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_attrmatrix.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_bethehessian.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_graphmatrix.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_laplacian.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_modularity.py\\n... (21578 more)\\n\\n[full output (39495B) spilled to /tmp/atelier-spill/tool_output-bash-1783146305228-52c87d8a.txt; read /tmp/atelier-spill/tool_output-bash-1783146305228-52c87d8a.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/aiohttp/test_utils.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/annotated_types/test_cases.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_base.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_example.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_pack.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_stream.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/gitdb/test/test_util.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_contextvars.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_cpp.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_extension_interface.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_gc.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_generator_nested.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_greenlet_trash.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_interpreter_shutdown.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_leaks.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_stack_saved.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_throw.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_tracing.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_version.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/greenlet/tests/test_weakref.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_cli.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_deprecations.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_exceptions.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_format.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_jsonschema_test_suite.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_types.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_utils.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/test_validators.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema/tests/typing/test_all_concrete_validators_match_protocol.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/jsonschema_specifications/tests/test_jsonschema_specifications.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/litellm/integrations/test_httpx.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/test_eval.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_diff_helper.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_parse_data.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/meta/test_update_data.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_config_parser.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_diff_cache.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_find_sources.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_nativeparse.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/test_ref_info.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_alwaysdefined.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_analysis.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_annotate.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypyc/test/test_capsule_deps.py\\nlemoncrow/.claude/worktrees/agent-a82f\\n...[summary clipped; full output is in spill]...\\nerators/tests/test_lattice.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_line.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_mycielski.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_nonisomorphic_trees.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_random_clustered.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_random_graphs.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_small.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_spectral_graph_forge.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_stochastic.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_sudoku.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_time_series.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_trees.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/generators/tests/test_triads.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_algebraic_connectivity.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_attrmatrix.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_bethehessian.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_graphmatrix.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_laplacian.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/linalg/tests/test_modularity.py\\n... (21578 more)\\n\\n[full output (39495B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783146305228-52c87d8a.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783146305228-52c87d8a.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -3504,7 +3504,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qz51ergzgEHKQYT4T56mKT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /tmp/out.csv && python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv >/dev/null 2>&1; echo \"exit=$?\"; test -f /tmp/out.csv && echo \"output written\""
           },
@@ -3512,7 +3512,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f /tmp/out.csv && python3 convert_masks.py --weights_path /tmp/MobileSAM/weights/mobile_sam.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv >/dev/null 2>&1; echo \"exit=$?\"; test -f /tmp/out.csv && echo \"output written\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3573,7 +3573,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eg4wbRVaw7JGrkwbhyrAGZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2, sys\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nfails=[]\n# header/schema identical\nif open('demo_metadata.csv').readline()!=open('/tmp/out.csv').readline(): fails.append('header mismatch')\nif list(di.columns)!=list(do.columns): fails.append('columns differ')\nif len(di)!=len(do): fails.append('row count differ')\n# non-updated columns preserved verbatim\nfor c in ['raw_classification','main_classification','super_classification']:\n    if not (di[c].fillna('') == do[c].fillna('')).all(): fails.append(f'{c} altered')\nocc=np.zeros((H,W),np.int32); overlap=noncontig=rect=empty=bbad=0\nfor _,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]; ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if str(r['type'])!='polyline': fails.append('type not polyline')\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum()); occ[m>0]+=1\n    if (int(min(xs)),int(max(xs)),int(min(ys)),int(max(ys)))!=(r['xmin'],r['xmax'],r['ymin'],r['ymax']): bbad+=1\nif overlap: fails.append(f'overlap_px={overlap}')\nif noncontig: fails.append(f'noncontig={noncontig}')\nif empty: fails.append(f'empty={empty}')\nif rect: fails.append(f'rectangle_masks={rect}')\nif bbad: fails.append(f'bbox_mismatch={bbad}')\nprint('CHECKS:', 'PASS' if not fails else 'FAIL')\n[print(' -',f) for f in fails]\nsys.exit(1 if fails else 0)\n\"; echo \"test_exit=$?\""
           },
@@ -3581,7 +3581,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd, numpy as np, cv2, sys\ndi=pd.read_csv('demo_metadata.csv'); do=pd.read_csv('/tmp/out.csv')\nimg=cv2.imread('demo_rgb.png'); H,W=img.shape[:2]\nfails=[]\n# header/schema identical\nif open('demo_metadata.csv').readline()!=open('/tmp/out.csv').readline(): fails.append('header mismatch')\nif list(di.columns)!=list(do.columns): fails.append('columns differ')\nif len(di)!=len(do): fails.append('row count differ')\n# non-updated columns preserved verbatim\nfor c in ['raw_classification','main_classification','super_classification']:\n    if not (di[c].fillna('') == do[c].fillna('')).all(): fails.append(f'{c} altered')\nocc=np.zeros((H,W),np.int32); overlap=noncontig=rect=empty=bbad=0\nfor _,r in do.iterrows():\n    xs=[int(v) for v in str(r['coords_x']).split(',')]; ys=[int(v) for v in str(r['coords_y']).split(',')]\n    if str(r['type'])!='polyline': fails.append('type not polyline')\n    if len(set(zip(xs,ys)))<=4: rect+=1\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[np.array(list(zip(xs,ys)),np.int32)],1)\n    if m.sum()==0: empty+=1\n    n,_=cv2.connectedComponents(m)\n    if n>2: noncontig+=1\n    overlap+=int(((occ>0)&(m>0)).sum()); occ[m>0]+=1\n    if (int(min(xs)),int(max(xs)),int(min(ys)),int(max(ys)))!=(r['xmin'],r['xmax'],r['ymin'],r['ymax']): bbad+=1\nif overlap: fails.append(f'overlap_px={overlap}')\nif noncontig: fails.append(f'noncontig={noncontig}')\nif empty: fails.append(f'empty={empty}')\nif rect: fails.append(f'rectangle_masks={rect}')\nif bbad: fails.append(f'bbox_mismatch={bbad}')\nprint('CHECKS:', 'PASS' if not fails else 'FAIL')\n[print(' -',f) for f in fails]\nsys.exit(1 if fails else 0)\n\"; echo \"test_exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

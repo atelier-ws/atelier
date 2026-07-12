@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N5r8TdcufgrUYhgqG5A5bm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app 2>/dev/null; python3 -c \"import numpy; print(numpy.__version__)\"; git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid 2>&1 | tail -5"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app 2>/dev/null; python3 -c \"import numpy; print(numpy.__version__)\"; git clone --depth 1 --branch 0.5.3 https://github.com/SPOCKnots/pyknotid.git /app/pyknotid 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U4aAxCDyQVZLf99muMLBfy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && ls && echo \"---SETUP---\" && ls setup.py setup.cfg pyproject.toml 2>/dev/null && echo \"---PYX---\" && find . -name \"*.pyx\" -o -name \"*.pxd\" | head -50"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && ls && echo \"---SETUP---\" && ls setup.py setup.cfg pyproject.toml 2>/dev/null && echo \"---PYX---\" && find . -name \"*.pyx\" -o -name \"*.pxd\" | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eb2apJbDK7gzAZ9TKhFiYr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && ls -la && echo \"===inner===\" && ls pyknotid"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && ls -la && echo \"===inner===\" && ls pyknotid"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AYAJMahT92AbULSmEZQbEa",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pyknotid/setup.py"
@@ -252,7 +252,7 @@
                 "/app/pyknotid/setup.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JZnw6NBgaB4ndXjh8L8qPz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import Cython; print('cython', Cython.__version__)\" 2>&1; python3 -c \"import networkx\" 2>&1; python3 -c \"import sympy\" 2>&1; python3 -c \"import planarity\" 2>&1; python3 -c \"import peewee\" 2>&1; python3 -c \"import vispy\" 2>&1; python3 -c \"import appdirs\" 2>&1; gcc --version 2>&1 | head -1"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import Cython; print('cython', Cython.__version__)\" 2>&1; python3 -c \"import networkx\" 2>&1; python3 -c \"import sympy\" 2>&1; python3 -c \"import planarity\" 2>&1; python3 -c \"import peewee\" 2>&1; python3 -c \"import vispy\" 2>&1; python3 -c \"import appdirs\" 2>&1; gcc --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Nm4zCh8YZirtb4qYcJPSmV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages Cython networkx sympy peewee appdirs requests tqdm planarity pytest 2>&1 | tail -15"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages Cython networkx sympy peewee appdirs requests tqdm planarity pytest 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R96e6K13CgDQbnNKrLjpmu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip pip3 2>&1; python3 -m pip --version 2>&1 | head -1"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "which pip pip3 2>&1; python3 -m pip --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014qJX5jQBsVb88bAV7FWyPU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv >/dev/null 2>&1; which uv && uv --version"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv >/dev/null 2>&1; which uv && uv --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016FFazxnD4oHxe4oNFS5GrK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages Cython networkx sympy peewee appdirs requests tqdm planarity pytest 2>&1 | tail -8"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages Cython networkx sympy peewee appdirs requests tqdm planarity pytest 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01REfAQtERpUj9osuHCbQHcy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | head -40"
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UtcXCoUwjKZq7GJiXifrPA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages setuptools wheel 2>&1 | tail -3; cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | head -50"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages setuptools wheel 2>&1 | tail -3; cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A8k5AC1MN4WT6rgge5XuH5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>&1 | tail -40"
           },
@@ -804,7 +804,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -865,7 +865,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012eMK6RYAJY7YvgvhrcXn9U",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>&1 | tail -40"
           },
@@ -873,7 +873,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0193UyUF6E43VRwwXqjHTb5i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>&1 | cat"
           },
@@ -942,7 +942,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>&1 | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1003,7 +1003,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014TJhYRHUSLhYC6BXWpewnB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>/tmp/err.txt; wc -l /tmp/err.txt"
           },
@@ -1011,7 +1011,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nfrom pyknotid.spacecurves import chelpers, ccomplexity\n\" 2>/tmp/err.txt; wc -l /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1072,7 +1072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QJyeSmC4q7MRUFbYXoUtbm",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/err.txt"
@@ -1084,7 +1084,7 @@
                 "/tmp/err.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1145,7 +1145,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012BFR4jgGaBiQSKwcV2kx6R",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages vispy 2>&1 | tail -6"
           },
@@ -1153,7 +1153,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages vispy 2>&1 | tail -6"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1214,7 +1214,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UM8ixeHgMUUzjKYUo3LUAy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
           },
@@ -1222,7 +1222,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1283,7 +1283,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WD7qpHyxHDcEYxXuscaRho",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "from fractions import gcd"
           },
@@ -1291,7 +1291,7 @@
             "raw_arguments": {
               "query": "from fractions import gcd"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1352,7 +1352,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CwqZyt79Ct3iCgGa2foDm2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rn \"import gcd\\|fractions import\\|np.float\\b\\|np.int\\b\\|np.bool\\b\\|np.object\\b\" --include=*.py pyknotid | cat"
           },
@@ -1360,7 +1360,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rn \"import gcd\\|fractions import\\|np.float\\b\\|np.int\\b\\|np.bool\\b\\|np.object\\b\" --include=*.py pyknotid | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1421,7 +1421,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VNJuT1tB231TH8F7XhvXwd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnE \"np\\.(int|float|bool|object|complex|str|long|unicode)\\b|numpy\\.(int|float|bool|object|complex)\\b|np\\.(NaN|Inf|NAN|infty)\\b\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | cat"
           },
@@ -1429,7 +1429,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnE \"np\\.(int|float|bool|object|complex|str|long|unicode)\\b|numpy\\.(int|float|bool|object|complex)\\b|np\\.(NaN|Inf|NAN|infty)\\b\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1490,7 +1490,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GN3B2CSRuTG9qLkeHKqXvW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnE \"np\\.int|np\\.float|np\\.bool|NPY_|cimport numpy|ctypedef|DTYPE\" --include=*.pyx --include=*.pxd pyknotid | cat"
           },
@@ -1498,7 +1498,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnE \"np\\.int|np\\.float|np\\.bool|NPY_|cimport numpy|ctypedef|DTYPE\" --include=*.pyx --include=*.pxd pyknotid | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1559,7 +1559,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QH1bfVLv8uWuryTLrrRi74",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pyknotid/pyknotid/make/torus.py:L1-L20",
@@ -1573,7 +1573,7 @@
                 "/app/pyknotid/pyknotid/spacecurves/ccomplexity.pyx:L10-L80"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1634,7 +1634,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ev9F8tjTtRMPQSGrMtJB2o",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1694,7 +1694,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1755,7 +1755,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GQz7GtDRfqpG738p1ywMkW",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1855,7 +1855,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1916,7 +1916,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014UGqT9CpY1to4mDJx7ufs2",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2016,7 +2016,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2077,7 +2077,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011jW9Zpo46v2BKUNjAZVY5w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -n \"gcd\" pyknotid/make/torus.py"
           },
@@ -2085,7 +2085,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -n \"gcd\" pyknotid/make/torus.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2146,7 +2146,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Uf44fgpeq5e6XHDZnsCstq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | grep -iE \"error|Cythonizing\" | head; echo \"=== run snippet ===\"; cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
           },
@@ -2154,7 +2154,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 setup.py build_ext --inplace 2>&1 | grep -iE \"error|Cythonizing\" | head; echo \"=== run snippet ===\"; cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2215,7 +2215,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01932pAAJqZxfzwpPbhspATb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnE \"np\\.float|np\\.int|np\\.bool|np\\.object|np\\.complex|np\\.str|numpy\\.float|numpy\\.int|numpy\\.bool\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | grep -vE \"np\\.(float64|float32|float128|int64|int32|int8|int16|int_|intp|intc|bool_|complex128|complex64|str_|float_)\" | cat"
           },
@@ -2223,7 +2223,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnE \"np\\.float|np\\.int|np\\.bool|np\\.object|np\\.complex|np\\.str|numpy\\.float|numpy\\.int|numpy\\.bool\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | grep -vE \"np\\.(float64|float32|float128|int64|int32|int8|int16|int_|intp|intc|bool_|complex128|complex64|str_|float_)\" | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2284,7 +2284,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JSXbwtzrnBhDdQT2H6wtAc",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/err.txt"
@@ -2296,7 +2296,7 @@
                 "/tmp/err.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2357,7 +2357,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NM3pffwpj2inecVerhkNea",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnwiE \"import numpy as ([a-z]+)\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | sed -E 's/.*as ([a-z]+).*/\\1/' | sort -u"
           },
@@ -2365,7 +2365,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnwiE \"import numpy as ([a-z]+)\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | sed -E 's/.*as ([a-z]+).*/\\1/' | sort -u"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2426,7 +2426,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MyM7p946eUTCWx9ruSB8Fc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnE \"\\bn\\.(float|int|bool|object|complex|str|long|unicode|NaN|Inf)\\b|\\bnp\\.(float|int|bool|object|complex|str|long|unicode|NaN|Inf)\\b\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | grep -vE \"\\.(float64|float32|float128|int64|int32|int8|int16|int_|intp|intc|uintp|bool_|complex128|complex64|str_)\\b\" | cat"
           },
@@ -2434,7 +2434,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnE \"\\bn\\.(float|int|bool|object|complex|str|long|unicode|NaN|Inf)\\b|\\bnp\\.(float|int|bool|object|complex|str|long|unicode|NaN|Inf)\\b\" --include=*.py --include=*.pyx --include=*.pxd pyknotid | grep -vE \"\\.(float64|float32|float128|int64|int32|int8|int16|int_|intp|intc|uintp|bool_|complex128|complex64|str_)\\b\" | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2495,7 +2495,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JRe7f4DEgnTctwpA5AAnhC",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2735,7 +2735,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2796,7 +2796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fb9KsmtHgRX2a4j2rdLW4V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
           },
@@ -2804,7 +2804,7 @@
             "raw_arguments": {
               "command": "cd /tmp && python3 -c \"\nimport sys; sys.path.insert(0,'/app/pyknotid')\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('OUT', out)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2865,7 +2865,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vfwe7H1QcPPX9tGerqJNke",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && uv pip install --system --break-system-packages --no-build-isolation . 2>&1 | tail -15"
           },
@@ -2873,7 +2873,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && uv pip install --system --break-system-packages --no-build-isolation . 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2934,7 +2934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JLJeB73ZWNcJVTcga1x8zu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('chelpers', chelpers.__file__)\nprint('ccomplexity', ccomplexity.__file__)\nprint('cinvariants', cinvariants.__file__)\nprint('OUT', out)\n\" 2>&1 | grep -vE \"crossing|Finding|Simplif|i = |->|^$\" "
           },
@@ -2942,7 +2942,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('chelpers', chelpers.__file__)\nprint('ccomplexity', ccomplexity.__file__)\nprint('cinvariants', cinvariants.__file__)\nprint('OUT', out)\n\" 2>&1 | grep -vE \"crossing|Finding|Simplif|i = |->|^$\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3003,7 +3003,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PYViMj7MLv461EiNqVtfKW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && ls tests/"
           },
@@ -3011,7 +3011,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && ls tests/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3072,7 +3072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011WbHSQN7Rummh2yyzime9s",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 -m pytest tests/test_knot.py tests/test_spacecurve.py -q 2>&1 | tail -30"
           },
@@ -3080,7 +3080,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 -m pytest tests/test_knot.py tests/test_spacecurve.py -q 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3141,7 +3141,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JGs9JPeck5aErkdPFqsUq8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve -q 2>&1 | tail -40"
           },
@@ -3149,7 +3149,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve -q 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3210,7 +3210,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VeFLsqrWj3SPymfc8L2xnQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve 2>&1 | grep -A40 \"def test_reconstructed\\|Error\\|Traceback\\|test_spacecurve.py:\" | head -50"
           },
@@ -3218,7 +3218,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve 2>&1 | grep -A40 \"def test_reconstructed\\|Error\\|Traceback\\|test_spacecurve.py:\" | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3279,7 +3279,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013zcVZQa4qk8dFtnx1An7sW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve --tb=long -p no:cacheprovider >/tmp/t.txt 2>&1; tail -45 /tmp/t.txt"
           },
@@ -3287,7 +3287,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 -m pytest tests/test_spacecurve.py::test_reconstructed_space_curve --tb=long -p no:cacheprovider >/tmp/t.txt 2>&1; tail -45 /tmp/t.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3348,7 +3348,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0133hDqUgnxSz789Y7BLGVz4",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/t.txt"
@@ -3360,7 +3360,7 @@
                 "/tmp/t.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3421,7 +3421,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4V4hnYsEPyZJZ6vWe27DY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import planarity, networkx; print('planarity', getattr(planarity,'__version__','?')); print('networkx', networkx.__version__); print(planarity.__file__)\"; python3 -c \"import planarity; print([f for f in dir(planarity)])\""
           },
@@ -3429,7 +3429,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import planarity, networkx; print('planarity', getattr(planarity,'__version__','?')); print('networkx', networkx.__version__); print(planarity.__file__)\"; python3 -c \"import planarity; print([f for f in dir(planarity)])\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3490,7 +3490,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FHE8UPg4tvFVU9LdbCCRgR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import planarity, inspect; print(inspect.getsourcefile(planarity.networkx_graph))\"; grep -rn \"def networkx_graph\\|'pos'\\|\\\"pos\\\"\\|pos=\\|drawplanar\\|def embed\" /usr/local/lib/python3.13/site-packages/planarity/*.py 2>/dev/null | head -40"
           },
@@ -3498,7 +3498,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import planarity, inspect; print(inspect.getsourcefile(planarity.networkx_graph))\"; grep -rn \"def networkx_graph\\|'pos'\\|\\\"pos\\\"\\|pos=\\|drawplanar\\|def embed\" /usr/local/lib/python3.13/site-packages/planarity/*.py 2>/dev/null | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3559,7 +3559,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TuPJuZVSTXJZbXVvqTpZvA",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/usr/local/lib/python3.13/site-packages/planarity/classic/planarity_networkx.py"
@@ -3571,7 +3571,7 @@
                 "/usr/local/lib/python3.13/site-packages/planarity/classic/planarity_networkx.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3632,7 +3632,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015PKwTWjbF7CxmDwDG1yD7W",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pyknotid/pyknotid/representations/representation.py:L320-L420"
@@ -3644,7 +3644,7 @@
                 "/app/pyknotid/pyknotid/representations/representation.py:L320-L420"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -3705,7 +3705,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VYn81NJwczYx8Asjs2fQyy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import planarity; pg=planarity.PGraph; print([m for m in dir(planarity.PGraph) if not m.startswith('__')])\" 2>&1; echo \"---try old versions index---\"; uv pip install --system --break-system-packages \"planarity==0.4.1\" 2>&1 | tail -8"
           },
@@ -3713,7 +3713,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import planarity; pg=planarity.PGraph; print([m for m in dir(planarity.PGraph) if not m.startswith('__')])\" 2>&1; echo \"---try old versions index---\"; uv pip install --system --break-system-packages \"planarity==0.4.1\" 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3774,7 +3774,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Noo9kBUp69aBKa43VAon4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.4.1\" 2>&1 | tail -15"
           },
@@ -3782,7 +3782,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.4.1\" 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3843,7 +3843,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015sSV3WHtwoFfc2q1tikDpq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.4.1\" 2>&1 | grep -iE \"error|warning:|\\.pyx:\" | head -30"
           },
@@ -3851,7 +3851,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.4.1\" 2>&1 | grep -iE \"error|warning:|\\.pyx:\" | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3912,7 +3912,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012DUs94HvZ3DTj72F4ib4dL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip index versions planarity 2>&1 | head; echo \"---\"; uv pip install --system --break-system-packages \"planarity<1.0\" 2>&1 | grep -iE \"versions|available|from versions\" | head"
           },
@@ -3920,7 +3920,7 @@
             "raw_arguments": {
               "command": "python3 -m pip index versions planarity 2>&1 | head; echo \"---\"; uv pip install --system --break-system-packages \"planarity<1.0\" 2>&1 | grep -iE \"versions|available|from versions\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -3981,7 +3981,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015dUPpK3v6NhcepW9UoeB42",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.6\" 2>&1 | grep -iE \"error|installed|built|\\.pyx:|not found\" | head -20"
           },
@@ -3989,7 +3989,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.6\" 2>&1 | grep -iE \"error|installed|built|\\.pyx:|not found\" | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4050,7 +4050,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Lgns4ahF2uaCF3uDhTsJ9J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.6\" 2>&1 | tail -6; echo \"=== test keys ===\"; python3 -c \"\nimport planarity, networkx as nx\nprint('ver', planarity.__version__)\nimport inspect\ntry:\n    src=inspect.getsource(planarity.networkx_graph); print(src)\nexcept Exception as e:\n    print(e)\n\""
           },
@@ -4058,7 +4058,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages --no-build-isolation \"planarity==0.6\" 2>&1 | tail -6; echo \"=== test keys ===\"; python3 -c \"\nimport planarity, networkx as nx\nprint('ver', planarity.__version__)\nimport inspect\ntry:\n    src=inspect.getsource(planarity.networkx_graph); print(src)\nexcept Exception as e:\n    print(e)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4119,7 +4119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SeLR43tynWcFo4qtDYmd94",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import planarity; print(planarity.__file__); print([m for m in dir(planarity) if 'graph' in m.lower() or 'PGraph' in m])\"; pip show planarity 2>/dev/null | grep -i version"
           },
@@ -4127,7 +4127,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import planarity; print(planarity.__file__); print([m for m in dir(planarity) if 'graph' in m.lower() or 'PGraph' in m])\"; pip show planarity 2>/dev/null | grep -i version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4188,7 +4188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cbwvi4GyQKANzaUXr8g8Ux",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rn \"'pos'\\|'start'\\|'end'\\|vertex_position\\|def networkx_graph\\|def embed\" /usr/local/lib/python3.13/site-packages/planarity/*.py 2>/dev/null | head"
           },
@@ -4196,7 +4196,7 @@
             "raw_arguments": {
               "command": "grep -rn \"'pos'\\|'start'\\|'end'\\|vertex_position\\|def networkx_graph\\|def embed\" /usr/local/lib/python3.13/site-packages/planarity/*.py 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4257,7 +4257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hqgfu2uXWhqLR7LZJVcHWu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /usr/local/lib/python3.13/site-packages/planarity/; echo ---; python3 -c \"\nimport planarity, inspect\nprint(inspect.getsource(planarity.networkx_graph))\""
           },
@@ -4265,7 +4265,7 @@
             "raw_arguments": {
               "command": "ls /usr/local/lib/python3.13/site-packages/planarity/; echo ---; python3 -c \"\nimport planarity, inspect\nprint(inspect.getsource(planarity.networkx_graph))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4326,7 +4326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G5vSVHHmS9kHMXQZQyetHg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport planarity, networkx as nx\ng = nx.Graph()\ng.add_edges_from([(0,1),(1,2),(2,0),(0,3),(1,3),(2,3)])\npg = planarity.PGraph(g)\npg.embed_drawplanar()\nh = planarity.networkx_graph(pg)\nprint('NODE', list(h.nodes(data=True))[0])\nprint('EDGE', list(h.edges(data=True))[0])\n\""
           },
@@ -4334,7 +4334,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport planarity, networkx as nx\ng = nx.Graph()\ng.add_edges_from([(0,1),(1,2),(2,0),(0,3),(1,3),(2,3)])\npg = planarity.PGraph(g)\npg.embed_drawplanar()\nh = planarity.networkx_graph(pg)\nprint('NODE', list(h.nodes(data=True))[0])\nprint('EDGE', list(h.edges(data=True))[0])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4395,7 +4395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KWb6MSVDxG47xDTEy5nEyi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && python3 -m pytest tests/test_knot.py tests/test_spacecurve.py -q -p no:cacheprovider >/tmp/pt.txt 2>&1; tail -8 /tmp/pt.txt"
           },
@@ -4403,7 +4403,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && python3 -m pytest tests/test_knot.py tests/test_spacecurve.py -q -p no:cacheprovider >/tmp/pt.txt 2>&1; tail -8 /tmp/pt.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4464,7 +4464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N6LWgUgMrtWB2yNXhbqjD7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/pyknotid && grep -rnwE \"\\b(n|np|numpy)\\.(alltrue|sometrue|product|cumproduct|round_|float_|complex_|unicode_|str0|bool8|int0|NAN|NINF|PINF|Infinity|infty|mat|matrix|in1d|row_stack|set_string_function|issctype|find_common_type|obj2sctype|deprecate|safe_eval|recfromcsv|disp|msort|trapz)\\b\" --include=*.py --include=*.pyx pyknotid | cat"
           },
@@ -4472,7 +4472,7 @@
             "raw_arguments": {
               "command": "cd /app/pyknotid && grep -rnwE \"\\b(n|np|numpy)\\.(alltrue|sometrue|product|cumproduct|round_|float_|complex_|unicode_|str0|bool8|int0|NAN|NINF|PINF|Infinity|infty|mat|matrix|in1d|row_stack|set_string_function|issctype|find_common_type|obj2sctype|deprecate|safe_eval|recfromcsv|disp|msort|trapz)\\b\" --include=*.py --include=*.pyx pyknotid | cat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4533,7 +4533,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XBiFeYDFB3UwHhxwktf57h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && python3 -c \"\nimport numpy as np\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nfor m in (chelpers, ccomplexity, cinvariants):\n    assert m.__file__.endswith('.so'), m.__file__\n    print('OK compiled:', m.__name__, '->', [f for f in dir(m) if not f.startswith('__')][:4])\n# exercise ccomplexity compiled function\nimport pyknotid.make as mk, pyknotid.spacecurves as sp\nk = sp.Knot(mk.figure_eight(num_points=80))\nprint('gauss/alexander:', k.alexander_polynomial(-1))\nprint('vassiliev(compiled cinvariants):', k.vassiliev_degree_2())\n\" 2>&1 | grep -vE \"crossing|Finding|Simplif|i = |->|^$\""
           },
@@ -4541,7 +4541,7 @@
             "raw_arguments": {
               "command": "cd /root && python3 -c \"\nimport numpy as np\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nfor m in (chelpers, ccomplexity, cinvariants):\n    assert m.__file__.endswith('.so'), m.__file__\n    print('OK compiled:', m.__name__, '->', [f for f in dir(m) if not f.startswith('__')][:4])\n# exercise ccomplexity compiled function\nimport pyknotid.make as mk, pyknotid.spacecurves as sp\nk = sp.Knot(mk.figure_eight(num_points=80))\nprint('gauss/alexander:', k.alexander_polynomial(-1))\nprint('vassiliev(compiled cinvariants):', k.vassiliev_degree_2())\n\" 2>&1 | grep -vE \"crossing|Finding|Simplif|i = |->|^$\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -4602,7 +4602,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MaxbdmovKfc31pM9Mmsqws",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd / && python3 -c \"\nimport numpy; assert numpy.__version__=='2.3.0', numpy.__version__\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('README OK, numpy', numpy.__version__, 'alexander=', out)\n\" 2>&1 | tail -1"
           },
@@ -4610,7 +4610,7 @@
             "raw_arguments": {
               "command": "cd / && python3 -c \"\nimport numpy; assert numpy.__version__=='2.3.0', numpy.__version__\nimport pyknotid\nfrom pyknotid.spacecurves import chelpers, ccomplexity\nfrom pyknotid import cinvariants\nimport pyknotid.make as mk\nimport pyknotid.spacecurves as sp\nk = sp.Knot(mk.three_twist(num_points=100))\nout = k.alexander_polynomial(-1)\nprint('README OK, numpy', numpy.__version__, 'alexander=', out)\n\" 2>&1 | tail -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W5C7PCwzK5qsP89PwxiErT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/ssl && cd /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" 2>&1 && chmod 600 server.key && cat server.key server.crt > server.pem && ls -la /app/ssl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/ssl && cd /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" 2>&1 && chmod 600 server.key && cat server.key server.crt > server.pem && ls -la /app/ssl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WpGefzrqY5VdiQ11ehxTv1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ssl && { echo \"Subject:\"; openssl x509 -in server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/ssl && { echo \"Subject:\"; openssl x509 -in server.crt -noout -subject; echo; echo \"Validity:\"; openssl x509 -in server.crt -noout -dates; echo; echo \"SHA-256 Fingerprint:\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KGEuBpwgHqyftfko5Q9Yan",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vx6GCyRFgHpz9xagbAa9kw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 check_cert.py; echo \"---exit=$?\"; echo \"=== combined pem check ===\"; grep -c \"BEGIN\" ssl/server.pem; openssl pkey -in ssl/server.pem -noout && echo KEY_OK; openssl x509 -in ssl/server.pem -noout && echo CRT_OK"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 check_cert.py; echo \"---exit=$?\"; echo \"=== combined pem check ===\"; grep -c \"BEGIN\" ssl/server.pem; openssl pkey -in ssl/server.pem -noout && echo KEY_OK; openssl x509 -in ssl/server.pem -noout && echo CRT_OK"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012hTppFQSnakaGJttSyR4EP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls tests 2>/dev/null; find . -name 'test_*.py' -o -name '*_test.py' 2>/dev/null | grep -v /proc; echo \"=== run check_cert.py ===\"; python3 check_cert.py; echo \"exit=$?\""
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app && ls tests 2>/dev/null; find . -name 'test_*.py' -o -name '*_test.py' 2>/dev/null | grep -v /proc; echo \"=== run check_cert.py ===\"; python3 check_cert.py; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -445,7 +445,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R4Gx1UgUARLmJ6kVRVB4VD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 check_cert.py; echo \"exit=$?\""
           },
@@ -453,7 +453,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 check_cert.py; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

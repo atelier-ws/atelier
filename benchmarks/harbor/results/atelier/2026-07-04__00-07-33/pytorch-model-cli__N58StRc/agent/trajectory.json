@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qd3JTiUJah4a2WNgYUjopK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.png /app/*.json 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.png /app/*.json 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01Qd3JTiUJah4a2WNgYUjopK",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=2\\ntotal 592\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:24 .atelier\\n-rw-r--r-- 1 root root  79506 Oct 24  2025 cJSON.c\\n-rw-r--r-- 1 root root  16393 Oct 24  2025 cJSON.h\\n-rw-r--r-- 1 root root    389 Oct 24  2025 image.png\\n-rw-r--r-- 1 root root 311873 Oct 24  2025 lodepng.cpp\\n-rw-r--r-- 1 root root 107788 Oct 24  2025 lodepng.h\\n-rw-r--r-- 1 root root  54714 Oct 24  2025 model.pth\\n-rw-r--r-- 1 root root    654 Oct 24  2025 model.py\\n---\\nPython 3.13.7\\n---\\n/app/image.png\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=2\\ntotal 592\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:24 .lemoncrow\\n-rw-r--r-- 1 root root  79506 Oct 24  2025 cJSON.c\\n-rw-r--r-- 1 root root  16393 Oct 24  2025 cJSON.h\\n-rw-r--r-- 1 root root    389 Oct 24  2025 image.png\\n-rw-r--r-- 1 root root 311873 Oct 24  2025 lodepng.cpp\\n-rw-r--r-- 1 root root 107788 Oct 24  2025 lodepng.h\\n-rw-r--r-- 1 root root  54714 Oct 24  2025 model.pth\\n-rw-r--r-- 1 root root    654 Oct 24  2025 model.py\\n---\\nPython 3.13.7\\n---\\n/app/image.png\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018rKNbR21YS1tfPsBhnxQoe",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/model.py"
@@ -114,7 +114,7 @@
                 "/app/model.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LmNvtwLNWrCv8bagB4MWUa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"===\"; python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nprint(type(sd))\nfor k,v in sd.items():\n    try: print(k, tuple(v.shape))\n    except: print(k, v)\n\" 2>&1 | head -40"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"===\"; python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nprint(type(sd))\nfor k,v in sd.items():\n    try: print(k, tuple(v.shape))\n    except: print(k, v)\n\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TVzPxgevymEqQoDgTbbhiD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv pip install --system --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5; echo EXIT=$?"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "cd /app && uv pip install --system --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5; echo EXIT=$?"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019JVTuXkbd5mvCDz9h6bxJY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"print(open('model.pth','rb').read(4))\"; echo \"---\"; python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('model.pth')\nfor n in z.namelist(): print(n, z.getinfo(n).file_size)\n\""
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"print(open('model.pth','rb').read(4))\"; echo \"---\"; python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('model.pth')\nfor n in z.namelist(): print(n, z.getinfo(n).file_size)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AoJVVfh6tv1Pjvubmh3BK9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport zipfile, pickletools\nz=zipfile.ZipFile('model.pth')\ndata=z.read('simple_mnist/data.pkl')\npickletools.dis(data)\n\" 2>&1 | head -80"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport zipfile, pickletools\nz=zipfile.ZipFile('model.pth')\ndata=z.read('simple_mnist/data.pkl')\npickletools.dis(data)\n\" 2>&1 | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YYGyTS4rbVBZYsYNcDnp4d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('model.pth')\nprint('byteorder',z.read('simple_mnist/byteorder'))\nprint('version',z.read('simple_mnist/version'))\nimport struct, PIL\" 2>&1 | head\npython3 -c \"import PIL; print('PIL',PIL.__version__)\" 2>&1 | head -1\npython3 -c \"import numpy; print('numpy',numpy.__version__)\" 2>&1 | head -1"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('model.pth')\nprint('byteorder',z.read('simple_mnist/byteorder'))\nprint('version',z.read('simple_mnist/version'))\nimport struct, PIL\" 2>&1 | head\npython3 -c \"import PIL; print('PIL',PIL.__version__)\" 2>&1 | head -1\npython3 -c \"import numpy; print('numpy',numpy.__version__)\" 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WqFUDdVoNw8nmtnTFqTtvk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zlib\nd=open('image.png','rb').read()\nassert d[:8]==b'\\x89PNG\\r\\n\\x1a\\n'\ni=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IHDR':\n        w,h,bd,ct=struct.unpack('>IIBB',chunk[:10]); print('W',w,'H',h,'bitdepth',bd,'colortype',ct)\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nprint('rawlen',len(raw))\n\""
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zlib\nd=open('image.png','rb').read()\nassert d[:8]==b'\\x89PNG\\r\\n\\x1a\\n'\ni=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IHDR':\n        w,h,bd,ct=struct.unpack('>IIBB',chunk[:10]); print('W',w,'H',h,'bitdepth',bd,'colortype',ct)\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nprint('rawlen',len(raw))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013e314m3usenTm4do9dw1Hq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zlib, zipfile\n\n# load weights\nz=zipfile.ZipFile('model.pth')\ndef flt(name,n):\n    b=z.read('simple_mnist/data/'+name)\n    return list(struct.unpack('<%df'%n, b))\nWi=flt('0',12544); bi=flt('1',16)\nWh=flt('2',256); bh=flt('3',16)\nWo=flt('4',160); bo=flt('5',10)\n\n# decode png\nd=open('image.png','rb').read(); i=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nW=H=28; stride=W\npx=[0]*(W*H); prev=[0]*W\npos=0\nfor y in range(H):\n    f=raw[pos]; pos+=1\n    cur=list(raw[pos:pos+W]); pos+=W\n    out=[0]*W\n    for x in range(W):\n        a=out[x-1] if x>0 else 0\n        b=prev[x]; c=prev[x-1] if x>0 else 0\n        v=cur[x]\n        if f==0: r=v\n        elif f==1: r=v+a\n        elif f==2: r=v+b\n        elif f==3: r=v+(a+b)//2\n        elif f==4:\n            p=a+b-c; pa=abs(p-a); pb=abs(p-b); pc=abs(p-c)\n            pr=a if (pa<=pb and pa<=pc) else (b if pb<=pc else c)\n            r=v+pr\n        out[x]=r&255\n    for x in range(W): px[y*W+x]=out[x]\n    prev=out\n\ndef infer(inp):\n    h1=[max(0,sum(Wi[j*784+k]*inp[k] for k in range(784))+bi[j]) for j in range(16)]\n    h2=[max(0,sum(Wh[j*16+k]*h1[k] for k in range(16))+bh[j]) for j in range(16)]\n    o=[sum(Wo[j*16+k]*h2[k] for k in range(16))+bo[j] for j in range(10)]\n    return o\n\nfor name,inp in [('raw01',[p/255 for p in px]),\n                 ('norm',[((p/255)-0.1307)/0.3081 for p in px]),\n                 ('inv01',[(255-p)/255 for p in px]),\n                 ('invnorm',[(((255-p)/255)-0.1307)/0.3081 for p in px])]:\n    o=infer(inp); m=max(range(10),key=lambda i:o[i])\n    print(name,'pred',m,'logits',[round(x,1) for x in o])\n\""
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zlib, zipfile\n\n# load weights\nz=zipfile.ZipFile('model.pth')\ndef flt(name,n):\n    b=z.read('simple_mnist/data/'+name)\n    return list(struct.unpack('<%df'%n, b))\nWi=flt('0',12544); bi=flt('1',16)\nWh=flt('2',256); bh=flt('3',16)\nWo=flt('4',160); bo=flt('5',10)\n\n# decode png\nd=open('image.png','rb').read(); i=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nW=H=28; stride=W\npx=[0]*(W*H); prev=[0]*W\npos=0\nfor y in range(H):\n    f=raw[pos]; pos+=1\n    cur=list(raw[pos:pos+W]); pos+=W\n    out=[0]*W\n    for x in range(W):\n        a=out[x-1] if x>0 else 0\n        b=prev[x]; c=prev[x-1] if x>0 else 0\n        v=cur[x]\n        if f==0: r=v\n        elif f==1: r=v+a\n        elif f==2: r=v+b\n        elif f==3: r=v+(a+b)//2\n        elif f==4:\n            p=a+b-c; pa=abs(p-a); pb=abs(p-b); pc=abs(p-c)\n            pr=a if (pa<=pb and pa<=pc) else (b if pb<=pc else c)\n            r=v+pr\n        out[x]=r&255\n    for x in range(W): px[y*W+x]=out[x]\n    prev=out\n\ndef infer(inp):\n    h1=[max(0,sum(Wi[j*784+k]*inp[k] for k in range(784))+bi[j]) for j in range(16)]\n    h2=[max(0,sum(Wh[j*16+k]*h1[k] for k in range(16))+bh[j]) for j in range(16)]\n    o=[sum(Wo[j*16+k]*h2[k] for k in range(16))+bo[j] for j in range(10)]\n    return o\n\nfor name,inp in [('raw01',[p/255 for p in px]),\n                 ('norm',[((p/255)-0.1307)/0.3081 for p in px]),\n                 ('inv01',[(255-p)/255 for p in px]),\n                 ('invnorm',[(((255-p)/255)-0.1307)/0.3081 for p in px])]:\n    o=infer(inp); m=max(range(10),key=lambda i:o[i])\n    print(name,'pred',m,'logits',[round(x,1) for x in o])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CxuuofEAjno7yxXgUWygMX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zlib\nd=open('image.png','rb').read(); i=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nW=H=28; px=[0]*(W*H); prev=[0]*W; pos=0\nfor y in range(H):\n    f=raw[pos]; pos+=1; cur=list(raw[pos:pos+W]); pos+=W; out=[0]*W\n    for x in range(W):\n        a=out[x-1] if x>0 else 0; b=prev[x]; c=prev[x-1] if x>0 else 0; v=cur[x]\n        if f==0:r=v\n        elif f==1:r=v+a\n        elif f==2:r=v+b\n        elif f==3:r=v+(a+b)//2\n        else:\n            p=a+b-c;pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n            pr=a if(pa<=pb and pa<=pc)else(b if pb<=pc else c);r=v+pr\n        out[x]=r&255\n    for x in range(W):px[y*W+x]=out[x]\n    prev=out\nfor y in range(H):\n    print(''.join('#' if px[y*28+x]>128 else ('.' if px[y*28+x]>40 else ' ') for x in range(28)))\n\""
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zlib\nd=open('image.png','rb').read(); i=8; idat=b''\nwhile i<len(d):\n    ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]; chunk=d[i+8:i+8+ln]\n    if typ==b'IDAT': idat+=chunk\n    i+=12+ln\nraw=zlib.decompress(idat)\nW=H=28; px=[0]*(W*H); prev=[0]*W; pos=0\nfor y in range(H):\n    f=raw[pos]; pos+=1; cur=list(raw[pos:pos+W]); pos+=W; out=[0]*W\n    for x in range(W):\n        a=out[x-1] if x>0 else 0; b=prev[x]; c=prev[x-1] if x>0 else 0; v=cur[x]\n        if f==0:r=v\n        elif f==1:r=v+a\n        elif f==2:r=v+b\n        elif f==3:r=v+(a+b)//2\n        else:\n            p=a+b-c;pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n            pr=a if(pa<=pb and pa<=pc)else(b if pb<=pc else c);r=v+pr\n        out[x]=r&255\n    for x in range(W):px[y*W+x]=out[x]\n    prev=out\nfor y in range(H):\n    print(''.join('#' if px[y*28+x]>128 else ('.' if px[y*28+x]>40 else ' ') for x in range(28)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bba5Z6M9YuU4uZRHKczLJb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zipfile, json\nz=zipfile.ZipFile('model.pth')\ndef flt(name,n): return list(struct.unpack('<%df'%n, z.read('simple_mnist/data/'+name)))\ndef mat(name,r,c): f=flt(name,r*c); return [f[i*c:(i+1)*c] for i in range(r)]\nout={\n 'input_layer':{'weight':mat('0',16,784),'bias':flt('1',16)},\n 'hidden_layer':{'weight':mat('2',16,16),'bias':flt('3',16)},\n 'output_layer':{'weight':mat('4',10,16),'bias':flt('5',10)},\n}\njson.dump(out,open('weights.json','w'))\nprint('wrote weights.json', len(json.dumps(out)))\n\""
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zipfile, json\nz=zipfile.ZipFile('model.pth')\ndef flt(name,n): return list(struct.unpack('<%df'%n, z.read('simple_mnist/data/'+name)))\ndef mat(name,r,c): f=flt(name,r*c); return [f[i*c:(i+1)*c] for i in range(r)]\nout={\n 'input_layer':{'weight':mat('0',16,784),'bias':flt('1',16)},\n 'hidden_layer':{'weight':mat('2',16,16),'bias':flt('3',16)},\n 'output_layer':{'weight':mat('4',10,16),'bias':flt('5',10)},\n}\njson.dump(out,open('weights.json','w'))\nprint('wrote weights.json', len(json.dumps(out)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NE7kZKHjGTYsJrptddfQKx",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -816,7 +816,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -877,7 +877,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019XECNifcDy57fLbGjusQHd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -std=c++17 -o cli_tool cli_tool.cpp lodepng.cpp cJSON.c 2>&1 | head -30; echo \"COMPILE_EXIT=$?\"; ls -la cli_tool"
           },
@@ -885,7 +885,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -std=c++17 -o cli_tool cli_tool.cpp lodepng.cpp cJSON.c 2>&1 | head -30; echo \"COMPILE_EXIT=$?\"; ls -la cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -946,7 +946,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WAFYP9YTYgZTHxEW5FKHLQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which gcc cc clang c++ 2>&1; echo \"---\"; apt-get install -y g++ 2>&1 | tail -3"
           },
@@ -954,7 +954,7 @@
             "raw_arguments": {
               "command": "which gcc cc clang c++ 2>&1; echo \"---\"; apt-get install -y g++ 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01591KfGesBU6r5hSuhKLXeA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -std=c++17 -o cli_tool cli_tool.cpp lodepng.cpp cJSON.c 2>&1 | head -30; echo \"COMPILE_EXIT=${PIPESTATUS[0]}\"; ls -la cli_tool"
           },
@@ -1023,7 +1023,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -std=c++17 -o cli_tool cli_tool.cpp lodepng.cpp cJSON.c 2>&1 | head -30; echo \"COMPILE_EXIT=${PIPESTATUS[0]}\"; ls -la cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1084,7 +1084,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YbQMA98XqJSycxMgNW55jS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ./cli_tool weights.json image.png | tee prediction.txt; echo \"EXIT=$?\"; echo \"--- file:\"; cat prediction.txt; echo \"--- verify binary:\"; file cli_tool"
           },
@@ -1092,7 +1092,7 @@
             "raw_arguments": {
               "command": "cd /app && ./cli_tool weights.json image.png | tee prediction.txt; echo \"EXIT=$?\"; echo \"--- file:\"; cat prediction.txt; echo \"--- verify binary:\"; file cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1153,7 +1153,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F6oip2QE7oqBE8cf3apaXv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la cli_tool weights.json prediction.txt && echo \"--- run again:\" && ./cli_tool weights.json image.png"
           },
@@ -1161,7 +1161,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la cli_tool weights.json prediction.txt && echo \"--- run again:\" && ./cli_tool weights.json image.png"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1277,15 +1277,15 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XX8q4cXccj7ghbfTS1XvbT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
-            "command": "cd /app && ls -la; echo \"--- any tests?\"; find . -iname \"*test*\" 2>/dev/null | grep -v .atelier"
+            "command": "cd /app && ls -la; echo \"--- any tests?\"; find . -iname \"*test*\" 2>/dev/null | grep -v .lemoncrow"
           },
           "extra": {
             "raw_arguments": {
-              "command": "cd /app && ls -la; echo \"--- any tests?\"; find . -iname \"*test*\" 2>/dev/null | grep -v .atelier"
+              "command": "cd /app && ls -la; echo \"--- any tests?\"; find . -iname \"*test*\" 2>/dev/null | grep -v .lemoncrow"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1346,7 +1346,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PJWMxqPozSU5k4HycLrQ42",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; echo \"=== end-to-end check ===\"; out=$(./cli_tool weights.json image.png); echo \"stdout=[$out] exit=$?\"; echo \"prediction.txt=[$(cat prediction.txt)]\""
           },
@@ -1354,7 +1354,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; echo \"=== end-to-end check ===\"; out=$(./cli_tool weights.json image.png); echo \"stdout=[$out] exit=$?\"; echo \"prediction.txt=[$(cat prediction.txt)]\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1362,7 +1362,7 @@
         "results": [
           {
             "source_call_id": "toolu_01PJWMxqPozSU5k4HycLrQ42",
-            "content": "{\"type\": \"text\", \"text\": \"total 1044\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:27 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:24 .atelier\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:25 .git\\n-rw-r--r-- 1 root root  79506 Oct 24  2025 cJSON.c\\n-rw-r--r-- 1 root root  16393 Oct 24  2025 cJSON.h\\n-rwxr-xr-x 1 root root 162880 Jul  3 23:27 cli_tool\\n-rw------- 1 root root   3871 Jul  3 23:26 cli_tool.cpp\\n-rw-r--r-- 1 root root    389 Oct 24  2025 image.png\\n-rw-r--r-- 1 root root 311873 Oct 24  2025 lodepng.cpp\\n-rw-r--r-- 1 root root 107788 Oct 24  2025 lodepng.h\\n-rw-r--r-- 1 root root  54714 Oct 24  2025 model.pth\\n-rw-r--r-- 1 root root    654 Oct 24  2025 model.py\\n-rw-r--r-- 1 root root      2 Jul  3 23:27 prediction.txt\\n-rw-r--r-- 1 root root 286443 Jul  3 23:26 weights.json\\n=== end-to-end check ===\\nstdout=[2] exit=0\\nprediction.txt=[2]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 1044\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:27 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 23:24 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:24 .lemoncrow\\ndrwxr-xr-x 3 root root   4096 Jul  3 23:25 .git\\n-rw-r--r-- 1 root root  79506 Oct 24  2025 cJSON.c\\n-rw-r--r-- 1 root root  16393 Oct 24  2025 cJSON.h\\n-rwxr-xr-x 1 root root 162880 Jul  3 23:27 cli_tool\\n-rw------- 1 root root   3871 Jul  3 23:26 cli_tool.cpp\\n-rw-r--r-- 1 root root    389 Oct 24  2025 image.png\\n-rw-r--r-- 1 root root 311873 Oct 24  2025 lodepng.cpp\\n-rw-r--r-- 1 root root 107788 Oct 24  2025 lodepng.h\\n-rw-r--r-- 1 root root  54714 Oct 24  2025 model.pth\\n-rw-r--r-- 1 root root    654 Oct 24  2025 model.py\\n-rw-r--r-- 1 root root      2 Jul  3 23:27 prediction.txt\\n-rw-r--r-- 1 root root 286443 Jul  3 23:26 weights.json\\n=== end-to-end check ===\\nstdout=[2] exit=0\\nprediction.txt=[2]\"}"
           }
         ]
       },
@@ -1415,7 +1415,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CPM2eRiVKFjUL1xUe7Gvrb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zlib, zipfile, subprocess, random\n\nz=zipfile.ZipFile('model.pth')\ndef flt(n,c): return list(struct.unpack('<%df'%c, z.read('simple_mnist/data/'+n)))\nWi=flt('0',12544); bi=flt('1',16); Wh=flt('2',256); bh=flt('3',16); Wo=flt('4',160); bo=flt('5',10)\n\ndef ref(px):\n    x=[((p/255)-0.1307)/0.3081 for p in px]\n    h1=[max(0.0,sum(Wi[j*784+k]*x[k] for k in range(784))+bi[j]) for j in range(16)]\n    h2=[max(0.0,sum(Wh[j*16+k]*h1[k] for k in range(16))+bh[j]) for j in range(16)]\n    o=[sum(Wo[j*16+k]*h2[k] for k in range(16))+bo[j] for j in range(10)]\n    return max(range(10),key=lambda i:o[i])\n\ndef make_png(px):\n    raw=b''.join(b'\\x00'+bytes(px[y*28:(y+1)*28]) for y in range(28))\n    comp=zlib.compress(raw,9)\n    def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)\n    ihdr=struct.pack('>IIBBBBB',28,28,8,0,0,0,0)\n    return b'\\x89PNG\\r\\n\\x1a\\n'+chunk(b'IHDR',ihdr)+chunk(b'IDAT',comp)+chunk(b'IEND',b'')\n\nrandom.seed(1)\nok=0; total=0\nimgs=[[0]*784,[255]*784]+[ [random.randint(0,255) for _ in range(784)] for _ in range(8)]\nfor i,px in enumerate(imgs):\n    open('/tmp/t.png','wb').write(make_png(px))\n    got=subprocess.check_output(['./cli_tool','weights.json','/tmp/t.png']).decode().strip()\n    exp=str(ref(px)); total+=1; ok+= (got==exp)\n    print('case',i,'expected',exp,'got',got,'OK' if got==exp else 'MISMATCH')\nprint('PASS %d/%d'%(ok,total))\n\""
           },
@@ -1423,7 +1423,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zlib, zipfile, subprocess, random\n\nz=zipfile.ZipFile('model.pth')\ndef flt(n,c): return list(struct.unpack('<%df'%c, z.read('simple_mnist/data/'+n)))\nWi=flt('0',12544); bi=flt('1',16); Wh=flt('2',256); bh=flt('3',16); Wo=flt('4',160); bo=flt('5',10)\n\ndef ref(px):\n    x=[((p/255)-0.1307)/0.3081 for p in px]\n    h1=[max(0.0,sum(Wi[j*784+k]*x[k] for k in range(784))+bi[j]) for j in range(16)]\n    h2=[max(0.0,sum(Wh[j*16+k]*h1[k] for k in range(16))+bh[j]) for j in range(16)]\n    o=[sum(Wo[j*16+k]*h2[k] for k in range(16))+bo[j] for j in range(10)]\n    return max(range(10),key=lambda i:o[i])\n\ndef make_png(px):\n    raw=b''.join(b'\\x00'+bytes(px[y*28:(y+1)*28]) for y in range(28))\n    comp=zlib.compress(raw,9)\n    def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)\n    ihdr=struct.pack('>IIBBBBB',28,28,8,0,0,0,0)\n    return b'\\x89PNG\\r\\n\\x1a\\n'+chunk(b'IHDR',ihdr)+chunk(b'IDAT',comp)+chunk(b'IEND',b'')\n\nrandom.seed(1)\nok=0; total=0\nimgs=[[0]*784,[255]*784]+[ [random.randint(0,255) for _ in range(784)] for _ in range(8)]\nfor i,px in enumerate(imgs):\n    open('/tmp/t.png','wb').write(make_png(px))\n    got=subprocess.check_output(['./cli_tool','weights.json','/tmp/t.png']).decode().strip()\n    exp=str(ref(px)); total+=1; ok+= (got==exp)\n    print('case',i,'expected',exp,'got',got,'OK' if got==exp else 'MISMATCH')\nprint('PASS %d/%d'%(ok,total))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

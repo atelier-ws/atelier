@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UA7p1NZHgLQwjAKymK3wBb",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AxUR7moJkPG1qjZDPXe3jC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>&1 && for k in 0 1 2 10 20 90; do echo \"k=$k py=$(python3 main.py.c $k) c=$(./cmain $k)\"; done"
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>&1 && for k in 0 1 2 10 20 90; do echo \"k=$k py=$(python3 main.py.c $k) c=$(./cmain $k)\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -238,7 +238,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H5P4sgxZwmpA4ct6sRhR9w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && ok=1; for k in 0 1 2 3 5 7 15 30 50 92; do p=$(python3 main.py.c $k); c=$(./cmain $k); [ \"$p\" = \"$c\" ] && echo \"k=$k OK $p\" || { echo \"k=$k MISMATCH py=$p c=$c\"; ok=0; }; done; [ $ok -eq 1 ] && echo \"ALL PASS\""
           },
@@ -246,7 +246,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && ok=1; for k in 0 1 2 3 5 7 15 30 50 92; do p=$(python3 main.py.c $k); c=$(./cmain $k); [ \"$p\" = \"$c\" ] && echo \"k=$k OK $p\" || { echo \"k=$k MISMATCH py=$p c=$c\"; ok=0; }; done; [ $ok -eq 1 ] && echo \"ALL PASS\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

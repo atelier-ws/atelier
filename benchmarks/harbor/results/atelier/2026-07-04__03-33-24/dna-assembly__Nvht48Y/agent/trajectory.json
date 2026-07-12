@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LSym16ifPXyZapu6xU9heR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name sequences.fasta 2>/dev/null"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "find / -name sequences.fasta 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01Ec3BE6aP7gVkLEtwiyHyT9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which primer3_core oligotm; ls /usr/bin | grep -i primer; ls /usr/bin | grep -i oligo"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "which primer3_core oligotm; ls /usr/bin | grep -i primer; ls /usr/bin | grep -i oligo"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H3kcDLtxEzcDfTzYTTahtx",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "app/sequences.fasta"
@@ -131,12 +131,12 @@
                 "app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01Ts1cGyJXnTYzDK9hAYXRJ1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la app/; wc -l app/sequences.fasta"
           },
@@ -144,7 +144,7 @@
             "raw_arguments": {
               "command": "ls -la app/; wc -l app/sequences.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TvCuk2zjqUJk1ueCwGAj2K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; ls -la; echo ---; find / -name sequences.fasta 2>/dev/null | head"
           },
@@ -217,7 +217,7 @@
             "raw_arguments": {
               "command": "pwd; ls -la; echo ---; find / -name sequences.fasta 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -278,7 +278,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S8bfY3TZKJwGGKJD7wMVBW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"PWD=$PWD\"; ls -la .",
             "cwd": "/"
@@ -288,7 +288,7 @@
               "command": "echo \"PWD=$PWD\"; ls -la .",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -296,7 +296,7 @@
         "results": [
           {
             "source_call_id": "toolu_01S8bfY3TZKJwGGKJD7wMVBW",
-            "content": "{\"type\": \"text\", \"text\": \"<redacted-credential>\\ntotal 212852\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 .\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 ..\\n-rwxr-xr-x    1 root   root           0 Jul  4 05:28 .dockerenv\\ndrwxr-xr-x    1 root   root        4096 Oct 28  2025 app\\ndrwxrwxrwx   51 ubuntu ubuntu      4096 Jul  4 00:15 atelier\\n-rw-r--r--    1 root   root   217867825 Jul  4 01:33 atelier-bundle.tar.gz\\nlrwxrwxrwx    1 root   root           7 Apr 22  2024 bin -> usr/bin\\ndrwxr-xr-x    2 root   root        4096 Apr 22  2024 boot\\ndrwxr-xr-x    5 root   root         340 Jul  4 05:28 dev\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:29 etc\\ndrwxr-xr-x    3 root   root        4096 Oct  1  2025 home\\ndrwxr-xr-x    2 root   root        4096 Jul  4 05:28 installed-agent\\nlrwxrwxrwx    1 root   root           7 Apr 22  2024 lib -> usr/lib\\nlrwxrwxrwx    1 root   root           9 Apr 22  2024 lib64 -> usr/lib64\\ndrwxr-xr-x    5 root   root        4096 Jul  4 05:28 logs\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 media\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 mnt\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:29 opt\\ndr-xr-xr-x 1395 root   root           0 Jul  4 05:28 proc\\ndrwx------    1 root   root        4096 Jul  4 05:29 root\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 run\\nlrwxrwxrwx    1 root   root           8 Apr 22  2024 sbin -> usr/sbin\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 srv\\ndr-xr-xr-x   13 root   root           0 Jul  3 11:46 sys\\ndrwxrwxrwt    1 root   root        4096 Jul  4 05:29 tmp\\ndrwxr-xr-x    1 root   root        4096 Oct  1  2025 usr\\ndrwxr-xr-x    1 root   root        4096 Oct  1  2025 var\"}"
+            "content": "{\"type\": \"text\", \"text\": \"<redacted-credential>\\ntotal 212852\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 .\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 ..\\n-rwxr-xr-x    1 root   root           0 Jul  4 05:28 .dockerenv\\ndrwxr-xr-x    1 root   root        4096 Oct 28  2025 app\\ndrwxrwxrwx   51 ubuntu ubuntu      4096 Jul  4 00:15 lemoncrow\\n-rw-r--r--    1 root   root   217867825 Jul  4 01:33 lemoncrow-bundle.tar.gz\\nlrwxrwxrwx    1 root   root           7 Apr 22  2024 bin -> usr/bin\\ndrwxr-xr-x    2 root   root        4096 Apr 22  2024 boot\\ndrwxr-xr-x    5 root   root         340 Jul  4 05:28 dev\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:29 etc\\ndrwxr-xr-x    3 root   root        4096 Oct  1  2025 home\\ndrwxr-xr-x    2 root   root        4096 Jul  4 05:28 installed-agent\\nlrwxrwxrwx    1 root   root           7 Apr 22  2024 lib -> usr/lib\\nlrwxrwxrwx    1 root   root           9 Apr 22  2024 lib64 -> usr/lib64\\ndrwxr-xr-x    5 root   root        4096 Jul  4 05:28 logs\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 media\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 mnt\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:29 opt\\ndr-xr-xr-x 1395 root   root           0 Jul  4 05:28 proc\\ndrwx------    1 root   root        4096 Jul  4 05:29 root\\ndrwxr-xr-x    1 root   root        4096 Jul  4 05:28 run\\nlrwxrwxrwx    1 root   root           8 Apr 22  2024 sbin -> usr/sbin\\ndrwxr-xr-x    2 root   root        4096 Oct  1  2025 srv\\ndr-xr-xr-x   13 root   root           0 Jul  3 11:46 sys\\ndrwxrwxrwt    1 root   root        4096 Jul  4 05:29 tmp\\ndrwxr-xr-x    1 root   root        4096 Oct  1  2025 usr\\ndrwxr-xr-x    1 root   root        4096 Oct  1  2025 var\"}"
           }
         ]
       },
@@ -349,7 +349,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KqmjzBrku8nkyu2KXjatjB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo ---; wc -l /app/sequences.fasta",
             "cwd": "/"
@@ -359,7 +359,7 @@
               "command": "ls -la /app; echo ---; wc -l /app/sequences.fasta",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -420,7 +420,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CHoV2MVMJk39hNA26q5nFT",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sequences.fasta"
@@ -432,7 +432,7 @@
                 "/app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -493,7 +493,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J89XrTHjZZMpfadzqxEGe1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq primer3 2>&1 | tail -5; echo \"---which---\"; which oligotm primer3_core 2>&1; echo \"---find---\"; find / -name 'oligotm*' 2>/dev/null | head",
             "cwd": "/"
@@ -503,7 +503,7 @@
               "command": "apt-get install -y -qq primer3 2>&1 | tail -5; echo \"---which---\"; which oligotm primer3_core 2>&1; echo \"---find---\"; find / -name 'oligotm*' 2>/dev/null | head",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -564,7 +564,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RDAZ84hznKejLF1ap7o2xy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y primer3 2>&1 | tail -8; echo \"===\"; which oligotm; dpkg -L primer3 2>/dev/null | grep -i oligo",
             "cwd": "/"
@@ -574,7 +574,7 @@
               "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y primer3 2>&1 | tail -8; echo \"===\"; which oligotm; dpkg -L primer3 2>/dev/null | grep -i oligo",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -635,7 +635,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BCVkNByHdgJBxa8Hj2WYdz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "oligotm 2>&1 | head -40",
             "cwd": "/"
@@ -645,7 +645,7 @@
               "command": "oligotm 2>&1 | head -40",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -706,7 +706,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UyJzcnKredMLQCwU5P3Jy9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 AGCAAGGGCGAGGAGCTGTTC",
             "cwd": "/"
@@ -716,7 +716,7 @@
               "command": "oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 AGCAAGGGCGAGGAGCTGTTC",
               "cwd": "/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -777,7 +777,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019fj35hi36LbsLySAJygAR4",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -797,7 +797,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -858,7 +858,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FaJ5GKWrt6n9vnGK56jR9x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 design.py",
             "cwd": "/app"
@@ -868,7 +868,7 @@
               "command": "python3 design.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -929,7 +929,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TdhZfQXYRZrnNC1LvbCTty",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -947,7 +947,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1020,7 +1020,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S8B886N5MguFHeZoNKykeB",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/design.py"
@@ -1032,7 +1032,7 @@
                 "/app/design.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1093,7 +1093,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XNirtL2CPLCc2EH5qfS18D",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1113,7 +1113,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1186,7 +1186,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V48AtMrMEC854F4CBr8KYY",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1206,7 +1206,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1279,7 +1279,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019PvLiVVbkKJ1pXsAqn5WRh",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "design.py primer overhang vector_body",
             "paths": "/app"
@@ -1289,7 +1289,7 @@
               "query": "design.py primer overhang vector_body",
               "paths": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1350,7 +1350,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011M9SPZ4ZPgHiK8ddzRMFXT",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1370,7 +1370,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1443,7 +1443,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TdwmwvNNuiwRVcJuyuun6A",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1463,7 +1463,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1524,7 +1524,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S37DQxLhmC2MCpvtZrzUfo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 build.py",
             "cwd": "/app"
@@ -1534,7 +1534,7 @@
               "command": "python3 build.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1595,7 +1595,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JTRuRNyLxRQjAgywkrmyRx",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1615,7 +1615,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1688,7 +1688,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R1yq3ZWGThbaJmLkA9Mh4t",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/build.py:L50-L75"
@@ -1700,7 +1700,7 @@
                 "/app/build.py:L50-L75"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1761,7 +1761,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MoAB4LstZN36h1Y48xsga1",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1781,7 +1781,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1854,7 +1854,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HteT465KBjKdpcG6S2nnTa",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1874,7 +1874,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1935,7 +1935,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KGBYPFtjJvBkQy6ezKJEz3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 gen.py",
             "cwd": "/app"
@@ -1945,7 +1945,7 @@
               "command": "python3 gen.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2006,7 +2006,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0192NoqA5noofR1YFpd13osQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2026,7 +2026,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2087,7 +2087,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LbJTuFaLRg34QmqPKQsVBU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 gen2.py",
             "cwd": "/app"
@@ -2097,7 +2097,7 @@
               "command": "python3 gen2.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2158,7 +2158,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K7esDJKYzdjFdyCWLBYbzF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2178,7 +2178,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2239,7 +2239,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PtHQ56BANJFfTcToad55P3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 gen3.py",
             "cwd": "/app"
@@ -2249,7 +2249,7 @@
               "command": "python3 gen3.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2310,7 +2310,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013kzj9SphCpCxK4T5xDBz5e",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2330,7 +2330,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2391,7 +2391,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0174ZwYAq9cv95vUrhEAmDLN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 gen4.py",
             "cwd": "/app"
@@ -2401,7 +2401,7 @@
               "command": "python3 gen4.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2462,7 +2462,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJqTf5WqFhrqD7Ps3x6LwH",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2482,7 +2482,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2543,7 +2543,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LCnehhroZnUJXyGGdu5ZG3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 gen_final.py",
             "cwd": "/app"
@@ -2553,7 +2553,7 @@
               "command": "python3 gen_final.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2614,7 +2614,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TdAwg3qYCYYxv2u6PPtatV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== file (cat -A shows line ends) ===\"; cat -A /app/primers.fasta; echo \"=== blank line count ===\"; grep -c '^$' /app/primers.fasta; echo \"=== header check ===\"; grep '^>' /app/primers.fasta; echo \"=== direct oligotm on each annealed region ===\"; for x in TGAGGATCCCGGGAATTCTCG:input_fwd TGCTCATATGTATATCTCCTTCTTAAAGTTAAACAAAAT:input_rev AGCAAGGGCGAGGAGCTGTT:egfp_fwd TTTGTACAGCTCGTCCATGCC:egfp_rev GGTAGTGGCTCCGGTAGCGG:flag_fwd TGTCTGAACCACTACCTGAACCAGAACC:flag_rev GACAAAGACTGCGAAATGAAGCGC:snap_fwd CTCATTAACCCAGCCCAGGCTTACC:snap_rev; do s=${x%%:*}; n=${x##*:}; printf \"%-10s %2dnt  Tm=\" \"$n\" \"${#s}\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 $s; done",
             "cwd": "/app"
@@ -2624,7 +2624,7 @@
               "command": "echo \"=== file (cat -A shows line ends) ===\"; cat -A /app/primers.fasta; echo \"=== blank line count ===\"; grep -c '^$' /app/primers.fasta; echo \"=== header check ===\"; grep '^>' /app/primers.fasta; echo \"=== direct oligotm on each annealed region ===\"; for x in TGAGGATCCCGGGAATTCTCG:input_fwd TGCTCATATGTATATCTCCTTCTTAAAGTTAAACAAAAT:input_rev AGCAAGGGCGAGGAGCTGTT:egfp_fwd TTTGTACAGCTCGTCCATGCC:egfp_rev GGTAGTGGCTCCGGTAGCGG:flag_fwd TGTCTGAACCACTACCTGAACCAGAACC:flag_rev GACAAAGACTGCGAAATGAAGCGC:snap_fwd CTCATTAACCCAGCCCAGGCTTACC:snap_rev; do s=${x%%:*}; n=${x##*:}; printf \"%-10s %2dnt  Tm=\" \"$n\" \"${#s}\"; oligotm -tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500 $s; done",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2685,7 +2685,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013yYYkUPqqVXEeyStFnjcBm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport subprocess\ndef rc(s): return s.translate(str.maketrans('ACGT','TGCA'))[::-1]\ndef parse(fn):\n    d={};n=None\n    for l in open(fn):\n        l=l.strip()\n        if not l:continue\n        if l[0]=='>':n=l[1:];d[n]=''\n        else:d[n]+=l\n    return d\nS=parse('/app/sequences.fasta')\ntempl={'input':(S['input']+S['input']).upper(),'egfp':S['egfp'].upper(),'flag':S['flag'].upper(),'snap':S['snap'].upper()}\nP=parse('/app/primers.fasta')\ndef tm(s):return float(subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s]).strip())\ndef anneal(pr,name):\n    t=templ[name];tb=rc(t);best=''\n    for k in range(15,len(pr)+1):\n        if pr[-k:] in t or pr[-k:] in tb: best=pr[-k:]\n    return best\nprint(f'{\"primer\":10s} {\"anneal_len\":10s} {\"Tm\":7s}  annealed_region')\nres={}\nfor name in ['input','egfp','flag','snap']:\n    for d in ['fwd','rev']:\n        h=f'{name}_{d}';pr=P[h];a=anneal(pr,name);t=tm(a);res[h]=t\n        assert 15<=len(a)<=45 and 58<=t<=72, (h,len(a),t)\n        print(f'{h:10s} {len(a):>6d}     {t:6.2f}  {a}')\nfor name in ['input','egfp','flag','snap']:\n    d=abs(res[f'{name}_fwd']-res[f'{name}_rev'])\n    assert d<=5\n    print(f'{name}: pair Tm diff = {d:.2f}  (<=5 OK)')\nprint(\"ALL CONSTRAINTS SATISFIED\")\nPY",
             "cwd": "/app"
@@ -2695,7 +2695,7 @@
               "command": "python3 - <<'PY'\nimport subprocess\ndef rc(s): return s.translate(str.maketrans('ACGT','TGCA'))[::-1]\ndef parse(fn):\n    d={};n=None\n    for l in open(fn):\n        l=l.strip()\n        if not l:continue\n        if l[0]=='>':n=l[1:];d[n]=''\n        else:d[n]+=l\n    return d\nS=parse('/app/sequences.fasta')\ntempl={'input':(S['input']+S['input']).upper(),'egfp':S['egfp'].upper(),'flag':S['flag'].upper(),'snap':S['snap'].upper()}\nP=parse('/app/primers.fasta')\ndef tm(s):return float(subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s]).strip())\ndef anneal(pr,name):\n    t=templ[name];tb=rc(t);best=''\n    for k in range(15,len(pr)+1):\n        if pr[-k:] in t or pr[-k:] in tb: best=pr[-k:]\n    return best\nprint(f'{\"primer\":10s} {\"anneal_len\":10s} {\"Tm\":7s}  annealed_region')\nres={}\nfor name in ['input','egfp','flag','snap']:\n    for d in ['fwd','rev']:\n        h=f'{name}_{d}';pr=P[h];a=anneal(pr,name);t=tm(a);res[h]=t\n        assert 15<=len(a)<=45 and 58<=t<=72, (h,len(a),t)\n        print(f'{h:10s} {len(a):>6d}     {t:6.2f}  {a}')\nfor name in ['input','egfp','flag','snap']:\n    d=abs(res[f'{name}_fwd']-res[f'{name}_rev'])\n    assert d<=5\n    print(f'{name}: pair Tm diff = {d:.2f}  (<=5 OK)')\nprint(\"ALL CONSTRAINTS SATISFIED\")\nPY",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2756,7 +2756,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MEUrKPrAMw5qracNuUVAT1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f design.py build.py gen.py gen2.py gen3.py gen4.py gen_final.py; ls -la",
             "cwd": "/app"
@@ -2766,7 +2766,7 @@
               "command": "rm -f design.py build.py gen.py gen2.py gen3.py gen4.py gen_final.py; ls -la",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2882,7 +2882,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XRZwaAeVpFEq1xB9VPYPV9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport subprocess\ndef rc(s): return s.translate(str.maketrans('ACGTacgt','TGCAtgca'))[::-1]\ndef parse(fn):\n    d={};n=None\n    for l in open(fn):\n        l=l.strip()\n        if not l: continue\n        if l[0]=='>': n=l[1:]; d[n]=''\n        else: d[n]+=l\n    return d\ndef tm(s): return float(subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()]).strip())\n\nS=parse('/app/sequences.fasta'); P=parse('/app/primers.fasta')\nout=S['output'].lower()\ntempl={'input':(S['input']+S['input']).upper(),'egfp':S['egfp'].upper(),'flag':S['flag'].upper(),'snap':S['snap'].upper()}\n\n# 1) FASTA structural checks\nraw=open('/app/primers.fasta').read().split('\\n')\nassert '' not in raw[:-1] and raw[-1]=='', 'blank line / trailing issue'\nexp=[f'>{n}_{d}' for n in ['input','egfp','flag','snap'] for d in ('fwd','rev')]\nassert [l for l in raw if l.startswith('>')]==exp, 'headers'\n\n# 2) Tm / length / pair checks on true 3'-anchored annealed region\ndef anneal(pr,name):\n    t=templ[name]; tb=rc(t); best=''\n    for k in range(15,len(pr)+1):\n        if pr[-k:] in t or pr[-k:] in tb: best=pr[-k:]\n    return best\nfor name in ['input','egfp','flag','snap']:\n    tf=tm(anneal(P[f'{name}_fwd'],name)); tr=tm(anneal(P[f'{name}_rev'],name))\n    af=anneal(P[f'{name}_fwd'],name); ar=anneal(P[f'{name}_rev'],name)\n    assert 15<=len(af)<=45 and 15<=len(ar)<=45\n    assert 58<=tf<=72 and 58<=tr<=72 and abs(tf-tr)<=5\n\n# 3) BsaI recognition-site sanity: each primer has exactly one GGTCTC + 1nt spacer + 4nt overhang\nfor h,p in P.items():\n    assert p.upper().count('GGTCTC')==1 and 'GAGACC' not in p.upper()\n\n# 4) Simulate PCR -> BsaI digest -> ligation, compare to output\negfp_ins=S['egfp'][3:-3].lower(); flag_ins=S['flag'][3:-3].lower(); snap_ins=S['snap'][3:].lower()\ninp=S['input'].lower(); le=inp.find('aaggagatatacatatg')+len('aaggagatatacatatg')\nir=inp.find('tgaggatcccggg'); vector_body=inp[ir:]+inp[:le]\nbodies={'input':vector_body,'egfp':egfp_ins,'flag':flag_ins,'snap':snap_ins}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    assert top.count('ggtctc')==1 and top.count('gagacc')==1\n    return top[p+7:p+11], top[p+7:q-5], top[q-5:q-1]\nres={}\nfor name,body in bodies.items():\n    fwd=P[f'{name}_fwd'].lower(); rev=P[f'{name}_rev'].lower()\n    # product top strand = fwd + internal template + rc(rev); annealed ends coincide with body ends\n    Lf=len(fwd)-fwd.rfind(body[:15])-0  # locate annealing start of fwd\n    # robust build: fwd tail + full body + rc(rev tail)\n    ft=fwd[:fwd.find(body[:15])]; rt=rev[:rev.find(rc(body[-15:]))]\n    top=ft+body+rc(rt)\n    lo,core,ro=digest(top); res[name]=(lo,core,ro); assert core==body\norder=['input','egfp','flag','snap']\nfor i,n in enumerate(order): assert res[n][2]==res[order[(i+1)%4]][0], 'overhang mismatch'\nasm=''.join(res[n][1] for n in order)\nassert len(asm)==len(out) and out in asm+asm, 'assembly != output'\nprint('PASS: FASTA format, Tm/length/pair constraints, BsaI sites, and Golden Gate assembly == output plasmid')\nPY",
             "cwd": "/app"
@@ -2892,7 +2892,7 @@
               "command": "python3 - <<'PY'\nimport subprocess\ndef rc(s): return s.translate(str.maketrans('ACGTacgt','TGCAtgca'))[::-1]\ndef parse(fn):\n    d={};n=None\n    for l in open(fn):\n        l=l.strip()\n        if not l: continue\n        if l[0]=='>': n=l[1:]; d[n]=''\n        else: d[n]+=l\n    return d\ndef tm(s): return float(subprocess.check_output(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()]).strip())\n\nS=parse('/app/sequences.fasta'); P=parse('/app/primers.fasta')\nout=S['output'].lower()\ntempl={'input':(S['input']+S['input']).upper(),'egfp':S['egfp'].upper(),'flag':S['flag'].upper(),'snap':S['snap'].upper()}\n\n# 1) FASTA structural checks\nraw=open('/app/primers.fasta').read().split('\\n')\nassert '' not in raw[:-1] and raw[-1]=='', 'blank line / trailing issue'\nexp=[f'>{n}_{d}' for n in ['input','egfp','flag','snap'] for d in ('fwd','rev')]\nassert [l for l in raw if l.startswith('>')]==exp, 'headers'\n\n# 2) Tm / length / pair checks on true 3'-anchored annealed region\ndef anneal(pr,name):\n    t=templ[name]; tb=rc(t); best=''\n    for k in range(15,len(pr)+1):\n        if pr[-k:] in t or pr[-k:] in tb: best=pr[-k:]\n    return best\nfor name in ['input','egfp','flag','snap']:\n    tf=tm(anneal(P[f'{name}_fwd'],name)); tr=tm(anneal(P[f'{name}_rev'],name))\n    af=anneal(P[f'{name}_fwd'],name); ar=anneal(P[f'{name}_rev'],name)\n    assert 15<=len(af)<=45 and 15<=len(ar)<=45\n    assert 58<=tf<=72 and 58<=tr<=72 and abs(tf-tr)<=5\n\n# 3) BsaI recognition-site sanity: each primer has exactly one GGTCTC + 1nt spacer + 4nt overhang\nfor h,p in P.items():\n    assert p.upper().count('GGTCTC')==1 and 'GAGACC' not in p.upper()\n\n# 4) Simulate PCR -> BsaI digest -> ligation, compare to output\negfp_ins=S['egfp'][3:-3].lower(); flag_ins=S['flag'][3:-3].lower(); snap_ins=S['snap'][3:].lower()\ninp=S['input'].lower(); le=inp.find('aaggagatatacatatg')+len('aaggagatatacatatg')\nir=inp.find('tgaggatcccggg'); vector_body=inp[ir:]+inp[:le]\nbodies={'input':vector_body,'egfp':egfp_ins,'flag':flag_ins,'snap':snap_ins}\ndef digest(top):\n    p=top.find('ggtctc'); q=top.find('gagacc')\n    assert top.count('ggtctc')==1 and top.count('gagacc')==1\n    return top[p+7:p+11], top[p+7:q-5], top[q-5:q-1]\nres={}\nfor name,body in bodies.items():\n    fwd=P[f'{name}_fwd'].lower(); rev=P[f'{name}_rev'].lower()\n    # product top strand = fwd + internal template + rc(rev); annealed ends coincide with body ends\n    Lf=len(fwd)-fwd.rfind(body[:15])-0  # locate annealing start of fwd\n    # robust build: fwd tail + full body + rc(rev tail)\n    ft=fwd[:fwd.find(body[:15])]; rt=rev[:rev.find(rc(body[-15:]))]\n    top=ft+body+rc(rt)\n    lo,core,ro=digest(top); res[name]=(lo,core,ro); assert core==body\norder=['input','egfp','flag','snap']\nfor i,n in enumerate(order): assert res[n][2]==res[order[(i+1)%4]][0], 'overhang mismatch'\nasm=''.join(res[n][1] for n in order)\nassert len(asm)==len(out) and out in asm+asm, 'assembly != output'\nprint('PASS: FASTA format, Tm/length/pair constraints, BsaI sites, and Golden Gate assembly == output plasmid')\nPY",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

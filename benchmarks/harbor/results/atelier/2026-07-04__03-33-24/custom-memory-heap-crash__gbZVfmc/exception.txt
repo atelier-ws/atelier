@@ -13,7 +13,7 @@ Traceback (most recent call last):
   File "/home/pankaj/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 60, in wrapper
     return await fn(self, instruction, *args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/atelier_agent.py", line 567, in run
+  File "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/lemoncrow_agent.py", line 567, in run
     await self.exec_as_root(
     ...<3 lines>...
     )

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SpX4JudV8sppVVEWK66cMv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01SpX4JudV8sppVVEWK66cMv",
-            "content": "{\"type\": \"text\", \"text\": \"total 100\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:59 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:58 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:59 .atelier\\n-rw-r--r-- 1 root root 88805 Jun 17  2025 graphene.dat\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 100\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:59 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:58 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:59 .lemoncrow\\n-rw-r--r-- 1 root root 88805 Jun 17  2025 graphene.dat\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L5T9UpHr8qg7VMTitBE9pn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/graphene.dat:head=40"
@@ -114,7 +114,7 @@
                 "/app/graphene.dat:head=40"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PUrpnM4PZ2pNZ68y1n99Ws",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/graphene.dat; echo \"---tail---\"; tail -20 /app/graphene.dat"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "wc -l /app/graphene.dat; echo \"---tail---\"; tail -20 /app/graphene.dat"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Z3YwR8fTNXn1RSpvPXui8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy,scipy; print(numpy.__version__, scipy.__version__)\" 2>&1 | head"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import numpy,scipy; print(numpy.__version__, scipy.__version__)\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015wz13fvdTPMAHUU7wRnSYK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages numpy scipy 2>&1 | tail -5"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages numpy scipy 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VC4SU6hiuWGnFNzMwQ5qMf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv 2>&1 | tail -3; uv pip install --system --break-system-packages numpy scipy 2>&1 | tail -5"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1; pip install --break-system-packages uv 2>&1 | tail -3; uv pip install --system --break-system-packages numpy scipy 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016kqmpZtJ8m4jT3dgjPNZp7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\nprint('x range',x.min(),x.max(),'n',len(x))\nprint('y range',y.min(),y.max())\n# find top intensity locations\nidx=np.argsort(y)[-10:]\nfor i in sorted(idx):\n    print(round(x[i],1), round(y[i],1))\n\""
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\nprint('x range',x.min(),x.max(),'n',len(x))\nprint('y range',y.min(),y.max())\n# find top intensity locations\nidx=np.argsort(y)[-10:]\nfor i in sorted(idx):\n    print(round(x[i],1), round(y[i],1))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KomNGbpSJYCyTUuJeYyveP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.signal import find_peaks\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# smooth baseline estimate: median\np,props=find_peaks(y,prominence=2000,distance=20)\nfor i in p:\n    print(round(x[i],1), round(y[i],1), round(props['prominences'][list(p).index(i)],1))\n\""
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.signal import find_peaks\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# smooth baseline estimate: median\np,props=find_peaks(y,prominence=2000,distance=20)\nfor i in p:\n    print(round(x[i],1), round(y[i],1), round(props['prominences'][list(p).index(i)],1))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K6xRR2evQxhUGs7TopvZpw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# coarse profile: bin\nimport numpy as np\nbins=np.linspace(x.min(),x.max(),60)\nidx=np.digitize(x,bins)\nfor b in range(1,60):\n    m=idx==b\n    if m.sum():\n        print(round(bins[b-1]),'\\t',round(y[m].max()),'\\t','#'*int(y[m].max()/2000))\n\""
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# coarse profile: bin\nimport numpy as np\nbins=np.linspace(x.min(),x.max(),60)\nidx=np.digitize(x,bins)\nfor b in range(1,60):\n    m=idx==b\n    if m.sum():\n        print(round(bins[b-1]),'\\t',round(y[m].max()),'\\t','#'*int(y[m].max()/2000))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016bugvAETGBpdCpvjh1bDJQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/1500))\nprint('=== G candidate 18000-20500 ===')\nshow(18000,20500,3)\n\""
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/1500))\nprint('=== G candidate 18000-20500 ===')\nshow(18000,20500,3)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GqHKRYcTG7BjnsTjdZ4dNd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/700))\nprint('=== 3000-4500 ===')\nshow(3000,4500,2)\nprint('=== 5500-7200 ===')\nshow(5500,7200,2)\n\""
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/700))\nprint('=== 3000-4500 ===')\nshow(3000,4500,2)\nprint('=== 5500-7200 ===')\nshow(5500,7200,2)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -743,7 +743,7 @@
         "results": [
           {
             "source_call_id": "toolu_01GqHKRYcTG7BjnsTjdZ4dNd",
-            "content": "{\"type\": \"text\", \"text\": \"=== 3000-4500 ===\\n3000.1 \\t 577 \\t \\n3003.2 \\t 431 \\t \\n3006.3 \\t 462 \\t \\n3009.4 \\t 373 \\t \\n3012.5 \\t 639 \\t \\n3015.6 \\t 535 \\t \\n3018.8 \\t 480 \\t \\n3021.9 \\t 510 \\t \\n3025.0 \\t 678 \\t \\n3028.2 \\t 491 \\t \\n3031.3 \\t 620 \\t \\n3034.5 \\t 421 \\t \\n3037.7 \\t 361 \\t \\n3040.8 \\t 618 \\t \\n3044.0 \\t 596 \\t \\n3047.2 \\t 554 \\t \\n3050.4 \\t 320 \\t \\n3053.7 \\t 418 \\t \\n3056.9 \\t 571 \\t \\n3060.1 \\t 610 \\t \\n3063.4 \\t 525 \\t \\n3066.6 \\t 664 \\t \\n3069.9 \\t 751 \\t #\\n3073.1 \\t 734 \\t #\\n3076.4 \\t 746 \\t #\\n3079.7 \\t 779 \\t #\\n3083.0 \\t 1066 \\t #\\n3086.3 \\t 1276 \\t #\\n3089.6 \\t 1090 \\t #\\n3092.9 \\t 711 \\t #\\n3096.3 \\t 687 \\t \\n3099.6 \\t 816 \\t #\\n3103.0 \\t 633 \\t \\n3106.3 \\t 767 \\t #\\n3109.7 \\t 684 \\t \\n3113.1 \\t 640 \\t \\n3116.5 \\t 678 \\t \\n3119.9 \\t 536 \\t \\n3123.3 \\t 688 \\t \\n3126.7 \\t 905 \\t #\\n3130.1 \\t 593 \\t \\n3133.5 \\t 847 \\t #\\n3137.0 \\t 886 \\t #\\n3140.4 \\t 715 \\t #\\n3143.9 \\t 746 \\t #\\n3147.4 \\t 693 \\t \\n3150.9 \\t 662 \\t \\n3154.4 \\t 610 \\t \\n3157.9 \\t 833 \\t #\\n... (195 lines omitted) ...\\n4106.8 \\t 2293 \\t ###\\n4113.5 \\t 2213 \\t ###\\n4120.2 \\t 2507 \\t ###\\n4127.0 \\t 2382 \\t ###\\n4133.7 \\t 2210 \\t ###\\n4140.5 \\t 2314 \\t ###\\n4147.3 \\t 2373 \\t ###\\n4154.2 \\t 2210 \\t ###\\n4161.1 \\t 2263 \\t ###\\n4168.0 \\t 2374 \\t ###\\n4174.9 \\t 2407 \\t ###\\n4181.9 \\t 2358 \\t ###\\n4188.9 \\t 2370 \\t ###\\n4195.9 \\t 2384 \\t ###\\n4202.9 \\t 2450 \\t ###\\n4210.0 \\t 2201 \\t ###\\n4217.1 \\t 2229 \\t ###\\n4224.2 \\t 2406 \\t ###\\n4231.4 \\t 2391 \\t ###\\n4238.6 \\t 2480 \\t ###\\n4245.8 \\t 2446 \\t ###\\n4253.0 \\t 2348 \\t ###\\n4260.3 \\t 2272 \\t ###\\n4267.6 \\t 2440 \\t ###\\n4274.9 \\t 2457 \\t ###\\n4282.3 \\t 2303 \\t ###\\n4289.7 \\t 2458 \\t ###\\n4297.1 \\t 2757 \\t ###\\n4304.5 \\t 2401 \\t ###\\n4312.0 \\t 2413 \\t ###\\n4319.5 \\t 2364 \\t ###\\n4327.1 \\t 2431 \\t ###\\n4334.7 \\t 2457 \\t ###\\n4342.3 \\t 2545 \\t ###\\n4349.9 \\t 2657 \\t ###\\n4357.6 \\t 2542 \\t ###\\n4365.3 \\t 2718 \\t ###\\n4373.0 \\t 2633 \\t ###\\n4380.8 \\t 2738 \\t ###\\n4388.6 \\t 2640 \\t ###\\n4396.4 \\t 2676 \\t ###\\n4404.3 \\t 2380 \\t ###\\n4412.2 \\t 2570 \\t ###\\n4420.1 \\t 2671 \\t ###\\n4428.0 \\t 2815 \\t ####\\n4436.0 \\t 2835 \\t ####\\n4444.1 \\t 2623 \\t ###\\n4452.1 \\t 2868 \\t ####\\n4460.2 \\t 2672 \\t ###\\n4468.4 \\t 3033 \\t ####\\n4476.5 \\t 3001 \\t ####\\n4484.7 \\t 2890 \\t ####\\n4493.0 \\t 2811 \\t ####\\n=== 5500-7200 ===\\n5504.8 \\t 4684 \\t ######\\n5518.0 \\t 4618 \\t ######\\n5531.3 \\t 4720 \\t ######\\n5544.6 \\t 4663 \\t ######\\n5558.1 \\t 4719 \\t ######\\n5571.6 \\t 4725 \\t ######\\n5585.2 \\t 4581 \\t ######\\n5598.8 \\t 4601 \\t ######\\n5612.5 \\t 4781 \\t ######\\n5626.3 \\t 4888 \\t ######\\n5640.2 \\t 4727 \\t ######\\n5654.2 \\t 4999 \\t #######\\n5668.2 \\t 4794 \\t ######\\n5682.3 \\t 4764 \\t ######\\n5696.5 \\t 4721 \\t ######\\n5710.8 \\t 4889 \\t ######\\n5725.2 \\t 4993 \\t #######\\n5739.6 \\t 4763 \\t ######\\n5754.1 \\t 4815 \\t ######\\n5768.7 \\t 4657 \\t ######\\n5783.4 \\t 5174 \\t #######\\n5798.2 \\t 4945 \\t #######\\n5813.1 \\t 5058 \\t #######\\n5828.0 \\t 4993 \\t #######\\n5843.0 \\t 5224 \\t #######\\n5858.2 \\t 5204 \\t #######\\n5873.4 \\t 5188 \\t #######\\n5888.7 \\t 5124 \\t #######\\n5904.1 \\t 5216 \\t #######\\n5919.5 \\t 5212 \\t #######\\n5935.1 \\t 5342 \\t #######\\n5950.8 \\t 5200 \\t #######\\n5966.5 \\t 5305 \\t #######\\n5982.4 \\t 5188 \\t #######\\n5998.3 \\t 5564 \\t #######\\n6014.3 \\t 5322 \\t #######\\n6030.5 \\t 5524 \\t #######\\n6046.7 \\t 5601 \\t ########\\n6063.0 \\t 5497 \\t #######\\n6079.5 \\t 5536 \\t #######\\n6096.0 \\t 5404 \\t #######\\n6112.6 \\t 5459 \\t #######\\n6129.3 \\t 5497 \\t #######\\n6146.2 \\t 5605 \\t ########\\n6163.1 \\t 5558 \\t #######\\n6180.2 \\t 6142 \\t ########\\n6197.3 \\t 5878 \\t ########\\n6214.6 \\t 6034 \\t ########\\n6231.9 \\t 6380 \\t #########\\n6249.4 \\t 6593 \\t #########\\n6267.0 \\t 7308 \\t ##########\\n6284.7 \\t 8838 \\t ############\\n6302.5 \\t 11393 \\t ################\\n6320.4 \\t 13767 \\t ###################\\n6338.4 \\t 13107 \\t ##################\\n6356.5 \\t 10590 \\t ###############\\n6374.8 \\t 8959 \\t ############\\n6393.2 \\t 7746 \\t ###########\\n6411.7 \\t 7055 \\t ##########\\n6430.3 \\t 6743 \\t #########\\n6449.0 \\t 6625 \\t #########\\n6467.9 \\t 6467 \\t #########\\n6486.9 \\t 6305 \\t #########\\n6506.0 \\t 6443 \\t #########\\n6525.2 \\t 6142 \\t ########\\n6544.5 \\t 6426 \\t #########\\n6564.0 \\t 6426 \\t #########\\n6583.6 \\t 6176 \\t ########\\n6603.4 \\t 6334 \\t #########\\n6623.3 \\t 6462 \\t #########\\n6643.3 \\t 6080 \\t ########\\n6663.4 \\t 6242 \\t ########\\n6683.7 \\t 6395 \\t #########\\n6704.1 \\t 6528 \\t #########\\n6724.6 \\t 6273 \\t ########\\n6745.3 \\t 6297 \\t ########\\n6766.2 \\t 6295 \\t ########\\n6787.1 \\t 6547 \\t #########\\n6808.3 \\t 6451 \\t #########\\n6829.5 \\t 6604 \\t #########\\n6850.9 \\t 6290 \\t ########\\n6872.5 \\t 6612 \\t #########\\n6894.2 \\t 6708 \\t #########\\n6916.1 \\t 6598 \\t #########\\n6938.1 \\t 6433 \\t #########\\n6960.3 \\t 6794 \\t #########\\n6982.6 \\t 6560 \\t #########\\n7005.1 \\t 6725 \\t #########\\n7027.7 \\t 6785 \\t #########\\n7050.6 \\t 6737 \\t #########\\n7073.5 \\t 6707 \\t #########\\n7096.7 \\t 6855 \\t #########\\n7120.0 \\t 6878 \\t #########\\n7143.4 \\t 6599 \\t #########\\n7167.1 \\t 7059 \\t ##########\\n7190.9 \\t 6974 \\t #########\\n\\n[output truncated: 195 lines omitted; full output (8074B) spilled to /tmp/atelier-spill/original-bash-1783119704188-0279430b.txt; read /tmp/atelier-spill/original-bash-1783119704188-0279430b.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"=== 3000-4500 ===\\n3000.1 \\t 577 \\t \\n3003.2 \\t 431 \\t \\n3006.3 \\t 462 \\t \\n3009.4 \\t 373 \\t \\n3012.5 \\t 639 \\t \\n3015.6 \\t 535 \\t \\n3018.8 \\t 480 \\t \\n3021.9 \\t 510 \\t \\n3025.0 \\t 678 \\t \\n3028.2 \\t 491 \\t \\n3031.3 \\t 620 \\t \\n3034.5 \\t 421 \\t \\n3037.7 \\t 361 \\t \\n3040.8 \\t 618 \\t \\n3044.0 \\t 596 \\t \\n3047.2 \\t 554 \\t \\n3050.4 \\t 320 \\t \\n3053.7 \\t 418 \\t \\n3056.9 \\t 571 \\t \\n3060.1 \\t 610 \\t \\n3063.4 \\t 525 \\t \\n3066.6 \\t 664 \\t \\n3069.9 \\t 751 \\t #\\n3073.1 \\t 734 \\t #\\n3076.4 \\t 746 \\t #\\n3079.7 \\t 779 \\t #\\n3083.0 \\t 1066 \\t #\\n3086.3 \\t 1276 \\t #\\n3089.6 \\t 1090 \\t #\\n3092.9 \\t 711 \\t #\\n3096.3 \\t 687 \\t \\n3099.6 \\t 816 \\t #\\n3103.0 \\t 633 \\t \\n3106.3 \\t 767 \\t #\\n3109.7 \\t 684 \\t \\n3113.1 \\t 640 \\t \\n3116.5 \\t 678 \\t \\n3119.9 \\t 536 \\t \\n3123.3 \\t 688 \\t \\n3126.7 \\t 905 \\t #\\n3130.1 \\t 593 \\t \\n3133.5 \\t 847 \\t #\\n3137.0 \\t 886 \\t #\\n3140.4 \\t 715 \\t #\\n3143.9 \\t 746 \\t #\\n3147.4 \\t 693 \\t \\n3150.9 \\t 662 \\t \\n3154.4 \\t 610 \\t \\n3157.9 \\t 833 \\t #\\n... (195 lines omitted) ...\\n4106.8 \\t 2293 \\t ###\\n4113.5 \\t 2213 \\t ###\\n4120.2 \\t 2507 \\t ###\\n4127.0 \\t 2382 \\t ###\\n4133.7 \\t 2210 \\t ###\\n4140.5 \\t 2314 \\t ###\\n4147.3 \\t 2373 \\t ###\\n4154.2 \\t 2210 \\t ###\\n4161.1 \\t 2263 \\t ###\\n4168.0 \\t 2374 \\t ###\\n4174.9 \\t 2407 \\t ###\\n4181.9 \\t 2358 \\t ###\\n4188.9 \\t 2370 \\t ###\\n4195.9 \\t 2384 \\t ###\\n4202.9 \\t 2450 \\t ###\\n4210.0 \\t 2201 \\t ###\\n4217.1 \\t 2229 \\t ###\\n4224.2 \\t 2406 \\t ###\\n4231.4 \\t 2391 \\t ###\\n4238.6 \\t 2480 \\t ###\\n4245.8 \\t 2446 \\t ###\\n4253.0 \\t 2348 \\t ###\\n4260.3 \\t 2272 \\t ###\\n4267.6 \\t 2440 \\t ###\\n4274.9 \\t 2457 \\t ###\\n4282.3 \\t 2303 \\t ###\\n4289.7 \\t 2458 \\t ###\\n4297.1 \\t 2757 \\t ###\\n4304.5 \\t 2401 \\t ###\\n4312.0 \\t 2413 \\t ###\\n4319.5 \\t 2364 \\t ###\\n4327.1 \\t 2431 \\t ###\\n4334.7 \\t 2457 \\t ###\\n4342.3 \\t 2545 \\t ###\\n4349.9 \\t 2657 \\t ###\\n4357.6 \\t 2542 \\t ###\\n4365.3 \\t 2718 \\t ###\\n4373.0 \\t 2633 \\t ###\\n4380.8 \\t 2738 \\t ###\\n4388.6 \\t 2640 \\t ###\\n4396.4 \\t 2676 \\t ###\\n4404.3 \\t 2380 \\t ###\\n4412.2 \\t 2570 \\t ###\\n4420.1 \\t 2671 \\t ###\\n4428.0 \\t 2815 \\t ####\\n4436.0 \\t 2835 \\t ####\\n4444.1 \\t 2623 \\t ###\\n4452.1 \\t 2868 \\t ####\\n4460.2 \\t 2672 \\t ###\\n4468.4 \\t 3033 \\t ####\\n4476.5 \\t 3001 \\t ####\\n4484.7 \\t 2890 \\t ####\\n4493.0 \\t 2811 \\t ####\\n=== 5500-7200 ===\\n5504.8 \\t 4684 \\t ######\\n5518.0 \\t 4618 \\t ######\\n5531.3 \\t 4720 \\t ######\\n5544.6 \\t 4663 \\t ######\\n5558.1 \\t 4719 \\t ######\\n5571.6 \\t 4725 \\t ######\\n5585.2 \\t 4581 \\t ######\\n5598.8 \\t 4601 \\t ######\\n5612.5 \\t 4781 \\t ######\\n5626.3 \\t 4888 \\t ######\\n5640.2 \\t 4727 \\t ######\\n5654.2 \\t 4999 \\t #######\\n5668.2 \\t 4794 \\t ######\\n5682.3 \\t 4764 \\t ######\\n5696.5 \\t 4721 \\t ######\\n5710.8 \\t 4889 \\t ######\\n5725.2 \\t 4993 \\t #######\\n5739.6 \\t 4763 \\t ######\\n5754.1 \\t 4815 \\t ######\\n5768.7 \\t 4657 \\t ######\\n5783.4 \\t 5174 \\t #######\\n5798.2 \\t 4945 \\t #######\\n5813.1 \\t 5058 \\t #######\\n5828.0 \\t 4993 \\t #######\\n5843.0 \\t 5224 \\t #######\\n5858.2 \\t 5204 \\t #######\\n5873.4 \\t 5188 \\t #######\\n5888.7 \\t 5124 \\t #######\\n5904.1 \\t 5216 \\t #######\\n5919.5 \\t 5212 \\t #######\\n5935.1 \\t 5342 \\t #######\\n5950.8 \\t 5200 \\t #######\\n5966.5 \\t 5305 \\t #######\\n5982.4 \\t 5188 \\t #######\\n5998.3 \\t 5564 \\t #######\\n6014.3 \\t 5322 \\t #######\\n6030.5 \\t 5524 \\t #######\\n6046.7 \\t 5601 \\t ########\\n6063.0 \\t 5497 \\t #######\\n6079.5 \\t 5536 \\t #######\\n6096.0 \\t 5404 \\t #######\\n6112.6 \\t 5459 \\t #######\\n6129.3 \\t 5497 \\t #######\\n6146.2 \\t 5605 \\t ########\\n6163.1 \\t 5558 \\t #######\\n6180.2 \\t 6142 \\t ########\\n6197.3 \\t 5878 \\t ########\\n6214.6 \\t 6034 \\t ########\\n6231.9 \\t 6380 \\t #########\\n6249.4 \\t 6593 \\t #########\\n6267.0 \\t 7308 \\t ##########\\n6284.7 \\t 8838 \\t ############\\n6302.5 \\t 11393 \\t ################\\n6320.4 \\t 13767 \\t ###################\\n6338.4 \\t 13107 \\t ##################\\n6356.5 \\t 10590 \\t ###############\\n6374.8 \\t 8959 \\t ############\\n6393.2 \\t 7746 \\t ###########\\n6411.7 \\t 7055 \\t ##########\\n6430.3 \\t 6743 \\t #########\\n6449.0 \\t 6625 \\t #########\\n6467.9 \\t 6467 \\t #########\\n6486.9 \\t 6305 \\t #########\\n6506.0 \\t 6443 \\t #########\\n6525.2 \\t 6142 \\t ########\\n6544.5 \\t 6426 \\t #########\\n6564.0 \\t 6426 \\t #########\\n6583.6 \\t 6176 \\t ########\\n6603.4 \\t 6334 \\t #########\\n6623.3 \\t 6462 \\t #########\\n6643.3 \\t 6080 \\t ########\\n6663.4 \\t 6242 \\t ########\\n6683.7 \\t 6395 \\t #########\\n6704.1 \\t 6528 \\t #########\\n6724.6 \\t 6273 \\t ########\\n6745.3 \\t 6297 \\t ########\\n6766.2 \\t 6295 \\t ########\\n6787.1 \\t 6547 \\t #########\\n6808.3 \\t 6451 \\t #########\\n6829.5 \\t 6604 \\t #########\\n6850.9 \\t 6290 \\t ########\\n6872.5 \\t 6612 \\t #########\\n6894.2 \\t 6708 \\t #########\\n6916.1 \\t 6598 \\t #########\\n6938.1 \\t 6433 \\t #########\\n6960.3 \\t 6794 \\t #########\\n6982.6 \\t 6560 \\t #########\\n7005.1 \\t 6725 \\t #########\\n7027.7 \\t 6785 \\t #########\\n7050.6 \\t 6737 \\t #########\\n7073.5 \\t 6707 \\t #########\\n7096.7 \\t 6855 \\t #########\\n7120.0 \\t 6878 \\t #########\\n7143.4 \\t 6599 \\t #########\\n7167.1 \\t 7059 \\t ##########\\n7190.9 \\t 6974 \\t #########\\n\\n[output truncated: 195 lines omitted; full output (8074B) spilled to /tmp/lemoncrow-spill/original-bash-1783119704188-0279430b.txt; read /tmp/lemoncrow-spill/original-bash-1783119704188-0279430b.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QFMo1Bh1SFqhSHQVWbAqzS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step,div):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/div))\nprint('=== 26000-40000 ===')\nshow(26000,40000,8,400)\n\""
           },
@@ -804,7 +804,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef show(lo,hi,step,div):\n    m=(x>=lo)&(x<=hi)\n    xr=x[m]; yr=y[m]\n    for xi,yi in zip(xr[::step],yr[::step]):\n        print(round(xi,1),'\\t',round(yi),'\\t','#'*int(yi/div))\nprint('=== 26000-40000 ===')\nshow(26000,40000,8,400)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -865,7 +865,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011PbbwtuVAKdGMZ2wCC7SVc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.signal import find_peaks\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# rolling min baseline over window\nfrom scipy.ndimage import minimum_filter1d, uniform_filter1d\nw=201\nbase=minimum_filter1d(y,w)\nbase=uniform_filter1d(base,w)\nyc=y-base\np,props=find_peaks(yc,prominence=1500,distance=30)\nprint('baseline-subtracted peaks:')\nfor i,pr in zip(p,props['prominences']):\n    print(round(x[i],1),'\\t h=',round(yc[i]),'\\t prom=',round(pr))\n\""
           },
@@ -873,7 +873,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.signal import find_peaks\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\n# rolling min baseline over window\nfrom scipy.ndimage import minimum_filter1d, uniform_filter1d\nw=201\nbase=minimum_filter1d(y,w)\nbase=uniform_filter1d(base,w)\nyc=y-base\np,props=find_peaks(yc,prominence=1500,distance=30)\nprint('baseline-subtracted peaks:')\nfor i,pr in zip(p,props['prominences']):\n    print(round(x[i],1),'\\t h=',round(yc[i]),'\\t prom=',round(pr))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -934,7 +934,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013BoL9YtRj9Xg94pyGSz6ri",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off):\n    return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi)\n    xr,yr=x[m],y[m]\n    popt,pcov=curve_fit(lor,xr,yr,p0=p0,maxfev=200000)\n    resid=yr-lor(xr,*popt)\n    ss=1-np.sum(resid**2)/np.sum((yr-yr.mean())**2)\n    return popt,ss\n# G\nfor lo,hi in [(18000,20800),(18300,20300),(17500,21000)]:\n    popt,ss=fit(lo,hi,[19200,400,66000,13000])\n    print('G win',lo,hi,'x0=%.1f gamma=%.1f amp=%.1f off=%.1f R2=%.4f'%(*popt,ss))\nprint()\n# 2D\nfor lo,hi in [(30000,37000),(29000,38000),(31000,36000),(30000,40000)]:\n    popt,ss=fit(lo,hi,[33200,2000,3000,18500])\n    print('2D win',lo,hi,'x0=%.1f gamma=%.1f amp=%.1f off=%.1f R2=%.4f'%(*popt,ss))\n\""
           },
@@ -942,7 +942,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off):\n    return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi)\n    xr,yr=x[m],y[m]\n    popt,pcov=curve_fit(lor,xr,yr,p0=p0,maxfev=200000)\n    resid=yr-lor(xr,*popt)\n    ss=1-np.sum(resid**2)/np.sum((yr-yr.mean())**2)\n    return popt,ss\n# G\nfor lo,hi in [(18000,20800),(18300,20300),(17500,21000)]:\n    popt,ss=fit(lo,hi,[19200,400,66000,13000])\n    print('G win',lo,hi,'x0=%.1f gamma=%.1f amp=%.1f off=%.1f R2=%.4f'%(*popt,ss))\nprint()\n# 2D\nfor lo,hi in [(30000,37000),(29000,38000),(31000,36000),(30000,40000)]:\n    popt,ss=fit(lo,hi,[33200,2000,3000,18500])\n    print('2D win',lo,hi,'x0=%.1f gamma=%.1f amp=%.1f off=%.1f R2=%.4f'%(*popt,ss))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1003,7 +1003,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QNFkMZMA8WWcCfg36FV4TD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\nfrom scipy.ndimage import uniform_filter1d\nys=uniform_filter1d(y,15)\nm=(x>=28000)&(x<=42000)\nxr,yr=x[m],ys[m]\nfor i in range(0,len(xr),12):\n    print(round(xr[i]),'\\t',round(yr[i]),'\\t','#'*int(yr[i]/400))\n\""
           },
@@ -1011,7 +1011,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\nfrom scipy.ndimage import uniform_filter1d\nys=uniform_filter1d(y,15)\nm=(x>=28000)&(x<=42000)\nxr,yr=x[m],ys[m]\nfor i in range(0,len(xr),12):\n    print(round(xr[i]),'\\t',round(yr[i]),'\\t','#'*int(yr[i]/400))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1072,7 +1072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016cn3VARojehDb7u23BtRDG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef fwhm(lo,hi):\n    m=(x>=lo)&(x<=hi); xr,yr=x[m],y[m]\n    base=np.median(np.concatenate([yr[:15],yr[-15:]]))\n    pk=yr.max(); i=yr.argmax()\n    half=(pk+base)/2\n    # left\n    l=i\n    while l>0 and yr[l]>half: l-=1\n    r=i\n    while r<len(yr)-1 and yr[r]>half: r+=1\n    print(f'  peak x0~{xr[i]:.1f} height={pk:.0f} base={base:.0f} FWHM~{xr[r]-xr[l]:.1f}')\nprint('3745 peak:'); fwhm(3550,3950)\nprint('6320 peak:'); fwhm(6150,6500)\nprint('19139 peak:'); fwhm(18300,20200)\nprint('10289 peak:'); fwhm(10050,10550)\n\""
           },
@@ -1080,7 +1080,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef fwhm(lo,hi):\n    m=(x>=lo)&(x<=hi); xr,yr=x[m],y[m]\n    base=np.median(np.concatenate([yr[:15],yr[-15:]]))\n    pk=yr.max(); i=yr.argmax()\n    half=(pk+base)/2\n    # left\n    l=i\n    while l>0 and yr[l]>half: l-=1\n    r=i\n    while r<len(yr)-1 and yr[r]>half: r+=1\n    print(f'  peak x0~{xr[i]:.1f} height={pk:.0f} base={base:.0f} FWHM~{xr[r]-xr[l]:.1f}')\nprint('3745 peak:'); fwhm(3550,3950)\nprint('6320 peak:'); fwhm(6150,6500)\nprint('19139 peak:'); fwhm(18300,20200)\nprint('10289 peak:'); fwhm(10050,10550)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1141,7 +1141,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Kc7wZikQVAW6U5MdczqCH1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off):\n    return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi); xr,yr=x[m],y[m]\n    popt,_=curve_fit(lor,xr,yr,p0=p0,maxfev=200000)\n    r=yr-lor(xr,*popt); R2=1-np.sum(r**2)/np.sum((yr-yr.mean())**2)\n    return popt,R2\nprint('G peak:')\nfor lo,hi in [(3600,3900),(3550,3950),(3650,3850),(3600,3950)]:\n    p,R2=fit(lo,hi,[3745,27,11000,1800])\n    print(' win',lo,hi,'x0=%.2f gamma=%.2f amp=%.1f off=%.1f R2=%.4f'%(*p,R2))\nprint('2D peak:')\nfor lo,hi in [(6200,6480),(6150,6520),(6230,6440),(6180,6500)]:\n    p,R2=fit(lo,hi,[6329,36,7300,6300])\n    print(' win',lo,hi,'x0=%.2f gamma=%.2f amp=%.1f off=%.1f R2=%.4f'%(*p,R2))\n\""
           },
@@ -1149,7 +1149,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off):\n    return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi); xr,yr=x[m],y[m]\n    popt,_=curve_fit(lor,xr,yr,p0=p0,maxfev=200000)\n    r=yr-lor(xr,*popt); R2=1-np.sum(r**2)/np.sum((yr-yr.mean())**2)\n    return popt,R2\nprint('G peak:')\nfor lo,hi in [(3600,3900),(3550,3950),(3650,3850),(3600,3950)]:\n    p,R2=fit(lo,hi,[3745,27,11000,1800])\n    print(' win',lo,hi,'x0=%.2f gamma=%.2f amp=%.1f off=%.1f R2=%.4f'%(*p,R2))\nprint('2D peak:')\nfor lo,hi in [(6200,6480),(6150,6520),(6230,6440),(6180,6500)]:\n    p,R2=fit(lo,hi,[6329,36,7300,6300])\n    print(' win',lo,hi,'x0=%.2f gamma=%.2f amp=%.1f off=%.1f R2=%.4f'%(*p,R2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1210,7 +1210,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XLo3NZCiUZxLPuruaiugt5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np, json\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off): return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi); popt,_=curve_fit(lor,x[m],y[m],p0=p0,maxfev=200000); return popt\ng=fit(3600,3900,[3745,27,11000,1800])\nt=fit(6200,6480,[6329,36,7300,6300])\nres={'G':{'x0':g[0],'gamma':g[1],'amplitude':g[2],'offset':g[3]},\n     '2D':{'x0':t[0],'gamma':t[1],'amplitude':t[2],'offset':t[3]}}\njson.dump(res,open('results.json','w'),indent=2)\nprint(open('results.json').read())\n\""
           },
@@ -1218,7 +1218,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np, json\nfrom scipy.optimize import curve_fit\nd=np.loadtxt('graphene.dat',dtype=str)\nx=np.array([float(a.replace(',','.')) for a in d[:,0]])\ny=np.array([float(a.replace(',','.')) for a in d[:,1]])\no=np.argsort(x); x=x[o]; y=y[o]\ndef lor(x,x0,gamma,amp,off): return amp*gamma**2/((x-x0)**2+gamma**2)+off\ndef fit(lo,hi,p0):\n    m=(x>=lo)&(x<=hi); popt,_=curve_fit(lor,x[m],y[m],p0=p0,maxfev=200000); return popt\ng=fit(3600,3900,[3745,27,11000,1800])\nt=fit(6200,6480,[6329,36,7300,6300])\nres={'G':{'x0':g[0],'gamma':g[1],'amplitude':g[2],'offset':g[3]},\n     '2D':{'x0':t[0],'gamma':t[1],'amplitude':t[2],'offset':t[3]}}\njson.dump(res,open('results.json','w'),indent=2)\nprint(open('results.json').read())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

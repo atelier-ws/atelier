@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MH8qsV9eJSFtL2GUHhBmuv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "wc -l /app/university_graph.ttl; echo \"---\"; head -120 /app/university_graph.ttl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "wc -l /app/university_graph.ttl; echo \"---\"; head -120 /app/university_graph.ttl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016RqSyP368eLu5ouS8aNW1E",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L110-L305"
@@ -114,7 +114,7 @@
                 "/app/university_graph.ttl:L110-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013HhSvSWpv7k3Jn7t45S7gu",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/university_graph.ttl:L296-L305"
@@ -187,7 +187,7 @@
                 "/app/university_graph.ttl:L296-L305"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -248,7 +248,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011CujjSQPCQDDqhe9nCSmwT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
           },
@@ -256,7 +256,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import rdflib; print(rdflib.__version__)\" 2>&1 || uv pip install --system --break-system-packages rdflib 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -317,7 +317,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Th6szgUbUQ9tj2zxm5ADs7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages rdflib 2>&1 | tail -3)"
           },
@@ -325,7 +325,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages rdflib 2>&1 | tail -3)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -386,7 +386,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015DXAcdQnv7qk1PDhWLt7w2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip 2>&1 | tail -2 && python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3)"
           },
@@ -394,7 +394,7 @@
             "raw_arguments": {
               "command": "python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3 || (apt-get update -qq && apt-get install -y python3-pip 2>&1 | tail -2 && python3 -m pip install --break-system-packages rdflib 2>&1 | tail -3)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -455,7 +455,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SoR4fsvbiFfVmryd4cnmJB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv; ls /root/.local/bin 2>/dev/null; python3 -m ensurepip 2>&1 | tail -2"
           },
@@ -463,7 +463,7 @@
             "raw_arguments": {
               "command": "which uv; ls /root/.local/bin 2>/dev/null; python3 -m ensurepip 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -524,7 +524,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014gWeL6kNf1ycePgS23wAnv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /usr/bin/python* /usr/local/bin/ 2>/dev/null; find / -name \"uv\" -type f 2>/dev/null | head; find / -name \"pip*\" 2>/dev/null | head"
           },
@@ -532,7 +532,7 @@
             "raw_arguments": {
               "command": "ls -la /usr/bin/python* /usr/local/bin/ 2>/dev/null; find / -name \"uv\" -type f 2>/dev/null | head; find / -name \"pip*\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -593,7 +593,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GLRqXGqZkPVCTkM9h5ifw1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /usr/bin/python3*; readlink -f /usr/bin/python3; find / -name \"rdflib\" -maxdepth 8 -type d 2>/dev/null | head; find / -name \"site-packages\" -type d 2>/dev/null | head"
           },
@@ -601,7 +601,7 @@
             "raw_arguments": {
               "command": "ls -la /usr/bin/python3*; readlink -f /usr/bin/python3; find / -name \"rdflib\" -maxdepth 8 -type d 2>/dev/null | head; find / -name \"site-packages\" -type d 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -662,7 +662,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bvmi5aDURcjkahVfEoL675",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; echo \"PATH=$PATH\"; ls /usr/bin/ | grep -i -E 'python|pip|uv'"
           },
@@ -670,7 +670,7 @@
             "raw_arguments": {
               "command": "python3 --version; echo \"PATH=$PATH\"; ls /usr/bin/ | grep -i -E 'python|pip|uv'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -731,7 +731,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013TZpiwQAbGEKa6KKyQ2UtH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -3 && apt-get install -y python3-rdflib 2>&1 | tail -5"
           },
@@ -739,7 +739,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -3 && apt-get install -y python3-rdflib 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -800,7 +800,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DjgTB5hgfTUWFvhMRkcNA5",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -820,7 +820,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -881,7 +881,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J4ieN4KzJjfgQS8MfukTG6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph()\ng.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '||', row.countries)\n\" 2>&1 | grep -v SyntaxWarning | grep -v 'Converts the'"
           },
@@ -889,7 +889,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport rdflib\ng = rdflib.Graph()\ng.parse('university_graph.ttl', format='turtle')\nq = open('solution.sparql').read()\nfor row in g.query(q):\n    print(row.professorName, '||', row.countries)\n\" 2>&1 | grep -v SyntaxWarning | grep -v 'Converts the'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

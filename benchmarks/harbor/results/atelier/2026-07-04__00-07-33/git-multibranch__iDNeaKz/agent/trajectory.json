@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LVfs2rhDUusNerhE9Cf51r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "whoami; uname -a; cat /etc/os-release | head -5; which git nginx sshd ssh openssl 2>&1; echo \"---\"; ls /git 2>&1; id git 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "whoami; uname -a; cat /etc/os-release | head -5; which git nginx sshd ssh openssl 2>&1; echo \"---\"; ls /git 2>&1; id git 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HYmthxz3a4KCsfHgxRbfGd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "whoami; echo \"---os---\"; cat /etc/os-release | head -3; echo \"---bins---\"; ls /usr/sbin/sshd 2>&1; which nginx 2>&1; which sshd 2>&1; dpkg -l | grep -E \"nginx|openssh-server\" 2>&1; echo \"---service---\"; service --status-all 2>&1 | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "whoami; echo \"---os---\"; cat /etc/os-release | head -3; echo \"---bins---\"; ls /usr/sbin/sshd 2>&1; which nginx 2>&1; which sshd 2>&1; dpkg -l | grep -E \"nginx|openssh-server\" 2>&1; echo \"---service---\"; service --status-all 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MCRrUg1acQ6SgoVtw7CQrY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\n# Create git user with home\nid git 2>/dev/null || useradd -m -s /bin/bash git\necho 'git:password' | chpasswd\n# Directories\nmkdir -p /git /var/www/main /var/www/dev\n# Init bare repo\nif [ ! -d /git/project.git ] && [ ! -d /git/project/hooks ]; then\n  git init --bare /git/project\nfi\nls -la /git"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "set -e\n# Create git user with home\nid git 2>/dev/null || useradd -m -s /bin/bash git\necho 'git:password' | chpasswd\n# Directories\nmkdir -p /git /var/www/main /var/www/dev\n# Init bare repo\nif [ ! -d /git/project.git ] && [ ! -d /git/project/hooks ]; then\n  git init --bare /git/project\nfi\nls -la /git"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D1gvMr2VzmgRuS4139m8yt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\n# post-receive hook\ncat > /git/project/hooks/post-receive <<'EOF'\n#!/bin/bash\nGIT_DIR=/git/project\nwhile read oldrev newrev refname; do\n  branch=$(git --git-dir=\"$GIT_DIR\" rev-parse --symbolic --abbrev-ref \"$refname\")\n  case \"$branch\" in\n    main)\n      git --git-dir=\"$GIT_DIR\" --work-tree=/var/www/main checkout -f main\n      ;;\n    dev)\n      git --git-dir=\"$GIT_DIR\" --work-tree=/var/www/dev checkout -f dev\n      ;;\n  esac\ndone\nEOF\nchmod +x /git/project/hooks/post-receive\n# Ownership so git user can write\nchown -R git:git /git /var/www/main /var/www/dev\nchmod -R 755 /var/www\necho done; ls -la /git/project/hooks/post-receive"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "set -e\n# post-receive hook\ncat > /git/project/hooks/post-receive <<'EOF'\n#!/bin/bash\nGIT_DIR=/git/project\nwhile read oldrev newrev refname; do\n  branch=$(git --git-dir=\"$GIT_DIR\" rev-parse --symbolic --abbrev-ref \"$refname\")\n  case \"$branch\" in\n    main)\n      git --git-dir=\"$GIT_DIR\" --work-tree=/var/www/main checkout -f main\n      ;;\n    dev)\n      git --git-dir=\"$GIT_DIR\" --work-tree=/var/www/dev checkout -f dev\n      ;;\n  esac\ndone\nEOF\nchmod +x /git/project/hooks/post-receive\n# Ownership so git user can write\nchown -R git:git /git /var/www/main /var/www/dev\nchmod -R 755 /var/www\necho done; ls -la /git/project/hooks/post-receive"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -256,7 +256,7 @@
         "results": [
           {
             "source_call_id": "toolu_01D1gvMr2VzmgRuS4139m8yt",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use Atelier tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\\nInline bash execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `bash path/to/script.sh` — and `bash -n` syntax checks)\"}"
           }
         ]
       },
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01256cYEx6QgKMViz1RZkoFi",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -329,7 +329,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -337,7 +337,7 @@
         "results": [
           {
             "source_call_id": "toolu_01256cYEx6QgKMViz1RZkoFi",
-            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or ATELIER_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/git/project/hooks/post-receive\\\"]}],\\\"rolled_back\\\":true}\"}"
+            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or LEMONCROW_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/git/project/hooks/post-receive\\\"]}],\\\"rolled_back\\\":true}\"}"
           }
         ]
       },
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013HoMrsLMypRcnqJXidLNrD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; ls -la"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "pwd; ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -406,7 +406,7 @@
         "results": [
           {
             "source_call_id": "toolu_013HoMrsLMypRcnqJXidLNrD",
-            "content": "{\"type\": \"text\", \"text\": \"/app\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:34 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:34 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:33 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .git\"}"
+            "content": "{\"type\": \"text\", \"text\": \"/app\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:34 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:34 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:33 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:34 .git\"}"
           }
         ]
       },
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014ngsjmsfFbHkXowfSiyVhS",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -479,7 +479,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -540,7 +540,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VA4xRzhX3jZ8nHqa4WhCXn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "bash /app/setup.sh"
           },
@@ -548,7 +548,7 @@
             "raw_arguments": {
               "command": "bash /app/setup.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -609,7 +609,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B1HMu8yHvFta3tmxhw5Jfj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rn \"8443\\|listen\" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null; echo \"---include---\"; grep -n \"include\" /etc/nginx/nginx.conf"
           },
@@ -617,7 +617,7 @@
             "raw_arguments": {
               "command": "grep -rn \"8443\\|listen\" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null; echo \"---include---\"; grep -n \"include\" /etc/nginx/nginx.conf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -678,7 +678,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0194CRHsszXi5dLasC4FemYj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pkill -x nginx; sleep 1; nginx; sleep 1; ss -tlnp | grep -E ':8443|:22 '; echo \"---nginx warn recheck---\"; nginx -t 2>&1 | grep -i conflict || echo \"no conflict\""
           },
@@ -686,7 +686,7 @@
             "raw_arguments": {
               "command": "pkill -x nginx; sleep 1; nginx; sleep 1; ss -tlnp | grep -E ':8443|:22 '; echo \"---nginx warn recheck---\"; nginx -t 2>&1 | grep -i conflict || echo \"no conflict\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -747,7 +747,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qps7caK1jBsneHJFXJyjLg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /etc/nginx/conf.d/ /etc/nginx/sites-enabled/; echo \"---http server_name default---\"; grep -rn \"server_name\\|listen\" /etc/nginx/nginx.conf"
           },
@@ -755,7 +755,7 @@
             "raw_arguments": {
               "command": "ls -la /etc/nginx/conf.d/ /etc/nginx/sites-enabled/; echo \"---http server_name default---\"; grep -rn \"server_name\\|listen\" /etc/nginx/nginx.conf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -816,7 +816,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017xAGUY2xrm1JTug5sY3b1u",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"listen\\|server_name\" /etc/nginx/sites-available/default | head"
           },
@@ -824,7 +824,7 @@
             "raw_arguments": {
               "command": "grep -n \"listen\\|server_name\" /etc/nginx/sites-available/default | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -885,7 +885,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011tst4qXKimRYNmVuiHyLu1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/nginx/sites-available/default"
           },
@@ -893,7 +893,7 @@
             "raw_arguments": {
               "command": "cat /etc/nginx/sites-available/default"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -954,7 +954,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MkbXJmGzDSgCZAfLAmxWpo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /etc/nginx/sites-enabled/default; nginx -t 2>&1; pkill -x nginx; sleep 1; nginx; sleep 1; echo \"---\"; ss -tlnp | grep 8443"
           },
@@ -962,7 +962,7 @@
             "raw_arguments": {
               "command": "rm -f /etc/nginx/sites-enabled/default; nginx -t 2>&1; pkill -x nginx; sleep 1; nginx; sleep 1; echo \"---\"; ss -tlnp | grep 8443"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1023,7 +1023,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DMPSQBwyXse3H6By3Vjf2E",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1043,7 +1043,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1104,7 +1104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SKW3pF5SnmryQUX8JaFA4M",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "bash /app/test.sh 2>&1"
           },
@@ -1112,7 +1112,7 @@
             "raw_arguments": {
               "command": "bash /app/test.sh 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1173,7 +1173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012bkXHXxWtEjRS8CHQXxyKf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf /tmp/work; echo \"--- verify running ---\"; pgrep -x sshd >/dev/null && echo \"sshd up\"; pgrep -x nginx >/dev/null && echo \"nginx up\"; ls /var/www/main/index.html /var/www/dev/index.html"
           },
@@ -1181,7 +1181,7 @@
             "raw_arguments": {
               "command": "rm -rf /tmp/work; echo \"--- verify running ---\"; pgrep -x sshd >/dev/null && echo \"sshd up\"; pgrep -x nginx >/dev/null && echo \"nginx up\"; ls /var/www/main/index.html /var/www/dev/index.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1297,7 +1297,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014Bn1WqRqhRhNS562JNfHKA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "bash /app/test.sh 2>&1"
           },
@@ -1305,7 +1305,7 @@
             "raw_arguments": {
               "command": "bash /app/test.sh 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1366,7 +1366,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BVkBM5xfaCsUJqF3SNZLuH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf /tmp/work"
           },
@@ -1374,7 +1374,7 @@
             "raw_arguments": {
               "command": "rm -rf /tmp/work"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

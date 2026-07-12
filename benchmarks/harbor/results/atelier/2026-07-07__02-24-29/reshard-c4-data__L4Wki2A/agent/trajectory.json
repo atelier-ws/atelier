@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E41xckxjZJoYWPe9cfBY8K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && echo \"---C4---\" && ls c4_sample | head -50 && echo \"count:\" && ls c4_sample | wc -l"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && echo \"---C4---\" && ls c4_sample | head -50 && echo \"count:\" && ls c4_sample | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QiR26pag911NcBFk8SRrWd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/c4_sample && echo \"total size:\" && du -sh . && echo \"largest files:\" && ls -lS | head -5 && echo \"smallest:\" && ls -lS | tail -3 && echo \"total bytes:\" && du -sb . && echo \"sample content:\" && head -c 500 c4-mini-00000-of-10000.jsonl"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app/c4_sample && echo \"total size:\" && du -sh . && echo \"largest files:\" && ls -lS | head -5 && echo \"smallest:\" && ls -lS | tail -3 && echo \"total bytes:\" && du -sb . && echo \"sample content:\" && head -c 500 c4-mini-00000-of-10000.jsonl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M1bWnBwtLeyGcyAdi5WuGr",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv python3; uv --version 2>&1 | head -1; python3 --version"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "which uv python3; uv --version 2>&1 | head -1; python3 --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DbrcxJra21RTL2XZa9xxPp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -260,7 +260,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HY4bWefSXMBXFTyCHnUnxp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -341,7 +341,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -402,7 +402,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PU61XzphWFqfFeDbocUDHA",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -422,7 +422,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -483,7 +483,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RYCajvR1HUBDfQNb1hrc2e",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -503,7 +503,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -564,7 +564,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CmRiimpg8afFG9qtys8F3i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv sync 2>&1 | tail -5 && echo \"=== venv ===\" && ls -a .venv | head"
           },
@@ -572,7 +572,7 @@
             "raw_arguments": {
               "command": "cd /app && uv sync 2>&1 | tail -5 && echo \"=== venv ===\" && ls -a .venv | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -633,7 +633,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013qUnSLqrcxZKfJ3LGrBpwG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -rf /tmp/out && time uv run python compress.py c4_sample /tmp/out 2>&1 | tail -5"
           },
@@ -641,7 +641,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -rf /tmp/out && time uv run python compress.py c4_sample /tmp/out 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -702,7 +702,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WryMtWaD9BLcrfmguLqTmH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/out && echo \"top:\" && ls -la && echo \"--- max entries per dir ---\" && python3 - <<'EOF'\nimport os\nmx=0;worst=None\nfor r,d,f in os.walk('.'):\n    n=len(d)+len(f)\n    if n>mx: mx=n;worst=r\nprint(\"max entries\",mx,\"at\",worst)\n# max file size\nmf=0;wf=None\nfor r,d,f in os.walk('.'):\n    for x in f:\n        s=os.path.getsize(os.path.join(r,x))\n        if s>mf: mf=s;wf=os.path.join(r,x)\nprint(\"max file bytes\",mf,\"(%.2f MB)\"%(mf/1024/1024),wf)\nprint(\"total size MB\", sum(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('.') for x in f)/1024/1024)\nEOF\necho \"--- data tree ---\" && ls __reshard_data__ && ls __reshard_data__/d00 | head -3 && echo count_d00: $(ls __reshard_data__/d00|wc -l)"
           },
@@ -710,7 +710,7 @@
             "raw_arguments": {
               "command": "cd /tmp/out && echo \"top:\" && ls -la && echo \"--- max entries per dir ---\" && python3 - <<'EOF'\nimport os\nmx=0;worst=None\nfor r,d,f in os.walk('.'):\n    n=len(d)+len(f)\n    if n>mx: mx=n;worst=r\nprint(\"max entries\",mx,\"at\",worst)\n# max file size\nmf=0;wf=None\nfor r,d,f in os.walk('.'):\n    for x in f:\n        s=os.path.getsize(os.path.join(r,x))\n        if s>mf: mf=s;wf=os.path.join(r,x)\nprint(\"max file bytes\",mf,\"(%.2f MB)\"%(mf/1024/1024),wf)\nprint(\"total size MB\", sum(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('.') for x in f)/1024/1024)\nEOF\necho \"--- data tree ---\" && ls __reshard_data__ && ls __reshard_data__/d00 | head -3 && echo count_d00: $(ls __reshard_data__/d00|wc -l)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -771,7 +771,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015yP5j7Ts6Gv2fvMbMohCxR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp -r /tmp/out /tmp/restore && uv run python decompress.py /tmp/restore 2>&1 | tail -2 && echo \"=== compare ===\" && diff -rq c4_sample /tmp/restore && echo \"DIFF_OK: identical\" && echo \"restore top count:\" && ls /tmp/restore | wc -l && ls /tmp/restore | grep reshard || echo \"no artifacts remain\""
           },
@@ -779,7 +779,7 @@
             "raw_arguments": {
               "command": "cd /app && cp -r /tmp/out /tmp/restore && uv run python decompress.py /tmp/restore 2>&1 | tail -2 && echo \"=== compare ===\" && diff -rq c4_sample /tmp/restore && echo \"DIFF_OK: identical\" && echo \"restore top count:\" && ls /tmp/restore | wc -l && ls /tmp/restore | grep reshard || echo \"no artifacts remain\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -840,7 +840,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VBReMaj3aiWX5oYjyK42ZA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -rf /tmp/t_in /tmp/t_out && mkdir -p /tmp/t_in/sub/deep /tmp/t_in/emptydir\necho hi > /tmp/t_in/a.txt\n: > /tmp/t_in/empty.bin\nhead -c 33000000 /dev/urandom > /tmp/t_in/big.bin      # ~31MB -> spans 3 shards\nprintf 'x' > /tmp/t_in/sub/deep/n.txt\nuv run python compress.py /tmp/t_in /tmp/t_out 2>&1 | tail -1\ncp -r /tmp/t_out /tmp/t_res && uv run python decompress.py /tmp/t_res 2>&1 | tail -1\ndiff -rq /tmp/t_in /tmp/t_res && echo IDENTICAL\n# verify empty dir preserved and constraints\npython3 - <<'EOF'\nimport os\nprint(\"emptydir exists:\", os.path.isdir('/tmp/t_res/emptydir'))\nmx=max(len(d)+len(f) for r,d,f in os.walk('/tmp/t_out'))\nmf=max(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('/tmp/t_out') for x in f)\nprint(\"max entries\",mx,\"max file MB %.2f\"%(mf/1024/1024))\nEOF"
           },
@@ -848,7 +848,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -rf /tmp/t_in /tmp/t_out && mkdir -p /tmp/t_in/sub/deep /tmp/t_in/emptydir\necho hi > /tmp/t_in/a.txt\n: > /tmp/t_in/empty.bin\nhead -c 33000000 /dev/urandom > /tmp/t_in/big.bin      # ~31MB -> spans 3 shards\nprintf 'x' > /tmp/t_in/sub/deep/n.txt\nuv run python compress.py /tmp/t_in /tmp/t_out 2>&1 | tail -1\ncp -r /tmp/t_out /tmp/t_res && uv run python decompress.py /tmp/t_res 2>&1 | tail -1\ndiff -rq /tmp/t_in /tmp/t_res && echo IDENTICAL\n# verify empty dir preserved and constraints\npython3 - <<'EOF'\nimport os\nprint(\"emptydir exists:\", os.path.isdir('/tmp/t_res/emptydir'))\nmx=max(len(d)+len(f) for r,d,f in os.walk('/tmp/t_out'))\nmf=max(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('/tmp/t_out') for x in f)\nprint(\"max entries\",mx,\"max file MB %.2f\"%(mf/1024/1024))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -909,7 +909,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UXVL9tRHz2dbMFeUQDnCaF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -rf /tmp/out /tmp/restore /tmp/t_in /tmp/t_out /tmp/t_res && cd /app && ls -a && echo \"--- uv run sanity (no extra installs) ---\" && uv run python -c \"import compress, decompress, reshard_common; print('imports ok')\" 2>&1 | tail -3"
           },
@@ -917,7 +917,7 @@
             "raw_arguments": {
               "command": "rm -rf /tmp/out /tmp/restore /tmp/t_in /tmp/t_out /tmp/t_res && cd /app && ls -a && echo \"--- uv run sanity (no extra installs) ---\" && uv run python -c \"import compress, decompress, reshard_common; print('imports ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1033,7 +1033,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015DWD8XiVzQnjAdK1NtoCbb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls *test* tests 2>/dev/null; echo \"--- no formal suite; run authoritative roundtrip ---\"\nrm -rf /tmp/out /tmp/restore\nuv run python compress.py c4_sample /tmp/out 2>&1 | tail -1\npython3 - <<'EOF'\nimport os\nmx=max(len(d)+len(f) for r,dd,f in os.walk('/tmp/out') for d in [dd])\nmf=max(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('/tmp/out') for x in f)\nprint(\"constraint check: max_entries=%d (<=30: %s)  max_file=%.2fMB (<15: %s)\"%(mx,mx<=30,mf/1024/1024,mf<15*1024*1024))\ntop=os.listdir('/tmp/out'); print(\"top-level entries:\",len(top),top)\nEOF\ncp -r /tmp/out /tmp/restore\nuv run python decompress.py /tmp/restore 2>&1 | tail -1\ndiff -rq c4_sample /tmp/restore && echo \"ROUNDTRIP: identical\" && ls /tmp/restore | grep -c reshard || echo \"artifacts_remaining: 0\"\nrm -rf /tmp/out /tmp/restore"
           },
@@ -1041,7 +1041,7 @@
             "raw_arguments": {
               "command": "cd /app && ls *test* tests 2>/dev/null; echo \"--- no formal suite; run authoritative roundtrip ---\"\nrm -rf /tmp/out /tmp/restore\nuv run python compress.py c4_sample /tmp/out 2>&1 | tail -1\npython3 - <<'EOF'\nimport os\nmx=max(len(d)+len(f) for r,dd,f in os.walk('/tmp/out') for d in [dd])\nmf=max(os.path.getsize(os.path.join(r,x)) for r,d,f in os.walk('/tmp/out') for x in f)\nprint(\"constraint check: max_entries=%d (<=30: %s)  max_file=%.2fMB (<15: %s)\"%(mx,mx<=30,mf/1024/1024,mf<15*1024*1024))\ntop=os.listdir('/tmp/out'); print(\"top-level entries:\",len(top),top)\nEOF\ncp -r /tmp/out /tmp/restore\nuv run python decompress.py /tmp/restore 2>&1 | tail -1\ndiff -rq c4_sample /tmp/restore && echo \"ROUNDTRIP: identical\" && ls /tmp/restore | grep -c reshard || echo \"artifacts_remaining: 0\"\nrm -rf /tmp/out /tmp/restore"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

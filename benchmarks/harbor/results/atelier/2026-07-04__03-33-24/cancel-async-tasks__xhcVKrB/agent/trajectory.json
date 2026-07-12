@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014htBbgpGQKFKTp8AHvwiwC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; ls -la /app 2>/dev/null || echo \"no /app\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 --version; ls -la /app 2>/dev/null || echo \"no /app\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EdnTX5p1k87QZw4TbtEZs3",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019EwRfzzXpK6H9e9GqK7ZEd",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -203,7 +203,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -264,7 +264,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SGF6871L8Xxe8XXd8EKWHH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 _test.py"
           },
@@ -272,7 +272,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 _test.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -333,7 +333,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0193PJzAwejauvey4oENQ5rD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f _test.py && ls"
           },
@@ -341,7 +341,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f _test.py && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -457,7 +457,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018cJGxkzh9eCpA8b3yVrVqt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PY'\nimport asyncio, signal, os, threading\nfrom run import run_tasks\n\n# 1) concurrency cap\ndef t1():\n    cur=peak=0; lock=asyncio.Lock()\n    async def job():\n        nonlocal cur,peak\n        async with lock:\n            cur+=1; peak=max(peak,cur)\n        await asyncio.sleep(0.05)\n        async with lock: cur-=1\n    asyncio.run(run_tasks([job for _ in range(20)],4))\n    assert peak==4,peak; print(\"concurrency OK peak=\",peak)\n\n# 2) all tasks run\ndef t2():\n    done=[]\n    async def job(i):\n        await asyncio.sleep(0.01); done.append(i)\n    asyncio.run(run_tasks([lambda i=i: job(i) for i in range(10)],3))\n    assert sorted(done)==list(range(10)); print(\"all-run OK\")\n\n# 3) cleanup on cancel\ndef t3():\n    cleaned=[]\n    async def job(i):\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    async def main():\n        t=asyncio.ensure_future(run_tasks([lambda i=i: job(i) for i in range(5)],3))\n        await asyncio.sleep(0.05); t.cancel()\n        try: await t\n        except asyncio.CancelledError: pass\n    asyncio.run(main())\n    assert sorted(cleaned)==[0,1,2],cleaned; print(\"cleanup-on-cancel OK\",sorted(cleaned))\n\n# 4) cleanup on KeyboardInterrupt\ndef t4():\n    cleaned=[]\n    async def job(i):\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    async def main():\n        threading.Timer(0.1, lambda: os.kill(os.getpid(), signal.SIGINT)).start()\n        await run_tasks([lambda i=i: job(i) for i in range(3)],3)\n    try: asyncio.run(main())\n    except KeyboardInterrupt: print(\"got KeyboardInterrupt (expected)\")\n    assert sorted(cleaned)==[0,1,2],cleaned; print(\"cleanup-on-KeyboardInterrupt OK\",sorted(cleaned))\n\nt1();t2();t3();t4();print(\"ALL OK\")\nPY"
           },
@@ -465,7 +465,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PY'\nimport asyncio, signal, os, threading\nfrom run import run_tasks\n\n# 1) concurrency cap\ndef t1():\n    cur=peak=0; lock=asyncio.Lock()\n    async def job():\n        nonlocal cur,peak\n        async with lock:\n            cur+=1; peak=max(peak,cur)\n        await asyncio.sleep(0.05)\n        async with lock: cur-=1\n    asyncio.run(run_tasks([job for _ in range(20)],4))\n    assert peak==4,peak; print(\"concurrency OK peak=\",peak)\n\n# 2) all tasks run\ndef t2():\n    done=[]\n    async def job(i):\n        await asyncio.sleep(0.01); done.append(i)\n    asyncio.run(run_tasks([lambda i=i: job(i) for i in range(10)],3))\n    assert sorted(done)==list(range(10)); print(\"all-run OK\")\n\n# 3) cleanup on cancel\ndef t3():\n    cleaned=[]\n    async def job(i):\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    async def main():\n        t=asyncio.ensure_future(run_tasks([lambda i=i: job(i) for i in range(5)],3))\n        await asyncio.sleep(0.05); t.cancel()\n        try: await t\n        except asyncio.CancelledError: pass\n    asyncio.run(main())\n    assert sorted(cleaned)==[0,1,2],cleaned; print(\"cleanup-on-cancel OK\",sorted(cleaned))\n\n# 4) cleanup on KeyboardInterrupt\ndef t4():\n    cleaned=[]\n    async def job(i):\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    async def main():\n        threading.Timer(0.1, lambda: os.kill(os.getpid(), signal.SIGINT)).start()\n        await run_tasks([lambda i=i: job(i) for i in range(3)],3)\n    try: asyncio.run(main())\n    except KeyboardInterrupt: print(\"got KeyboardInterrupt (expected)\")\n    assert sorted(cleaned)==[0,1,2],cleaned; print(\"cleanup-on-KeyboardInterrupt OK\",sorted(cleaned))\n\nt1();t2();t3();t4();print(\"ALL OK\")\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

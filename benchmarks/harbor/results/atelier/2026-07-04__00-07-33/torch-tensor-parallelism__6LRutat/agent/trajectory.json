@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BbymJrLPWoTjeg1JZHWjm4",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gdf4cH7d8aQ3b9z8EwcUgG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\nmw = torch.randn(8,6)\nx = torch.randn(3,6, requires_grad=True)\nc = ColumnParallelLinear(6,8,True,mw)\ny = c(x); y.sum().backward()\nref = torch.nn.functional.linear(x, mw)\nprint('col ok', torch.allclose(y, ref), c.weight.grad.shape, c.bias.grad.shape)\nr = RowParallelLinear(6,8,True,mw)\nx2 = torch.randn(3,6)\nprint('row ok', torch.allclose(r(x2), torch.nn.functional.linear(x2, mw)))\n\""
           },
@@ -122,7 +122,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\nmw = torch.randn(8,6)\nx = torch.randn(3,6, requires_grad=True)\nc = ColumnParallelLinear(6,8,True,mw)\ny = c(x); y.sum().backward()\nref = torch.nn.functional.linear(x, mw)\nprint('col ok', torch.allclose(y, ref), c.weight.grad.shape, c.bias.grad.shape)\nr = RowParallelLinear(6,8,True,mw)\nx2 = torch.randn(3,6)\nprint('row ok', torch.allclose(r(x2), torch.nn.functional.linear(x2, mw)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014uzWJPX7xmJSCbFQidi7nB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages torch --quiet 2>&1 | tail -3"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages torch --quiet 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013yzAvYR8FKjdrrPtXQJu2b",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages torch --quiet 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages torch --quiet 2>&1 | tail -5)"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages torch --quiet 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip -qq && pip install --break-system-packages torch --quiet 2>&1 | tail -5)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WEzzbkDo7qKa8uGpkhvSwi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y python3-pip -qq 2>&1 | tail -3; which pip pip3"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y python3-pip -qq 2>&1 | tail -3; which pip pip3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LW9enQrv6Yss46yUAsUGMb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages torch --quiet 2>&1 | tail -5; python3 -c \"import torch; print(torch.__version__)\""
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages torch --quiet 2>&1 | tail -5; python3 -c \"import torch; print(torch.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dco1G2BgzTyqTb3Qh39Dfu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\nmw = torch.randn(8,6)\nx = torch.randn(3,6, requires_grad=True)\nc = ColumnParallelLinear(6,8,True,mw)\ny = c(x); y.sum().backward()\nref = torch.nn.functional.linear(x, mw)\nprint('col ok', torch.allclose(y, ref), c.weight.grad.shape, c.bias.grad.shape)\nr = RowParallelLinear(6,8,True,mw)\nx2 = torch.randn(3,6)\nprint('row ok', torch.allclose(r(x2), torch.nn.functional.linear(x2, mw)))\n\""
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nfrom parallel_linear import ColumnParallelLinear, RowParallelLinear\ntorch.manual_seed(0)\nmw = torch.randn(8,6)\nx = torch.randn(3,6, requires_grad=True)\nc = ColumnParallelLinear(6,8,True,mw)\ny = c(x); y.sum().backward()\nref = torch.nn.functional.linear(x, mw)\nprint('col ok', torch.allclose(y, ref), c.weight.grad.shape, c.bias.grad.shape)\nr = RowParallelLinear(6,8,True,mw)\nx2 = torch.randn(3,6)\nprint('row ok', torch.allclose(r(x2), torch.nn.functional.linear(x2, mw)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JSG2DrPZ7kCiuUwy71UkZP",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -548,7 +548,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -609,7 +609,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UAtouoqGbkH3ysa49pcNty",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp /tmp/dtest.py . && python3 dtest.py 2>/dev/null; rm -f dtest.py"
           },
@@ -617,7 +617,7 @@
             "raw_arguments": {
               "command": "cd /app && cp /tmp/dtest.py . && python3 dtest.py 2>/dev/null; rm -f dtest.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -678,7 +678,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CdUoj4MhgVB3HmdNyP4wUG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -698,7 +698,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -759,7 +759,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012WHKSuTii6TuABnX32GLof",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp /tmp/dtest.py . && python3 dtest.py 2>/dev/null; rm -f dtest.py"
           },
@@ -767,7 +767,7 @@
             "raw_arguments": {
               "command": "cd /app && cp /tmp/dtest.py . && python3 dtest.py 2>/dev/null; rm -f dtest.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -883,7 +883,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hacy2xMz9pSrZYXAcvaw7r",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -903,7 +903,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -964,7 +964,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CzmnNwKBREFrZVHWWphsbQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 dtest.py 2>/dev/null; echo \"exit=$?\"; rm -f dtest.py; ls"
           },
@@ -972,7 +972,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 dtest.py 2>/dev/null; echo \"exit=$?\"; rm -f dtest.py; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

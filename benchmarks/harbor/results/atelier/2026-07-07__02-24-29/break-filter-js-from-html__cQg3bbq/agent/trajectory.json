@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C8nHnfEuDz7MbbD8edDw7Y",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/filter.py",
@@ -47,7 +47,7 @@
                 "/app/test_outputs.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HNtsFBZCeB5v7hEq55v6JS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nfrom bs4 import BeautifulSoup\ntests = {\n 'cdata': '<![CDATA[><img src=x onerror=alert(1)>]]>',\n 'cdata2': '<div><![CDATA[><img src=x onerror=alert(1)>]]></div>',\n}\nfor k,v in tests.items():\n    soup=BeautifulSoup(v,'html.parser')\n    for s in soup('script'): s.decompose()\n    for tag in soup.find_all(True):\n        for a in list(tag.attrs):\n            if a.startswith('on'): del tag.attrs[a]\n    print(k,'=>',repr(str(soup)))\n\""
           },
@@ -116,7 +116,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nfrom bs4 import BeautifulSoup\ntests = {\n 'cdata': '<![CDATA[><img src=x onerror=alert(1)>]]>',\n 'cdata2': '<div><![CDATA[><img src=x onerror=alert(1)>]]></div>',\n}\nfor k,v in tests.items():\n    soup=BeautifulSoup(v,'html.parser')\n    for s in soup('script'): s.decompose()\n    for tag in soup.find_all(True):\n        for a in list(tag.attrs):\n            if a.startswith('on'): del tag.attrs[a]\n    print(k,'=>',repr(str(soup)))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -177,7 +177,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LTotEXXCUPaVPfbDRXEnfL",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -197,7 +197,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -258,7 +258,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011YjpV5wwmmC2oHgEtQriur",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /tests/ 2>/dev/null; echo ---; cp /app/out.html /tmp/t.html && python3 /app/filter.py /tmp/t.html && echo \"=== filtered ===\" && cat /tmp/t.html"
           },
@@ -266,7 +266,7 @@
             "raw_arguments": {
               "command": "ls /tests/ 2>/dev/null; echo ---; cp /app/out.html /tmp/t.html && python3 /app/filter.py /tmp/t.html && echo \"=== filtered ===\" && cat /tmp/t.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -327,7 +327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M6FZvCvFNj7znLaNQUc9J8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import selenium\" 2>&1 | head -1; ls /usr/bin/chromium /usr/bin/chromedriver 2>&1"
           },
@@ -335,7 +335,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import selenium\" 2>&1 | head -1; ls /usr/bin/chromium /usr/bin/chromedriver 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -396,7 +396,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RuENkkdjYNAHjReGnJeaox",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && mkdir -p /tests && cp /app/filter.py /tests/filter.py && python3 -m pytest test_outputs.py -q 2>&1 | tail -20"
           },
@@ -404,7 +404,7 @@
             "raw_arguments": {
               "command": "cd /app && mkdir -p /tests && cp /app/filter.py /tests/filter.py && python3 -m pytest test_outputs.py -q 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -465,7 +465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FZYrmRDso6v38iqYtYcfNN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import test_outputs as t; t.test_out_html_bypasses_filter()\" 2>&1 | tail -20"
           },
@@ -473,7 +473,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import test_outputs as t; t.test_out_html_bypasses_filter()\" 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -534,7 +534,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U65g6ymgjrjmfJcbHHC18V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tests/filter.py /tmp/t.html; rmdir /tests 2>/dev/null; ls /app/out.html"
           },
@@ -542,7 +542,7 @@
             "raw_arguments": {
               "command": "rm -f /tests/filter.py /tmp/t.html; rmdir /tests 2>/dev/null; ls /app/out.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

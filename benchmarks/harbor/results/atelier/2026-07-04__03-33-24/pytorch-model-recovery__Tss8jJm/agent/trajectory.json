@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TWuma9pFc9BALv2zf4PHcR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && python3 -c \"import torch; print(torch.__version__)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && python3 -c \"import torch; print(torch.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CxNcjzCiQqTusGXnwREbTZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('weights.pt', map_location='cpu')\nprint(type(sd))\nfor k,v in sd.items():\n    try:\n        print(k, tuple(v.shape), v.dtype)\n    except Exception as e:\n        print(k, type(v))\n\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('weights.pt', map_location='cpu')\nprint(type(sd))\nfor k,v in sd.items():\n    try:\n        print(k, tuple(v.shape), v.dtype)\n    except Exception as e:\n        print(k, type(v))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SLFTso4PVKs8X9QUSKmHqx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nd = torch.load('dataset.pt', map_location='cpu')\nprint(type(d))\nif isinstance(d,(tuple,list)):\n    for x in d:\n        print(type(x), getattr(x,'shape',None), getattr(x,'dtype',None))\nelif isinstance(d,dict):\n    for k,v in d.items():\n        print(k, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nd = torch.load('dataset.pt', map_location='cpu')\nprint(type(d))\nif isinstance(d,(tuple,list)):\n    for x in d:\n        print(type(x), getattr(x,'shape',None), getattr(x,'dtype',None))\nelif isinstance(d,dict):\n    for k,v in d.items():\n        print(k, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LKMD1bKSVCUQPcKA98impd",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -260,7 +260,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012C36Ti4dZGNJQKk7MWYjEd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py 2>&1 | grep -v NumPy | grep -v conversion_method"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py 2>&1 | grep -v NumPy | grep -v conversion_method"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -445,7 +445,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QmBGJcRggM3wdzkcRv3qks",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch, torch.nn as nn, hashlib\nmse = nn.MSELoss()\nd = torch.load('dataset.pt', map_location='cpu')\nsrc, tgt = d['src_sequences'], d['tgt_sequences']\norig = torch.load('weights.pt', map_location='cpu')\n\nm = torch.jit.load('model.pt')\n\n# 1) loads original weights without error\nm.load_state_dict(orig)\nwith torch.no_grad():\n    l0 = mse(m(src,tgt), tgt).item()\n\n# 2) tuned model's own weights\nm2 = torch.jit.load('model.pt')\ntuned = m2.state_dict()\nwith torch.no_grad():\n    l1 = mse(m2(src,tgt), tgt).item()\n\n# 3) only output_layer differs\ndiffs = [k for k in orig if not torch.equal(tuned[k], orig[k])]\nkeys_match = set(tuned.keys()) == set(orig.keys())\n\nprint('keys identical set :', keys_match)\nprint('differing keys     :', diffs)\nprint('orig MSE           :', l0)\nprint('tuned MSE          :', l1)\nprint('tuned < orig       :', l1 < l0)\nprint('weights.pt md5     :', hashlib.md5(open(\\\"weights.pt\\\",\\\"rb\\\").read()).hexdigest())\nassert keys_match and diffs==['output_layer.weight','output_layer.bias'] and l1<l0\nprint('ALL CRITERIA PASS')\n\" 2>&1 | grep -v NumPy | grep -v conversion_method"
           },
@@ -453,7 +453,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch, torch.nn as nn, hashlib\nmse = nn.MSELoss()\nd = torch.load('dataset.pt', map_location='cpu')\nsrc, tgt = d['src_sequences'], d['tgt_sequences']\norig = torch.load('weights.pt', map_location='cpu')\n\nm = torch.jit.load('model.pt')\n\n# 1) loads original weights without error\nm.load_state_dict(orig)\nwith torch.no_grad():\n    l0 = mse(m(src,tgt), tgt).item()\n\n# 2) tuned model's own weights\nm2 = torch.jit.load('model.pt')\ntuned = m2.state_dict()\nwith torch.no_grad():\n    l1 = mse(m2(src,tgt), tgt).item()\n\n# 3) only output_layer differs\ndiffs = [k for k in orig if not torch.equal(tuned[k], orig[k])]\nkeys_match = set(tuned.keys()) == set(orig.keys())\n\nprint('keys identical set :', keys_match)\nprint('differing keys     :', diffs)\nprint('orig MSE           :', l0)\nprint('tuned MSE          :', l1)\nprint('tuned < orig       :', l1 < l0)\nprint('weights.pt md5     :', hashlib.md5(open(\\\"weights.pt\\\",\\\"rb\\\").read()).hexdigest())\nassert keys_match and diffs==['output_layer.weight','output_layer.bias'] and l1<l0\nprint('ALL CRITERIA PASS')\n\" 2>&1 | grep -v NumPy | grep -v conversion_method"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

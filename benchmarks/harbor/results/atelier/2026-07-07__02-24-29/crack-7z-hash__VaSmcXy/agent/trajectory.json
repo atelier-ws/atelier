@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BkqwYPvwftyRk4Vuo7xLXj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && which 7z 7za 7zr 2>/dev/null; file secrets.7z 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && which 7z 7za 7zr 2>/dev/null; file secrets.7z 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L7xLhWeW7h9Vd61fhZgcDB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la john && ls -la john/run 2>/dev/null | head; xxd secrets.7z | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la john && ls -la john/run 2>/dev/null | head; xxd secrets.7z | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CT9Dn2fZ4bTxEkVWJAdH8z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && od -A x -t x1z secrets.7z | head; echo ---; ls john/run | head -40"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && od -A x -t x1z secrets.7z | head; echo ---; ls john/run | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ByPGKbWfAYQCLViQ6hVK5Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && ls -la john* 2>/dev/null; file john 2>/dev/null; ls *.lst 2>/dev/null | head; ls -la password.lst 2>/dev/null"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && ls -la john* 2>/dev/null; file john 2>/dev/null; ls *.lst 2>/dev/null | head; ls -la password.lst 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013LqBUucsFGXKkEjAuyTWuB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && ./john --version 2>&1 | head; echo \"---7z2john---\"; perl 7z2john.pl /app/secrets.7z 2>&1 | head"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && ./john --version 2>&1 | head; echo \"---7z2john---\"; perl 7z2john.pl /app/secrets.7z 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017NLL2zpusFiwLZJenrM5J3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && ./john 2>&1 | head -5; echo \"===\"; cpan -T Compress::Raw::Lzma 2>&1 | tail -3 || apt-get install -y libcompress-raw-lzma-perl 2>&1 | tail -3"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && ./john 2>&1 | head -5; echo \"===\"; cpan -T Compress::Raw::Lzma 2>&1 | tail -3 || apt-get install -y libcompress-raw-lzma-perl 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VUxhUNPGWBVoaCJ7X54EBT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -1; apt-get install -y liblzma-dev libcompress-raw-lzma-perl 2>&1 | tail -4"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -1; apt-get install -y liblzma-dev libcompress-raw-lzma-perl 2>&1 | tail -4"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013cusVbqbLQRXgJ9ohtyPqs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && perl 7z2john.pl /app/secrets.7z 2>&1 | tee /tmp/hash.txt | head -c 400"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && perl 7z2john.pl /app/secrets.7z 2>&1 | tee /tmp/hash.txt | head -c 400"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CespmQQSpmKvz4dza9Nvwu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/john/run && grep -v ATTENTION /tmp/hash.txt > /tmp/h.txt; wc -c /tmp/h.txt; timeout 600 ./john --wordlist=password.lst --format=7z /tmp/h.txt 2>&1 | tail -20"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app/john/run && grep -v ATTENTION /tmp/hash.txt > /tmp/h.txt; wc -c /tmp/h.txt; timeout 600 ./john --wordlist=password.lst --format=7z /tmp/h.txt 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TDR8MENQ81n6kMQ7JPyfqx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y p7zip-full 2>&1 | tail -1; cd /tmp && rm -rf ex && mkdir ex && cd ex && 7z x -p1998 /app/secrets.7z 2>&1 | tail -8; echo ===; ls -R"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "apt-get install -y p7zip-full 2>&1 | tail -1; cd /tmp && rm -rf ex && mkdir ex && cd ex && 7z x -p1998 /app/secrets.7z 2>&1 | tail -8; echo ===; ls -R"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C568h3cE3j3KiF1Rxpi6ku",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y p7zip-full 2>&1 | tail -1; cd /tmp && mkdir -p ex && cd ex && 7z x -y -p1998 /app/secrets.7z 2>&1 | tail -6; echo ===; ls -R; echo ---; cat secret_file.txt 2>/dev/null"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "apt-get install -y p7zip-full 2>&1 | tail -1; cd /tmp && mkdir -p ex && cd ex && 7z x -y -p1998 /app/secrets.7z 2>&1 | tail -6; echo ===; ls -R; echo ---; cat secret_file.txt 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QAors1js3uL4L8cz7otRv6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "w=$(cat /tmp/ex/secrets/secret_file.txt); printf '%s' \"$w\" > /app/solution.txt; echo \"word=[$w]\"; od -c /app/solution.txt"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "w=$(cat /tmp/ex/secrets/secret_file.txt); printf '%s' \"$w\" > /app/solution.txt; echo \"word=[$w]\"; od -c /app/solution.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015T2YaKxPuuwisWGx5LotBF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l; echo \"---sample---\"; head -3 /app/logs/$(ls /app/logs | head -1)"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l; echo \"---sample---\"; head -3 /app/logs/$(ls /app/logs | head -1)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012irjzwSAGrzikRLiLd7dvE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/gen.py <<'EOF'\nimport os,re,csv\nfrom datetime import date,timedelta\nref=date(2025,8,12)\nd7=ref-timedelta(days=6)\nd30=ref-timedelta(days=29)\nm1=ref.replace(day=1)\nsev=[\"ERROR\",\"WARNING\",\"INFO\"]\nperiods={\"today\":{},\"last_7_days\":{},\"last_30_days\":{},\"month_to_date\":{},\"total\":{}}\nfor p in periods:\n    for s in sev: periods[p][s]=0\npat=re.compile(r'\\[(ERROR|WARNING|INFO)\\]')\nfor fn in os.listdir('/app/logs'):\n    m=re.match(r'(\\d{4})-(\\d{2})-(\\d{2})_',fn)\n    if not m: continue\n    fd=date(int(m.group(1)),int(m.group(2)),int(m.group(3)))\n    with open('/app/logs/'+fn) as f:\n        for line in f:\n            mm=pat.search(line)\n            if not mm: continue\n            s=mm.group(1)\n            periods[\"total\"][s]+=1\n            if fd==ref: periods[\"today\"][s]+=1\n            if d7<=fd<=ref: periods[\"last_7_days\"][s]+=1\n            if d30<=fd<=ref: periods[\"last_30_days\"][s]+=1\n            if m1<=fd<=ref: periods[\"month_to_date\"][s]+=1\nwith open('/app/summary.csv','w',newline='') as f:\n    w=csv.writer(f); w.writerow([\"period\",\"severity\",\"count\"])\n    for p in [\"today\",\"last_7_days\",\"last_30_days\",\"month_to_date\",\"total\"]:\n        for s in sev: w.writerow([p,s,periods[p][s]])\nprint(open('/app/summary.csv').read())\nEOF\npython3 /app/gen.py"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cat > /app/gen.py <<'EOF'\nimport os,re,csv\nfrom datetime import date,timedelta\nref=date(2025,8,12)\nd7=ref-timedelta(days=6)\nd30=ref-timedelta(days=29)\nm1=ref.replace(day=1)\nsev=[\"ERROR\",\"WARNING\",\"INFO\"]\nperiods={\"today\":{},\"last_7_days\":{},\"last_30_days\":{},\"month_to_date\":{},\"total\":{}}\nfor p in periods:\n    for s in sev: periods[p][s]=0\npat=re.compile(r'\\[(ERROR|WARNING|INFO)\\]')\nfor fn in os.listdir('/app/logs'):\n    m=re.match(r'(\\d{4})-(\\d{2})-(\\d{2})_',fn)\n    if not m: continue\n    fd=date(int(m.group(1)),int(m.group(2)),int(m.group(3)))\n    with open('/app/logs/'+fn) as f:\n        for line in f:\n            mm=pat.search(line)\n            if not mm: continue\n            s=mm.group(1)\n            periods[\"total\"][s]+=1\n            if fd==ref: periods[\"today\"][s]+=1\n            if d7<=fd<=ref: periods[\"last_7_days\"][s]+=1\n            if d30<=fd<=ref: periods[\"last_30_days\"][s]+=1\n            if m1<=fd<=ref: periods[\"month_to_date\"][s]+=1\nwith open('/app/summary.csv','w',newline='') as f:\n    w=csv.writer(f); w.writerow([\"period\",\"severity\",\"count\"])\n    for p in [\"today\",\"last_7_days\",\"last_30_days\",\"month_to_date\",\"total\"]:\n        for s in sev: w.writerow([p,s,periods[p][s]])\nprint(open('/app/summary.csv').read())\nEOF\npython3 /app/gen.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

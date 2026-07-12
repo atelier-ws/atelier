@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TQaTbtifAmhpJKg94imf3J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; df -h /app; echo \"---\"; mount | grep -i app"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; df -h /app; echo \"---\"; mount | grep -i app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01TQaTbtifAmhpJKg94imf3J",
-            "content": "{\"type\": \"text\", \"text\": \"total 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:16 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:15 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:16 .atelier\\ndrwxr-xr-x 8 root root 4096 Oct 22  2025 varsea\\n---\\nFilesystem      Size  Used Avail Use% Mounted on\\noverlay         3.6T  1.4T  2.1T  41% /\\n---\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /atelier type ext4 (ro,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /atelier-bundle.tar.gz type ext4 (ro,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/agent type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/artifacts type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/verifier type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/resolv.conf type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/hostname type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/hosts type ext4 (rw,relatime)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:16 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:15 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:16 .lemoncrow\\ndrwxr-xr-x 8 root root 4096 Oct 22  2025 varsea\\n---\\nFilesystem      Size  Used Avail Use% Mounted on\\noverlay         3.6T  1.4T  2.1T  41% /\\n---\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /lemoncrow type ext4 (ro,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /lemoncrow-bundle.tar.gz type ext4 (ro,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/agent type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/artifacts type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /logs/verifier type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/resolv.conf type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/hostname type ext4 (rw,relatime)\\n/dev/mapper/ubuntu--vg-ubuntu--lv on /etc/hosts type ext4 (rw,relatime)\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N5vS5BVznMeXZjRoarpZFV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find /app/varsea -type f | head -200; echo \"---count---\"; find /app/varsea -type f | wc -l"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "find /app/varsea -type f | head -200; echo \"---count---\"; find /app/varsea -type f | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0174pZH3yF7pnCraA93dmm7e",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; for f in disks/sub1/subA/subAlpha/ae3f4c.dat */*.bin; do echo \"== $f ==\"; ls -la \"$f\"; file \"$f\"; done"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; for f in disks/sub1/subA/subAlpha/ae3f4c.dat */*.bin; do echo \"== $f ==\"; ls -la \"$f\"; file \"$f\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Lrv4dqqhkerHJJPckALMxz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; xxd \"$f\" | head -40; echo \"---file offset 1080 magic---\"; xxd -s 1080 -l 16 \"$f\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; xxd \"$f\" | head -40; echo \"---file offset 1080 magic---\"; xxd -s 1080 -l 16 \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TQgUaidpaRrM4hsdVsXLbc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; od -A d -t x1z \"$f\" | head -20; echo \"=== ext superblock magic at 1080 (0x438) ===\"; od -A d -t x1 -j 1080 -N 4 \"$f\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; od -A d -t x1z \"$f\" | head -20; echo \"=== ext superblock magic at 1080 (0x438) ===\"; od -A d -t x1 -j 1080 -N 4 \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SEZrzrqP2Sx1icWxr1MPUF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; echo \"=== strings search PASSWORD/8XD across all files ===\"; for f in $(find . -type f); do echo \"-- $f --\"; strings -n 4 \"$f\" | grep -iE 'PASSWORD|8XD|W54|launchcode' ; done 2>/dev/null | grep -iE 'PASSWORD|8XD|W54|launchcode|--' | head -60"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; echo \"=== strings search PASSWORD/8XD across all files ===\"; for f in $(find . -type f); do echo \"-- $f --\"; strings -n 4 \"$f\" | grep -iE 'PASSWORD|8XD|W54|launchcode' ; done 2>/dev/null | grep -iE 'PASSWORD|8XD|W54|launchcode|--' | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CzyGG8QbtARfZ9v7ctFeGK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== PK signatures offsets ===\"; grep -abo $'PK\\x03\\x04' \"$f\" | head; echo \"--- central dir ---\"; grep -abo $'PK\\x01\\x02' \"$f\" | head; echo \"--- eocd ---\"; grep -abo $'PK\\x05\\x06' \"$f\" | head"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== PK signatures offsets ===\"; grep -abo $'PK\\x03\\x04' \"$f\" | head; echo \"--- central dir ---\"; grep -abo $'PK\\x01\\x02' \"$f\" | head; echo \"--- eocd ---\"; grep -abo $'PK\\x05\\x06' \"$f\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQJ362a2NMUdg4M1i9BTaW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; dd if=\"$f\" of=/tmp/carved.zip bs=1 skip=1048576 count=2097307 2>/dev/null; ls -la /tmp/carved.zip; echo \"=== unzip -l ===\"; cd /tmp && unzip -l carved.zip"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; dd if=\"$f\" of=/tmp/carved.zip bs=1 skip=1048576 count=2097307 2>/dev/null; ls -la /tmp/carved.zip; echo \"=== unzip -l ===\"; cd /tmp && unzip -l carved.zip"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019A81Ep1ABALDrFZzGqbKRj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && unzip -o carved.zip -d extracted 2>&1; echo \"===\"; od -c extracted/app/launchcode.txt 2>/dev/null; cat extracted/app/launchcode.txt 2>/dev/null"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /tmp && unzip -o carved.zip -d extracted 2>&1; echo \"===\"; od -c extracted/app/launchcode.txt 2>/dev/null; cat extracted/app/launchcode.txt 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P9x2gvSXLivBbiBeNhAxSJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== local header @1048576 ===\"; od -A d -t x1 -j 1048576 -N 80 \"$f\"; echo \"=== central dir @3145741 ===\"; od -A d -t x1 -j 3145741 -N 100 \"$f\"; echo \"=== eocd @3145829 ===\"; od -A d -t x1 -j 3145829 -N 40 \"$f\""
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== local header @1048576 ===\"; od -A d -t x1 -j 1048576 -N 80 \"$f\"; echo \"=== central dir @3145741 ===\"; od -A d -t x1 -j 3145741 -N 100 \"$f\"; echo \"=== eocd @3145829 ===\"; od -A d -t x1 -j 3145829 -N 40 \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FhVh5ddKNHRyHVmZ4rNU7T",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== 33 bytes of stored data @1048652 ===\"; od -A d -c -j 1048652 -N 33 \"$f\"; echo \"=== hex ===\"; od -A d -t x1 -j 1048652 -N 33 \"$f\""
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== 33 bytes of stored data @1048652 ===\"; od -A d -c -j 1048652 -N 33 \"$f\"; echo \"=== hex ===\"; od -A d -t x1 -j 1048652 -N 33 \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015cWSbWxZ3aFX11fGkajHTa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== 8XD offsets ===\"; grep -abo '8XD' \"$f\"; echo \"=== W54 offsets ===\"; grep -abo 'W54' \"$f\"; echo \"=== PASSWORD offsets ===\"; grep -abo 'PASSWORD' \"$f\"; echo \"=== launchcode offsets ===\"; grep -abo 'launchcode' \"$f\""
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== 8XD offsets ===\"; grep -abo '8XD' \"$f\"; echo \"=== W54 offsets ===\"; grep -abo 'W54' \"$f\"; echo \"=== PASSWORD offsets ===\"; grep -abo 'PASSWORD' \"$f\"; echo \"=== launchcode offsets ===\"; grep -abo 'launchcode' \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LSMuQiWXz3mYR82DSJuPBh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== around 4150390 (8XD) ===\"; od -A d -c -j 4150370 -N 80 \"$f\"; echo; echo \"=== around 259938 (W54) ===\"; od -A d -c -j 259900 -N 90 \"$f\"; echo; echo \"=== around 3145737 (W54) ===\"; od -A d -c -j 3145700 -N 60 \"$f\""
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== around 4150390 (8XD) ===\"; od -A d -c -j 4150370 -N 80 \"$f\"; echo; echo \"=== around 259938 (W54) ===\"; od -A d -c -j 259900 -N 90 \"$f\"; echo; echo \"=== around 3145737 (W54) ===\"; od -A d -c -j 3145700 -N 60 \"$f\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P31PrZKXn7uPhdP4HuEFVT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; echo \"=== full pattern search all files ===\"; for f in $(find . -type f); do strings -n 10 \"$f\" | grep -oE '8XD[A-Z0-9]{17}W54' | while read p; do echo \"$f: $p\"; done; done; echo \"=== also with PASSWORD= prefix ===\"; for f in $(find . -type f); do strings -n 10 \"$f\" | grep -oE 'PASSWORD=8XD[A-Z0-9]{17}W54' | while read p; do echo \"$f: $p\"; done; done"
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; echo \"=== full pattern search all files ===\"; for f in $(find . -type f); do strings -n 10 \"$f\" | grep -oE '8XD[A-Z0-9]{17}W54' | while read p; do echo \"$f: $p\"; done; done; echo \"=== also with PASSWORD= prefix ===\"; for f in $(find . -type f); do strings -n 10 \"$f\" | grep -oE 'PASSWORD=8XD[A-Z0-9]{17}W54' | while read p; do echo \"$f: $p\"; done; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017MvEqftuq5Ls4d279nQJcU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== ascii runs near each hit ===\"; for off in 1048600 4150350 259880 3145680; do echo \"--- offset $off ---\"; dd if=\"$f\" bs=1 skip=$off count=140 2>/dev/null | strings -n 3; done"
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== ascii runs near each hit ===\"; for off in 1048600 4150350 259880 3145680; do echo \"--- offset $off ---\"; dd if=\"$f\" bs=1 skip=$off count=140 2>/dev/null | strings -n 3; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BectwGRY7XZbCw9Gvte8mb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c '\nimport zlib\ntarget=0xb0725dc4\nprefix=\"8XDP5Q2RT9Z\"\n# candidate reconstruction: prefix + K7VB3BV4WW54\ncands=[\n \"8XDP5Q2RT9ZK7VB3BV4WW54\",\n]\nfor pw in cands:\n    for nl in [\"\\n\",\"\"]:\n        content=(\"PASSWORD=\"+pw+nl).encode()\n        c=zlib.crc32(content)&0xffffffff\n        print(pw, repr(nl), hex(c), c==target, len(pw))\nprint(\"target\",hex(target))\n'"
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "python3 -c '\nimport zlib\ntarget=0xb0725dc4\nprefix=\"8XDP5Q2RT9Z\"\n# candidate reconstruction: prefix + K7VB3BV4WW54\ncands=[\n \"8XDP5Q2RT9ZK7VB3BV4WW54\",\n]\nfor pw in cands:\n    for nl in [\"\\n\",\"\"]:\n        content=(\"PASSWORD=\"+pw+nl).encode()\n        c=zlib.crc32(content)&0xffffffff\n        print(pw, repr(nl), hex(c), c==target, len(pw))\nprint(\"target\",hex(target))\n'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1137,7 +1137,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N8iDrapbYjfHSW9FA8Njq8",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1157,7 +1157,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1218,7 +1218,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PB79QYzsu4B8Dzch7fiC7d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/recovered_passwords.txt; echo \"len:\"; head -1 /app/recovered_passwords.txt | tr -d '\\n' | wc -c"
           },
@@ -1226,7 +1226,7 @@
             "raw_arguments": {
               "command": "cat /app/recovered_passwords.txt; echo \"len:\"; head -1 /app/recovered_passwords.txt | tr -d '\\n' | wc -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

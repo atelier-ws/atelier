@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PyErwJdbsw6LgPJUKvXGLP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd ~ && pwd && ls -la && echo \"---FIND REPOS---\" && find / -name \".git\" -type d 2>/dev/null | head -20"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd ~ && pwd && ls -la && echo \"---FIND REPOS---\" && find / -name \".git\" -type d 2>/dev/null | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01PyErwJdbsw6LgPJUKvXGLP",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.claude/worktrees/agent-a82f164b3e29472c3/.git\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.git\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.git\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.git\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.git\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.git\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016d6vu28EMZhV7Ln4DQhvZn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"HOME=$HOME\"; ls -la ~ 2>/dev/null; echo \"---\"; find / -maxdepth 4 -name \".git\" -type d 2>/dev/null | grep -v worktrees | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "echo \"HOME=$HOME\"; ls -la ~ 2>/dev/null; echo \"---\"; find / -maxdepth 4 -name \".git\" -type d 2>/dev/null | grep -v worktrees | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -118,7 +118,7 @@
         "results": [
           {
             "source_call_id": "toolu_016d6vu28EMZhV7Ln4DQhvZn",
-            "content": "{\"type\": \"text\", \"text\": \"HOME=/root\\ntotal 52\\ndrwx------ 1 root root 4096 Jul  4 07:04 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 07:04 ..\\ndrwxr-xr-x 8 root root 4096 Jul  4 07:05 .atelier\\n-rw-r--r-- 1 root root  571 Apr 10  2021 .bashrc\\ndrwxr-xr-x 1 root root 4096 Jul  4 07:05 .cache\\ndrwxr-xr-x 7 root root 4096 Jul  4 07:05 .claude-bench\\ndrwxr-xr-x 3 root root 4096 Jul  4 07:04 .config\\n-rw-r--r-- 1 root root   51 Apr  3 07:47 .gitconfig\\ndrwxr-xr-x 4 root root 4096 Jul  4 07:04 .npm\\n-rw------- 1 root root   16 Jul  4 07:04 .npmrc\\n-rw-r--r-- 1 root root  161 Jul  9  2019 .profile\\n-rw-r--r-- 1 root root  169 Mar 16 22:58 .wget-hsts\\n---\\n/app/personal-site/.git\\n/atelier/.git\\n/atelier/landing/.git\"}"
+            "content": "{\"type\": \"text\", \"text\": \"HOME=/root\\ntotal 52\\ndrwx------ 1 root root 4096 Jul  4 07:04 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 07:04 ..\\ndrwxr-xr-x 8 root root 4096 Jul  4 07:05 .lemoncrow\\n-rw-r--r-- 1 root root  571 Apr 10  2021 .bashrc\\ndrwxr-xr-x 1 root root 4096 Jul  4 07:05 .cache\\ndrwxr-xr-x 7 root root 4096 Jul  4 07:05 .claude-bench\\ndrwxr-xr-x 3 root root 4096 Jul  4 07:04 .config\\n-rw-r--r-- 1 root root   51 Apr  3 07:47 .gitconfig\\ndrwxr-xr-x 4 root root 4096 Jul  4 07:04 .npm\\n-rw------- 1 root root   16 Jul  4 07:04 .npmrc\\n-rw-r--r-- 1 root root  161 Jul  9  2019 .profile\\n-rw-r--r-- 1 root root  169 Mar 16 22:58 .wget-hsts\\n---\\n/app/personal-site/.git\\n/lemoncrow/.git\\n/lemoncrow/landing/.git\"}"
           }
         ]
       },
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Sg44mrySDUF7SEv3rQVEBx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && git status && echo \"===LOG===\" && git log --oneline --all --graph --decorate -30"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && git status && echo \"===LOG===\" && git log --oneline --all --graph --decorate -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012otscmsW8ou7UEZNbGWz1t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && echo \"===BRANCHES===\" && git branch -a && echo \"===STASH===\" && git stash list && echo \"===REFLOG===\" && git reflog -30"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && echo \"===BRANCHES===\" && git branch -a && echo \"===STASH===\" && git stash list && echo \"===REFLOG===\" && git reflog -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012rkVibbHvRTC8yEyuMZcic",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && echo \"===SHOW c499730===\" && git show c499730 --stat && echo \"===PARENT===\" && git log --oneline -1 c499730^ && echo \"===MASTER HEAD===\" && git log --oneline -1 master && echo \"===MASTER PARENT===\" && git log --oneline -1 master^"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && echo \"===SHOW c499730===\" && git show c499730 --stat && echo \"===PARENT===\" && git log --oneline -1 c499730^ && echo \"===MASTER HEAD===\" && git log --oneline -1 master && echo \"===MASTER PARENT===\" && git log --oneline -1 master^"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016RF5JEbhM2XYtCxtvr9hyp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && echo \"===d7d3e4b changed===\" && git show d7d3e4b --stat --oneline | head && echo \"===c499730 diff===\" && git show c499730"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && echo \"===d7d3e4b changed===\" && git show d7d3e4b --stat --oneline | head && echo \"===c499730 diff===\" && git show c499730"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BZxaQRz8Sc7puRqsVZgheG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && echo \"===d7d3e4b about.md diff===\" && git show d7d3e4b -- _includes/about.md"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && echo \"===d7d3e4b about.md diff===\" && git show d7d3e4b -- _includes/about.md"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E3Z687PsGpyhvoVKhFm9g9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && git merge c499730 --no-edit; echo \"EXIT=$?\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && git merge c499730 --no-edit; echo \"EXIT=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PCdVDrE9yxDR6vWFGQUzax",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/personal-site/_includes/about.md"
@@ -597,7 +597,7 @@
                 "/app/personal-site/_includes/about.md"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JTEBHeTzfyTSbPWgDWZdXf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && git checkout --theirs _includes/about.md && git add _includes/about.md && echo \"===resolved file===\" && git show c499730:_includes/about.md | diff - _includes/about.md && echo \"MATCHES c499730 version\""
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && git checkout --theirs _includes/about.md && git add _includes/about.md && echo \"===resolved file===\" && git show c499730:_includes/about.md | diff - _includes/about.md && echo \"MATCHES c499730 version\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MPSUf8LrYu9knSDVZWmg42",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && git commit --no-edit; echo \"EXIT=$?\" && echo \"===LOG===\" && git log --oneline --graph -6 && echo \"===STATUS===\" && git status"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && git commit --no-edit; echo \"EXIT=$?\" && echo \"===LOG===\" && git log --oneline --graph -6 && echo \"===STATUS===\" && git status"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013iFGo6rZCZZ9ieQc5AQuiW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/personal-site && echo \"===about.md===\" && git show HEAD:_includes/about.md && echo && echo \"===default.html Postdoc line===\" && grep -n \"Postdoc @ Stanford\" _layouts/default.html"
           },
@@ -804,7 +804,7 @@
             "raw_arguments": {
               "command": "cd /app/personal-site && echo \"===about.md===\" && git show HEAD:_includes/about.md && echo && echo \"===default.html Postdoc line===\" && grep -n \"Postdoc @ Stanford\" _layouts/default.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

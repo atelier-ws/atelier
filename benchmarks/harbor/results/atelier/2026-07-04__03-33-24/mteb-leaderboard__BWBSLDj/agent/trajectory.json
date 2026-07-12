@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L8Wnm4YFPwH8W6y3eGqN7o",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; ls /app/* 2>/dev/null; echo \"---pip---\"; python3 -c \"import mteb; print(mteb.__version__)\" 2>&1 | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; ls /app/* 2>/dev/null; echo \"---pip---\"; python3 -c \"import mteb; print(mteb.__version__)\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PwSSBVd5nT1pCKMcCpuTBj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport mteb\nbs = mteb.get_benchmarks()\nfor b in bs:\n    n=b.name\n    if 'cand' in n or 'SEB' in n or 'Nordic' in n:\n        print(n)\n\" 2>&1 | head -40"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport mteb\nbs = mteb.get_benchmarks()\nfor b in bs:\n    n=b.name\n    if 'cand' in n or 'SEB' in n or 'Nordic' in n:\n        print(n)\n\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018Rbi9xakiH254A67Nk14Md",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\ntasks=b.tasks\nprint('num tasks', len(tasks))\nfor t in tasks:\n    print(t.metadata.name, '|', t.metadata.type)\n\" 2>&1 | head -60"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\ntasks=b.tasks\nprint('num tasks', len(tasks))\nfor t in tasks:\n    print(t.metadata.name, '|', t.metadata.type)\n\" 2>&1 | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L54ztuVBcDTVVuW7TTyes4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -iname \"*.json\" -path \"*results*\" 2>/dev/null | grep -iE \"mteb|embed\" | head; echo \"---cache---\"; ls -la ~/.cache 2>/dev/null; find / -type d -iname \"*results*\" 2>/dev/null | grep -i mteb | head; echo \"---hf---\"; ls -la ~/.cache/huggingface 2>/dev/null"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "find / -iname \"*.json\" -path \"*results*\" 2>/dev/null | grep -iE \"mteb|embed\" | head; echo \"---cache---\"; ls -la ~/.cache 2>/dev/null; find / -type d -iname \"*results*\" 2>/dev/null | grep -i mteb | head; echo \"---hf---\"; ls -la ~/.cache/huggingface 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -256,7 +256,7 @@
         "results": [
           {
             "source_call_id": "toolu_01L54ztuVBcDTVVuW7TTyes4",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.agents/plugins/marketplace.json\\natelier/.agents/skills/embedded-captions/assets/brand/cyberpunk-widths.json\\natelier/.agents/skills/embedded-captions/assets/fonts/char-widths.json\\natelier/.agents/skills/embedded-captions/dna/chrome.json\\natelier/.agents/skills/embedded-captions/dna/cream.json\\natelier/.agents/skills/embedded-captions/dna/documentary.json\\natelier/.agents/skills/embedded-captions/dna/editorial.json\\natelier/.agents/skills/embedded-captions/dna/glitch.json\\natelier/.agents/skills/embedded-captions/dna/ink.json\\natelier/.agents/skills/embedded-captions/dna/keynote.json\\natelier/.agents/skills/embedded-captions/dna/loud.json\\natelier/.agents/skills/embedded-captions/dna/neon.json\\natelier/.agents/skills/embedded-captions/dna/velocity.json\\natelier/.agents/skills/embedded-captions/themes/anchor.json\\natelier/.agents/skills/embedded-captions/themes/arcade.json\\natelier/.agents/skills/embedded-captions/themes/aurora.json\\natelier/.agents/skills/embedded-captions/themes/biolume.json\\natelier/.agents/skills/embedded-captions/themes/brush.json\\natelier/.agents/skills/embedded-captions/themes/chalkboard.json\\natelier/.agents/skills/embedded-captions/themes/dossier.json\\natelier/.agents/skills/embedded-captions/themes/graffiti.json\\natelier/.agents/skills/embedded-captions/themes/hologram.json\\natelier/.agents/skills/embedded-captions/themes/inkwater.json\\natelier/.agents/skills/embedded-captions/themes/laser.json\\natelier/.agents/skills/embedded-captions/themes/lastpage.json\\natelier/.agents/skills/embedded-captions/themes/neonsign.json\\natelier/.agents/skills/embedded-captions/themes/nightcity.json\\natelier/.agents/skills/embedded-captions/themes/ordnance.json\\natelier/.agents/skills/embedded-captions/themes/papercut.json\\natelier/.agents/skills/embedded-captions/themes/popup.json\\natelier/.agents/skills/embedded-captions/themes/ransom.json\\natelier/.agents/skills/embedded-captions/themes/scoreboard.json\\natelier/.agents/skills/embedded-captions/themes/spectrum.json\\natelier/.agents/skills/embedded-captions/themes/stardust.json\\natelier/.agents/skills/embedded-captions/themes/stomp.json\\natelier/.agents/skills/embedded-captions/themes/terminal.json\\natelier/.agents/skills/embedded-captions/themes/thunder.json\\natelier/.agents/skills/embedded-captions/themes/transit.json\\natelier/.agents/skills/embedded-captions/themes/vhs.json\\natelier/.agents/skills/faceless-explainer/assets/sfx/manifest.json\\natelier/.agents/skills/pr-to-video/assets/sfx/manifest.json\\natelier/.agents/skills/product-launch-video/assets/sfx/manifest.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/expected.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/remotion-src/package.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/remotion-src/tsconfig.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/expected.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/remotion-src/package.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/remotion-src/tsconfig.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/expected.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/remotion-src/package.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/remotion-src/tsconfig.json\\natelier/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-4-escape-hatch/expected.json\\natelier/.agents/skills/website-to-video/assets/sfx/manifest.json\\natelier/.atelier/bin/MANIFEST.json\\natelier/.atelier/settings.json\\natelier/.claude/settings.json\\natelier/.claude/settings.local.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.claude/settings.local.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.planning/config.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/altair/vegalite/v6/schema/vega-lite-schema.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/altair/vegalite/v6/schema/vega-themes.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/ast_serialize-0.5.0.dist-info/sboms/mypy_parser.cyclonedx.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier-0.3.1.dist-info/direct_url.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier-0.3.1.dist-info/uv_cache.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/mcp.atelier.template.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/plugin/delegation-definitions/code.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/plugin/delegation-definitions/execute.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/plugin/delegation-definitions/explore.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/plugin/delegation-definitions/index.json\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/atelier/integrations/antigravity/plugin/delegation-definitions/plan.jso\\n...[summary clipped; full output is in spill]...\\nent_filter/guardrail_benchmarks/results/block_gender_discrimination_-_contentfilter_(gender_sexual_orientation.yaml).json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/block_military_discrimination_-_contentfilter_(military_status.yaml).json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/block_religion_discrimination_-_contentfilter_(religion.yaml).json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/insults_cf.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/investment_cf.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/patterns.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/hooks/example_presidio_ad_hoc_recognizer.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/mcp_registry.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/openapi.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/openapi_registry.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/public_endpoints/agent_create_fields.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/public_endpoints/provider_create_fields.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pygit2-1.19.2.dist-info/sboms/auditwheel.cdx.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/river-0.25.0.dist-info/sboms/river.cyclonedx.json\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/rpds_py-2026.5.1.dist-info/sboms/rpds-py.cyclonedx.json\\n... (16741 more)\\n\\n[full output (37652B) spilled to /tmp/atelier-spill/tool_output-bash-1783136867616-c4cbae25.txt; read /tmp/atelier-spill/tool_output-bash-1783136867616-c4cbae25.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.agents/plugins/marketplace.json\\nlemoncrow/.agents/skills/embedded-captions/assets/brand/cyberpunk-widths.json\\nlemoncrow/.agents/skills/embedded-captions/assets/fonts/char-widths.json\\nlemoncrow/.agents/skills/embedded-captions/dna/chrome.json\\nlemoncrow/.agents/skills/embedded-captions/dna/cream.json\\nlemoncrow/.agents/skills/embedded-captions/dna/documentary.json\\nlemoncrow/.agents/skills/embedded-captions/dna/editorial.json\\nlemoncrow/.agents/skills/embedded-captions/dna/glitch.json\\nlemoncrow/.agents/skills/embedded-captions/dna/ink.json\\nlemoncrow/.agents/skills/embedded-captions/dna/keynote.json\\nlemoncrow/.agents/skills/embedded-captions/dna/loud.json\\nlemoncrow/.agents/skills/embedded-captions/dna/neon.json\\nlemoncrow/.agents/skills/embedded-captions/dna/velocity.json\\nlemoncrow/.agents/skills/embedded-captions/themes/anchor.json\\nlemoncrow/.agents/skills/embedded-captions/themes/arcade.json\\nlemoncrow/.agents/skills/embedded-captions/themes/aurora.json\\nlemoncrow/.agents/skills/embedded-captions/themes/biolume.json\\nlemoncrow/.agents/skills/embedded-captions/themes/brush.json\\nlemoncrow/.agents/skills/embedded-captions/themes/chalkboard.json\\nlemoncrow/.agents/skills/embedded-captions/themes/dossier.json\\nlemoncrow/.agents/skills/embedded-captions/themes/graffiti.json\\nlemoncrow/.agents/skills/embedded-captions/themes/hologram.json\\nlemoncrow/.agents/skills/embedded-captions/themes/inkwater.json\\nlemoncrow/.agents/skills/embedded-captions/themes/laser.json\\nlemoncrow/.agents/skills/embedded-captions/themes/lastpage.json\\nlemoncrow/.agents/skills/embedded-captions/themes/neonsign.json\\nlemoncrow/.agents/skills/embedded-captions/themes/nightcity.json\\nlemoncrow/.agents/skills/embedded-captions/themes/ordnance.json\\nlemoncrow/.agents/skills/embedded-captions/themes/papercut.json\\nlemoncrow/.agents/skills/embedded-captions/themes/popup.json\\nlemoncrow/.agents/skills/embedded-captions/themes/ransom.json\\nlemoncrow/.agents/skills/embedded-captions/themes/scoreboard.json\\nlemoncrow/.agents/skills/embedded-captions/themes/spectrum.json\\nlemoncrow/.agents/skills/embedded-captions/themes/stardust.json\\nlemoncrow/.agents/skills/embedded-captions/themes/stomp.json\\nlemoncrow/.agents/skills/embedded-captions/themes/terminal.json\\nlemoncrow/.agents/skills/embedded-captions/themes/thunder.json\\nlemoncrow/.agents/skills/embedded-captions/themes/transit.json\\nlemoncrow/.agents/skills/embedded-captions/themes/vhs.json\\nlemoncrow/.agents/skills/faceless-explainer/assets/sfx/manifest.json\\nlemoncrow/.agents/skills/pr-to-video/assets/sfx/manifest.json\\nlemoncrow/.agents/skills/product-launch-video/assets/sfx/manifest.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/expected.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/remotion-src/package.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-1-title-card/remotion-src/tsconfig.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/expected.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/remotion-src/package.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-2-multi-scene/remotion-src/tsconfig.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/expected.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/remotion-src/package.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-3-data-driven/remotion-src/tsconfig.json\\nlemoncrow/.agents/skills/remotion-to-hyperframes/assets/test-corpus/tier-4-escape-hatch/expected.json\\nlemoncrow/.agents/skills/website-to-video/assets/sfx/manifest.json\\nlemoncrow/.lemoncrow/bin/MANIFEST.json\\nlemoncrow/.lemoncrow/settings.json\\nlemoncrow/.claude/settings.json\\nlemoncrow/.claude/settings.local.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.claude/settings.local.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.planning/config.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/altair/vegalite/v6/schema/vega-lite-schema.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/altair/vegalite/v6/schema/vega-themes.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/ast_serialize-0.5.0.dist-info/sboms/mypy_parser.cyclonedx.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow-0.3.1.dist-info/direct_url.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow-0.3.1.dist-info/uv_cache.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/mcp.lemoncrow.template.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/plugin/delegation-definitions/code.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/plugin/delegation-definitions/execute.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/plugin/delegation-definitions/explore.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/plugin/delegation-definitions/index.json\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/lemoncrow/integrations/antigravity/plugin/delegation-definitions/plan.jso\\n...[summary clipped; full output is in spill]...\\nent_filter/guardrail_benchmarks/results/block_gender_discrimination_-_contentfilter_(gender_sexual_orientation.yaml).json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/block_military_discrimination_-_contentfilter_(military_status.yaml).json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/block_religion_discrimination_-_contentfilter_(religion.yaml).json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/insults_cf.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/guardrail_benchmarks/results/investment_cf.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/guardrails/guardrail_hooks/litellm_content_filter/patterns.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/hooks/example_presidio_ad_hoc_recognizer.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/mcp_registry.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/openapi.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/openapi_registry.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/public_endpoints/agent_create_fields.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/litellm/proxy/public_endpoints/provider_create_fields.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pygit2-1.19.2.dist-info/sboms/auditwheel.cdx.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/river-0.25.0.dist-info/sboms/river.cyclonedx.json\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/rpds_py-2026.5.1.dist-info/sboms/rpds-py.cyclonedx.json\\n... (16741 more)\\n\\n[full output (37652B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783136867616-c4cbae25.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783136867616-c4cbae25.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CqmtToXeLYgzBmqA4qbd6x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "timeout 20 python3 -c \"\nimport urllib.request\ntry:\n    r=urllib.request.urlopen('https://huggingface.co', timeout=8)\n    print('HF', r.status)\nexcept Exception as e:\n    print('HF err', e)\n\" 2>&1 | head"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "timeout 20 python3 -c \"\nimport urllib.request\ntry:\n    r=urllib.request.urlopen('https://huggingface.co', timeout=8)\n    print('HF', r.status)\nexcept Exception as e:\n    print('HF err', e)\n\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MHuqrdViVSpaczjhq1PwPZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(only_main_score=True).filter_tasks(task_names=[t.metadata.name for t in b.tasks])\nprint(type(res))\nprint('num models', len(res.model_results) if hasattr(res,'model_results') else 'n/a')\n\" 2>&1 | tail -30"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(only_main_score=True).filter_tasks(task_names=[t.metadata.name for t in b.tasks])\nprint(type(res))\nprint('num models', len(res.model_results) if hasattr(res,'model_results') else 'n/a')\n\" 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LZThWu1RopDTDYUs3NB2c6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(only_main_score=True).filter_tasks(task_names=[t.metadata.name for t in b.tasks])\n\" 2>&1 | tail -15"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(only_main_score=True).filter_tasks(task_names=[t.metadata.name for t in b.tasks])\n\" 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012fQvpX4EsZvViYCUbDieFq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\nprint('loaded', type(res))\n\" 2>&1 | grep -vE \"Missing subsets|Downloading|Fetching\" | tail -25"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\nprint('loaded', type(res))\n\" 2>&1 | grep -vE \"Missing subsets|Downloading|Fetching\" | tail -25"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FygYk7beVTPQTdKyKMM3gt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\n\" 2>&1 | grep -A40 Traceback | tail -45"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\n\" 2>&1 | grep -A40 Traceback | tail -45"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A8qh3kt6V49Av13cHvbh2v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 -c \"\nimport mteb\nres = mteb.load_results(only_main_score=True)\n\" 2>/tmp/err.txt; tail -30 /tmp/err.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016uz46HSdAcXFMd24fH1WDd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && grep -A15 \"from_disk\" /tmp/err.txt | tail -20; echo \"===full tail===\"; cat /tmp/err.txt | sed -n '/Traceback/,$p'"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app && grep -A15 \"from_disk\" /tmp/err.txt | tail -20; echo \"===full tail===\"; cat /tmp/err.txt | sed -n '/Traceback/,$p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0138o8m3wAFktzUDRibKAQvz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import mteb,inspect; print(inspect.signature(mteb.load_results))\"; echo \"---\"; sed -n '120,175p' /usr/local/lib/python3.10/site-packages/mteb/load_results/load_results.py"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import mteb,inspect; print(inspect.signature(mteb.load_results))\"; echo \"---\"; sed -n '120,175p' /usr/local/lib/python3.10/site-packages/mteb/load_results/load_results.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Phz7vjTDcajumZk7QGUTB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import mteb,inspect; print(inspect.signature(mteb.load_results))\"; echo \"---download dir---\"; sed -n '1,120p' /usr/local/lib/python3.10/site-packages/mteb/load_results/load_results.py | grep -nE \"def load_results|download|cache|repo|snapshot|results_repo|local\" "
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import mteb,inspect; print(inspect.signature(mteb.load_results))\"; echo \"---download dir---\"; sed -n '1,120p' /usr/local/lib/python3.10/site-packages/mteb/load_results/load_results.py | grep -nE \"def load_results|download|cache|repo|snapshot|results_repo|local\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015L4dh1JZA6fJTSDPmR5ABu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls ~/.cache/mteb/results/results 2>/dev/null | head; echo \"count models:\"; ls ~/.cache/mteb/results/results 2>/dev/null | wc -l; cd ~/.cache/mteb/results && git log -1 --format=\"%H %ci\" 2>/dev/null"
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "ls ~/.cache/mteb/results/results 2>/dev/null | head; echo \"count models:\"; ls ~/.cache/mteb/results/results 2>/dev/null | wc -l; cd ~/.cache/mteb/results && git log -1 --format=\"%H %ci\" 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0183gRjDFcJa95yrympPo33v",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd ~/.cache/mteb/results && git rev-list -1 --before=\"2025-09-01 00:00:00\" HEAD | { read c; echo \"commit $c\"; git log -1 --format=\"%H %ci\" $c; }"
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd ~/.cache/mteb/results && git rev-list -1 --before=\"2025-09-01 00:00:00\" HEAD | { read c; echo \"commit $c\"; git log -1 --format=\"%H %ci\" $c; }"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1068,7 +1068,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CKh9acGg8KFa3faVBBuvVx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd ~/.cache/mteb/results && git checkout -q 71f6b6257025bbe06232352b86b09ab7bd7c904e && git log -1 --format=\"%H %ci\"; ls results | wc -l"
           },
@@ -1076,7 +1076,7 @@
             "raw_arguments": {
               "command": "cd ~/.cache/mteb/results && git checkout -q 71f6b6257025bbe06232352b86b09ab7bd7c904e && git log -1 --format=\"%H %ci\"; ls results | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1137,7 +1137,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SiSc5usVi9Ek9MZBtfRNKe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(download_latest=False, only_main_score=True, tasks=b.tasks)\nprint('type', type(res))\n\" 2>/tmp/e2.txt; echo EXIT $?; grep -vE \"Missing subsets|Missing splits\" /tmp/e2.txt | tail -20"
           },
@@ -1145,7 +1145,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 -c \"\nimport mteb\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(download_latest=False, only_main_score=True, tasks=b.tasks)\nprint('type', type(res))\n\" 2>/tmp/e2.txt; echo EXIT $?; grep -vE \"Missing subsets|Missing splits\" /tmp/e2.txt | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1206,7 +1206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014NESKVer8NraBhcSxqckax",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mteb\nfrom mteb.load_results.benchmark_results import BenchmarkResults, ModelResult\nprint([m for m in dir(BenchmarkResults) if not m.startswith('_')])\nprint('---MR---')\nprint([m for m in dir(ModelResult) if not m.startswith('_')])\n\""
           },
@@ -1214,7 +1214,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mteb\nfrom mteb.load_results.benchmark_results import BenchmarkResults, ModelResult\nprint([m for m in dir(BenchmarkResults) if not m.startswith('_')])\nprint('---MR---')\nprint([m for m in dir(ModelResult) if not m.startswith('_')])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1275,7 +1275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XVhrPdCKeedi2PNKyW5jVU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 -c \"\nimport mteb, pandas as pd\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(download_latest=False, only_main_score=True, tasks=b.tasks).join_revisions()\ndf = res.to_dataframe()\nprint(df.shape)\nprint(df.columns.tolist()[:5])\ndf.to_pickle('/tmp/scand.pkl')\n\" 2>/dev/null; echo EXIT $?"
           },
@@ -1283,7 +1283,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 -c \"\nimport mteb, pandas as pd\nb=[x for x in mteb.get_benchmarks() if x.name=='MTEB(Scandinavian, v1)'][0]\nres = mteb.load_results(download_latest=False, only_main_score=True, tasks=b.tasks).join_revisions()\ndf = res.to_dataframe()\nprint(df.shape)\nprint(df.columns.tolist()[:5])\ndf.to_pickle('/tmp/scand.pkl')\n\" 2>/dev/null; echo EXIT $?"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1344,7 +1344,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WtQL5cEXHCWmb8GTE372AW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf = pd.read_pickle('/tmp/scand.pkl')\ntasks = df['task_name'].tolist()\nassert len(tasks)==28\nmodels = [c for c in df.columns if c!='task_name']\nrows=[]\nfor m in models:\n    s = df[m]\n    n = s.notna().sum()\n    if n==28:\n        rows.append((m, s.mean()*100))\nrows.sort(key=lambda x:-x[1])\nprint('models with all 28 tasks:', len(rows))\nfor m,v in rows[:15]:\n    print(f'{v:6.2f}  {m}')\n\""
           },
@@ -1352,7 +1352,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport pandas as pd\ndf = pd.read_pickle('/tmp/scand.pkl')\ntasks = df['task_name'].tolist()\nassert len(tasks)==28\nmodels = [c for c in df.columns if c!='task_name']\nrows=[]\nfor m in models:\n    s = df[m]\n    n = s.notna().sum()\n    if n==28:\n        rows.append((m, s.mean()*100))\nrows.sort(key=lambda x:-x[1])\nprint('models with all 28 tasks:', len(rows))\nfor m,v in rows[:15]:\n    print(f'{v:6.2f}  {m}')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1413,7 +1413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YMbEzCHtnFKD1xgs1FN2Yf",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1433,7 +1433,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],

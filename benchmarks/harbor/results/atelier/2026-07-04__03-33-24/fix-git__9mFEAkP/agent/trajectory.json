@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CV9ZhNtVEwTVSprw9Zvi6S",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git log --all --oneline -20 && echo \"---BRANCHES---\" && git branch -a && echo \"---STASH---\" && git stash list && echo \"---STATUS---\" && git status && echo \"---REFLOG---\" && git reflog -20",
             "cwd": "."
@@ -43,7 +43,7 @@
               "command": "git log --all --oneline -20 && echo \"---BRANCHES---\" && git branch -a && echo \"---STASH---\" && git stash list && echo \"---STATUS---\" && git status && echo \"---REFLOG---\" && git reflog -20",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -51,7 +51,7 @@
         "results": [
           {
             "source_call_id": "toolu_01CV9ZhNtVEwTVSprw9Zvi6S",
-            "content": "{\"type\": \"text\", \"text\": \"d7d3e4b off the job market woo\\nc4e38a1 Add code link for BLADE\\n6f46fa0 CV Update\\ndd7e395 Adds BLADE to bib\\n2cd355a n+1 (for the last time???)\\n8eaf505 Add BLADE\\ncc2ec78 Underline\\nd71094e Underline Conferences\\n232b279 Remove posters\\n3fdf5f5 Add NeurIPS\\n8c4731d Add EMNLP acceptance\\nf54f66b Add GR link\\n18d2430 Add other links\\n1dd055e Ignore Gemfile, etc\\n5c77a6d Dont overwrite\\nc7d2f95 Delete unsused files\\n20b05d9 Remove more unused files\\n2d144f7 Add yamls for new papers\\n7882f2d Don't track _site\\ncd2b8de Add new papers\\n---BRANCHES---\\n* master\\n---STASH---\\n---STATUS---\\nOn branch master\\nnothing to commit, working tree clean\\n---REFLOG---\\nd7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\\nc499730 HEAD@{1}: commit: Move to Stanford\\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git\\n\\nstderr:\\n[rtk] /!\\\\ No hook installed — run `rtk init -g` for automatic token savings\\n\\n[discipline] passed through the installed `rtk` binary (detected on PATH, soft integration, not an Atelier-native capability) for compact output.\"}"
+            "content": "{\"type\": \"text\", \"text\": \"d7d3e4b off the job market woo\\nc4e38a1 Add code link for BLADE\\n6f46fa0 CV Update\\ndd7e395 Adds BLADE to bib\\n2cd355a n+1 (for the last time???)\\n8eaf505 Add BLADE\\ncc2ec78 Underline\\nd71094e Underline Conferences\\n232b279 Remove posters\\n3fdf5f5 Add NeurIPS\\n8c4731d Add EMNLP acceptance\\nf54f66b Add GR link\\n18d2430 Add other links\\n1dd055e Ignore Gemfile, etc\\n5c77a6d Dont overwrite\\nc7d2f95 Delete unsused files\\n20b05d9 Remove more unused files\\n2d144f7 Add yamls for new papers\\n7882f2d Don't track _site\\ncd2b8de Add new papers\\n---BRANCHES---\\n* master\\n---STASH---\\n---STATUS---\\nOn branch master\\nnothing to commit, working tree clean\\n---REFLOG---\\nd7d3e4b HEAD@{0}: checkout: moving from c499730ae050deb27e5d22972ea28daf778060f2 to master\\nc499730 HEAD@{1}: commit: Move to Stanford\\nc4e38a1 HEAD@{2}: checkout: moving from master to HEAD~1\\nd7d3e4b HEAD@{3}: reset: moving to d7d3e4b\\n19b5d10 HEAD@{4}: clone: from https://github.com/TheMikeMerrill/personal-site.git\\n\\nstderr:\\n[rtk] /!\\\\ No hook installed — run `rtk init -g` for automatic token savings\\n\\n[discipline] passed through the installed `rtk` binary (detected on PATH, soft integration, not an LemonCrow-native capability) for compact output.\"}"
           }
         ]
       },
@@ -104,7 +104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WooTuvDe24Bg8xHb8i7tmj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git show --stat c499730",
             "cwd": "."
@@ -114,7 +114,7 @@
               "command": "git show --stat c499730",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UjhL9vBfzbmSyuC4zBEuhA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git merge --no-edit c499730",
             "cwd": "."
@@ -185,7 +185,7 @@
               "command": "git merge --no-edit c499730",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -246,7 +246,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EgPMZ7KGzSzbpsYQBxdGYZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git diff _includes/about.md",
             "cwd": "."
@@ -256,7 +256,7 @@
               "command": "git diff _includes/about.md",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -317,7 +317,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SyG5zwm6RjH4YVDsw7RYbb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"===BASE (c4e38a1)===\"; git show c4e38a1:_includes/about.md; echo; echo \"===MASTER (HEAD)===\"; git show HEAD:_includes/about.md; echo; echo \"===STANFORD (c499730)===\"; git show c499730:_includes/about.md",
             "cwd": "."
@@ -327,7 +327,7 @@
               "command": "echo \"===BASE (c4e38a1)===\"; git show c4e38a1:_includes/about.md; echo; echo \"===MASTER (HEAD)===\"; git show HEAD:_includes/about.md; echo; echo \"===STANFORD (c499730)===\"; git show c499730:_includes/about.md",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -388,7 +388,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ktg923fdsR5jsSyvgvzYdQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git show c499730:_includes/about.md > _includes/about.md && git add _includes/about.md && git commit --no-edit && echo \"===RESULT===\" && git log --oneline -3 && echo && cat _includes/about.md",
             "cwd": "."
@@ -398,7 +398,7 @@
               "command": "git show c499730:_includes/about.md > _includes/about.md && git add _includes/about.md && git commit --no-edit && echo \"===RESULT===\" && git log --oneline -3 && echo && cat _includes/about.md",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D3bMc7P7Pjpk3pqUvm8Eyw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "git status && echo \"---\" && git show 564ac9b --stat --format=\"%H%n%s\"",
             "cwd": "."
@@ -469,7 +469,7 @@
               "command": "git status && echo \"---\" && git show 564ac9b --stat --format=\"%H%n%s\"",
               "cwd": "."
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

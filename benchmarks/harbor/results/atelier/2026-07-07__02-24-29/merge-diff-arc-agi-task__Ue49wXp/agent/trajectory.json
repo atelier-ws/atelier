@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XgYsNPMDzUAofxL98S263Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && echo \"---\" && head -c 2000 /app/examples.json"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/ && echo \"---\" && head -c 2000 /app/examples.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01EJCYAyFm1htCoZjebHtNnw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && git bundle list-heads bundle1.bundle 2>&1; echo \"===\"; git bundle list-heads bundle2.bundle 2>&1"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "cd /app && git bundle list-heads bundle1.bundle 2>&1; echo \"===\"; git bundle list-heads bundle2.bundle 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QJR332YPiKJNARQEbSspxF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/repo && cd /app/repo && git init -q && git config user.email a@b.c && git config user.name a\ngit fetch /app/bundle1.bundle HEAD 2>&1 && git branch branch1 FETCH_HEAD\ngit fetch /app/bundle2.bundle HEAD 2>&1 && git branch branch2 FETCH_HEAD\ngit branch -a\necho \"=== branch1 files ===\"; git ls-tree -r --name-only branch1\necho \"=== branch2 files ===\"; git ls-tree -r --name-only branch2"
           },
@@ -127,12 +127,12 @@
             "raw_arguments": {
               "command": "mkdir -p /app/repo && cd /app/repo && git init -q && git config user.email a@b.c && git config user.name a\ngit fetch /app/bundle1.bundle HEAD 2>&1 && git branch branch1 FETCH_HEAD\ngit fetch /app/bundle2.bundle HEAD 2>&1 && git branch branch2 FETCH_HEAD\ngit branch -a\necho \"=== branch1 files ===\"; git ls-tree -r --name-only branch1\necho \"=== branch2 files ===\"; git ls-tree -r --name-only branch2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01RcZ33DcaUbtF52ETaUGLju",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/examples.json:full"
@@ -144,7 +144,7 @@
                 "/app/examples.json:full"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AYSAFoS1dA59BXZLtzSryU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && echo \"=== b1 algo ===\"; git show branch1:algo.py; echo \"=== b1 utils ===\"; git show branch1:utils.py; echo \"=== b2 algo ===\"; git show branch2:algo.py; echo \"=== b2 requirements ===\"; git show branch2:requirements.txt"
           },
@@ -217,7 +217,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && echo \"=== b1 algo ===\"; git show branch1:algo.py; echo \"=== b1 utils ===\"; git show branch1:utils.py; echo \"=== b2 algo ===\"; git show branch2:algo.py; echo \"=== b2 requirements ===\"; git show branch2:requirements.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -278,7 +278,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MFJNaJAGCw3t5iVKPMqAtR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git checkout -q branch1 && git merge branch2 --no-edit 2>&1; echo \"---status---\"; git status --porcelain; echo \"---files---\"; ls -a"
           },
@@ -286,7 +286,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git checkout -q branch1 && git merge branch2 --no-edit 2>&1; echo \"---status---\"; git status --porcelain; echo \"---files---\"; ls -a"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -347,7 +347,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QkHCk6CCopXhjX1pi5BEEn",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -367,7 +367,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -428,7 +428,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CCnPr5CkKvhC8FiGdn4e4V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && python3 -c \"\nimport json\nfrom algo import map as m\nex=json.load(open('/app/examples.json'))\nallok=True\nfor k,e in enumerate(ex):\n    out=m(e['input'])\n    ok=out==e['output']\n    allok&=ok\n    print(k,ok)\nprint('ALL',allok)\n\""
           },
@@ -436,7 +436,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && python3 -c \"\nimport json\nfrom algo import map as m\nex=json.load(open('/app/examples.json'))\nallok=True\nfor k,e in enumerate(ex):\n    out=m(e['input'])\n    ok=out==e['output']\n    allok&=ok\n    print(k,ok)\nprint('ALL',allok)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -497,7 +497,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DzcYqwujFfETqCtozBAaTo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && git add algo.py && git commit -q --no-edit && echo \"committed\" && git branch && echo \"---files---\" && git ls-tree -r --name-only branch1 && echo \"---\" && ls /app/repo/algo.py"
           },
@@ -505,7 +505,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && git add algo.py && git commit -q --no-edit && echo \"committed\" && git branch && echo \"---files---\" && git ls-tree -r --name-only branch1 && echo \"---\" && ls /app/repo/algo.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -621,7 +621,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VePjHMgrRDXBPq3dVX1b19",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/repo && python3 -c \"\nimport json\nfrom algo import map as m\nex=json.load(open('/app/examples.json'))\nallok=True\nfor k,e in enumerate(ex):\n    out=m(e['input'])\n    ok=out==e['output']\n    allok&=ok\n    print('example',k,'PASS' if ok else 'FAIL')\n    assert len(out)==len(e['output'])\n    for r in range(len(out)):\n        assert len(out[r])==len(e['output'][r])\nprint('ALL',allok)\nassert allok\nprint('map callable, 2D->2D, all examples exact')\n\""
           },
@@ -629,7 +629,7 @@
             "raw_arguments": {
               "command": "cd /app/repo && python3 -c \"\nimport json\nfrom algo import map as m\nex=json.load(open('/app/examples.json'))\nallok=True\nfor k,e in enumerate(ex):\n    out=m(e['input'])\n    ok=out==e['output']\n    allok&=ok\n    print('example',k,'PASS' if ok else 'FAIL')\n    assert len(out)==len(e['output'])\n    for r in range(len(out)):\n        assert len(out[r])==len(e['output'][r])\nprint('ALL',allok)\nassert allok\nprint('map callable, 2D->2D, all examples exact')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

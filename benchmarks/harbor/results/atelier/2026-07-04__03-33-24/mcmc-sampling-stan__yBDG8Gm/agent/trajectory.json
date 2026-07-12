@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LiAsiLgHDXXH1NDRfWJbks",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && head -20 data.csv && wc -l data.csv && which R Rscript && R --version 2>/dev/null | head -1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && head -20 data.csv && wc -l data.csv && which R Rscript && R --version 2>/dev/null | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DgTdka31DYS4P38QHqJGMk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript -e 'cat(rownames(installed.packages()), sep=\"\\n\")' 2>/dev/null | grep -iE 'rstan|StanHeaders|Rcpp|BH|inline|RcppEigen|RcppParallel|loo|V8|gridExtra|pkgbuild' ; echo \"---compiler---\"; which g++ gcc make; echo \"---data tail---\"; tail -20 data.csv"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && Rscript -e 'cat(rownames(installed.packages()), sep=\"\\n\")' 2>/dev/null | grep -iE 'rstan|StanHeaders|Rcpp|BH|inline|RcppEigen|RcppParallel|loo|V8|gridExtra|pkgbuild' ; echo \"---compiler---\"; which g++ gcc make; echo \"---data tail---\"; tail -20 data.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014Rv2dr69St2iif87Dn8V7D",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript -e 'cat(.libPaths(), sep=\"\\n\")'; echo \"---\"; find / -name \"*.tar.gz\" 2>/dev/null | grep -iE 'stan|rstan|Rcpp' | head; echo \"---find rstan dirs---\"; find / -iname \"rstan*\" 2>/dev/null | head; echo \"---repos---\"; cat /etc/apt/sources.list 2>/dev/null; ls /etc/apt/sources.list.d/ 2>/dev/null"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && Rscript -e 'cat(.libPaths(), sep=\"\\n\")'; echo \"---\"; find / -name \"*.tar.gz\" 2>/dev/null | grep -iE 'stan|rstan|Rcpp' | head; echo \"---find rstan dirs---\"; find / -iname \"rstan*\" 2>/dev/null | head; echo \"---repos---\"; cat /etc/apt/sources.list 2>/dev/null; ls /etc/apt/sources.list.d/ 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -187,7 +187,7 @@
         "results": [
           {
             "source_call_id": "toolu_014Rv2dr69St2iif87Dn8V7D",
-            "content": "{\"type\": \"text\", \"text\": \"atelier-bundle.tar.gz\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.venv-build/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.venv-embed/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/.venv/lib/python3.13/site-packages/pre_commit/resources/rbenv.tar.gz\\natelier/.venv/lib/python3.13/site-packages/pre_commit/resources/ruby-build.tar.gz\\natelier/.venv/lib/python3.13/site-packages/pre_commit/resources/ruby-download.tar.gz\\natelier/benchmarks/.venv/lib/python3.12/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/build_dist/atelier/_internal/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\natelier/vendor/babel-stub/dist/babel-99.0.0.tar.gz\\nopt/atelier-venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow-bundle.tar.gz\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.venv-build/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/.venv/lib/python3.13/site-packages/pre_commit/resources/rbenv.tar.gz\\nlemoncrow/.venv/lib/python3.13/site-packages/pre_commit/resources/ruby-build.tar.gz\\nlemoncrow/.venv/lib/python3.13/site-packages/pre_commit/resources/ruby-download.tar.gz\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/build_dist/lemoncrow/_internal/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\\nlemoncrow/vendor/babel-stub/dist/babel-99.0.0.tar.gz\\nopt/lemoncrow-venv/lib/python3.13/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz\"}"
           }
         ]
       },
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014TC29sehAKzQm1CrJqbzsM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "Rscript -e 'print(.libPaths())'; echo \"---net test---\"; timeout 15 Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\")); ap<-tryCatch(available.packages(), error=function(e) e); print(class(ap)); if(is.matrix(ap)) print(dim(ap))' 2>&1 | tail -20"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "Rscript -e 'print(.libPaths())'; echo \"---net test---\"; timeout 15 Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\")); ap<-tryCatch(available.packages(), error=function(e) e); print(class(ap)); if(is.matrix(ap)) print(dim(ap))' 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YGpP2oTu2KeWVjmZRwTc7c",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "timeout 20 Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\")); ap<-available.packages(); for(p in c(\"rstan\",\"StanHeaders\",\"Rcpp\",\"RcppEigen\",\"RcppParallel\",\"BH\",\"inline\",\"loo\",\"QuickJSR\",\"RcppParallel\")) cat(p, ap[p,\"Version\"], \"\\n\")' 2>&1 | tail -20"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "timeout 20 Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\")); ap<-available.packages(); for(p in c(\"rstan\",\"StanHeaders\",\"Rcpp\",\"RcppEigen\",\"RcppParallel\",\"BH\",\"inline\",\"loo\",\"QuickJSR\",\"RcppParallel\")) cat(p, ap[p,\"Version\"], \"\\n\")' 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MnSoYejTaj9hb3QWSrh2P2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && nproc && Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\"), Ncpus=parallel::detectCores()); install.packages(\"rstan\"); cat(\"RSTAN_INSTALL_DONE\\n\"); library(rstan); cat(\"VERSION:\", as.character(packageVersion(\"rstan\")), \"\\n\")' > /app/install.log 2>&1",
             "background": true
@@ -388,7 +388,7 @@
               "command": "cd /app && nproc && Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\"), Ncpus=parallel::detectCores()); install.packages(\"rstan\"); cat(\"RSTAN_INSTALL_DONE\\n\"); library(rstan); cat(\"VERSION:\", as.character(packageVersion(\"rstan\")), \"\\n\")' > /app/install.log 2>&1",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -449,7 +449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QfoBuSxeQ5gqNBq4rNoTUC",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -469,7 +469,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -530,7 +530,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UUoVWUMUYkzWDDNNcDfiz7",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -550,7 +550,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -611,7 +611,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NEDmyvuXsajHKMRe7tWeBy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 60; tail -5 /app/install.log"
           },
@@ -619,7 +619,7 @@
             "raw_arguments": {
               "command": "sleep 60; tail -5 /app/install.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -680,7 +680,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F8kHmDPRaJSiwAEsNZHcZo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -iE 'error|cannot|fatal|failed|no such|not found|virtual memory|g\\+\\+' /app/install.log | head -40"
           },
@@ -688,7 +688,7 @@
             "raw_arguments": {
               "command": "grep -iE 'error|cannot|fatal|failed|no such|not found|virtual memory|g\\+\\+' /app/install.log | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -749,7 +749,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BW7BTV8x71ViXxTQz2DdaR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -nE \"ERROR:|had non-zero exit|installation of package|error:\" /app/install.log | head -40"
           },
@@ -757,7 +757,7 @@
             "raw_arguments": {
               "command": "grep -nE \"ERROR:|had non-zero exit|installation of package|error:\" /app/install.log | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -818,7 +818,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D3H11NF6XeZkPXGBEsWbXy",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/install.log:L8570-8600"
@@ -830,7 +830,7 @@
                 "/app/install.log:L8570-8600"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -891,7 +891,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01URkRKU956tkYKaQoHqLqy8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y libblas-dev liblapack-dev gfortran libgfortran5 >/tmp/apt.log 2>&1; echo \"apt exit=$?\"; ls -la /usr/lib/x86_64-linux-gnu/ | grep -iE 'blas|lapack|gfortran' | head"
           },
@@ -899,7 +899,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq && apt-get install -y libblas-dev liblapack-dev gfortran libgfortran5 >/tmp/apt.log 2>&1; echo \"apt exit=$?\"; ls -la /usr/lib/x86_64-linux-gnu/ | grep -iE 'blas|lapack|gfortran' | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -960,7 +960,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AxTm3Jx5JujDC85WyBKpRX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\"), Ncpus=parallel::detectCores()); install.packages(\"rstan\"); cat(\"DONE\\n\"); suppressMessages(library(rstan)); cat(\"VERSION:\", as.character(packageVersion(\"rstan\")), \"\\n\")' > /app/install2.log 2>&1",
             "background": true
@@ -970,7 +970,7 @@
               "command": "cd /app && Rscript -e 'options(repos=c(CRAN=\"https://cloud.r-project.org\"), Ncpus=parallel::detectCores()); install.packages(\"rstan\"); cat(\"DONE\\n\"); suppressMessages(library(rstan)); cat(\"VERSION:\", as.character(packageVersion(\"rstan\")), \"\\n\")' > /app/install2.log 2>&1",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1031,7 +1031,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YVKnpGVQWLcM23ox7rCmom",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 180; tail -3 /app/install2.log"
           },
@@ -1039,7 +1039,7 @@
             "raw_arguments": {
               "command": "sleep 180; tail -3 /app/install2.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1100,7 +1100,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CXnA4bVRMK7iTbNTnaLeBc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/smoke.R <<'EOF'\nsuppressMessages(library(rstan))\nrstan_options(auto_write=TRUE)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d), n=as.integer(d$n), y=as.integer(d$y))\nfit<-stan(file=\"/app/hierarchical_model.stan\", data=sd, chains=2, iter=1000, seed=1, cores=2, refresh=0)\np<-rstan::extract(fit)\ncat(\"alpha\",mean(p$alpha),\"beta\",mean(p$beta),\"\\n\")\nprint(summary(fit, pars=c(\"alpha\",\"beta\"))$summary[,c(\"mean\",\"n_eff\",\"Rhat\")])\nEOF\nRscript /tmp/smoke.R 2>&1 | tail -20"
           },
@@ -1108,7 +1108,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/smoke.R <<'EOF'\nsuppressMessages(library(rstan))\nrstan_options(auto_write=TRUE)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d), n=as.integer(d$n), y=as.integer(d$y))\nfit<-stan(file=\"/app/hierarchical_model.stan\", data=sd, chains=2, iter=1000, seed=1, cores=2, refresh=0)\np<-rstan::extract(fit)\ncat(\"alpha\",mean(p$alpha),\"beta\",mean(p$beta),\"\\n\")\nprint(summary(fit, pars=c(\"alpha\",\"beta\"))$summary[,c(\"mean\",\"n_eff\",\"Rhat\")])\nEOF\nRscript /tmp/smoke.R 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1169,7 +1169,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011zVEuTGWEFcU2c5ADxuwEc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && Rscript /app/analysis.R > /app/analysis.log 2>&1",
             "background": true
@@ -1179,7 +1179,7 @@
               "command": "cd /app && Rscript /app/analysis.R > /app/analysis.log 2>&1",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1240,7 +1240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RJ2r2p8YzqgYWEX4Rutwhh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 240; tail -15 /app/analysis.log"
           },
@@ -1248,7 +1248,7 @@
             "raw_arguments": {
               "command": "sleep 240; tail -15 /app/analysis.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1309,7 +1309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0179NRBEk5zKngvjA6riYaUk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/reparam.stan <<'EOF'\ndata {\n  int<lower=0> N;\n  int<lower=0> n[N];\n  int<lower=0> y[N];\n}\nparameters {\n  real logit_phi;   // logit(alpha/(alpha+beta))\n  real log_kappa;   // log(alpha+beta)\n  vector<lower=0, upper=1>[N] theta;\n}\ntransformed parameters {\n  real<lower=0, upper=1> phi = inv_logit(logit_phi);\n  real<lower=0> kappa = exp(log_kappa);\n  real<lower=0> alpha = phi * kappa;\n  real<lower=0> beta  = (1 - phi) * kappa;\n}\nmodel {\n  // Jacobian-adjusted so that p(alpha,beta) is proportional to (alpha+beta)^(-5/2)\n  target += -0.5 * log_kappa + log(phi) + log1m(phi);\n  theta ~ beta(alpha, beta);\n  y ~ binomial(n, theta);\n}\nEOF\ncat > /tmp/reparam.R <<'EOF'\nsuppressMessages(library(rstan))\nrstan_options(auto_write=TRUE)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d), n=as.integer(d$n), y=as.integer(d$y))\nfit<-stan(file=\"/tmp/reparam.stan\", data=sd, chains=4, iter=100000, seed=1, cores=4, refresh=0,\n          control=list(adapt_delta=0.9))\np<-rstan::extract(fit)\ncat(\"REPARAM alpha\", mean(p$alpha), \"beta\", mean(p$beta), \"\\n\")\nprint(summary(fit, pars=c(\"alpha\",\"beta\",\"phi\",\"kappa\"))$summary[,c(\"mean\",\"n_eff\",\"Rhat\")])\ncat(\"num_divergent:\", sum(sapply(get_sampler_params(fit, inc_warmup=FALSE), function(x) sum(x[,\"divergent__\"]))), \"\\n\")\nEOF\nRscript /tmp/reparam.R > /tmp/reparam.log 2>&1",
             "background": true
@@ -1319,7 +1319,7 @@
               "command": "cd /app && cat > /tmp/reparam.stan <<'EOF'\ndata {\n  int<lower=0> N;\n  int<lower=0> n[N];\n  int<lower=0> y[N];\n}\nparameters {\n  real logit_phi;   // logit(alpha/(alpha+beta))\n  real log_kappa;   // log(alpha+beta)\n  vector<lower=0, upper=1>[N] theta;\n}\ntransformed parameters {\n  real<lower=0, upper=1> phi = inv_logit(logit_phi);\n  real<lower=0> kappa = exp(log_kappa);\n  real<lower=0> alpha = phi * kappa;\n  real<lower=0> beta  = (1 - phi) * kappa;\n}\nmodel {\n  // Jacobian-adjusted so that p(alpha,beta) is proportional to (alpha+beta)^(-5/2)\n  target += -0.5 * log_kappa + log(phi) + log1m(phi);\n  theta ~ beta(alpha, beta);\n  y ~ binomial(n, theta);\n}\nEOF\ncat > /tmp/reparam.R <<'EOF'\nsuppressMessages(library(rstan))\nrstan_options(auto_write=TRUE)\nd<-read.csv(\"/app/data.csv\")\nsd<-list(N=nrow(d), n=as.integer(d$n), y=as.integer(d$y))\nfit<-stan(file=\"/tmp/reparam.stan\", data=sd, chains=4, iter=100000, seed=1, cores=4, refresh=0,\n          control=list(adapt_delta=0.9))\np<-rstan::extract(fit)\ncat(\"REPARAM alpha\", mean(p$alpha), \"beta\", mean(p$beta), \"\\n\")\nprint(summary(fit, pars=c(\"alpha\",\"beta\",\"phi\",\"kappa\"))$summary[,c(\"mean\",\"n_eff\",\"Rhat\")])\ncat(\"num_divergent:\", sum(sapply(get_sampler_params(fit, inc_warmup=FALSE), function(x) sum(x[,\"divergent__\"]))), \"\\n\")\nEOF\nRscript /tmp/reparam.R > /tmp/reparam.log 2>&1",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1380,7 +1380,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018LEUrHTVjt8YZwSpdPMosg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 120; tail -12 /tmp/reparam.log"
           },
@@ -1388,7 +1388,7 @@
             "raw_arguments": {
               "command": "sleep 120; tail -12 /tmp/reparam.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1449,7 +1449,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Wpsun7DvyA98doTN4PeGG2",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1479,7 +1479,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1552,7 +1552,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015z2KHk6J5Suk42cndPub4z",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/analysis.R",
@@ -1566,7 +1566,7 @@
                 "/app/hierarchical_model.stan"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1627,7 +1627,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019GqE29Ln6r6pZRDibTYEK5",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1657,7 +1657,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1730,7 +1730,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WDXxYHUB3kSgn5XdwrVkUB",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/hierarchical_model.stan"
@@ -1742,7 +1742,7 @@
                 "/app/hierarchical_model.stan"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1803,7 +1803,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VTkfehT9f6nL6S1QqPWxCu",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1823,7 +1823,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1896,7 +1896,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LyKLjf5GNUhwg2iN5dmbKP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/hierarchical_model.stan <<'STANEOF'\n// Hierarchical Bayesian model for binomial data (Gelman BDA rat-tumor model)\n//\n//   y_i    ~ Binomial(n_i, theta_i)\n//   theta_i ~ Beta(alpha, beta)\n//   Prior:  p(alpha, beta) proportional to (alpha + beta)^(-5/2)\n//\n// The heavy-tailed prior gives a poorly conditioned geometry when (alpha, beta)\n// are sampled directly, so we sample on the better-behaved coordinates\n//   logit_phi = logit(alpha / (alpha + beta))\n//   log_kappa = log(alpha + beta)\n// and add the exact Jacobian so that the implied prior on (alpha, beta) is\n// still proportional to (alpha + beta)^(-5/2). alpha and beta are recovered as\n// transformed parameters, so this implements exactly the model above.\ndata {\n  int<lower=0> N;              // number of groups/observations\n  int<lower=0> n[N];           // trials per group\n  int<lower=0> y[N];           // successes per group\n}\nparameters {\n  real logit_phi;              // logit(alpha / (alpha + beta))\n  real log_kappa;              // log(alpha + beta)\n  vector<lower=0, upper=1>[N] theta;   // group success probabilities\n}\ntransformed parameters {\n  real<lower=0, upper=1> phi   = inv_logit(logit_phi);   // alpha / (alpha + beta)\n  real<lower=0> kappa          = exp(log_kappa);         // alpha + beta\n  real<lower=0> alpha          = phi * kappa;            // Beta hyperparameter\n  real<lower=0> beta           = (1 - phi) * kappa;      // Beta hyperparameter\n}\nmodel {\n  // Prior p(alpha, beta) ~ (alpha + beta)^(-5/2), transformed to\n  // (logit_phi, log_kappa) with the change-of-variables Jacobian:\n  //   density in (logit_phi, log_kappa) = kappa^(-1/2) * phi * (1 - phi)\n  target += -0.5 * log_kappa + log(phi) + log1m(phi);\n\n  // Population (group) distribution\n  theta ~ beta(alpha, beta);\n\n  // Likelihood\n  y ~ binomial(n, theta);\n}\nSTANEOF\ncat > /app/analysis.R <<'REOF'\n# Hierarchical Bayesian model: posterior sampling with RStan (version 2.32.7)\n#\n#   y_i     ~ Binomial(n_i, theta_i)\n#   theta_i ~ Beta(alpha, beta)\n#   Prior:  p(alpha, beta) proportional to (alpha + beta)^(-5/2)\n#\n# Estimates the posterior means of the hyperparameters alpha and beta.\nlibrary(rstan)\n\nrstan_options(auto_write = TRUE)\noptions(mc.cores = parallel::detectCores())\n\n# 1. Load the data\ndata <- read.csv(\"/app/data.csv\")\ny <- as.integer(data$y)\nn <- as.integer(data$n)\nN <- length(y)\n\nstan_data <- list(N = N, n = n, y = y)\n\n# 2. Compile the Stan model and draw posterior samples with rstan::sampling\nmodel <- stan_model(file = \"/app/hierarchical_model.stan\")\nfit <- rstan::sampling(\n  object  = model,\n  data    = stan_data,\n  chains  = 4,\n  iter    = 100000,\n  seed    = 1,\n  cores   = 4,\n  control = list(adapt_delta = 0.9)\n)\n\n# 3. Extract the posterior samples and compute the posterior means\nposterior  <- rstan::extract(fit)\nalpha_mean <- mean(posterior$alpha)\nbeta_mean  <- mean(posterior$beta)\n\ncat(\"Posterior mean alpha:\", alpha_mean, \"\\n\")\ncat(\"Posterior mean beta:\",  beta_mean,  \"\\n\")\nprint(summary(fit, pars = c(\"alpha\", \"beta\"))$summary[, c(\"mean\", \"n_eff\", \"Rhat\")])\n\n# 4. Save the results\nwriteLines(format(alpha_mean, digits = 15), \"/app/posterior_alpha_mean.txt\")\nwriteLines(format(beta_mean,  digits = 15), \"/app/posterior_beta_mean.txt\")\nREOF\necho \"written\"; ls -la /app/*.stan /app/*.R"
           },
@@ -1904,7 +1904,7 @@
             "raw_arguments": {
               "command": "cat > /app/hierarchical_model.stan <<'STANEOF'\n// Hierarchical Bayesian model for binomial data (Gelman BDA rat-tumor model)\n//\n//   y_i    ~ Binomial(n_i, theta_i)\n//   theta_i ~ Beta(alpha, beta)\n//   Prior:  p(alpha, beta) proportional to (alpha + beta)^(-5/2)\n//\n// The heavy-tailed prior gives a poorly conditioned geometry when (alpha, beta)\n// are sampled directly, so we sample on the better-behaved coordinates\n//   logit_phi = logit(alpha / (alpha + beta))\n//   log_kappa = log(alpha + beta)\n// and add the exact Jacobian so that the implied prior on (alpha, beta) is\n// still proportional to (alpha + beta)^(-5/2). alpha and beta are recovered as\n// transformed parameters, so this implements exactly the model above.\ndata {\n  int<lower=0> N;              // number of groups/observations\n  int<lower=0> n[N];           // trials per group\n  int<lower=0> y[N];           // successes per group\n}\nparameters {\n  real logit_phi;              // logit(alpha / (alpha + beta))\n  real log_kappa;              // log(alpha + beta)\n  vector<lower=0, upper=1>[N] theta;   // group success probabilities\n}\ntransformed parameters {\n  real<lower=0, upper=1> phi   = inv_logit(logit_phi);   // alpha / (alpha + beta)\n  real<lower=0> kappa          = exp(log_kappa);         // alpha + beta\n  real<lower=0> alpha          = phi * kappa;            // Beta hyperparameter\n  real<lower=0> beta           = (1 - phi) * kappa;      // Beta hyperparameter\n}\nmodel {\n  // Prior p(alpha, beta) ~ (alpha + beta)^(-5/2), transformed to\n  // (logit_phi, log_kappa) with the change-of-variables Jacobian:\n  //   density in (logit_phi, log_kappa) = kappa^(-1/2) * phi * (1 - phi)\n  target += -0.5 * log_kappa + log(phi) + log1m(phi);\n\n  // Population (group) distribution\n  theta ~ beta(alpha, beta);\n\n  // Likelihood\n  y ~ binomial(n, theta);\n}\nSTANEOF\ncat > /app/analysis.R <<'REOF'\n# Hierarchical Bayesian model: posterior sampling with RStan (version 2.32.7)\n#\n#   y_i     ~ Binomial(n_i, theta_i)\n#   theta_i ~ Beta(alpha, beta)\n#   Prior:  p(alpha, beta) proportional to (alpha + beta)^(-5/2)\n#\n# Estimates the posterior means of the hyperparameters alpha and beta.\nlibrary(rstan)\n\nrstan_options(auto_write = TRUE)\noptions(mc.cores = parallel::detectCores())\n\n# 1. Load the data\ndata <- read.csv(\"/app/data.csv\")\ny <- as.integer(data$y)\nn <- as.integer(data$n)\nN <- length(y)\n\nstan_data <- list(N = N, n = n, y = y)\n\n# 2. Compile the Stan model and draw posterior samples with rstan::sampling\nmodel <- stan_model(file = \"/app/hierarchical_model.stan\")\nfit <- rstan::sampling(\n  object  = model,\n  data    = stan_data,\n  chains  = 4,\n  iter    = 100000,\n  seed    = 1,\n  cores   = 4,\n  control = list(adapt_delta = 0.9)\n)\n\n# 3. Extract the posterior samples and compute the posterior means\nposterior  <- rstan::extract(fit)\nalpha_mean <- mean(posterior$alpha)\nbeta_mean  <- mean(posterior$beta)\n\ncat(\"Posterior mean alpha:\", alpha_mean, \"\\n\")\ncat(\"Posterior mean beta:\",  beta_mean,  \"\\n\")\nprint(summary(fit, pars = c(\"alpha\", \"beta\"))$summary[, c(\"mean\", \"n_eff\", \"Rhat\")])\n\n# 4. Save the results\nwriteLines(format(alpha_mean, digits = 15), \"/app/posterior_alpha_mean.txt\")\nwriteLines(format(beta_mean,  digits = 15), \"/app/posterior_beta_mean.txt\")\nREOF\necho \"written\"; ls -la /app/*.stan /app/*.R"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1965,7 +1965,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K6uiestC1BRUMFuPMUyU1Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f /app/hierarchical_model.rds && Rscript /app/analysis.R > /app/analysis.log 2>&1",
             "background": true
@@ -1975,7 +1975,7 @@
               "command": "cd /app && rm -f /app/hierarchical_model.rds && Rscript /app/analysis.R > /app/analysis.log 2>&1",
               "background": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2036,7 +2036,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01B3hfJPGotm3gesPQZiTFct",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sleep 150; tail -12 /app/analysis.log; echo \"=== outputs ===\"; cat /app/posterior_alpha_mean.txt /app/posterior_beta_mean.txt 2>/dev/null"
           },
@@ -2044,7 +2044,7 @@
             "raw_arguments": {
               "command": "sleep 150; tail -12 /app/analysis.log; echo \"=== outputs ===\"; cat /app/posterior_alpha_mean.txt /app/posterior_beta_mean.txt 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2105,7 +2105,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GZJoScp2juWjizjYx53nnU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== files ===\"; ls -la posterior_alpha_mean.txt posterior_beta_mean.txt hierarchical_model.stan analysis.R; echo \"=== divergence check ===\"; grep -c divergent /app/analysis.log; echo \"=== rstan version ===\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")),\"\\n\")'; echo \"=== results ===\"; echo \"alpha=$(cat posterior_alpha_mean.txt)  beta=$(cat posterior_beta_mean.txt)\""
           },
@@ -2113,7 +2113,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== files ===\"; ls -la posterior_alpha_mean.txt posterior_beta_mean.txt hierarchical_model.stan analysis.R; echo \"=== divergence check ===\"; grep -c divergent /app/analysis.log; echo \"=== rstan version ===\"; Rscript -e 'cat(as.character(packageVersion(\"rstan\")),\"\\n\")'; echo \"=== results ===\"; echo \"alpha=$(cat posterior_alpha_mean.txt)  beta=$(cat posterior_beta_mean.txt)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

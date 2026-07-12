@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y5EtA6r1PaekSeKhQxje8N",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo ---; find /app -maxdepth 3 -type f 2>/dev/null | head -100"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo ---; find /app -maxdepth 3 -type f 2>/dev/null | head -100"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0183xqNzWRtp6msCz2HnYCKa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s --max-time 10 https://huggingface.co 2>&1 | head -5; echo \"EXIT: $?\""
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "curl -s --max-time 10 https://huggingface.co 2>&1 | head -5; echo \"EXIT: $?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014VyJcEugE7htSShkzgFSnd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages -q mteb 2>&1 | tail -5; python3 -c \"import mteb; print(mteb.__version__)\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages -q mteb 2>&1 | tail -5; python3 -c \"import mteb; print(mteb.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012fkBsN6P6NoEKryEHoDihv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 -c \"\nimport mteb\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nprint('NAME', b.name)\nfor t in b.tasks:\n    print(t.metadata.name, '|', t.metadata.type, '|', t.metadata.main_score)\n\" 2>&1 | head -60"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 -c \"\nimport mteb\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nprint('NAME', b.name)\nfor t in b.tasks:\n    print(t.metadata.name, '|', t.metadata.type, '|', t.metadata.main_score)\n\" 2>&1 | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EFQ7chBQVomMQfSj7cwW81",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nprint([x for x in dir(mteb) if 'result' in x.lower() or 'leader' in x.lower() or 'load' in x.lower()])\n\" 2>&1 | head"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nprint([x for x in dir(mteb) if 'result' in x.lower() or 'leader' in x.lower() or 'load' in x.lower()])\n\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0196Kb26deUrvxtr76vQRcjT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nprint(inspect.signature(mteb.load_results))\n\" 2>&1 | head"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nprint(inspect.signature(mteb.load_results))\n\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XZf7VQeYYUt8LQWiaenEmN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; git clone --quiet https://github.com/embeddings-benchmark/results.git 2>&1 | tail -3; cd results && echo \"cloned\"; git log -1 --format='%h %ci'"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /tmp; git clone --quiet https://github.com/embeddings-benchmark/results.git 2>&1 | tail -3; cd results && echo \"cloned\"; git log -1 --format='%h %ci'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GdFSY9ad5TDUg5jf8QnTaB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/results; git log --until='2025-09-01 00:00:00' -1 --format='%H %ci'"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /tmp/results; git log --until='2025-09-01 00:00:00' -1 --format='%H %ci'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VudkZdURcPUDxrdmUzzrX7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/results; git checkout --quiet 71f6b6257025bbe06232352b86b09ab7bd7c904e && echo \"checked out\"; ls | head; echo \"---models---\"; ls results | wc -l"
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /tmp/results; git checkout --quiet 71f6b6257025bbe06232352b86b09ab7bd7c904e && echo \"checked out\"; ls | head; echo \"---models---\"; ls results | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H8HURFfo5wtpQsGyUcTCQd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 2>&1 <<'EOF' | tail -40\nimport mteb\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\ntasknames = [t.metadata.name for t in b.tasks]\nprint(\"num tasks\", len(tasknames))\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nprint(type(res))\nEOF"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 2>&1 <<'EOF' | tail -40\nimport mteb\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\ntasknames = [t.metadata.name for t in b.tasks]\nprint(\"num tasks\", len(tasknames))\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nprint(type(res))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VCXfEWxKR6m6U9teBgFYrM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 -c \"\nimport mteb\nr=mteb.load_results(results_repo='/tmp/results', download_latest=False, require_model_meta=False, only_main_score=True)\nprint([m for m in dir(r) if not m.startswith('_')])\n\" 2>&1 | grep -v Missing | tail -5"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 -c \"\nimport mteb\nr=mteb.load_results(results_repo='/tmp/results', download_latest=False, require_model_meta=False, only_main_score=True)\nprint([m for m in dir(r) if not m.startswith('_')])\n\" 2>&1 | grep -v Missing | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RqKqh5fG81ypFTzcKnxSVh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nr=mteb.load_results(results_repo='/tmp/results', download_latest=False, require_model_meta=False, only_main_score=True)\nprint('to_dataframe', inspect.signature(r.to_dataframe))\nprint('get_scores', inspect.signature(r.get_scores))\nprint('join_revisions', inspect.signature(r.join_revisions))\n\" 2>&1 | grep -vi 'Missing\\|not found\\|repeated' | tail -5"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 -c \"\nimport mteb, inspect\nr=mteb.load_results(results_repo='/tmp/results', download_latest=False, require_model_meta=False, only_main_score=True)\nprint('to_dataframe', inspect.signature(r.to_dataframe))\nprint('get_scores', inspect.signature(r.get_scores))\nprint('join_revisions', inspect.signature(r.join_revisions))\n\" 2>&1 | grep -vi 'Missing\\|not found\\|repeated' | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019m1hj328qPs6mbf5a8WSsX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated' | tail -40\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\ntasknames = [t.metadata.name for t in b.tasks]\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nres = res.join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide')\nprint(df.shape)\nprint(df.columns.tolist()[:5])\n# identify model column\nmcol = df.columns[0]\ntaskcols = [c for c in df.columns if c in tasknames]\nprint(\"num taskcols\", len(taskcols))\n# keep only models with all tasks\nfull = df.dropna(subset=taskcols)\nfull = full.copy()\nfull['MeanTask'] = full[taskcols].mean(axis=1)\nfull = full.sort_values('MeanTask', ascending=False)\nprint(full[[mcol,'MeanTask']].head(15).to_string())\nEOF"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated' | tail -40\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\ntasknames = [t.metadata.name for t in b.tasks]\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nres = res.join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide')\nprint(df.shape)\nprint(df.columns.tolist()[:5])\n# identify model column\nmcol = df.columns[0]\ntaskcols = [c for c in df.columns if c in tasknames]\nprint(\"num taskcols\", len(taskcols))\n# keep only models with all tasks\nfull = df.dropna(subset=taskcols)\nfull = full.copy()\nfull['MeanTask'] = full[taskcols].mean(axis=1)\nfull = full.sort_values('MeanTask', ascending=False)\nprint(full[[mcol,'MeanTask']].head(15).to_string())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -930,7 +930,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015H7trpnUA7Jd7rwGVswFxV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated\\|Warning\\|apply\\|pivot' | tail -30\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nres = res.join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide')\ndf = df.set_index('task_name')\nntasks = df.shape[0]\nprint(\"ntasks\", ntasks)\ncounts = df.notna().sum(axis=0)   # per model number of tasks\nfull_models = counts[counts==ntasks].index\nmeans = df[full_models].mean(axis=0).sort_values(ascending=False)\nprint(\"num full models\", len(full_models))\nprint(means.head(15).to_string())\nEOF"
           },
@@ -938,7 +938,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated\\|Warning\\|apply\\|pivot' | tail -30\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True)\nres = res.join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide')\ndf = df.set_index('task_name')\nntasks = df.shape[0]\nprint(\"ntasks\", ntasks)\ncounts = df.notna().sum(axis=0)   # per model number of tasks\nfull_models = counts[counts==ntasks].index\nmeans = df[full_models].mean(axis=0).sort_values(ascending=False)\nprint(\"num full models\", len(full_models))\nprint(means.head(15).to_string())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -999,7 +999,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C9bdffqggzdZ3SHDcv2Rjf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated\\|Warning\\|apply\\|pivot' | tail -8\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True).join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide').set_index('task_name')\ng = df['GritLM/GritLM-7B']\nprint(\"GritLM non-null tasks:\", g.notna().sum(), \"of\", df.shape[0])\nprint(\"GritLM MeanTask:\", round(g.mean(),4))\nEOF\necho -n \"GritLM/GritLM-7B\" > /app/result.txt; echo; echo \"WROTE:\"; cat /app/result.txt"
           },
@@ -1007,7 +1007,7 @@
             "raw_arguments": {
               "command": "cd /tmp; python3 2>&1 <<'EOF' | grep -vi 'Missing\\|not found\\|repeated\\|Warning\\|apply\\|pivot' | tail -8\nimport mteb, pandas as pd\nb = mteb.get_benchmark('MTEB(Scandinavian, v1)')\nres = mteb.load_results(results_repo='/tmp/results', download_latest=False, tasks=b.tasks, require_model_meta=False, only_main_score=True).join_revisions()\ndf = res.to_dataframe(aggregation_level='task', format='wide').set_index('task_name')\ng = df['GritLM/GritLM-7B']\nprint(\"GritLM non-null tasks:\", g.notna().sum(), \"of\", df.shape[0])\nprint(\"GritLM MeanTask:\", round(g.mean(),4))\nEOF\necho -n \"GritLM/GritLM-7B\" > /app/result.txt; echo; echo \"WROTE:\"; cat /app/result.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

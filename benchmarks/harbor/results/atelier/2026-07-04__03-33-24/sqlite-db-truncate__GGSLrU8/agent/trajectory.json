@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DSJh8ZoPM8mRLakGXPNof9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/trunc.db && file /app/trunc.db && sqlite3 /app/trunc.db '.tables' 2>&1 | head"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/trunc.db && file /app/trunc.db && sqlite3 /app/trunc.db '.tables' 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W4zVeZZatg6AtEUdixzjJW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "xxd /app/trunc.db | head -40"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "xxd /app/trunc.db | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EtXaz6YVUFDAydGkus9GhY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "od -A d -t x1z /app/trunc.db | head -60"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "od -A d -t x1z /app/trunc.db | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XzDu5qydEJY61bSr2oThpo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\ndata=open('/app/trunc.db','rb').read()\nprint('len',len(data))\nimport re\nfor m in re.finditer(b'testword..', data):\n    print(m.start(), data[m.start():m.start()+10])\nPY"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\ndata=open('/app/trunc.db','rb').read()\nprint('len',len(data))\nimport re\nfor m in re.finditer(b'testword..', data):\n    print(m.start(), data[m.start():m.start()+10])\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XubmwP2dKGZmCDayuVGFPy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport struct, json\ndata=open('/app/trunc.db','rb').read()\n\ndef varint(buf,off):\n    v=0\n    for i in range(9):\n        b=buf[off+i]\n        if i==8:\n            v=(v<<8)|b; return v,off+9\n        v=(v<<7)|(b&0x7f)\n        if not (b&0x80):\n            return v,off+i+1\n    return v,off+9\n\n# page leaf header at offset 0\nptype=data[0]\nncell=struct.unpack('>H',data[3:5])[0]\ncca=struct.unpack('>H',data[5:7])[0]\nprint('ptype',hex(ptype),'ncell',ncell,'cca',cca)\nhdr=8  # leaf\nptrs=[struct.unpack('>H',data[hdr+2*i:hdr+2*i+2])[0] for i in range(ncell)]\n\ndef read_col(buf,off,st):\n    if st==0: return None,off\n    if st==1: return int.from_bytes(buf[off:off+1],'big',signed=True),off+1\n    if st==2: return int.from_bytes(buf[off:off+2],'big',signed=True),off+2\n    if st==3: return int.from_bytes(buf[off:off+3],'big',signed=True),off+3\n    if st==4: return int.from_bytes(buf[off:off+4],'big',signed=True),off+4\n    if st==5: return int.from_bytes(buf[off:off+6],'big',signed=True),off+6\n    if st==6: return int.from_bytes(buf[off:off+8],'big',signed=True),off+8\n    if st==7: return struct.unpack('>d',buf[off:off+8])[0],off+8\n    if st==8: return 0,off\n    if st==9: return 1,off\n    if st>=12:\n        n=(st-12)//2\n        val=buf[off:off+n]\n        if st%2: val=val.decode('utf-8',errors='replace')\n        return val,off+n\n    return None,off\n\nrows=[]\nfor p in ptrs:\n    off=p\n    paylen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=off\n    hlen,h2=varint(data,off)\n    sts=[]\n    hp=h2\n    while hp<rec+hlen:\n        s,hp=varint(data,hp)\n        sts.append(s)\n    cp=rec+hlen\n    cols=[]\n    for s in sts:\n        v,cp=read_col(data,cp,s)\n        cols.append(v)\n    rows.append((rowid,cols))\n    print(rowid,cols)\n\n# columns: [id(null), word, value]\nout=[]\nfor rowid,cols in sorted(rows):\n    word=cols[1]\n    value=cols[2]\n    out.append({\"word\":word,\"value\":value})\njson.dump(out,open('/app/recover.json','w'))\nprint(json.dumps(out))\nPY"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport struct, json\ndata=open('/app/trunc.db','rb').read()\n\ndef varint(buf,off):\n    v=0\n    for i in range(9):\n        b=buf[off+i]\n        if i==8:\n            v=(v<<8)|b; return v,off+9\n        v=(v<<7)|(b&0x7f)\n        if not (b&0x80):\n            return v,off+i+1\n    return v,off+9\n\n# page leaf header at offset 0\nptype=data[0]\nncell=struct.unpack('>H',data[3:5])[0]\ncca=struct.unpack('>H',data[5:7])[0]\nprint('ptype',hex(ptype),'ncell',ncell,'cca',cca)\nhdr=8  # leaf\nptrs=[struct.unpack('>H',data[hdr+2*i:hdr+2*i+2])[0] for i in range(ncell)]\n\ndef read_col(buf,off,st):\n    if st==0: return None,off\n    if st==1: return int.from_bytes(buf[off:off+1],'big',signed=True),off+1\n    if st==2: return int.from_bytes(buf[off:off+2],'big',signed=True),off+2\n    if st==3: return int.from_bytes(buf[off:off+3],'big',signed=True),off+3\n    if st==4: return int.from_bytes(buf[off:off+4],'big',signed=True),off+4\n    if st==5: return int.from_bytes(buf[off:off+6],'big',signed=True),off+6\n    if st==6: return int.from_bytes(buf[off:off+8],'big',signed=True),off+8\n    if st==7: return struct.unpack('>d',buf[off:off+8])[0],off+8\n    if st==8: return 0,off\n    if st==9: return 1,off\n    if st>=12:\n        n=(st-12)//2\n        val=buf[off:off+n]\n        if st%2: val=val.decode('utf-8',errors='replace')\n        return val,off+n\n    return None,off\n\nrows=[]\nfor p in ptrs:\n    off=p\n    paylen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=off\n    hlen,h2=varint(data,off)\n    sts=[]\n    hp=h2\n    while hp<rec+hlen:\n        s,hp=varint(data,hp)\n        sts.append(s)\n    cp=rec+hlen\n    cols=[]\n    for s in sts:\n        v,cp=read_col(data,cp,s)\n        cols.append(v)\n    rows.append((rowid,cols))\n    print(rowid,cols)\n\n# columns: [id(null), word, value]\nout=[]\nfor rowid,cols in sorted(rows):\n    word=cols[1]\n    value=cols[2]\n    out.append({\"word\":word,\"value\":value})\njson.dump(out,open('/app/recover.json','w'))\nprint(json.dumps(out))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019RtMERh8sa4xZcWvasHggt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import json;d=json.load(open('/app/recover.json'));print(len(d),'rows');print(d)\""
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import json;d=json.load(open('/app/recover.json'));print(len(d),'rows');print(d)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

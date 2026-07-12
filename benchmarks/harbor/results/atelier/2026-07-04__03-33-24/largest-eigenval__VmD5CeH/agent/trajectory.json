@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VkeZmkbRSLzw2DV8RPYujz",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/eigen.py",
@@ -47,7 +47,7 @@
                 "/app/eval.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0124qXZPHTdzwrtQ1qJZ84A4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy, scipy; print(numpy.__version__, scipy.__version__)\"",
             "cwd": "/app"
@@ -118,7 +118,7 @@
               "command": "python3 -c \"import numpy, scipy; print(numpy.__version__, scipy.__version__)\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -179,7 +179,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PHm3gYi44LSjo4U98QunyB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy; print(numpy.__version__); import numpy.linalg as la; print(la.__file__)\"",
             "cwd": "/app"
@@ -189,7 +189,7 @@
               "command": "python3 -c \"import numpy; print(numpy.__version__); import numpy.linalg as la; print(la.__file__)\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -250,7 +250,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0188Syb2KMtUAbm6bFMJyHEh",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -270,7 +270,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -331,7 +331,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gs4PUMLY2g1G3etcSem99J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 bench.py",
             "cwd": "/app"
@@ -341,7 +341,7 @@
               "command": "python3 bench.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -402,7 +402,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016r6ZiD3BbC6xoENpXH23gP",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -422,7 +422,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -495,7 +495,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HvaxSvt4dZGFu8eF9B7JsJ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/bench.py"
@@ -507,7 +507,7 @@
                 "/app/bench.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -568,7 +568,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RMApDf5bCgg9dJAsHUajxb",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -588,7 +588,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -661,7 +661,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K4KjbJa4HgemnjtH8xuHuE",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "inv_iter eigvals solve bench",
             "paths": "/app/bench.py"
@@ -671,7 +671,7 @@
               "query": "inv_iter eigvals solve bench",
               "paths": "/app/bench.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -732,7 +732,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WUC3HXDj37Bnb8MKUimYb9",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -752,7 +752,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -825,7 +825,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012NbxHXFbLDq52fGT5ZCqTm",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -845,7 +845,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -906,7 +906,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ESa2akLxLWAFcrhYpRN7TA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 probe.py",
             "cwd": "/app"
@@ -916,7 +916,7 @@
               "command": "python3 probe.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -977,7 +977,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A3SAiLRrW125HrnK8NdnFU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages scipy 2>&1 | tail -3",
             "cwd": "/app"
@@ -987,7 +987,7 @@
               "command": "uv pip install --system --break-system-packages scipy 2>&1 | tail -3",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1048,7 +1048,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R4ZXqGmDGxEVcBEw3xUbzt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages scipy 2>&1 | tail -4",
             "cwd": "/app"
@@ -1058,7 +1058,7 @@
               "command": "pip install --break-system-packages scipy 2>&1 | tail -4",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1119,7 +1119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AgxEN4GPJAzLzupChhiueJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import scipy; from scipy.linalg.lapack import dgeev; print(scipy.__version__, dgeev)\"",
             "cwd": "/app"
@@ -1129,7 +1129,7 @@
               "command": "python3 -c \"import scipy; from scipy.linalg.lapack import dgeev; print(scipy.__version__, dgeev)\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1190,7 +1190,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NmKxy9bmt8seoAhgHvfNXv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1210,7 +1210,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1271,7 +1271,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0148PpqNKYFNuZJYsnPeqqTi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 probe2.py",
             "cwd": "/app"
@@ -1281,7 +1281,7 @@
               "command": "python3 probe2.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1342,7 +1342,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ACLDjGXhskvAnp7GHZWVYB",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1362,7 +1362,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1435,7 +1435,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DQjfq8exs5d7tLWYLwpAZd",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/probe2.py:L11-L12"
@@ -1447,7 +1447,7 @@
                 "/app/probe2.py:L11-L12"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1508,7 +1508,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E1mx3VnNAgcgVjsLzA9Z2S",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1528,7 +1528,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1601,7 +1601,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EtVEmQY17yf4p8ZZBuM9gh",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "def sp dgeev compute_vr",
             "paths": "/app/probe2.py"
@@ -1611,7 +1611,7 @@
               "query": "def sp dgeev compute_vr",
               "paths": "/app/probe2.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1672,7 +1672,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JkBnTPpgxWZDFAU98L1B3r",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1692,7 +1692,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1765,7 +1765,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WfqhC6XidyWFB9E2udNoBT",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1785,7 +1785,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1858,7 +1858,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FDJaprd1qtgdE2kmgB9fh4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nsrc = r'''\nimport time\nimport numpy as np\nfrom numpy.linalg import eig\nfrom scipy.linalg.lapack import dgeev\n\ndef ref(A):\n    ev, V = eig(A)\n    i = np.argmax(np.abs(ev))\n    return ev[i], V[:, i]\n\ndef sp(A):\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=1)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        return complex(wr[i]), vr[:, i].astype(np.complex128)\n    if wi[i] > 0.0:\n        return complex(wr[i], wi[i]), vr[:, i] + 1j*vr[:, i+1]\n    return complex(wr[i], wi[i]), vr[:, i-1] - 1j*vr[:, i]\n\ndef check(f, size, N=2000):\n    worst = 0.0\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        lam, x = f(A)\n        assert not np.allclose(x, 0)\n        res = np.linalg.norm(A @ x - lam * x) / np.linalg.norm(x)\n        worst = max(worst, res)\n        assert np.allclose(A @ x, lam * x), (size, res)\n        rl, _ = ref(A)\n        assert abs(abs(lam)-abs(rl)) < 1e-9, (lam, rl)\n    return worst\n\ndef timeit(f, size, N=400):\n    dts = []\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        t0 = time.perf_counter()\n        f(A)\n        t1 = time.perf_counter()\n        dts.append(t1 - t0)\n    return np.median(dts)\n\nfor size in [2,4,6,8,10]:\n    w = check(sp, size)\n    r = timeit(ref, size)\n    v = timeit(sp, size)\n    print(f\"{size}: ref={r*1e6:.2f}us sp={v*1e6:.2f}us ratio={r/v:.2f} worstres={w:.2e}\")\n'''\nopen('/app/probe3.py','w').write(src)\nPY\npython3 /app/probe3.py",
             "cwd": "/app"
@@ -1868,7 +1868,7 @@
               "command": "python3 - <<'PY'\nsrc = r'''\nimport time\nimport numpy as np\nfrom numpy.linalg import eig\nfrom scipy.linalg.lapack import dgeev\n\ndef ref(A):\n    ev, V = eig(A)\n    i = np.argmax(np.abs(ev))\n    return ev[i], V[:, i]\n\ndef sp(A):\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=1)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        return complex(wr[i]), vr[:, i].astype(np.complex128)\n    if wi[i] > 0.0:\n        return complex(wr[i], wi[i]), vr[:, i] + 1j*vr[:, i+1]\n    return complex(wr[i], wi[i]), vr[:, i-1] - 1j*vr[:, i]\n\ndef check(f, size, N=2000):\n    worst = 0.0\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        lam, x = f(A)\n        assert not np.allclose(x, 0)\n        res = np.linalg.norm(A @ x - lam * x) / np.linalg.norm(x)\n        worst = max(worst, res)\n        assert np.allclose(A @ x, lam * x), (size, res)\n        rl, _ = ref(A)\n        assert abs(abs(lam)-abs(rl)) < 1e-9, (lam, rl)\n    return worst\n\ndef timeit(f, size, N=400):\n    dts = []\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        t0 = time.perf_counter()\n        f(A)\n        t1 = time.perf_counter()\n        dts.append(t1 - t0)\n    return np.median(dts)\n\nfor size in [2,4,6,8,10]:\n    w = check(sp, size)\n    r = timeit(ref, size)\n    v = timeit(sp, size)\n    print(f\"{size}: ref={r*1e6:.2f}us sp={v*1e6:.2f}us ratio={r/v:.2f} worstres={w:.2e}\")\n'''\nopen('/app/probe3.py','w').write(src)\nPY\npython3 /app/probe3.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1929,7 +1929,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RoUA7QiHpht8ARQWWszEG4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport time\nimport numpy as np\nfrom numpy.linalg import eig\nfrom scipy.linalg.lapack import dgeev, zgesv, dgesv\n\ndef ref(A):\n    ev, V = eig(A)\n    i = np.argmax(np.abs(ev))\n    return ev[i], V[:, i]\n\ndef sp(A):\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=1)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        return complex(wr[i]), vr[:, i].astype(np.complex128)\n    if wi[i] > 0.0:\n        return complex(wr[i], wi[i]), vr[:, i] + 1j*vr[:, i+1]\n    return complex(wr[i], wi[i]), vr[:, i-1] - 1j*vr[:, i]\n\ndef sp2(A):\n    n = A.shape[0]\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=0)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        lam = wr[i]\n        shift = lam + (abs(lam)+1.0)*1e-11\n        M = A - shift*np.eye(n)\n        b = np.ones((n,1))\n        lu,piv,x,info2 = dgesv(M,b)\n        x = x[:,0]\n        return complex(lam), (x/np.linalg.norm(x)).astype(np.complex128)\n    lam = complex(wr[i], abs(wi[i]))\n    shift = lam + (abs(lam)+1.0)*1e-11\n    M = A - shift*np.eye(n)\n    b = np.ones((n,1),dtype=np.complex128)\n    lu,piv,x,info2 = zgesv(M.astype(np.complex128),b)\n    x = x[:,0]\n    return lam, x/np.linalg.norm(x)\n\ndef check(f, size, N=2000):\n    worst = 0.0\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        lam, x = f(A)\n        res = np.linalg.norm(A @ x - lam * x) / np.linalg.norm(x)\n        worst = max(worst, res)\n        assert np.allclose(A @ x, lam * x), (size, res)\n        rl,_=ref(A); assert abs(abs(lam)-abs(rl))<1e-9,(lam,rl)\n    return worst\n\ndef timeit(f, size, N=400):\n    dts=[]\n    for _ in range(N):\n        A=np.random.normal(size=(size,size)).astype(np.float64)\n        t0=time.perf_counter(); f(A); t1=time.perf_counter()\n        dts.append(t1-t0)\n    return np.median(dts)\n\nfor size in [2,4,6,8,10]:\n    w=check(sp2,size)\n    r=timeit(ref,size); v1=timeit(sp,size); v2=timeit(sp2,size)\n    print(f\"{size}: ref={r*1e6:.2f} sp={v1*1e6:.2f} sp2={v2*1e6:.2f} r/sp={r/v1:.2f} r/sp2={r/v2:.2f} w2={w:.1e}\")\nPY",
             "cwd": "/app"
@@ -1939,7 +1939,7 @@
               "command": "python3 - <<'PY'\nimport time\nimport numpy as np\nfrom numpy.linalg import eig\nfrom scipy.linalg.lapack import dgeev, zgesv, dgesv\n\ndef ref(A):\n    ev, V = eig(A)\n    i = np.argmax(np.abs(ev))\n    return ev[i], V[:, i]\n\ndef sp(A):\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=1)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        return complex(wr[i]), vr[:, i].astype(np.complex128)\n    if wi[i] > 0.0:\n        return complex(wr[i], wi[i]), vr[:, i] + 1j*vr[:, i+1]\n    return complex(wr[i], wi[i]), vr[:, i-1] - 1j*vr[:, i]\n\ndef sp2(A):\n    n = A.shape[0]\n    wr, wi, vl, vr, info = dgeev(A, compute_vl=0, compute_vr=0)\n    mag = wr*wr + wi*wi\n    i = int(np.argmax(mag))\n    if wi[i] == 0.0:\n        lam = wr[i]\n        shift = lam + (abs(lam)+1.0)*1e-11\n        M = A - shift*np.eye(n)\n        b = np.ones((n,1))\n        lu,piv,x,info2 = dgesv(M,b)\n        x = x[:,0]\n        return complex(lam), (x/np.linalg.norm(x)).astype(np.complex128)\n    lam = complex(wr[i], abs(wi[i]))\n    shift = lam + (abs(lam)+1.0)*1e-11\n    M = A - shift*np.eye(n)\n    b = np.ones((n,1),dtype=np.complex128)\n    lu,piv,x,info2 = zgesv(M.astype(np.complex128),b)\n    x = x[:,0]\n    return lam, x/np.linalg.norm(x)\n\ndef check(f, size, N=2000):\n    worst = 0.0\n    for _ in range(N):\n        A = np.random.normal(size=(size, size)).astype(np.float64)\n        lam, x = f(A)\n        res = np.linalg.norm(A @ x - lam * x) / np.linalg.norm(x)\n        worst = max(worst, res)\n        assert np.allclose(A @ x, lam * x), (size, res)\n        rl,_=ref(A); assert abs(abs(lam)-abs(rl))<1e-9,(lam,rl)\n    return worst\n\ndef timeit(f, size, N=400):\n    dts=[]\n    for _ in range(N):\n        A=np.random.normal(size=(size,size)).astype(np.float64)\n        t0=time.perf_counter(); f(A); t1=time.perf_counter()\n        dts.append(t1-t0)\n    return np.median(dts)\n\nfor size in [2,4,6,8,10]:\n    w=check(sp2,size)\n    r=timeit(ref,size); v1=timeit(sp,size); v2=timeit(sp2,size)\n    print(f\"{size}: ref={r*1e6:.2f} sp={v1*1e6:.2f} sp2={v2*1e6:.2f} r/sp={r/v1:.2f} r/sp2={r/v2:.2f} w2={w:.1e}\")\nPY",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2000,7 +2000,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LfWKZ2gkrgjFyMGFdktuYq",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2020,7 +2020,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2093,7 +2093,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01C5KYLgyHwKn1sVSXtuigRo",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "find_dominant_eigenvalue_and_eigenvector",
             "paths": "/app/eigen.py",
@@ -2105,7 +2105,7 @@
               "paths": "/app/eigen.py",
               "include_source": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -2166,7 +2166,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KD8UVqrgeuupUrte5kfHkV",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2196,7 +2196,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2269,7 +2269,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JZaJ4yLLX3uUsvkyosBEVP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nsrc = '''import numpy as np\n\ntry:\n    from scipy.linalg.lapack import dgeev as _dgeev\nexcept Exception:  # pragma: no cover - scipy unavailable\n    _dgeev = None\n\n\ndef find_dominant_eigenvalue_and_eigenvector(A: np.ndarray):\n    \"\"\"\n    Find the dominant eigenvalue and eigenvector of a general real square matrix.\n\n    \"Dominant\" is the eigenvalue with the largest magnitude. The matrix is real\n    but not necessarily symmetric, so the eigen pair may be complex.\n\n    Args:\n        A: Real-valued square matrix (numpy array) up to size 10x10, np.float64.\n\n    Returns:\n        eigenvalue: Dominant eigenvalue (numpy scalar, potentially complex)\n        eigenvector: Corresponding eigenvector (np.ndarray, potentially complex)\n    \"\"\"\n    if _dgeev is not None:\n        # Call LAPACK dgeev directly, bypassing numpy.linalg.eig's wrapper\n        # overhead. Right eigenvectors are returned in `vr`; for a complex\n        # conjugate pair (wi[j] > 0) the eigenvector is vr[:, j] + i*vr[:, j+1],\n        # and its conjugate is vr[:, j] - i*vr[:, j+1].\n        wr, wi, vl, vr, info = _dgeev(A, compute_vl=0, compute_vr=1)\n        if info == 0:\n            i = int(np.argmax(wr * wr + wi * wi))\n            wii = wi[i]\n            if wii == 0.0:\n                return np.complex128(wr[i]), vr[:, i].astype(np.complex128)\n            if wii > 0.0:\n                return np.complex128(complex(wr[i], wii)), vr[:, i] + 1j * vr[:, i + 1]\n            return np.complex128(complex(wr[i], wii)), vr[:, i - 1] - 1j * vr[:, i]\n\n    # Fallback: reference numpy path (used only if scipy is unavailable).\n    eigenvalues, eigenvectors = np.linalg.eig(A)\n    idx = np.argmax(np.abs(eigenvalues))\n    return eigenvalues[idx], eigenvectors[:, idx]\n'''\nopen('/app/eigen.py','w').write(src)\nprint(\"written\")\nPY",
             "cwd": "/app"
@@ -2279,7 +2279,7 @@
               "command": "python3 - <<'PY'\nsrc = '''import numpy as np\n\ntry:\n    from scipy.linalg.lapack import dgeev as _dgeev\nexcept Exception:  # pragma: no cover - scipy unavailable\n    _dgeev = None\n\n\ndef find_dominant_eigenvalue_and_eigenvector(A: np.ndarray):\n    \"\"\"\n    Find the dominant eigenvalue and eigenvector of a general real square matrix.\n\n    \"Dominant\" is the eigenvalue with the largest magnitude. The matrix is real\n    but not necessarily symmetric, so the eigen pair may be complex.\n\n    Args:\n        A: Real-valued square matrix (numpy array) up to size 10x10, np.float64.\n\n    Returns:\n        eigenvalue: Dominant eigenvalue (numpy scalar, potentially complex)\n        eigenvector: Corresponding eigenvector (np.ndarray, potentially complex)\n    \"\"\"\n    if _dgeev is not None:\n        # Call LAPACK dgeev directly, bypassing numpy.linalg.eig's wrapper\n        # overhead. Right eigenvectors are returned in `vr`; for a complex\n        # conjugate pair (wi[j] > 0) the eigenvector is vr[:, j] + i*vr[:, j+1],\n        # and its conjugate is vr[:, j] - i*vr[:, j+1].\n        wr, wi, vl, vr, info = _dgeev(A, compute_vl=0, compute_vr=1)\n        if info == 0:\n            i = int(np.argmax(wr * wr + wi * wi))\n            wii = wi[i]\n            if wii == 0.0:\n                return np.complex128(wr[i]), vr[:, i].astype(np.complex128)\n            if wii > 0.0:\n                return np.complex128(complex(wr[i], wii)), vr[:, i] + 1j * vr[:, i + 1]\n            return np.complex128(complex(wr[i], wii)), vr[:, i - 1] - 1j * vr[:, i]\n\n    # Fallback: reference numpy path (used only if scipy is unavailable).\n    eigenvalues, eigenvectors = np.linalg.eig(A)\n    idx = np.argmax(np.abs(eigenvalues))\n    return eigenvalues[idx], eigenvectors[:, idx]\n'''\nopen('/app/eigen.py','w').write(src)\nprint(\"written\")\nPY",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2340,7 +2340,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A8mkkv59GNW9HuTH83MVHD",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/eigen.py"
@@ -2352,7 +2352,7 @@
                 "/app/eigen.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -2413,7 +2413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AqBSQh5YNPQzDk7LMPrst9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 eval.py && rm -f probe.py probe2.py probe3.py bench.py",
             "cwd": "/app"
@@ -2423,7 +2423,7 @@
               "command": "python3 eval.py && rm -f probe.py probe2.py probe3.py bench.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2539,7 +2539,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J8mAEJNo8kvL6MfB1ukXod",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls; echo \"---\"; python3 eval.py",
             "cwd": "/app"
@@ -2549,7 +2549,7 @@
               "command": "ls; echo \"---\"; python3 eval.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

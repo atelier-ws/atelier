@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YQ7qGPLnGUXpPT3iqHnxoH",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/filter.py",
@@ -47,7 +47,7 @@
                 "/app/test_outputs.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H9x48jG3DNWgaHPcJ466mw",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -128,12 +128,12 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         },
         {
           "tool_call_id": "toolu_011LJCtxhVDvPSkxc63n2ND5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cp /app/out.html /tmp/t.html && python /app/filter.py /tmp/t.html && echo \"=== FILTERED ===\" && cat /tmp/t.html"
           },
@@ -141,7 +141,7 @@
             "raw_arguments": {
               "command": "cp /app/out.html /tmp/t.html && python /app/filter.py /tmp/t.html && echo \"=== FILTERED ===\" && cat /tmp/t.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -206,7 +206,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012HUJND9b26RcntvkBmjZJm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /tests/ 2>/dev/null; cp /app/filter.py /tests/filter.py 2>/dev/null; cd /app && python -m pytest test_outputs.py -x -q 2>&1 | tail -20"
           },
@@ -214,7 +214,7 @@
             "raw_arguments": {
               "command": "ls /tests/ 2>/dev/null; cp /app/filter.py /tests/filter.py 2>/dev/null; cd /app && python -m pytest test_outputs.py -x -q 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -275,7 +275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AuehU8tLiDGNnEUrJxaRQL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python -c \"import selenium\" 2>&1; which chromium chromedriver /usr/bin/chromium 2>&1; ls /tests 2>&1"
           },
@@ -283,7 +283,7 @@
             "raw_arguments": {
               "command": "cd /app && python -c \"import selenium\" 2>&1; which chromium chromedriver /usr/bin/chromium 2>&1; ls /tests 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -344,7 +344,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HFQN4VqXdTXzVZa2yXM3E3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python -c \"import selenium; print('sel ok')\" 2>&1 | tail -1; pip install --break-system-packages -q selenium 2>&1 | tail -2"
           },
@@ -352,7 +352,7 @@
             "raw_arguments": {
               "command": "python -c \"import selenium; print('sel ok')\" 2>&1 | tail -1; pip install --break-system-packages -q selenium 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -413,7 +413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EyS3zRyYvcfNETYNiEomSc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /tests && cp /app/filter.py /tests/filter.py && cd /app && python -c \"\nimport test_outputs\ntest_outputs.test_out_html_bypasses_filter()\n\" 2>&1 | tail -20"
           },
@@ -421,7 +421,7 @@
             "raw_arguments": {
               "command": "mkdir -p /tests && cp /app/filter.py /tests/filter.py && cd /app && python -c \"\nimport test_outputs\ntest_outputs.test_out_html_bypasses_filter()\n\" 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

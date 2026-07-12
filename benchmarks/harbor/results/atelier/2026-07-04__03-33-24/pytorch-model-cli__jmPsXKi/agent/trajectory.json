@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013pxUiqUPN4SqcrPfUkZ6aP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.json /app/*.png 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.json /app/*.png 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eij9dWDtWY81CcyH2yAF48",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/model.py"
@@ -114,7 +114,7 @@
                 "/app/model.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ELdMRw4cUwPEQTRpM76ETE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"===\"; python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    try:\n        print(k, tuple(v.shape))\n    except Exception as e:\n        print(k, type(v))\n\" 2>&1 | head -40"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"===\"; python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    try:\n        print(k, tuple(v.shape))\n    except Exception as e:\n        print(k, type(v))\n\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LfSy3XMoXU9hzEyyCZoYhZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && uv pip install --system --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "cd /app && uv pip install --system --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CfQfB1vco4PpujFGVFHam8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip pip3 2>&1; echo \"---\"; pip3 install --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "which pip pip3 2>&1; echo \"---\"; pip3 install --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y39zjYpAdRcrYV7h6bRCn2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    try: print(k, tuple(v.shape), v.dtype)\n    except Exception as e: print(k, type(v))\n\" 2>&1 | head -40"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    try: print(k, tuple(v.shape), v.dtype)\n    except Exception as e: print(k, type(v))\n\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Pw5q9ZTm35VxbTzNwPvc6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    print(k, tuple(v.shape))\n\" 2>&1 | grep -v Warning | grep -v numpy | grep -v cpu"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nsd = torch.load('/app/model.pth', map_location='cpu')\nfor k,v in sd.items():\n    print(k, tuple(v.shape))\n\" 2>&1 | grep -v Warning | grep -v numpy | grep -v cpu"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NLYyWC3w9GcCemJwejwjrw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, zlib, torch\n# decode png minimally via torch? use manual. Let's use PIL? not present. Use lodepng? Instead parse png.\ndata=open('image.png','rb').read()\nprint(len(data), data[:8])\n# parse IHDR\nimport io\npos=8\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]\n    typ=data[pos+4:pos+8]\n    if typ==b'IHDR':\n        w,h,bd,ct=struct.unpack('>IIBB',data[pos+8:pos+8+10])\n        print('IHDR',w,h,'bitdepth',bd,'colortype',ct)\n    pos+=12+ln\n    if typ==b'IEND':break\n\""
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, zlib, torch\n# decode png minimally via torch? use manual. Let's use PIL? not present. Use lodepng? Instead parse png.\ndata=open('image.png','rb').read()\nprint(len(data), data[:8])\n# parse IHDR\nimport io\npos=8\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]\n    typ=data[pos+4:pos+8]\n    if typ==b'IHDR':\n        w,h,bd,ct=struct.unpack('>IIBB',data[pos+8:pos+8+10])\n        print('IHDR',w,h,'bitdepth',bd,'colortype',ct)\n    pos+=12+ln\n    if typ==b'IEND':break\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TbeNFaK68XXCV3b3Qyrk1B",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 2>/dev/null -c \"\nimport struct, zlib, torch\ndata=open('image.png','rb').read()\npos=8; idat=b''\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]\n    typ=data[pos+4:pos+8]\n    if typ==b'IDAT': idat+=data[pos+8:pos+8+ln]\n    pos+=12+ln\n    if typ==b'IEND': break\nraw=zlib.decompress(idat)\nw=h=28; stride=w\nimg=[]\nprev=[0]*w\ni=0\ndef paeth(a,b,c):\n    p=a+b-c; pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n    return a if pa<=pb and pa<=pc else (b if pb<=pc else c)\nfor y in range(h):\n    ft=raw[i]; i+=1\n    cur=[0]*w\n    for x in range(w):\n        v=raw[i+x]\n        a=cur[x-1] if x>0 else 0\n        b=prev[x]\n        c=prev[x-1] if x>0 else 0\n        if ft==0: r=v\n        elif ft==1: r=(v+a)&255\n        elif ft==2: r=(v+b)&255\n        elif ft==3: r=(v+((a+b)>>1))&255\n        elif ft==4: r=(v+paeth(a,b,c))&255\n        cur[x]=r\n    img+=cur; prev=cur; i+=w\nsd=torch.load('model.pth',map_location='cpu')\ndef infer(px):\n    x=torch.tensor(px).float().view(1,-1)\n    x=x@sd['input_layer.weight'].t()+sd['input_layer.bias']; x=x.relu()\n    x=x@sd['hidden_layer.weight'].t()+sd['hidden_layer.bias']; x=x.relu()\n    x=x@sd['output_layer.weight'].t()+sd['output_layer.bias']\n    return x\nraw01=[p/255.0 for p in img]\nprint('div255 raw', infer(raw01).argmax().item(), [round(v,2) for v in infer(raw01)[0].tolist()])\nnorm=[(p/255.0-0.1307)/0.3081 for p in img]\nprint('mnist norm', infer(norm).argmax().item(), [round(v,2) for v in infer(norm)[0].tolist()])\nprint('minmax pixels', min(img), max(img))\n\""
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 2>/dev/null -c \"\nimport struct, zlib, torch\ndata=open('image.png','rb').read()\npos=8; idat=b''\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]\n    typ=data[pos+4:pos+8]\n    if typ==b'IDAT': idat+=data[pos+8:pos+8+ln]\n    pos+=12+ln\n    if typ==b'IEND': break\nraw=zlib.decompress(idat)\nw=h=28; stride=w\nimg=[]\nprev=[0]*w\ni=0\ndef paeth(a,b,c):\n    p=a+b-c; pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n    return a if pa<=pb and pa<=pc else (b if pb<=pc else c)\nfor y in range(h):\n    ft=raw[i]; i+=1\n    cur=[0]*w\n    for x in range(w):\n        v=raw[i+x]\n        a=cur[x-1] if x>0 else 0\n        b=prev[x]\n        c=prev[x-1] if x>0 else 0\n        if ft==0: r=v\n        elif ft==1: r=(v+a)&255\n        elif ft==2: r=(v+b)&255\n        elif ft==3: r=(v+((a+b)>>1))&255\n        elif ft==4: r=(v+paeth(a,b,c))&255\n        cur[x]=r\n    img+=cur; prev=cur; i+=w\nsd=torch.load('model.pth',map_location='cpu')\ndef infer(px):\n    x=torch.tensor(px).float().view(1,-1)\n    x=x@sd['input_layer.weight'].t()+sd['input_layer.bias']; x=x.relu()\n    x=x@sd['hidden_layer.weight'].t()+sd['hidden_layer.bias']; x=x.relu()\n    x=x@sd['output_layer.weight'].t()+sd['output_layer.bias']\n    return x\nraw01=[p/255.0 for p in img]\nprint('div255 raw', infer(raw01).argmax().item(), [round(v,2) for v in infer(raw01)[0].tolist()])\nnorm=[(p/255.0-0.1307)/0.3081 for p in img]\nprint('mnist norm', infer(norm).argmax().item(), [round(v,2) for v in infer(norm)[0].tolist()])\nprint('minmax pixels', min(img), max(img))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012qM9U5Z5ALiJzfyjNaFeU4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 2>/dev/null -c \"\nimport torch, json\nsd=torch.load('model.pth',map_location='cpu')\ndef m(t): return t.tolist()\nout={\n 'input_dim':784,'hidden_dim':16,'num_classes':10,\n 'mean':0.1307,'std':0.3081,\n 'input_layer':{'weight':m(sd['input_layer.weight']),'bias':m(sd['input_layer.bias'])},\n 'hidden_layer':{'weight':m(sd['hidden_layer.weight']),'bias':m(sd['hidden_layer.bias'])},\n 'output_layer':{'weight':m(sd['output_layer.weight']),'bias':m(sd['output_layer.bias'])},\n}\njson.dump(out,open('weights.json','w'))\nprint('wrote', len(open('weights.json').read()), 'bytes')\n\""
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 2>/dev/null -c \"\nimport torch, json\nsd=torch.load('model.pth',map_location='cpu')\ndef m(t): return t.tolist()\nout={\n 'input_dim':784,'hidden_dim':16,'num_classes':10,\n 'mean':0.1307,'std':0.3081,\n 'input_layer':{'weight':m(sd['input_layer.weight']),'bias':m(sd['input_layer.bias'])},\n 'hidden_layer':{'weight':m(sd['hidden_layer.weight']),'bias':m(sd['hidden_layer.bias'])},\n 'output_layer':{'weight':m(sd['output_layer.weight']),'bias':m(sd['output_layer.bias'])},\n}\njson.dump(out,open('weights.json','w'))\nprint('wrote', len(open('weights.json').read()), 'bytes')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vy3uEYb2Lf5oawwQmRJTxv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -747,7 +747,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -808,7 +808,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DhBRPKmP7mJLy4hZwgKaVg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | head -20; echo \"exit=$?\"; ls -l cli_tool"
           },
@@ -816,7 +816,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | head -20; echo \"exit=$?\"; ls -l cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -877,7 +877,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HYrPeQEibTbj7urHy6yMfR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which gcc clang cc 2>&1; ls /usr/bin | grep -E 'gcc|g\\+\\+|clang' 2>/dev/null"
           },
@@ -885,7 +885,7 @@
             "raw_arguments": {
               "command": "which gcc clang cc 2>&1; ls /usr/bin | grep -E 'gcc|g\\+\\+|clang' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -946,7 +946,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CkdEYFTaF8r6LPX9YyKXGc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y g++ 2>&1 | tail -5"
           },
@@ -954,7 +954,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -2; apt-get install -y g++ 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SjJcFNhSqSmy3KBfvpxFb4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | head; echo \"exit=${PIPESTATUS[0]}\"; ls -l cli_tool && ./cli_tool weights.json image.png | tee prediction.txt"
           },
@@ -1023,7 +1023,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | head; echo \"exit=${PIPESTATUS[0]}\"; ls -l cli_tool && ./cli_tool weights.json image.png | tee prediction.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1084,7 +1084,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Nj79SLGXCKYfs9fS7PbpqG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && printf '2' > prediction.txt && xxd prediction.txt; echo \"---verify run---\"; ./cli_tool weights.json image.png; echo \"---files---\"; ls -l cli_tool weights.json prediction.txt"
           },
@@ -1092,7 +1092,7 @@
             "raw_arguments": {
               "command": "cd /app && printf '2' > prediction.txt && xxd prediction.txt; echo \"---verify run---\"; ./cli_tool weights.json image.png; echo \"---files---\"; ls -l cli_tool weights.json prediction.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1208,7 +1208,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012JFwivCksRsa7ZcAkLUEqZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 2>/dev/null -c \"\nimport torch, json, struct, zlib, subprocess\n# decode png\ndata=open('image.png','rb').read()\npos=8; idat=b''\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]; typ=data[pos+4:pos+8]\n    if typ==b'IDAT': idat+=data[pos+8:pos+8+ln]\n    pos+=12+ln\n    if typ==b'IEND': break\nraw=zlib.decompress(idat); w=h=28; prev=[0]*w; img=[]; i=0\ndef paeth(a,b,c):\n    p=a+b-c; pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n    return a if pa<=pb and pa<=pc else (b if pb<=pc else c)\nfor y in range(h):\n    ft=raw[i]; i+=1; cur=[0]*w\n    for x in range(w):\n        v=raw[i+x]; a=cur[x-1] if x>0 else 0; b=prev[x]; c=prev[x-1] if x>0 else 0\n        r={0:v,1:(v+a)&255,2:(v+b)&255,3:(v+((a+b)>>1))&255,4:(v+paeth(a,b,c))&255}[ft]\n        cur[x]=r\n    img+=cur; prev=cur; i+=w\n# reference from weights.json (proves json matches model.pth pipeline)\nW=json.load(open('weights.json'))\ndef lin(w,b,x,relu):\n    o=len(b); n=len(x); y=[b[j]+sum(w[j][k]*x[k] for k in range(n)) for j in range(o)]\n    return [max(0,v) if relu else v for v in y]\nmean,std=W['mean'],W['std']\nx=[((p/255.0)-mean)/std for p in img]\nx=lin(W['input_layer']['weight'],W['input_layer']['bias'],x,True)\nx=lin(W['hidden_layer']['weight'],W['hidden_layer']['bias'],x,True)\nlogits=lin(W['output_layer']['weight'],W['output_layer']['bias'],x,False)\nref=max(range(10),key=lambda j:logits[j])\n# torch reference from model.pth\nsd=torch.load('model.pth',map_location='cpu')\nxt=torch.tensor([((p/255.0)-mean)/std for p in img]).float().view(1,-1)\nxt=(xt@sd['input_layer.weight'].t()+sd['input_layer.bias']).relu()\nxt=(xt@sd['hidden_layer.weight'].t()+sd['hidden_layer.bias']).relu()\nxt=xt@sd['output_layer.weight'].t()+sd['output_layer.bias']\ntorch_pred=int(xt.argmax())\n# cli_tool\ncli=subprocess.run(['./cli_tool','weights.json','image.png'],capture_output=True,text=True).stdout.strip()\nptxt=open('prediction.txt').read().strip()\nprint('weights.json argmax :', ref)\nprint('model.pth argmax    :', torch_pred)\nprint('cli_tool output     :', cli)\nprint('prediction.txt      :', ptxt)\nassert str(ref)==str(torch_pred)==cli==ptxt, 'MISMATCH'\nprint('ALL MATCH -> PASS')\n\""
           },
@@ -1216,7 +1216,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 2>/dev/null -c \"\nimport torch, json, struct, zlib, subprocess\n# decode png\ndata=open('image.png','rb').read()\npos=8; idat=b''\nwhile pos<len(data):\n    ln=struct.unpack('>I',data[pos:pos+4])[0]; typ=data[pos+4:pos+8]\n    if typ==b'IDAT': idat+=data[pos+8:pos+8+ln]\n    pos+=12+ln\n    if typ==b'IEND': break\nraw=zlib.decompress(idat); w=h=28; prev=[0]*w; img=[]; i=0\ndef paeth(a,b,c):\n    p=a+b-c; pa=abs(p-a);pb=abs(p-b);pc=abs(p-c)\n    return a if pa<=pb and pa<=pc else (b if pb<=pc else c)\nfor y in range(h):\n    ft=raw[i]; i+=1; cur=[0]*w\n    for x in range(w):\n        v=raw[i+x]; a=cur[x-1] if x>0 else 0; b=prev[x]; c=prev[x-1] if x>0 else 0\n        r={0:v,1:(v+a)&255,2:(v+b)&255,3:(v+((a+b)>>1))&255,4:(v+paeth(a,b,c))&255}[ft]\n        cur[x]=r\n    img+=cur; prev=cur; i+=w\n# reference from weights.json (proves json matches model.pth pipeline)\nW=json.load(open('weights.json'))\ndef lin(w,b,x,relu):\n    o=len(b); n=len(x); y=[b[j]+sum(w[j][k]*x[k] for k in range(n)) for j in range(o)]\n    return [max(0,v) if relu else v for v in y]\nmean,std=W['mean'],W['std']\nx=[((p/255.0)-mean)/std for p in img]\nx=lin(W['input_layer']['weight'],W['input_layer']['bias'],x,True)\nx=lin(W['hidden_layer']['weight'],W['hidden_layer']['bias'],x,True)\nlogits=lin(W['output_layer']['weight'],W['output_layer']['bias'],x,False)\nref=max(range(10),key=lambda j:logits[j])\n# torch reference from model.pth\nsd=torch.load('model.pth',map_location='cpu')\nxt=torch.tensor([((p/255.0)-mean)/std for p in img]).float().view(1,-1)\nxt=(xt@sd['input_layer.weight'].t()+sd['input_layer.bias']).relu()\nxt=(xt@sd['hidden_layer.weight'].t()+sd['hidden_layer.bias']).relu()\nxt=xt@sd['output_layer.weight'].t()+sd['output_layer.bias']\ntorch_pred=int(xt.argmax())\n# cli_tool\ncli=subprocess.run(['./cli_tool','weights.json','image.png'],capture_output=True,text=True).stdout.strip()\nptxt=open('prediction.txt').read().strip()\nprint('weights.json argmax :', ref)\nprint('model.pth argmax    :', torch_pred)\nprint('cli_tool output     :', cli)\nprint('prediction.txt      :', ptxt)\nassert str(ref)==str(torch_pred)==cli==ptxt, 'MISMATCH'\nprint('ALL MATCH -> PASS')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

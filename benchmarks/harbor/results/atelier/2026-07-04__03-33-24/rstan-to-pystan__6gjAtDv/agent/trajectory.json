@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018cELtG7bcwHQXk3Pfv4SUV",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/gp_rstan.R",
@@ -47,12 +47,12 @@
                 "/app/meta_public.json"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_012Gzg5i7nv1wggNpXHMdJb9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -3 /app/train_X.csv; echo ---; head -3 /app/train_y.csv; echo ---; head -3 /app/test_X.csv; echo ---; wc -l /app/train_X.csv /app/train_y.csv /app/test_X.csv"
           },
@@ -60,7 +60,7 @@
             "raw_arguments": {
               "command": "head -3 /app/train_X.csv; echo ---; head -3 /app/train_y.csv; echo ---; head -3 /app/test_X.csv; echo ---; wc -l /app/train_X.csv /app/train_y.csv /app/test_X.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018guQgCE5kE76qFAhKA8YUp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; pip --version 2>/dev/null || echo nopip; python3 -c \"import stan; print(stan.__version__)\" 2>&1 | tail -1"
           },
@@ -133,7 +133,7 @@
             "raw_arguments": {
               "command": "python3 --version; pip --version 2>/dev/null || echo nopip; python3 -c \"import stan; print(stan.__version__)\" 2>&1 | tail -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -194,7 +194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0163Y4v9fe61fZtCwiZHxuq8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pystan==3.10.0 2>&1 | tail -20"
           },
@@ -202,7 +202,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pystan==3.10.0 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -263,7 +263,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S2JTW4CxgcYgLgbaqLfAWW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages uv 2>&1 | tail -3; which uv"
           },
@@ -271,7 +271,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages uv 2>&1 | tail -3; which uv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -332,7 +332,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011GuHoQ2t54jAwmk9FeXTk5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages pystan==3.10.0 2>&1 | tail -25"
           },
@@ -340,7 +340,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages pystan==3.10.0 2>&1 | tail -25"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -401,7 +401,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013sk8c7iYMfqGf67ftLWe5a",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport inspect, stan.model\nprint(inspect.signature(stan.model.Model.sample))\nprint(inspect.signature(stan.model.Model.hmc_nuts_diag_e_adapt))\n\""
           },
@@ -409,7 +409,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport inspect, stan.model\nprint(inspect.signature(stan.model.Model.sample))\nprint(inspect.signature(stan.model.Model.hmc_nuts_diag_e_adapt))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -470,7 +470,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CwjLr11aTf8dt9V5KyStP9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -path '*httpstan*' -name '*.py' 2>/dev/null | grep -iE 'services|arguments|schema' | head; echo ---; python3 -c \"\nimport httpstan, os\nd=os.path.dirname(httpstan.__file__)\nprint(d)\nimport glob\nfor f in glob.glob(d+'/*.py'): print(os.path.basename(f))\n\""
           },
@@ -478,7 +478,7 @@
             "raw_arguments": {
               "command": "find / -path '*httpstan*' -name '*.py' 2>/dev/null | grep -iE 'services|arguments|schema' | head; echo ---; python3 -c \"\nimport httpstan, os\nd=os.path.dirname(httpstan.__file__)\nprint(d)\nimport glob\nfor f in glob.glob(d+'/*.py'): print(os.path.basename(f))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -539,7 +539,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y9r2VoT6PXSxyFaKpZr5NT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nfrom httpstan.services import arguments as a\nlst = a.function_arguments('hmc_nuts_diag_e_adapt', None) if False else None\n\"  2>/dev/null; python3 - <<'PY'\nimport httpstan.services.arguments as A\nimport inspect\nprint(inspect.getsource(A.lookup_default))\nPY"
           },
@@ -547,7 +547,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nfrom httpstan.services import arguments as a\nlst = a.function_arguments('hmc_nuts_diag_e_adapt', None) if False else None\n\"  2>/dev/null; python3 - <<'PY'\nimport httpstan.services.arguments as A\nimport inspect\nprint(inspect.getsource(A.lookup_default))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -608,7 +608,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LFBRU4jWgLe3WL4UvhRLsk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport json, importlib.resources, httpstan.services.arguments as A\nd = json.loads(importlib.resources.read_text('httpstan.services','cmdstan-help-all.json'))\nfor it in d[\"method\"][\"sample\"]:\n    print(it[\"name\"], \"=\", it[\"default\"])\nPY"
           },
@@ -616,7 +616,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport json, importlib.resources, httpstan.services.arguments as A\nd = json.loads(importlib.resources.read_text('httpstan.services','cmdstan-help-all.json'))\nfor it in d[\"method\"][\"sample\"]:\n    print(it[\"name\"], \"=\", it[\"default\"])\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -677,7 +677,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R5NDzfSY4kwxpMTiZTQdUm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport inspect, stan.model\nsrc = inspect.getsource(stan.model.Model.hmc_nuts_diag_e_adapt)\nprint(src[:1500])\nPY"
           },
@@ -685,7 +685,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport inspect, stan.model\nsrc = inspect.getsource(stan.model.Model.hmc_nuts_diag_e_adapt)\nprint(src[:1500])\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -746,7 +746,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015AfRvsVDDTewJkVdEnW2Jy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport inspect, httpstan.services_stub as S\nsrc = inspect.getsource(S)\nimport re\n# find call signature building\nidx = src.find('num_thin')\nprint(src[idx-200:idx+200] if idx>0 else \"num_thin not found\")\nPY"
           },
@@ -754,7 +754,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport inspect, httpstan.services_stub as S\nsrc = inspect.getsource(S)\nimport re\n# find call signature building\nidx = src.find('num_thin')\nprint(src[idx-200:idx+200] if idx>0 else \"num_thin not found\")\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -815,7 +815,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019XnStxGRvdLQY684yDnKcR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport json, importlib.resources\nd = json.loads(importlib.resources.read_text('httpstan.services','cmdstan-help-all.json'))\n# check pystan example usage: the arg name for thinning httpstan expects\nimport httpstan.services.arguments as A\nimport inspect\nprint(inspect.getsource(A.function_arguments))\nPY"
           },
@@ -823,7 +823,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport json, importlib.resources\nd = json.loads(importlib.resources.read_text('httpstan.services','cmdstan-help-all.json'))\n# check pystan example usage: the arg name for thinning httpstan expects\nimport httpstan.services.arguments as A\nimport inspect\nprint(inspect.getsource(A.function_arguments))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -884,7 +884,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BfgRsmPYUqtyLf15oQVRBG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -904,7 +904,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -965,7 +965,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XYxxuv8PDtyS2LXagiyKU4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
             "timeout": 3600
@@ -975,7 +975,7 @@
               "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1036,7 +1036,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VgguQDTsQUow3Zy1oMEzJn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y g++ 2>&1 | tail -3; which g++ x86_64-linux-gnu-g++",
             "timeout": 600
@@ -1046,7 +1046,7 @@
               "command": "apt-get update -qq && apt-get install -y g++ 2>&1 | tail -3; which g++ x86_64-linux-gnu-g++",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1107,7 +1107,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LUb7846gHNYfvrszyqgszd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
             "timeout": 3600
@@ -1117,7 +1117,7 @@
               "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1178,7 +1178,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S6cwTPFNBo1iRoCB3ocgS1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"alpha:\"; cat alpha_est.csv; echo \"sigma:\"; cat sigma_est.csv; echo \"rho:\"; cat rho_est.csv; echo \"beta:\"; cat beta_est.csv"
           },
@@ -1186,7 +1186,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"alpha:\"; cat alpha_est.csv; echo \"sigma:\"; cat sigma_est.csv; echo \"rho:\"; cat rho_est.csv; echo \"beta:\"; cat beta_est.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1302,7 +1302,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BnrYzxKTCGgtXoze9HB9L3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PY'\nimport numpy as np\na=np.loadtxt(\"alpha_est.csv\"); s=np.loadtxt(\"sigma_est.csv\")\nr=np.loadtxt(\"rho_est.csv\"); b=np.loadtxt(\"beta_est.csv\")\nassert a.shape==() and s.shape==(), (a.shape,s.shape)\nassert r.shape==(3,), r.shape\nassert b.shape==(3,), b.shape\nassert np.isfinite([a,s]).all() and np.isfinite(r).all() and np.isfinite(b).all()\nprint(\"OK alpha\",float(a),\"sigma\",float(s))\nprint(\"rho\",r.tolist()); print(\"beta\",b.tolist())\nPY"
           },
@@ -1310,7 +1310,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PY'\nimport numpy as np\na=np.loadtxt(\"alpha_est.csv\"); s=np.loadtxt(\"sigma_est.csv\")\nr=np.loadtxt(\"rho_est.csv\"); b=np.loadtxt(\"beta_est.csv\")\nassert a.shape==() and s.shape==(), (a.shape,s.shape)\nassert r.shape==(3,), r.shape\nassert b.shape==(3,), b.shape\nassert np.isfinite([a,s]).all() and np.isfinite(r).all() and np.isfinite(b).all()\nprint(\"OK alpha\",float(a),\"sigma\",float(s))\nprint(\"rho\",r.tolist()); print(\"beta\",b.tolist())\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

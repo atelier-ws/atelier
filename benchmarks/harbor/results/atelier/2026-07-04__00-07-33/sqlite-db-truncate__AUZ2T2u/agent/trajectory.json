@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KpzjMipJTk4oekqMyBYaMU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && file /app/trunc.db && ls -la /app/trunc.db"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/ && file /app/trunc.db && ls -la /app/trunc.db"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01YRTBDtepNDhZsL6a1izebJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "sqlite3 /app/trunc.db \".tables\" 2>&1 | head; echo \"---schema---\"; sqlite3 /app/trunc.db \".schema\" 2>&1 | head -50"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "sqlite3 /app/trunc.db \".tables\" 2>&1 | head; echo \"---schema---\"; sqlite3 /app/trunc.db \".schema\" 2>&1 | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -62,7 +62,7 @@
         "results": [
           {
             "source_call_id": "toolu_01KpzjMipJTk4oekqMyBYaMU",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:18 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:17 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:18 .atelier\\n-rw-r--r-- 1 root root 4096 Aug 11  2025 trunc.db\\n\\nbash: line 1: file: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:18 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 23:17 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 23:18 .lemoncrow\\n-rw-r--r-- 1 root root 4096 Aug 11  2025 trunc.db\\n\\nbash: line 1: file: command not found\"}"
           },
           {
             "source_call_id": "toolu_01YRTBDtepNDhZsL6a1izebJ",
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WjyivJeaXj5dsJJzg1kQJq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndata=open('trunc.db','rb').read()\nprint('len',len(data))\nprint('header',data[:16])\nimport struct\npagesize=struct.unpack('>H',data[16:18])[0]\nprint('pagesize',pagesize)\nprint(data[:100])\n\""
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndata=open('trunc.db','rb').read()\nprint('len',len(data))\nprint('header',data[:16])\nimport struct\npagesize=struct.unpack('>H',data[16:18])[0]\nprint('pagesize',pagesize)\nprint(data[:100])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NeNL7HBH4ykzYV9oDT2QSv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\nprint('type',data[0],'ncells',struct.unpack('>H',data[3:5])[0],'cellstart',struct.unpack('>H',data[5:7])[0])\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nprint(ptrs)\n\""
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\nprint('type',data[0],'ncells',struct.unpack('>H',data[3:5])[0],'cellstart',struct.unpack('>H',data[5:7])[0])\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nprint(ptrs)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4XLyfUE36CUmCZuze89aM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8:\n            v=(v<<8)|c; return v,off+9\n        v=(v<<7)|(c&0x7f)\n        if not (c&0x80): return v,off+i+1\n    return v,off+9\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nfor p in ptrs:\n    off=p\n    plen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+plen]\n    # parse record\n    ho=0\n    hlen,ho=varint(rec,ho)\n    stypes=[]\n    while ho<hlen:\n        st,ho=varint(rec,ho)\n        stypes.append(st)\n    vals=[]\n    do=hlen\n    for st in stypes:\n        if st==0: vals.append(None)\n        elif st==1: vals.append(int.from_bytes(rec[do:do+1],'big',signed=True));do+=1\n        elif st==2: vals.append(int.from_bytes(rec[do:do+2],'big',signed=True));do+=2\n        elif st==3: vals.append(int.from_bytes(rec[do:do+3],'big',signed=True));do+=3\n        elif st==4: vals.append(int.from_bytes(rec[do:do+4],'big',signed=True));do+=4\n        elif st==5: vals.append(int.from_bytes(rec[do:do+6],'big',signed=True));do+=6\n        elif st==6: vals.append(int.from_bytes(rec[do:do+8],'big',signed=True));do+=8\n        elif st==8: vals.append(0)\n        elif st==9: vals.append(1)\n        elif st>=13 and st%2==1:\n            l=(st-13)//2; vals.append(rec[do:do+l].decode('utf-8','replace'));do+=l\n        elif st>=12 and st%2==0:\n            l=(st-12)//2; vals.append(rec[do:do+l]);do+=l\n    print(rowid,vals)\n\""
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8:\n            v=(v<<8)|c; return v,off+9\n        v=(v<<7)|(c&0x7f)\n        if not (c&0x80): return v,off+i+1\n    return v,off+9\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nfor p in ptrs:\n    off=p\n    plen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+plen]\n    # parse record\n    ho=0\n    hlen,ho=varint(rec,ho)\n    stypes=[]\n    while ho<hlen:\n        st,ho=varint(rec,ho)\n        stypes.append(st)\n    vals=[]\n    do=hlen\n    for st in stypes:\n        if st==0: vals.append(None)\n        elif st==1: vals.append(int.from_bytes(rec[do:do+1],'big',signed=True));do+=1\n        elif st==2: vals.append(int.from_bytes(rec[do:do+2],'big',signed=True));do+=2\n        elif st==3: vals.append(int.from_bytes(rec[do:do+3],'big',signed=True));do+=3\n        elif st==4: vals.append(int.from_bytes(rec[do:do+4],'big',signed=True));do+=4\n        elif st==5: vals.append(int.from_bytes(rec[do:do+6],'big',signed=True));do+=6\n        elif st==6: vals.append(int.from_bytes(rec[do:do+8],'big',signed=True));do+=8\n        elif st==8: vals.append(0)\n        elif st==9: vals.append(1)\n        elif st>=13 and st%2==1:\n            l=(st-13)//2; vals.append(rec[do:do+l].decode('utf-8','replace'));do+=l\n        elif st>=12 and st%2==0:\n            l=(st-12)//2; vals.append(rec[do:do+l]);do+=l\n    print(rowid,vals)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HeQRD2orBvd6ufwuxvTQ5y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndata=open('trunc.db','rb').read()\nfor p in [3937,3913]:\n    print(p, data[p:p+30])\nprint('tail', data[3900:4096])\nprint('nonzero after 4080?', data[4090:4096])\n\""
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndata=open('trunc.db','rb').read()\nfor p in [3937,3913]:\n    print(p, data[p:p+30])\nprint('tail', data[3900:4096])\nprint('nonzero after 4080?', data[4090:4096])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PuVMNSsoMem5g3gBS9c8KL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\nprint(struct.unpack('>d',bytes.fromhex('4058ff5c28f5c28f'))[0])\nprint(struct.unpack('>d',bytes.fromhex('3fe0000000000000'))[0])\n\""
           },
@@ -403,7 +403,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct\ndata=open('trunc.db','rb').read()\nprint(struct.unpack('>d',bytes.fromhex('4058ff5c28f5c28f'))[0])\nprint(struct.unpack('>d',bytes.fromhex('3fe0000000000000'))[0])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,7 +464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019dGZFAjM4PFiY8nbQTd2VX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport struct, json\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8: return (v<<8)|c, off+9\n        v=(v<<7)|(c&0x7f)\n        if not (c&0x80): return v, off+i+1\ndef val(rec,st,do):\n    if st==0: return None,do\n    if 1<=st<=4: return int.from_bytes(rec[do:do+st],'big',signed=True),do+st\n    if st==5: return int.from_bytes(rec[do:do+6],'big',signed=True),do+6\n    if st==6: return int.from_bytes(rec[do:do+8],'big',signed=True),do+8\n    if st==7: return struct.unpack('>d',rec[do:do+8])[0],do+8\n    if st==8: return 0,do\n    if st==9: return 1,do\n    if st>=12 and st%2==0:\n        l=(st-12)//2; return rec[do:do+l],do+l\n    if st>=13:\n        l=(st-13)//2; return rec[do:do+l].decode('utf-8','replace'),do+l\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nrows=[]\nfor p in ptrs:\n    off=p\n    plen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+plen]\n    hlen,ho=varint(rec,0)\n    sts=[]\n    while ho<hlen:\n        st,ho=varint(rec,ho); sts.append(st)\n    vals=[]; do=hlen\n    for st in sts:\n        v,do=val(rec,st,do); vals.append(v)\n    # columns: [id(null), word, value]\n    word=vals[1]; value=vals[2] if len(vals)>2 else None\n    rows.append({'word':word,'value':value})\n    print(rowid,word,repr(value))\njson.dump(rows,open('recover.json','w'))\nprint('wrote',len(rows))\n\"\necho '---'; cat /app/recover.json"
           },
@@ -472,7 +472,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport struct, json\ndata=open('trunc.db','rb').read()\ndef varint(b,off):\n    v=0\n    for i in range(9):\n        c=b[off+i]\n        if i==8: return (v<<8)|c, off+9\n        v=(v<<7)|(c&0x7f)\n        if not (c&0x80): return v, off+i+1\ndef val(rec,st,do):\n    if st==0: return None,do\n    if 1<=st<=4: return int.from_bytes(rec[do:do+st],'big',signed=True),do+st\n    if st==5: return int.from_bytes(rec[do:do+6],'big',signed=True),do+6\n    if st==6: return int.from_bytes(rec[do:do+8],'big',signed=True),do+8\n    if st==7: return struct.unpack('>d',rec[do:do+8])[0],do+8\n    if st==8: return 0,do\n    if st==9: return 1,do\n    if st>=12 and st%2==0:\n        l=(st-12)//2; return rec[do:do+l],do+l\n    if st>=13:\n        l=(st-13)//2; return rec[do:do+l].decode('utf-8','replace'),do+l\nn=struct.unpack('>H',data[3:5])[0]\nptrs=[struct.unpack('>H',data[8+2*i:10+2*i])[0] for i in range(n)]\nrows=[]\nfor p in ptrs:\n    off=p\n    plen,off=varint(data,off)\n    rowid,off=varint(data,off)\n    rec=data[off:off+plen]\n    hlen,ho=varint(rec,0)\n    sts=[]\n    while ho<hlen:\n        st,ho=varint(rec,ho); sts.append(st)\n    vals=[]; do=hlen\n    for st in sts:\n        v,do=val(rec,st,do); vals.append(v)\n    # columns: [id(null), word, value]\n    word=vals[1]; value=vals[2] if len(vals)>2 else None\n    rows.append({'word':word,'value':value})\n    print(rowid,word,repr(value))\njson.dump(rows,open('recover.json','w'))\nprint('wrote',len(rows))\n\"\necho '---'; cat /app/recover.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

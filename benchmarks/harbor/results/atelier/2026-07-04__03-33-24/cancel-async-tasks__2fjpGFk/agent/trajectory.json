@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vq8dbSfCW6z8JzNG4usoiz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -53,7 +53,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -114,7 +114,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AqAY1Ps1if7ki4tLdXfTG5",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -134,7 +134,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -195,7 +195,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WCyveF5TLJD3LFxHkbTHud",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 test_run.py",
             "cwd": "/app"
@@ -205,7 +205,7 @@
               "command": "python3 test_run.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -266,7 +266,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GvK7GcsBMGRm5jk6dT8Qdu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm test_run.py && ls",
             "cwd": "/app"
@@ -276,7 +276,7 @@
               "command": "rm test_run.py && ls",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -392,7 +392,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019B6TcMmN4eGmoYN1cdLK91",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport asyncio\nfrom run import run_tasks\n\n# 1) concurrency limit\nactive=peak=0; order=[]\ndef mk(i):\n    async def job():\n        global active,peak\n        active+=1; peak=max(peak,active)\n        await asyncio.sleep(0.03); order.append(i); active-=1\n    return job\nasyncio.run(run_tasks([mk(i) for i in range(10)],3))\nassert peak<=3 and sorted(order)==list(range(10)); print(\"concurrency ok peak\",peak)\n\n# 2) cleanup on cancel\ncleaned=[]\ndef mkc(i):\n    async def job():\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    return job\nasync def main():\n    o=asyncio.ensure_future(run_tasks([mkc(i) for i in range(5)],2))\n    await asyncio.sleep(0.05); o.cancel()\n    try: await o\n    except asyncio.CancelledError: pass\nasyncio.run(main())\nassert sorted(cleaned)==[0,1], cleaned; print(\"cleanup ok\",sorted(cleaned))\n\n# 3) exception propagation + cleanup\ncl=[]\ndef ok(i):\n    async def job():\n        try: await asyncio.sleep(0.03)\n        finally: cl.append(i)\n    return job\ndef bad():\n    async def job(): raise ValueError(\"boom\")\n    return job\ntry:\n    asyncio.run(run_tasks([bad()]+[ok(i) for i in range(3)],4)); assert False\nexcept ValueError as e: assert str(e)==\"boom\"\nassert sorted(cl)==[0,1,2], cl; print(\"exception ok\")\n\n# 4) empty + invalid arg\nasyncio.run(run_tasks([],3))\ntry:\n    asyncio.run(run_tasks([],0)); assert False\nexcept ValueError: pass\nprint(\"ALL OK\")\nPY",
             "cwd": "/app"
@@ -402,7 +402,7 @@
               "command": "python3 - <<'PY'\nimport asyncio\nfrom run import run_tasks\n\n# 1) concurrency limit\nactive=peak=0; order=[]\ndef mk(i):\n    async def job():\n        global active,peak\n        active+=1; peak=max(peak,active)\n        await asyncio.sleep(0.03); order.append(i); active-=1\n    return job\nasyncio.run(run_tasks([mk(i) for i in range(10)],3))\nassert peak<=3 and sorted(order)==list(range(10)); print(\"concurrency ok peak\",peak)\n\n# 2) cleanup on cancel\ncleaned=[]\ndef mkc(i):\n    async def job():\n        try: await asyncio.sleep(10)\n        finally: cleaned.append(i)\n    return job\nasync def main():\n    o=asyncio.ensure_future(run_tasks([mkc(i) for i in range(5)],2))\n    await asyncio.sleep(0.05); o.cancel()\n    try: await o\n    except asyncio.CancelledError: pass\nasyncio.run(main())\nassert sorted(cleaned)==[0,1], cleaned; print(\"cleanup ok\",sorted(cleaned))\n\n# 3) exception propagation + cleanup\ncl=[]\ndef ok(i):\n    async def job():\n        try: await asyncio.sleep(0.03)\n        finally: cl.append(i)\n    return job\ndef bad():\n    async def job(): raise ValueError(\"boom\")\n    return job\ntry:\n    asyncio.run(run_tasks([bad()]+[ok(i) for i in range(3)],4)); assert False\nexcept ValueError as e: assert str(e)==\"boom\"\nassert sorted(cl)==[0,1,2], cl; print(\"exception ok\")\n\n# 4) empty + invalid arg\nasyncio.run(run_tasks([],3))\ntry:\n    asyncio.run(run_tasks([],0)); assert False\nexcept ValueError: pass\nprint(\"ALL OK\")\nPY",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

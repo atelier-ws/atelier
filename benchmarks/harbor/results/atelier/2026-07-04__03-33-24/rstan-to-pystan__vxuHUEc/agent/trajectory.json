@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQdHYJCS8ojjFe6NW2kuZu",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/gp_rstan.R",
@@ -47,12 +47,12 @@
                 "/app/meta_public.json"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01NAH946gCHpV69pwUdWkxFY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -3 /app/train_X.csv; echo ---; head -3 /app/train_y.csv; echo ---; head -3 /app/test_X.csv; echo ---; wc -l /app/train_X.csv /app/train_y.csv /app/test_X.csv"
           },
@@ -60,7 +60,7 @@
             "raw_arguments": {
               "command": "head -3 /app/train_X.csv; echo ---; head -3 /app/train_y.csv; echo ---; head -3 /app/test_X.csv; echo ---; wc -l /app/train_X.csv /app/train_y.csv /app/test_X.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RosjjSgFDYc9go4uk9bB5q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import stan; print(stan.__version__)\" 2>&1 | head; pip show pystan 2>/dev/null | head -3"
           },
@@ -133,12 +133,12 @@
             "raw_arguments": {
               "command": "python3 -c \"import stan; print(stan.__version__)\" 2>&1 | head; pip show pystan 2>/dev/null | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01YCCPk14eS53obRmVV61Zdz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which uv pip python3; python3 --version"
           },
@@ -146,7 +146,7 @@
             "raw_arguments": {
               "command": "which uv pip python3; python3 --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -211,7 +211,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M9qeqUBC6AUPgUjhxYBSnN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages 'pystan==3.10.0' 2>&1 | tail -20",
             "timeout": 600
@@ -221,7 +221,7 @@
               "command": "pip install --break-system-packages 'pystan==3.10.0' 2>&1 | tail -20",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -282,7 +282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y9mFTAS9ejozhaN9QSBtDP",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -302,7 +302,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -363,7 +363,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BCVxa8ftSCZ5x2mGNyhBZe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
             "timeout": 1800
@@ -373,7 +373,7 @@
               "command": "cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
               "timeout": 1800
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -434,7 +434,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011AGCFCPZw361V1q9JU6ds6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq && apt-get install -y build-essential 2>&1 | tail -5",
             "timeout": 600
@@ -444,7 +444,7 @@
               "command": "apt-get update -qq && apt-get install -y build-essential 2>&1 | tail -5",
               "timeout": 600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -505,7 +505,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fy4fFd3D1QsV6KJssHhBhp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which gcc g++; cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
             "timeout": 2400
@@ -515,7 +515,7 @@
               "command": "which gcc g++; cd /app && python3 pystan_analysis.py 2>&1 | tail -40",
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -576,7 +576,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Dm2RSVNk6zJTMDdfjx6TTu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"alpha:\"; cat alpha_est.csv; echo \"sigma:\"; cat sigma_est.csv; echo \"rho:\"; cat rho_est.csv; echo \"beta:\"; cat beta_est.csv"
           },
@@ -584,7 +584,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"alpha:\"; cat alpha_est.csv; echo \"sigma:\"; cat sigma_est.csv; echo \"rho:\"; cat rho_est.csv; echo \"beta:\"; cat beta_est.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -700,7 +700,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012hKoKL6gH6Q8bWPY1gKAy8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls; echo ---; find . -name '*test*' -o -name '*grade*' 2>/dev/null | grep -v dist-packages | head"
           },
@@ -708,7 +708,7 @@
             "raw_arguments": {
               "command": "cd /app && ls; echo ---; find . -name '*test*' -o -name '*grade*' 2>/dev/null | grep -v dist-packages | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -769,7 +769,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TrtyvraouUgEtjXBWQRZQP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport numpy as np\nfor f,n in [('alpha_est.csv',1),('sigma_est.csv',1),('rho_est.csv',3),('beta_est.csv',3)]:\n    a=np.atleast_1d(np.loadtxt(f))\n    assert a.shape==(n,), (f,a.shape)\n    assert np.all(np.isfinite(a)), (f,a)\n    print(f, a.tolist())\nprint('OK: all 4 files numeric, finite, correct shape')\n\""
           },
@@ -777,7 +777,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport numpy as np\nfor f,n in [('alpha_est.csv',1),('sigma_est.csv',1),('rho_est.csv',3),('beta_est.csv',3)]:\n    a=np.atleast_1d(np.loadtxt(f))\n    assert a.shape==(n,), (f,a.shape)\n    assert np.all(np.isfinite(a)), (f,a)\n    print(f, a.tolist())\nprint('OK: all 4 files numeric, finite, correct shape')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

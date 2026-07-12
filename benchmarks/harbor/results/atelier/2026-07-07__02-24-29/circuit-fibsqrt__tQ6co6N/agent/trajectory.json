@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EPzjw7KdAC1rALH2LDnFAA",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sim.c",
@@ -47,7 +47,7 @@
                 "/app/gates.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -108,7 +108,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CdGhFELsEhkb4FEGXgSFbW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app; head -5 /app/gates.txt; which gcc cc 2>/dev/null; ls -la /app/sim 2>/dev/null"
           },
@@ -116,7 +116,7 @@
             "raw_arguments": {
               "command": "ls /app; head -5 /app/gates.txt; which gcc cc 2>/dev/null; ls -la /app/sim 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -177,7 +177,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EoiYmNU1eLwnMhnDmSKtnf",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -197,7 +197,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -258,7 +258,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014sw8HDmivGtVmX1h9zh63r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 gen.py --check"
           },
@@ -266,7 +266,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 gen.py --check"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -327,7 +327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X6qGjLHtkDcRgvmN8p5tFL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport gen, math\n# inspect k combinational for N=208 using functional eval of comb only\ndef evalcomb(N):\n    inbits=[(N>>i)&1 for i in range(32)]\n    reg={int(h):0 for h in gen.a_regs+gen.b_regs+gen.c_regs+[gen.f_reg]}\n    val={}\n    for h in gen.comb_order:\n        nd=gen.nodes[h]; k=nd['kind']\n        if k=='not':\n            (x,)=nd['args']; val[h]=1-gen.getv(x,val,reg,inbits)\n        else:\n            x,y=nd['args']; a=gen.getv(x,val,reg,inbits); b=gen.getv(y,val,reg,inbits)\n            val[h]= a&b if k=='and' else (a|b if k=='or' else a^b)\n    kk=0\n    for i,h in enumerate(gen.k):\n        kk|=(gen.getv(h,val,reg,inbits))<<i\n    return kk\nfor N in [0,1,4,208,20000,25]:\n    print(N, math.isqrt(N), evalcomb(N))\n\""
           },
@@ -335,7 +335,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport gen, math\n# inspect k combinational for N=208 using functional eval of comb only\ndef evalcomb(N):\n    inbits=[(N>>i)&1 for i in range(32)]\n    reg={int(h):0 for h in gen.a_regs+gen.b_regs+gen.c_regs+[gen.f_reg]}\n    val={}\n    for h in gen.comb_order:\n        nd=gen.nodes[h]; k=nd['kind']\n        if k=='not':\n            (x,)=nd['args']; val[h]=1-gen.getv(x,val,reg,inbits)\n        else:\n            x,y=nd['args']; a=gen.getv(x,val,reg,inbits); b=gen.getv(y,val,reg,inbits)\n            val[h]= a&b if k=='and' else (a|b if k=='or' else a^b)\n    kk=0\n    for i,h in enumerate(gen.k):\n        kk|=(gen.getv(h,val,reg,inbits))<<i\n    return kk\nfor N in [0,1,4,208,20000,25]:\n    print(N, math.isqrt(N), evalcomb(N))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -396,7 +396,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015dWj9AKg73T7KhcgKgbQG1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport gen, math\nprint('len k', len(gen.k), 'CW', gen.CW)\nprint('k entries', [ (int(h) if isinstance(h,gen.H) else h) for h in gen.k])\n\" 2>/dev/null"
           },
@@ -404,7 +404,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport gen, math\nprint('len k', len(gen.k), 'CW', gen.CW)\nprint('k entries', [ (int(h) if isinstance(h,gen.H) else h) for h in gen.k])\n\" 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -465,7 +465,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01J8DfhDfZviUwczmyNGeQUJ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -485,7 +485,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -546,7 +546,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BbD3xF9RuHEeS1xDi2Awup",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 gen.py --check 2>/dev/null"
           },
@@ -554,7 +554,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 gen.py --check 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -615,7 +615,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0131w1js52TeDyYJhpWG4mNL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o sim sim.c 2>&1 | head; echo \"---built---\"; for N in 0 1 4 208 20000 15 25 1000000 4294836225 4294967295; do printf \"%s -> %s\\n\" \"$N\" \"$(./sim $N)\"; done"
           },
@@ -623,7 +623,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -O2 -o sim sim.c 2>&1 | head; echo \"---built---\"; for N in 0 1 4 208 20000 15 25 1000000 4294836225 4294967295; do printf \"%s -> %s\\n\" \"$N\" \"$(./sim $N)\"; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -684,7 +684,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014UpNSAukStKWmptLjnzUgh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport random,subprocess,math\ndef fib(k):\n    a,b=0,1\n    for _ in range(k): a,b=b,(a+b)&0xFFFFFFFF\n    return a\nrandom.seed(1)\nNs=[random.randint(0,2**32-1) for _ in range(30)]+[2,3,5,9,10,26,4294836224,4294836226]\nbad=0\nfor N in Ns:\n    got=int(subprocess.check_output(['./sim',str(N)]))\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if got!=exp:\n        bad+=1; print('FAIL',N,got,exp)\nprint('done, fails=',bad)\n\""
           },
@@ -692,7 +692,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport random,subprocess,math\ndef fib(k):\n    a,b=0,1\n    for _ in range(k): a,b=b,(a+b)&0xFFFFFFFF\n    return a\nrandom.seed(1)\nNs=[random.randint(0,2**32-1) for _ in range(30)]+[2,3,5,9,10,26,4294836224,4294836226]\nbad=0\nfor N in Ns:\n    got=int(subprocess.check_output(['./sim',str(N)]))\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if got!=exp:\n        bad+=1; print('FAIL',N,got,exp)\nprint('done, fails=',bad)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -753,7 +753,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FYM2cWevjVB1fstq7Y5oTG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f gen.py && wc -l gates.txt && ls"
           },
@@ -761,7 +761,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f gen.py && wc -l gates.txt && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -822,7 +822,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013WDGnoikeDrRjJLniiy2ZY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -rf __pycache__ && ls"
           },
@@ -830,7 +830,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -rf __pycache__ && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -891,7 +891,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D24xHMGjy65EF6qMUy1c9x",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -r __pycache__; ls"
           },
@@ -899,7 +899,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -r __pycache__; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018EfRXEzMFCfa8PGMYx9kd9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && test -f gen.py && echo \"gen.py exists\" || echo \"gen.py absent (scratch removed)\"; ls; echo \"--- verify gates.txt via real event-sim ---\"; python3 -c \"\nimport subprocess,math\ndef fib(k):\n    a,b=0,1\n    for _ in range(k): a,b=b,(a+b)&0xFFFFFFFF\n    return a\nimport random; random.seed(7)\nNs=[0,1,2,3,4,208,20000,25,1000000,4294836225,4294967295]+[random.randint(0,2**32-1) for _ in range(25)]\nbad=0\nfor N in Ns:\n    got=int(subprocess.check_output(['./sim',str(N)]))\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if got!=exp: bad+=1; print('FAIL',N,got,exp)\nprint('checks',len(Ns),'fails',bad)\n\""
           },
@@ -1023,7 +1023,7 @@
             "raw_arguments": {
               "command": "cd /app && test -f gen.py && echo \"gen.py exists\" || echo \"gen.py absent (scratch removed)\"; ls; echo \"--- verify gates.txt via real event-sim ---\"; python3 -c \"\nimport subprocess,math\ndef fib(k):\n    a,b=0,1\n    for _ in range(k): a,b=b,(a+b)&0xFFFFFFFF\n    return a\nimport random; random.seed(7)\nNs=[0,1,2,3,4,208,20000,25,1000000,4294836225,4294967295]+[random.randint(0,2**32-1) for _ in range(25)]\nbad=0\nfor N in Ns:\n    got=int(subprocess.check_output(['./sim',str(N)]))\n    exp=fib(math.isqrt(N))&0xFFFFFFFF\n    if got!=exp: bad+=1; print('FAIL',N,got,exp)\nprint('checks',len(Ns),'fails',bad)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

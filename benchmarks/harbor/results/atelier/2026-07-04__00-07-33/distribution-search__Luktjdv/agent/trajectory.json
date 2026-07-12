@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QhXFbsLZfeoaRiQm53xHY9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import numpy, scipy; print(numpy.__version__, scipy.__version__)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import numpy, scipy; print(numpy.__version__, scipy.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YG1mJNmyswBE93SCtvZgJQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/solve.py",
             "new": "import numpy as np\nfrom scipy.optimize import fsolve\n\nN = 150000\nlogN = np.log(N)\ntarget = 10.0\n\n# Distribution model (3 probability levels):\n#   k atoms at prob a   (k integer, provides most of the mass / low entropy)\n#   1 atom  at prob c   (continuous knob to fine-tune entropy between integer k)\n#   T atoms at prob t   (huge tail of tiny probs -> drives backward KL up)\n# Unknowns solved in log-space for good scaling: la=log(a), lc=log(c), lt=log(t).\n\ndef build_solver(k):\n    T = N - k - 1\n\n    def eqs(x):\n        la, lc, lt = x\n        a, c, t = np.exp(la), np.exp(lc), np.exp(lt)\n        norm = k * a + c + T * t - 1.0\n        S_plogp = k * a * la + c * lc + T * t * lt          # sum p log p\n        S_logp = k * la + lc + T * lt                        # sum log p\n        KLf = S_plogp + logN                                 # KL(P||U)\n        KLb = -logN - S_logp / N                             # KL(U||P)\n        return [norm, KLf - target, KLb - target]\n\n    return eqs, T\n\n\ndef kl_values(dist):\n    U = 1.0 / N\n    klf = np.sum(dist * np.log(dist / U))\n    klb = np.sum(U * np.log(U / dist))\n    return klf, klb\n\n\nbest = None\nfor k in range(2, 15):\n    eqs, T = build_solver(k)\n    a0 = 0.9 / k\n    guess = [np.log(a0), np.log(0.05), -21.9]\n    sol, info, ier, msg = fsolve(eqs, guess, full_output=True)\n    if ier != 1:\n        continue\n    la, lc, lt = sol\n    a, c, t = np.exp(la), np.exp(lc), np.exp(lt)\n    if not (a > 0 and c > 0 and t > 0):\n        continue\n    dist = np.empty(N, dtype=np.float64)\n    dist[:k] = a\n    dist[k] = c\n    dist[k + 1:] = t\n    dist /= dist.sum()  # enforce exact normalization\n    klf, klb = kl_values(dist)\n    err = max(abs(klf - target), abs(klb - target))\n    if best is None or err < best[0]:\n        best = (err, k, dist, klf, klb)\n\nerr, k, dist, klf, klb = best\nprint(f\"k={k} KLf={klf:.6f} KLb={klb:.6f} maxerr={err:.2e} sum={dist.sum():.15f} min={dist.min():.3e}\")\nassert abs(klf - target) <= 1e-3 and abs(klb - target) <= 1e-3\nassert np.all(dist > 0)\nnp.save(\"/app/dist.npy\", dist)\nprint(\"saved /app/dist.npy\")\n"
@@ -112,7 +112,7 @@
               "path": "/app/solve.py",
               "new": "import numpy as np\nfrom scipy.optimize import fsolve\n\nN = 150000\nlogN = np.log(N)\ntarget = 10.0\n\n# Distribution model (3 probability levels):\n#   k atoms at prob a   (k integer, provides most of the mass / low entropy)\n#   1 atom  at prob c   (continuous knob to fine-tune entropy between integer k)\n#   T atoms at prob t   (huge tail of tiny probs -> drives backward KL up)\n# Unknowns solved in log-space for good scaling: la=log(a), lc=log(c), lt=log(t).\n\ndef build_solver(k):\n    T = N - k - 1\n\n    def eqs(x):\n        la, lc, lt = x\n        a, c, t = np.exp(la), np.exp(lc), np.exp(lt)\n        norm = k * a + c + T * t - 1.0\n        S_plogp = k * a * la + c * lc + T * t * lt          # sum p log p\n        S_logp = k * la + lc + T * lt                        # sum log p\n        KLf = S_plogp + logN                                 # KL(P||U)\n        KLb = -logN - S_logp / N                             # KL(U||P)\n        return [norm, KLf - target, KLb - target]\n\n    return eqs, T\n\n\ndef kl_values(dist):\n    U = 1.0 / N\n    klf = np.sum(dist * np.log(dist / U))\n    klb = np.sum(U * np.log(U / dist))\n    return klf, klb\n\n\nbest = None\nfor k in range(2, 15):\n    eqs, T = build_solver(k)\n    a0 = 0.9 / k\n    guess = [np.log(a0), np.log(0.05), -21.9]\n    sol, info, ier, msg = fsolve(eqs, guess, full_output=True)\n    if ier != 1:\n        continue\n    la, lc, lt = sol\n    a, c, t = np.exp(la), np.exp(lc), np.exp(lt)\n    if not (a > 0 and c > 0 and t > 0):\n        continue\n    dist = np.empty(N, dtype=np.float64)\n    dist[:k] = a\n    dist[k] = c\n    dist[k + 1:] = t\n    dist /= dist.sum()  # enforce exact normalization\n    klf, klb = kl_values(dist)\n    err = max(abs(klf - target), abs(klb - target))\n    if best is None or err < best[0]:\n        best = (err, k, dist, klf, klb)\n\nerr, k, dist, klf, klb = best\nprint(f\"k={k} KLf={klf:.6f} KLb={klb:.6f} maxerr={err:.2e} sum={dist.sum():.15f} min={dist.min():.3e}\")\nassert abs(klf - target) <= 1e-3 and abs(klb - target) <= 1e-3\nassert np.all(dist > 0)\nnp.save(\"/app/dist.npy\", dist)\nprint(\"saved /app/dist.npy\")\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -173,7 +173,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AAm8LVCxkKBWJ9fttdhKud",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 /app/solve.py",
             "cwd": "/app"
@@ -183,7 +183,7 @@
               "command": "python3 /app/solve.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013MYHGw7pCd5EXQoW71MjQL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=len(d); U=1/N\nklf=np.sum(d*np.log(d/U)); klb=np.sum(U*np.log(U/d))\nprint('N',N,'sum',d.sum(),'min',d.min(),'all>0',bool((d>0).all()))\nprint('KLf',klf,'KLb',klb)\n\""
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=len(d); U=1/N\nklf=np.sum(d*np.log(d/U)); klb=np.sum(U*np.log(U/d))\nprint('N',N,'sum',d.sum(),'min',d.min(),'all>0',bool((d>0).all()))\nprint('KLf',klf,'KLb',klb)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -368,7 +368,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QUn9VT78yK9wuDshgqRQQF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; find /app -name '*test*' -o -name 'conftest*' 2>/dev/null | head"
           },
@@ -376,7 +376,7 @@
             "raw_arguments": {
               "command": "ls -la /app; find /app -name '*test*' -o -name 'conftest*' 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -437,7 +437,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019nxqfJDkLtu3dhwLvx2ddN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app"
           },
@@ -445,7 +445,7 @@
             "raw_arguments": {
               "command": "ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -453,7 +453,7 @@
         "results": [
           {
             "source_call_id": "toolu_019nxqfJDkLtu3dhwLvx2ddN",
-            "content": "{\"type\": \"text\", \"text\": \"total 1192\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:49 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:46 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:47 .atelier\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:47 .git\\n-rw-r--r-- 1 root root 1200128 Jul  3 23:49 dist.npy\\n-rw------- 1 root root    2074 Jul  3 23:49 solve.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 1192\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:49 .\\ndrwxr-xr-x 1 root root    4096 Jul  3 23:46 ..\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:47 .lemoncrow\\ndrwxr-xr-x 3 root root    4096 Jul  3 23:47 .git\\n-rw-r--r-- 1 root root 1200128 Jul  3 23:49 dist.npy\\n-rw------- 1 root root    2074 Jul  3 23:49 solve.py\"}"
           }
         ]
       },
@@ -506,7 +506,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DfFZ8gfehUttwypiaRfi12",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=len(d); U=1.0/N\nklf=np.sum(d*np.log(d/U)); klb=np.sum(U*np.log(U/d))\nchecks = {\n 'vocab==150000': N==150000,\n 'all>0': bool((d>0).all()),\n 'sums_to_1': abs(d.sum()-1.0)<1e-9,\n 'KLf within 0.001': abs(klf-10.0)<=1e-3,\n 'KLb within 0.001': abs(klb-10.0)<=1e-3,\n}\nprint('KLf=%.9f KLb=%.9f'%(klf,klb))\nfor k,v in checks.items(): print(('PASS' if v else 'FAIL'), k)\nassert all(checks.values())\nprint('ALL CHECKS PASS')\n\""
           },
@@ -514,7 +514,7 @@
             "raw_arguments": {
               "command": "python3 -c \"\nimport numpy as np\nd=np.load('/app/dist.npy')\nN=len(d); U=1.0/N\nklf=np.sum(d*np.log(d/U)); klb=np.sum(U*np.log(U/d))\nchecks = {\n 'vocab==150000': N==150000,\n 'all>0': bool((d>0).all()),\n 'sums_to_1': abs(d.sum()-1.0)<1e-9,\n 'KLf within 0.001': abs(klf-10.0)<=1e-3,\n 'KLb within 0.001': abs(klb-10.0)<=1e-3,\n}\nprint('KLf=%.9f KLb=%.9f'%(klf,klb))\nfor k,v in checks.items(): print(('PASS' if v else 'FAIL'), k)\nassert all(checks.values())\nprint('ALL CHECKS PASS')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

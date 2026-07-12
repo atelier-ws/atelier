@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HxL6HfrGvvg3ZxoH2iE1Gy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/documents/ && echo \"---\" && ls /app/documents/ | wc -l"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/documents/ && echo \"---\" && ls /app/documents/ | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01TMu3nDtNWdjZ9ZWQGgc25Z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import PIL, pytesseract, fitz\" 2>&1; which tesseract pdftotext pdfinfo 2>&1"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import PIL, pytesseract, fitz\" 2>&1; which tesseract pdftotext pdfinfo 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xdt4FdW7Rri1JjRUEum7cH",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y tesseract-ocr poppler-utils 2>&1 | tail -3; echo \"===\"; uv pip install --system --break-system-packages pillow pytesseract pdfplumber pymupdf 2>&1 | tail -5"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "apt-get install -y tesseract-ocr poppler-utils 2>&1 | tail -3; echo \"===\"; uv pip install --system --break-system-packages pillow pytesseract pdfplumber pymupdf 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018MsA9ja3otZ8ZFMar5KZee",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; for f in *.pdf; do echo \"===== $f =====\"; pdftotext -layout \"$f\" - 2>/dev/null; done"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; for f in *.pdf; do echo \"===== $f =====\"; pdftotext -layout \"$f\" - 2>/dev/null; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -204,7 +204,7 @@
         "results": [
           {
             "source_call_id": "toolu_018MsA9ja3otZ8ZFMar5KZee",
-            "content": "{\"type\": \"text\", \"text\": \"===== GFAlpKoFg81H.pdf =====\\nStock Report for 2016-08\\n\\n\\nCategory : Produce\\n\\n\\nid category : 7\\n\\n\\nProduct                    Units Sold   Units in Stock   Unit Price\\n\\nRössle Sauerkraut          20           26               45.6\\nManjimup Dried Apples      2            20               53\\n\\n===== T0r6Ou8zvqTA.pdf =====\\n                                             Invoice\\nOrder ID: 10267\\n\\nCustomer ID: FRANK\\n\\nOrder Date: 2016-07-29\\n\\n\\n\\nCustomer Details:\\n\\nContact Name:            Peter Franken\\n\\nAddress:                 Berliner Platz 43\\n\\nCity:                    München\\n\\nPostal Code:             80805\\n\\nCountry:                 Germany\\n\\nPhone:                   089-0877310\\n\\nFax:                     089-0877451\\n\\n\\n\\nProduct Details:\\nProduct ID          Product Name                       Quantity     Unit Price\\n\\n40                  Boston Crab Meat                   50           14.7\\n\\n59                  Raclette Courdavault               70           44.0\\n\\n... (26 lines omitted) ...\\n\\nPostal Code:             T2F 8M4\\n\\nCountry:                 Canada\\n\\nPhone:                   (604) 555-4729\\n\\nFax:                     (604) 555-3745\\n\\n\\n\\nProduct Details:\\nProduct ID          Product Name                        Quantity     Unit Price\\n\\n25                  NuNuCa Nuß-Nougat-Creme             60           11.2\\n\\n42                  Singaporean Hokkien Fried Mee       20           11.2\\n\\n                                                        TotalPrice   896.0\\n\\n\\n\\n\\n                                               Page 1\\n\\n===== dvkRkFVFhHga.pdf =====\\n                             Purchase Orders\\nOrder ID      Order Date              Customer Name\\n\\n10248         2016-07-04              Paul Henriot\\n\\n\\n\\n\\n                                    Products\\n\\n\\n\\nProduct ID:       Product:                            Quantity:   Unit Price:\\n\\n11                Queso Cabrales                      12          14\\n\\n42                Singaporean Hokkien Fried Mee       10          9.8\\n\\n72                Mozzarella di Giovanni              5           34.8\\n\\n\\n\\n\\n                                      Page 1\\n\\n===== dx0AWchV01ZJ.pdf =====\\nOrder ID: 10248\\n\\nShipping Details:\\nShip Name: Vins et alcools Chevalier\\nShip Address: 59 rue de l-Abbaye\\nShip City: Reims\\nShip Region: Western Europe\\nShip Postal Code: 51100\\nShip Country: France\\n\\n\\n\\nCustomer Details:\\nCustomer ID: VINET\\nCustomer Name: Vins et alcools Chevalier\\n\\n\\n\\nEmployee Details:\\nEmployee Name: Steven Buchanan\\n\\n\\n\\nShipper Details:\\nShipper ID: 3\\nShipper Name: Federal Shipping\\n\\n\\n\\nOrder Details:\\nOrder Date: 2016-07-04\\nShipped Date: 2016-07-16\\n\\nProducts:\\n--------------------------------------------------------------------------------------------------\\nProduct: Queso Cabrales\\nQuantity: 12\\nUnit Price: 14.0\\nTotal: 168.0\\n--------------------------------------------------------------------------------------------------\\nProduct: Singaporean Hokkien Fried Mee\\nQuantity: 10\\nUnit Price: 9.8\\nTotal: 98.0\\n--------------------------------------------------------------------------------------------------\\nProduct: Mozzarella di Giovanni\\nQuantity: 5\\n\\nUnit Price: 34.8\\nTotal: 174.0\\n\\nTotal Price:\\nTotal Price: 440.0\\n\\n===== wIQEB5nR79b2.pdf =====\\n                                               Invoice\\nOrder ID: 10248\\n\\nCustomer ID: VINET\\n\\nOrder Date: 2016-07-04\\n\\n\\n\\nCustomer Details:\\n\\nContact Name:             Paul Henriot\\n\\nAddress:                  59 rue de l'Abbaye\\n\\nCity:                     Reims\\n\\nPostal Code:              51100\\n\\nCountry:                  France\\n\\nPhone:                    26.47.15.10\\n\\nFax:                      26.47.15.11\\n\\n\\n\\nProduct Details:\\nProduct ID           Product Name                        Quantity     Unit Price\\n\\n11                   Queso Cabrales                      12           14.0\\n\\n42                   Singaporean Hokkien Fried Mee       10           9.8\\n\\n72                   Mozzarella di Giovanni              5            34.8\\n\\n                                                         TotalPrice   440.0\\n\\n\\n\\n\\n                                                Page 1\\n\\n\\n[output truncated: 26 lines omitted; full output (4510B) spilled to /tmp/atelier-spill/original-bash-1783120931411-44823b28.txt; read /tmp/atelier-spill/original-bash-1783120931411-44823b28.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"===== GFAlpKoFg81H.pdf =====\\nStock Report for 2016-08\\n\\n\\nCategory : Produce\\n\\n\\nid category : 7\\n\\n\\nProduct                    Units Sold   Units in Stock   Unit Price\\n\\nRössle Sauerkraut          20           26               45.6\\nManjimup Dried Apples      2            20               53\\n\\n===== T0r6Ou8zvqTA.pdf =====\\n                                             Invoice\\nOrder ID: 10267\\n\\nCustomer ID: FRANK\\n\\nOrder Date: 2016-07-29\\n\\n\\n\\nCustomer Details:\\n\\nContact Name:            Peter Franken\\n\\nAddress:                 Berliner Platz 43\\n\\nCity:                    München\\n\\nPostal Code:             80805\\n\\nCountry:                 Germany\\n\\nPhone:                   089-0877310\\n\\nFax:                     089-0877451\\n\\n\\n\\nProduct Details:\\nProduct ID          Product Name                       Quantity     Unit Price\\n\\n40                  Boston Crab Meat                   50           14.7\\n\\n59                  Raclette Courdavault               70           44.0\\n\\n... (26 lines omitted) ...\\n\\nPostal Code:             T2F 8M4\\n\\nCountry:                 Canada\\n\\nPhone:                   (604) 555-4729\\n\\nFax:                     (604) 555-3745\\n\\n\\n\\nProduct Details:\\nProduct ID          Product Name                        Quantity     Unit Price\\n\\n25                  NuNuCa Nuß-Nougat-Creme             60           11.2\\n\\n42                  Singaporean Hokkien Fried Mee       20           11.2\\n\\n                                                        TotalPrice   896.0\\n\\n\\n\\n\\n                                               Page 1\\n\\n===== dvkRkFVFhHga.pdf =====\\n                             Purchase Orders\\nOrder ID      Order Date              Customer Name\\n\\n10248         2016-07-04              Paul Henriot\\n\\n\\n\\n\\n                                    Products\\n\\n\\n\\nProduct ID:       Product:                            Quantity:   Unit Price:\\n\\n11                Queso Cabrales                      12          14\\n\\n42                Singaporean Hokkien Fried Mee       10          9.8\\n\\n72                Mozzarella di Giovanni              5           34.8\\n\\n\\n\\n\\n                                      Page 1\\n\\n===== dx0AWchV01ZJ.pdf =====\\nOrder ID: 10248\\n\\nShipping Details:\\nShip Name: Vins et alcools Chevalier\\nShip Address: 59 rue de l-Abbaye\\nShip City: Reims\\nShip Region: Western Europe\\nShip Postal Code: 51100\\nShip Country: France\\n\\n\\n\\nCustomer Details:\\nCustomer ID: VINET\\nCustomer Name: Vins et alcools Chevalier\\n\\n\\n\\nEmployee Details:\\nEmployee Name: Steven Buchanan\\n\\n\\n\\nShipper Details:\\nShipper ID: 3\\nShipper Name: Federal Shipping\\n\\n\\n\\nOrder Details:\\nOrder Date: 2016-07-04\\nShipped Date: 2016-07-16\\n\\nProducts:\\n--------------------------------------------------------------------------------------------------\\nProduct: Queso Cabrales\\nQuantity: 12\\nUnit Price: 14.0\\nTotal: 168.0\\n--------------------------------------------------------------------------------------------------\\nProduct: Singaporean Hokkien Fried Mee\\nQuantity: 10\\nUnit Price: 9.8\\nTotal: 98.0\\n--------------------------------------------------------------------------------------------------\\nProduct: Mozzarella di Giovanni\\nQuantity: 5\\n\\nUnit Price: 34.8\\nTotal: 174.0\\n\\nTotal Price:\\nTotal Price: 440.0\\n\\n===== wIQEB5nR79b2.pdf =====\\n                                               Invoice\\nOrder ID: 10248\\n\\nCustomer ID: VINET\\n\\nOrder Date: 2016-07-04\\n\\n\\n\\nCustomer Details:\\n\\nContact Name:             Paul Henriot\\n\\nAddress:                  59 rue de l'Abbaye\\n\\nCity:                     Reims\\n\\nPostal Code:              51100\\n\\nCountry:                  France\\n\\nPhone:                    26.47.15.10\\n\\nFax:                      26.47.15.11\\n\\n\\n\\nProduct Details:\\nProduct ID           Product Name                        Quantity     Unit Price\\n\\n11                   Queso Cabrales                      12           14.0\\n\\n42                   Singaporean Hokkien Fried Mee       10           9.8\\n\\n72                   Mozzarella di Giovanni              5            34.8\\n\\n                                                         TotalPrice   440.0\\n\\n\\n\\n\\n                                                Page 1\\n\\n\\n[output truncated: 26 lines omitted; full output (4510B) spilled to /tmp/lemoncrow-spill/original-bash-1783120931411-44823b28.txt; read /tmp/lemoncrow-spill/original-bash-1783120931411-44823b28.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ADjfc3XKvXgx2tDXYkee56",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; pdftotext -layout T0r6Ou8zvqTA.pdf - 2>/dev/null"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; pdftotext -layout T0r6Ou8zvqTA.pdf - 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BxmvA8iUyxtXvv6zehvP9Y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; for f in *.jpg; do echo \"===== $f =====\"; tesseract \"$f\" - 2>/dev/null; echo; done 2>&1"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; for f in *.jpg; do echo \"===== $f =====\"; tesseract \"$f\" - 2>/dev/null; echo; done 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -342,7 +342,7 @@
         "results": [
           {
             "source_call_id": "toolu_01BxmvA8iUyxtXvv6zehvP9Y",
-            "content": "{\"type\": \"text\", \"text\": \"===== 2lgKzDuI4E4g.jpg =====\\nInvoice\\n\\nInvoice number 976987\\nDate of issue Oct. 3, 2023\\nDate due Nov. 30, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\n\\nBill to\\nCMCOM\\n$4382 USD due Nov. 30, 2023\\nPay online\\nDescription Quantity unit_price Amount\\nGreen Belting Teflon 100-10S\\nng 10 $35 $350\\nGreen Belting Teflon 100-10S\\nD 15050 FI FastC\\nevcon exane FastCure , $40 $40\\nDevcon 15050 Flexane FastCure\\n3M #74 Scrubbing S 20/cs\\ncru ing ponge 3 $40 $320\\n3M #74 Scrubbing Sponge 20/cs\\n3M #468MP Transfer Tape 1 1/2\\\"\\nP 5 $16 $80\\n3M #468MP Transfer Tape 1 1/2\\\"\\n3M PPS MIX RATIO INSERT\\n10 $36 $360\\n3M PPS MIX RATIO INSERT\\nLoctite 5600 Sil. Res. Black\\noc | e | es. Blac 8 $764 $6112\\nLoctite 5600 Sil. Res. Black\\n3M SJ3519FR Scotchmate Fast HK\\ncotchmate Fas , $107 $107\\n3M SJ3519FR Scotchmate Fast HK\\nSubTotal: $6558\\nTotal: $6558\\n\\nAmount due: $4382 USD\\n\\n===== 6NVuAIhTV4KB.jpg =====\\nWilliam H. Gmeiner\\n\\nAssistant Professor\\n\\nEppley Institute for Research in Cancer and Allied Diseases\\nUniversity of Nebraska Medical Center, Omaha, NE 68198-\\n(402) 559-4257 (phone)\\n\\n(402) 559-4651 (fax)\\n... (513 lines omitted) ...\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n===== vvK89XK847m3.jpg =====\\nInvoice no: 51109338\\n\\nDate of issue: 04/13/2013\\n\\nSeller: Client:\\n\\nAndrews, Kirby and Valdez Becker Ltd\\n\\n58861 Gonzalez Prairie 8012 Stewart Summit Apt. 455\\nLake Daniellefurt, IN 57228 North Douglas, AZ 95355\\n\\nTax Id: 945-82-2137 Tax Id: 942-80-0517\\n\\nIBAN: GB75MCRL06841367619257\\n\\nITEMS\\nNo. Description Qty UM Net price Net worth VAT [%] Gross\\nworth\\ntks CLEARANCE! Fast Dell Desktop 3,00 each 209,00 627,00 10% 689,70\\nComputer PC DUAL CORE\\nWINDOWS 10 4/8/16GB RAM\\n2. HP T520 Thin Client Computer 5,00 each 37,75 188,75 10% 207,63\\nAMD GX-212JC 1.2GHz 4GB RAM\\nTESTED !!READ BELOW!!\\n3: gaming pc desktop computer 1,00 each 400,00 400,00 10% 440,00\\n4. 12-Core Gaming Computer 3,00 each 464,89 1 394,67 10% 1 534,14\\nDesktop PC Tower Affordable\\nGAMING PC 8GB AMD Vega RGB\\nDe Custom Build Dell Optiplex 9020 5,00 each 221,99 1 109,95 10% 1 220,95\\nMT i5-4570 3.20GHz Desktop\\nComputer PC\\n6. Dell Optiplex 990 MT Computer 4,00 each 269,95 1 079,80 10% 1 187,78\\nPC Quad Core i7 3.4GHz 16GB\\n2TB HD Windows 10 Pro\\nae Dell Core 2 Duo Desktop 5,00 each 168,00 840,00 10% 924,00\\nComputer | Windows XP Pro |\\n4GB | 500GB\\nSUMMARY\\nVAT [%] Net worth VAT Gross worth\\n10% 5 640,17 564,02 6 204,19\\n\\nTotal $5 640,17 $ 564,02 $ 6 204,19\\n\\n===== w0i40MJP2Dzm.jpg =====\\nInvoice no: 19471831\\n\\nDate of issue:\\n\\nSeller:\\n\\nPalmer Ltd\\n9790 Bauer Hills Apt. 146\\nSouth Patriciaton, SD 32497\\n\\nTax Id: 924-71-1106\\nIBAN: GBO5YUTG50853913677557\\n\\nITEMS\\n\\nNo. Description\\n\\nL 15\\\"x15\\\" White Decorative\\nCoffee Table Top Lapis Lazuli\\nMarquetery Patio Décor\\n\\n2. 4'x2' Marble Dining Table Top\\nPietra Dura Birds Inlay Art\\nFurniture Decors B444\\n\\n3: 60 Inches Marble Dinning Table\\n\\nTop Hand Inlaid Garden Table\\nwith Gemstones\\n\\nSUMMARY\\n\\nTotal\\n\\n04/09/2014\\n\\nQty uM\\n3,00 each\\n5,00 each\\n5,00 each\\n\\nVAT [%]\\n\\n10%\\n\\nClient:\\n\\nNet price\\n\\n645,77\\n\\n1 840,10\\n\\n5 908,00\\n\\nNet worth\\n40 677,81\\n\\n$ 40 677,81\\n\\nRios, Oneill and Rowe\\n3571 Tina Trafficway\\nBuckleyland, LA 97688\\n\\nTax Id: 922-72-5979\\n\\nNet worth VAT [%]\\n\\n1,937,331; 10%\\n9 200,50 10%\\n29 540,00 10%\\n\\nVAT\\n\\n4 067,78\\n\\n$ 4 067,78\\n\\nGross\\nworth\\n\\n2 131,04\\n\\n10 120,55\\n\\n32 494,00\\n\\nGross worth\\n44 745,59\\n\\n$ 44 745,59\\n\\n\\n[output truncated: 513 lines omitted; full output (10533B) spilled to /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt; read /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"===== 2lgKzDuI4E4g.jpg =====\\nInvoice\\n\\nInvoice number 976987\\nDate of issue Oct. 3, 2023\\nDate due Nov. 30, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\n\\nBill to\\nCMCOM\\n$4382 USD due Nov. 30, 2023\\nPay online\\nDescription Quantity unit_price Amount\\nGreen Belting Teflon 100-10S\\nng 10 $35 $350\\nGreen Belting Teflon 100-10S\\nD 15050 FI FastC\\nevcon exane FastCure , $40 $40\\nDevcon 15050 Flexane FastCure\\n3M #74 Scrubbing S 20/cs\\ncru ing ponge 3 $40 $320\\n3M #74 Scrubbing Sponge 20/cs\\n3M #468MP Transfer Tape 1 1/2\\\"\\nP 5 $16 $80\\n3M #468MP Transfer Tape 1 1/2\\\"\\n3M PPS MIX RATIO INSERT\\n10 $36 $360\\n3M PPS MIX RATIO INSERT\\nLoctite 5600 Sil. Res. Black\\noc | e | es. Blac 8 $764 $6112\\nLoctite 5600 Sil. Res. Black\\n3M SJ3519FR Scotchmate Fast HK\\ncotchmate Fas , $107 $107\\n3M SJ3519FR Scotchmate Fast HK\\nSubTotal: $6558\\nTotal: $6558\\n\\nAmount due: $4382 USD\\n\\n===== 6NVuAIhTV4KB.jpg =====\\nWilliam H. Gmeiner\\n\\nAssistant Professor\\n\\nEppley Institute for Research in Cancer and Allied Diseases\\nUniversity of Nebraska Medical Center, Omaha, NE 68198-\\n(402) 559-4257 (phone)\\n\\n(402) 559-4651 (fax)\\n... (513 lines omitted) ...\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n===== vvK89XK847m3.jpg =====\\nInvoice no: 51109338\\n\\nDate of issue: 04/13/2013\\n\\nSeller: Client:\\n\\nAndrews, Kirby and Valdez Becker Ltd\\n\\n58861 Gonzalez Prairie 8012 Stewart Summit Apt. 455\\nLake Daniellefurt, IN 57228 North Douglas, AZ 95355\\n\\nTax Id: 945-82-2137 Tax Id: 942-80-0517\\n\\nIBAN: GB75MCRL06841367619257\\n\\nITEMS\\nNo. Description Qty UM Net price Net worth VAT [%] Gross\\nworth\\ntks CLEARANCE! Fast Dell Desktop 3,00 each 209,00 627,00 10% 689,70\\nComputer PC DUAL CORE\\nWINDOWS 10 4/8/16GB RAM\\n2. HP T520 Thin Client Computer 5,00 each 37,75 188,75 10% 207,63\\nAMD GX-212JC 1.2GHz 4GB RAM\\nTESTED !!READ BELOW!!\\n3: gaming pc desktop computer 1,00 each 400,00 400,00 10% 440,00\\n4. 12-Core Gaming Computer 3,00 each 464,89 1 394,67 10% 1 534,14\\nDesktop PC Tower Affordable\\nGAMING PC 8GB AMD Vega RGB\\nDe Custom Build Dell Optiplex 9020 5,00 each 221,99 1 109,95 10% 1 220,95\\nMT i5-4570 3.20GHz Desktop\\nComputer PC\\n6. Dell Optiplex 990 MT Computer 4,00 each 269,95 1 079,80 10% 1 187,78\\nPC Quad Core i7 3.4GHz 16GB\\n2TB HD Windows 10 Pro\\nae Dell Core 2 Duo Desktop 5,00 each 168,00 840,00 10% 924,00\\nComputer | Windows XP Pro |\\n4GB | 500GB\\nSUMMARY\\nVAT [%] Net worth VAT Gross worth\\n10% 5 640,17 564,02 6 204,19\\n\\nTotal $5 640,17 $ 564,02 $ 6 204,19\\n\\n===== w0i40MJP2Dzm.jpg =====\\nInvoice no: 19471831\\n\\nDate of issue:\\n\\nSeller:\\n\\nPalmer Ltd\\n9790 Bauer Hills Apt. 146\\nSouth Patriciaton, SD 32497\\n\\nTax Id: 924-71-1106\\nIBAN: GBO5YUTG50853913677557\\n\\nITEMS\\n\\nNo. Description\\n\\nL 15\\\"x15\\\" White Decorative\\nCoffee Table Top Lapis Lazuli\\nMarquetery Patio Décor\\n\\n2. 4'x2' Marble Dining Table Top\\nPietra Dura Birds Inlay Art\\nFurniture Decors B444\\n\\n3: 60 Inches Marble Dinning Table\\n\\nTop Hand Inlaid Garden Table\\nwith Gemstones\\n\\nSUMMARY\\n\\nTotal\\n\\n04/09/2014\\n\\nQty uM\\n3,00 each\\n5,00 each\\n5,00 each\\n\\nVAT [%]\\n\\n10%\\n\\nClient:\\n\\nNet price\\n\\n645,77\\n\\n1 840,10\\n\\n5 908,00\\n\\nNet worth\\n40 677,81\\n\\n$ 40 677,81\\n\\nRios, Oneill and Rowe\\n3571 Tina Trafficway\\nBuckleyland, LA 97688\\n\\nTax Id: 922-72-5979\\n\\nNet worth VAT [%]\\n\\n1,937,331; 10%\\n9 200,50 10%\\n29 540,00 10%\\n\\nVAT\\n\\n4 067,78\\n\\n$ 4 067,78\\n\\nGross\\nworth\\n\\n2 131,04\\n\\n10 120,55\\n\\n32 494,00\\n\\nGross worth\\n44 745,59\\n\\n$ 44 745,59\\n\\n\\n[output truncated: 513 lines omitted; full output (10533B) spilled to /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt; read /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -395,15 +395,15 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0185hPzyk6YXf7mbVBr9Zy4d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
-            "command": "sed -n '/===== 6NVuAIhTV4KB/,/===== KrJiw0OZx7jf/p' /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt"
+            "command": "sed -n '/===== 6NVuAIhTV4KB/,/===== KrJiw0OZx7jf/p' /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt"
           },
           "extra": {
             "raw_arguments": {
-              "command": "sed -n '/===== 6NVuAIhTV4KB/,/===== KrJiw0OZx7jf/p' /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt"
+              "command": "sed -n '/===== 6NVuAIhTV4KB/,/===== KrJiw0OZx7jf/p' /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,15 +464,15 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FDDNpN3GyjHacxpSgw333D",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
-            "command": "sed -n '/===== KrJiw0OZx7jf/,/===== vvK89XK847m3/p' /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt"
+            "command": "sed -n '/===== KrJiw0OZx7jf/,/===== vvK89XK847m3/p' /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt"
           },
           "extra": {
             "raw_arguments": {
-              "command": "sed -n '/===== KrJiw0OZx7jf/,/===== vvK89XK847m3/p' /tmp/atelier-spill/original-bash-1783120961775-0962583b.txt"
+              "command": "sed -n '/===== KrJiw0OZx7jf/,/===== vvK89XK847m3/p' /tmp/lemoncrow-spill/original-bash-1783120961775-0962583b.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -480,7 +480,7 @@
         "results": [
           {
             "source_call_id": "toolu_01FDDNpN3GyjHacxpSgw333D",
-            "content": "{\"type\": \"text\", \"text\": \"===== KrJiw0OZx7jf.jpg =====\\nInvoice\\n\\nInvoice number 257667\\nDate of issue Oct. 19, 2023\\nDate due Nov. 21, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\nBill to\\n\\nBLUE SPARK DESIGN\\n\\n$7139 USD due Nov. 21, 2023\\n\\nPay online\\nDescription Quantity unit_price Amount\\n3M 471 Yellow Vinyl T\\ncvomany” Tape 7 $105 $735\\n3M 471 Yellow Vinyl Tape\\nD 14210 5 min. Epo\\nevcon min DOxy 10 $7 $70\\nDevcon 14210 5 min. Epoxy\\n3M 05440 Stikit Hand Block 5\\\"\\nween 9 $15 $135\\n3M 05440 Stikit Hand Block 5\\\"\\nSubTotal: $9963\\nTotal: $9963\\n\\nAmount due: $7139 USD\\n\\n===== QOoA_j33PD_E.jpg =====\\nnun\\nINTEROFFICE MEMORANDUM .\\nTO G. W. McKenna FROM M. D h SE C R al\\n$ 7 © n s . a n\\n: No \\\"34\\n\\nInformation is attached with regard to Evolutionary and\\n\\nRevolutionary second generation programs. Both programs are\\nsimilar in that they target low/no CO and glass replacement as\\nkey objectives. The Revolutionary program additionally seeks to\\nsimplify manufacturing, while the Evolutionary program targets\\nproduct development around designs that are consistent with first\\ngeneration manufacturing concepts.\\n\\nAbbreviated action plans are provided for each product concept.\\nCertain dates involving other departments were assumed based on\\nusual time frames. These dates are, therefore, subject to\\napproval and agreement.\\n... (152 lines omitted) ...\\n\\n24,01\\n\\n19,49\\n\\nils\\\\37/\\n\\nNet worth\\n744,60\\n\\n$ 744,60\\n\\nNet worth VAT [%]\\n179,96 10%\\n490,00 10%\\n\\n24,01 10%\\n19,49 10%\\n31,14 10%\\nVAT\\n74,46\\n\\n$ 74,46\\n\\nGross\\nworth\\n\\n197,96\\n\\n539,00\\n\\n26,41\\n\\n21,44\\n\\n34,25\\n\\nGross worth\\n\\n819,06\\n\\n$ 819,06\\n\\n===== lxtL9XrYRsVG.jpg =====\\nInvoice no: 89969473\\n\\nDate of issue:\\n\\nSeller:\\n\\nJohnson-Martin\\n3836 Moore Ports\\nNorth Michael, MO 01844\\n\\nTax Id: 972-82-0713\\nIBAN: GB71GBDG68039919194335\\n\\nITEMS\\nNo. Description Qty\\ntks Wild West Wine 2,00\\n2. Press Wine 15L Fruit Cider 2,00\\n\\nApple Crusher Juice Grape\\nStainless Maker Grapes New\\n\\nBe Wine Rack Holder Iron Art 3,00\\nHanging Racks Glass Cup\\nStemware Shelf Mounted 2\\nColor\\n\\n4. Rust Proof Three Rows Tool 2,00\\nWine Glass Holder Simple Iron\\nWire Home Hanging Rack\\n\\n5: VTG 1970s MCM Brown Steel 1,00\\n\\nTube Wall or Desk Mounted\\n12-Wine Rack Bottle Holder\\n\\nSUMMARY\\n\\nVAT [%]\\n10%\\n\\nTotal\\n\\n10/29/2016\\n\\nUM\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\nClient:\\n\\nDeleon, Davila and Allen\\n355 King Lake Suite 071\\nSouth Haleyshire, KY 55765\\n\\nTax Id: 944-77-3882\\n\\nNet price Net worth VAT [%]\\n\\n27,00 54,00\\n279,00 558,00\\n18,75 56,25\\n11,56 23,12\\n34,00 34,00\\nNet worth VAT\\n725,37 72,54\\n\\n$ 725,37 $ 72,54\\n\\n10%\\n\\n10%\\n\\n10%\\n\\n10%\\n\\n10%\\n\\nGross\\nworth\\n\\n59,40\\n\\n613,80\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n===== vvK89XK847m3.jpg =====\\n\\n[output truncated: 152 lines omitted; full output (5253B) spilled to /tmp/atelier-spill/original-bash-1783120969946-26f34fca.txt; read /tmp/atelier-spill/original-bash-1783120969946-26f34fca.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"===== KrJiw0OZx7jf.jpg =====\\nInvoice\\n\\nInvoice number 257667\\nDate of issue Oct. 19, 2023\\nDate due Nov. 21, 2023\\n\\nacct_1N8CpQGmFzQxlIDx\\nBill to\\n\\nBLUE SPARK DESIGN\\n\\n$7139 USD due Nov. 21, 2023\\n\\nPay online\\nDescription Quantity unit_price Amount\\n3M 471 Yellow Vinyl T\\ncvomany” Tape 7 $105 $735\\n3M 471 Yellow Vinyl Tape\\nD 14210 5 min. Epo\\nevcon min DOxy 10 $7 $70\\nDevcon 14210 5 min. Epoxy\\n3M 05440 Stikit Hand Block 5\\\"\\nween 9 $15 $135\\n3M 05440 Stikit Hand Block 5\\\"\\nSubTotal: $9963\\nTotal: $9963\\n\\nAmount due: $7139 USD\\n\\n===== QOoA_j33PD_E.jpg =====\\nnun\\nINTEROFFICE MEMORANDUM .\\nTO G. W. McKenna FROM M. D h SE C R al\\n$ 7 © n s . a n\\n: No \\\"34\\n\\nInformation is attached with regard to Evolutionary and\\n\\nRevolutionary second generation programs. Both programs are\\nsimilar in that they target low/no CO and glass replacement as\\nkey objectives. The Revolutionary program additionally seeks to\\nsimplify manufacturing, while the Evolutionary program targets\\nproduct development around designs that are consistent with first\\ngeneration manufacturing concepts.\\n\\nAbbreviated action plans are provided for each product concept.\\nCertain dates involving other departments were assumed based on\\nusual time frames. These dates are, therefore, subject to\\napproval and agreement.\\n... (152 lines omitted) ...\\n\\n24,01\\n\\n19,49\\n\\nils\\\\37/\\n\\nNet worth\\n744,60\\n\\n$ 744,60\\n\\nNet worth VAT [%]\\n179,96 10%\\n490,00 10%\\n\\n24,01 10%\\n19,49 10%\\n31,14 10%\\nVAT\\n74,46\\n\\n$ 74,46\\n\\nGross\\nworth\\n\\n197,96\\n\\n539,00\\n\\n26,41\\n\\n21,44\\n\\n34,25\\n\\nGross worth\\n\\n819,06\\n\\n$ 819,06\\n\\n===== lxtL9XrYRsVG.jpg =====\\nInvoice no: 89969473\\n\\nDate of issue:\\n\\nSeller:\\n\\nJohnson-Martin\\n3836 Moore Ports\\nNorth Michael, MO 01844\\n\\nTax Id: 972-82-0713\\nIBAN: GB71GBDG68039919194335\\n\\nITEMS\\nNo. Description Qty\\ntks Wild West Wine 2,00\\n2. Press Wine 15L Fruit Cider 2,00\\n\\nApple Crusher Juice Grape\\nStainless Maker Grapes New\\n\\nBe Wine Rack Holder Iron Art 3,00\\nHanging Racks Glass Cup\\nStemware Shelf Mounted 2\\nColor\\n\\n4. Rust Proof Three Rows Tool 2,00\\nWine Glass Holder Simple Iron\\nWire Home Hanging Rack\\n\\n5: VTG 1970s MCM Brown Steel 1,00\\n\\nTube Wall or Desk Mounted\\n12-Wine Rack Bottle Holder\\n\\nSUMMARY\\n\\nVAT [%]\\n10%\\n\\nTotal\\n\\n10/29/2016\\n\\nUM\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\nClient:\\n\\nDeleon, Davila and Allen\\n355 King Lake Suite 071\\nSouth Haleyshire, KY 55765\\n\\nTax Id: 944-77-3882\\n\\nNet price Net worth VAT [%]\\n\\n27,00 54,00\\n279,00 558,00\\n18,75 56,25\\n11,56 23,12\\n34,00 34,00\\nNet worth VAT\\n725,37 72,54\\n\\n$ 725,37 $ 72,54\\n\\n10%\\n\\n10%\\n\\n10%\\n\\n10%\\n\\n10%\\n\\nGross\\nworth\\n\\n59,40\\n\\n613,80\\n\\n61,87\\n\\n25,43\\n\\n37,40\\n\\nGross worth\\n\\n797,91\\n\\n$ 797,91\\n\\n===== vvK89XK847m3.jpg =====\\n\\n[output truncated: 152 lines omitted; full output (5253B) spilled to /tmp/lemoncrow-spill/original-bash-1783120969946-26f34fca.txt; read /tmp/lemoncrow-spill/original-bash-1783120969946-26f34fca.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -533,7 +533,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RAj3T7q3AX4MdcCijo3N6R",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; for f in QOoA_j33PD_E ivE2mt3HwvEO WqWMArQQlSMv; do echo \"===== $f =====\"; tesseract \"$f.jpg\" - 2>/dev/null; echo; done"
           },
@@ -541,7 +541,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; for f in QOoA_j33PD_E ivE2mt3HwvEO WqWMArQQlSMv; do echo \"===== $f =====\"; tesseract \"$f.jpg\" - 2>/dev/null; echo; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -549,7 +549,7 @@
         "results": [
           {
             "source_call_id": "toolu_01RAj3T7q3AX4MdcCijo3N6R",
-            "content": "{\"type\": \"text\", \"text\": \"===== QOoA_j33PD_E =====\\nnun\\nINTEROFFICE MEMORANDUM .\\nTO G. W. McKenna FROM M. D h SE C R al\\n$ 7 © n s . a n\\n: No \\\"34\\n\\nInformation is attached with regard to Evolutionary and\\n\\nRevolutionary second generation programs. Both programs are\\nsimilar in that they target low/no CO and glass replacement as\\nkey objectives. The Revolutionary program additionally seeks to\\nsimplify manufacturing, while the Evolutionary program targets\\nproduct development around designs that are consistent with first\\ngeneration manufacturing concepts.\\n\\nAbbreviated action plans are provided for each product concept.\\nCertain dates involving other departments were assumed based on\\nusual time frames. These dates are, therefore, subject to\\napproval and agreement.\\n\\nAs you will notice, there are a multitude of product concepts.\\nThis number will probably expand even more before it begins to\\nfocus on key opportunities. Decision dates are, therefore, built\\ninto the plans, where possible.\\n\\nThe thing that becomes most obvious in reviewing the product\\nconcepts is the need for (1) good and innovative consumer\\nresearch and (2) a sound and, perhaps, entrepreneurial business\\nperspective to realize the greatest possible profit potential\\n\\nfrom the unique technology that we now possess. This technology\\nprovides the opportunity of developing a wide variety of smoking\\n\\nproducts where the profit potential is immense. It is critical\\nthat this technology be married to an innovative consumer\\n\\nresearch program that is capable of identifying market\\nopportunities for non-traditional smoking products.\\n\\nADS\\n\\nM. D. Shannon\\n\\nAttachments\\n\\nxc/enc: G. R. DiMarco\\nR. A. Lloyd\\nS. L. Jowdy\\nD. E. Townsend\\n... (15 lines omitted) ...\\nDate of issue:\\n\\nSeller:\\n\\nReyes, Holloway and Lee\\n38676 Johnson Burg Suite 666\\nWest Rebeccamouth, SD 02588\\n\\nTax Id: 909-83-7738\\nIBAN: GB96VWUL52026848004193\\n\\nITEMS\\nNo. Description Qty\\ntks Handmade Thick round warm 4,00\\n\\ncrochet Rug Carpet Mat 97%\\nacrylic 3% me Floor Decor\\n\\n2. Rug White Moroccan Beni 2,00\\nOurain Trellis Shag Area Rug\\nAuthentic Handmade Carpet\\n\\n3: Abstract Living Room Carpet 1,00\\nHome Decor Nordic Style\\nBedside Area Rug Floor Mats\\n\\n4. Leopard Printed Rug Skin Mat 1,00\\nLeather Faux Fur Animals Area\\nRugs Home Carpets\\n\\n5: 1pc Exquisite Durable Foot 2,00\\n\\nCloth Christmas Carpet Xmas\\nCushion for Kitchen\\n\\nSUMMARY\\n\\nVAT [%]\\n10%\\n\\nTotal\\n\\n04/01/2017\\n\\nUM\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\nClient:\\nCastillo LLC\\n\\n70391 Kelsey Terrace\\nGarcialand, VT 41740\\n\\nTax Id: 901-88-0463\\n\\nNet price\\n\\n44,99\\n\\n245,00\\n\\n24,01\\n\\n19,49\\n\\nils\\\\37/\\n\\nNet worth\\n744,60\\n\\n$ 744,60\\n\\nNet worth VAT [%]\\n179,96 10%\\n490,00 10%\\n\\n24,01 10%\\n19,49 10%\\n31,14 10%\\nVAT\\n74,46\\n\\n$ 74,46\\n\\nGross\\nworth\\n\\n197,96\\n\\n539,00\\n\\n26,41\\n\\n21,44\\n\\n34,25\\n\\nGross worth\\n\\n819,06\\n\\n$ 819,06\\n\\n===== WqWMArQQlSMv =====\\nPHILIP MORRIS MANAGEMENT CORP. INTER-OFFICE CORRESPONDENC:\\n—— NER OPRICE CORRESPONDENC\\n\\nTO:\\nFROM:\\nRE:\\n\\n120 PARK AVENUE NEW YORK, N}\\n\\nDistribution DATE: September 19, 1995\\nMayada Logue th\\n\\nManuscript accepted for publication\\n\\nAttached is a copy of the manuscript “Dilution Ventilation to Accommodate\\nSmoking in Office Buildings: A Case Study\\\" that has been accepted for publication\\nin the ASHRAE Journal. The exact issue of the Journal has not been identified but it\\nis expected that the article will appear in the February or March 1996 issue. Please\\ndo not distribute outside of PM until publication. The information contained in the\\n\\narticle has been submitted to OSHA.\\n\\nDistribution:\\n\\nM. Firestone, Esq. (w/o enclosure)\\nL. McAlpin\\n\\nT. Sanders\\n\\nR. Walk\\n\\nWRA\\n\\nwv\\n\\nPSSP360S0\\n\\n\\n[output truncated: 15 lines omitted; full output (3682B) spilled to /tmp/atelier-spill/original-bash-1783121000075-5d603cea.txt; read /tmp/atelier-spill/original-bash-1783121000075-5d603cea.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"===== QOoA_j33PD_E =====\\nnun\\nINTEROFFICE MEMORANDUM .\\nTO G. W. McKenna FROM M. D h SE C R al\\n$ 7 © n s . a n\\n: No \\\"34\\n\\nInformation is attached with regard to Evolutionary and\\n\\nRevolutionary second generation programs. Both programs are\\nsimilar in that they target low/no CO and glass replacement as\\nkey objectives. The Revolutionary program additionally seeks to\\nsimplify manufacturing, while the Evolutionary program targets\\nproduct development around designs that are consistent with first\\ngeneration manufacturing concepts.\\n\\nAbbreviated action plans are provided for each product concept.\\nCertain dates involving other departments were assumed based on\\nusual time frames. These dates are, therefore, subject to\\napproval and agreement.\\n\\nAs you will notice, there are a multitude of product concepts.\\nThis number will probably expand even more before it begins to\\nfocus on key opportunities. Decision dates are, therefore, built\\ninto the plans, where possible.\\n\\nThe thing that becomes most obvious in reviewing the product\\nconcepts is the need for (1) good and innovative consumer\\nresearch and (2) a sound and, perhaps, entrepreneurial business\\nperspective to realize the greatest possible profit potential\\n\\nfrom the unique technology that we now possess. This technology\\nprovides the opportunity of developing a wide variety of smoking\\n\\nproducts where the profit potential is immense. It is critical\\nthat this technology be married to an innovative consumer\\n\\nresearch program that is capable of identifying market\\nopportunities for non-traditional smoking products.\\n\\nADS\\n\\nM. D. Shannon\\n\\nAttachments\\n\\nxc/enc: G. R. DiMarco\\nR. A. Lloyd\\nS. L. Jowdy\\nD. E. Townsend\\n... (15 lines omitted) ...\\nDate of issue:\\n\\nSeller:\\n\\nReyes, Holloway and Lee\\n38676 Johnson Burg Suite 666\\nWest Rebeccamouth, SD 02588\\n\\nTax Id: 909-83-7738\\nIBAN: GB96VWUL52026848004193\\n\\nITEMS\\nNo. Description Qty\\ntks Handmade Thick round warm 4,00\\n\\ncrochet Rug Carpet Mat 97%\\nacrylic 3% me Floor Decor\\n\\n2. Rug White Moroccan Beni 2,00\\nOurain Trellis Shag Area Rug\\nAuthentic Handmade Carpet\\n\\n3: Abstract Living Room Carpet 1,00\\nHome Decor Nordic Style\\nBedside Area Rug Floor Mats\\n\\n4. Leopard Printed Rug Skin Mat 1,00\\nLeather Faux Fur Animals Area\\nRugs Home Carpets\\n\\n5: 1pc Exquisite Durable Foot 2,00\\n\\nCloth Christmas Carpet Xmas\\nCushion for Kitchen\\n\\nSUMMARY\\n\\nVAT [%]\\n10%\\n\\nTotal\\n\\n04/01/2017\\n\\nUM\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\neacn\\n\\nClient:\\nCastillo LLC\\n\\n70391 Kelsey Terrace\\nGarcialand, VT 41740\\n\\nTax Id: 901-88-0463\\n\\nNet price\\n\\n44,99\\n\\n245,00\\n\\n24,01\\n\\n19,49\\n\\nils\\\\37/\\n\\nNet worth\\n744,60\\n\\n$ 744,60\\n\\nNet worth VAT [%]\\n179,96 10%\\n490,00 10%\\n\\n24,01 10%\\n19,49 10%\\n31,14 10%\\nVAT\\n74,46\\n\\n$ 74,46\\n\\nGross\\nworth\\n\\n197,96\\n\\n539,00\\n\\n26,41\\n\\n21,44\\n\\n34,25\\n\\nGross worth\\n\\n819,06\\n\\n$ 819,06\\n\\n===== WqWMArQQlSMv =====\\nPHILIP MORRIS MANAGEMENT CORP. INTER-OFFICE CORRESPONDENC:\\n—— NER OPRICE CORRESPONDENC\\n\\nTO:\\nFROM:\\nRE:\\n\\n120 PARK AVENUE NEW YORK, N}\\n\\nDistribution DATE: September 19, 1995\\nMayada Logue th\\n\\nManuscript accepted for publication\\n\\nAttached is a copy of the manuscript “Dilution Ventilation to Accommodate\\nSmoking in Office Buildings: A Case Study\\\" that has been accepted for publication\\nin the ASHRAE Journal. The exact issue of the Journal has not been identified but it\\nis expected that the article will appear in the February or March 1996 issue. Please\\ndo not distribute outside of PM until publication. The information contained in the\\n\\narticle has been submitted to OSHA.\\n\\nDistribution:\\n\\nM. Firestone, Esq. (w/o enclosure)\\nL. McAlpin\\n\\nT. Sanders\\n\\nR. Walk\\n\\nWRA\\n\\nwv\\n\\nPSSP360S0\\n\\n\\n[output truncated: 15 lines omitted; full output (3682B) spilled to /tmp/lemoncrow-spill/original-bash-1783121000075-5d603cea.txt; read /tmp/lemoncrow-spill/original-bash-1783121000075-5d603cea.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -602,7 +602,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QmbTf5n3Di3Ja5LDXLZXfu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; python3 -c \"\nfrom PIL import Image\nimport glob\nfor f in sorted(glob.glob('*.jpg')):\n    im=Image.open(f); print(f, im.size)\n\""
           },
@@ -610,7 +610,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; python3 -c \"\nfrom PIL import Image\nimport glob\nfor f in sorted(glob.glob('*.jpg')):\n    im=Image.open(f); print(f, im.size)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -671,7 +671,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GeeNmErYc9rxNopoQrHRy7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; python3 -c \"\nfrom PIL import Image\nim=Image.open('QOoA_j33PD_E.jpg')\nw,h=im.size\nim.crop((0,0,w,h//2)).save('/tmp/q_top.png')\nim.crop((0,h//2,w,h)).save('/tmp/q_bot.png')\n\"\necho '=== TOP ==='; tesseract /tmp/q_top.png - 2>/dev/null | head -20\necho '=== BOT ==='; tesseract /tmp/q_bot.png - 2>/dev/null | head -30"
           },
@@ -679,7 +679,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; python3 -c \"\nfrom PIL import Image\nim=Image.open('QOoA_j33PD_E.jpg')\nw,h=im.size\nim.crop((0,0,w,h//2)).save('/tmp/q_top.png')\nim.crop((0,h//2,w,h)).save('/tmp/q_bot.png')\n\"\necho '=== TOP ==='; tesseract /tmp/q_top.png - 2>/dev/null | head -20\necho '=== BOT ==='; tesseract /tmp/q_bot.png - 2>/dev/null | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -740,7 +740,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013iZekA5KhQFaVsyhGyCkiG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; tesseract ivE2mt3HwvEO.jpg - 2>/dev/null | grep -iE \"invoice|summary|total|vat|gross|net worth\" "
           },
@@ -748,7 +748,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; tesseract ivE2mt3HwvEO.jpg - 2>/dev/null | grep -iE \"invoice|summary|total|vat|gross|net worth\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -809,7 +809,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019nZVkJELXUWaUtXwLfcBSb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; tesseract ivE2mt3HwvEO.jpg - 2>/dev/null | sed -n '/SUMMARY/,$p'"
           },
@@ -817,7 +817,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; tesseract ivE2mt3HwvEO.jpg - 2>/dev/null | sed -n '/SUMMARY/,$p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -878,7 +878,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G1vBEi6cno73ahEey9uvtS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/documents; echo \"=== UsN9tVTKskms ===\"; pdftotext -layout UsN9tVTKskms.pdf -; echo \"=== dx0AWchV01ZJ head ===\"; pdftotext -layout dx0AWchV01ZJ.pdf - | head -5"
           },
@@ -886,7 +886,7 @@
             "raw_arguments": {
               "command": "cd /app/documents; echo \"=== UsN9tVTKskms ===\"; pdftotext -layout UsN9tVTKskms.pdf -; echo \"=== dx0AWchV01ZJ head ===\"; pdftotext -layout dx0AWchV01ZJ.pdf - | head -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -947,7 +947,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DoXhnwqUnovkwwgmHXfgDB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/invoices /app/other\ncd /app\npython3 - <<'PY'\nimport shutil, csv, os\n\ninvoices = {\n    \"2lgKzDuI4E4g.jpg\": (6558.00, 0.0),\n    \"JOiylq2_7S18.jpg\": (6860.45, 623.68),\n    \"KrJiw0OZx7jf.jpg\": (9963.00, 0.0),\n    \"ivE2mt3HwvEO.jpg\": (819.06, 74.46),\n    \"lxtL9XrYRsVG.jpg\": (797.91, 72.54),\n    \"vvK89XK847m3.jpg\": (6204.19, 564.02),\n    \"w0i40MJP2Dzm.jpg\": (44745.59, 4067.78),\n    \"T0r6Ou8zvqTA.pdf\": (4031.00, 0.0),\n    \"UsN9tVTKskms.pdf\": (896.00, 0.0),\n    \"wIQEB5nR79b2.pdf\": (440.00, 0.0),\n}\nothers = [\n    \"6NVuAIhTV4KB.jpg\", \"F0oZMhSUm2dO.jpg\", \"QOoA_j33PD_E.jpg\",\n    \"WqWMArQQlSMv.jpg\", \"GFAlpKoFg81H.pdf\", \"dvkRkFVFhHga.pdf\",\n    \"dx0AWchV01ZJ.pdf\",\n]\n\nsrc = \"/app/documents\"\n# sanity: all files accounted for\npresent = set(os.listdir(src))\nassert present == set(invoices) | set(others), present ^ (set(invoices) | set(others))\n\nfor f in invoices:\n    shutil.move(os.path.join(src, f), os.path.join(\"/app/invoices\", f))\nfor f in others:\n    shutil.move(os.path.join(src, f), os.path.join(\"/app/other\", f))\n\ntot_sum = round(sum(v[0] for v in invoices.values()), 2)\nvat_sum = round(sum(v[1] for v in invoices.values()), 2)\n\nwith open(\"/app/invoices/summary.csv\", \"w\", newline=\"\") as fh:\n    w = csv.writer(fh)\n    w.writerow([\"filename\", \"total_amount\", \"vat_amount\"])\n    for f, (t, v) in invoices.items():\n        w.writerow([f, f\"{t:.2f}\", f\"{v:.2f}\"])\n    w.writerow([\"total\", f\"{tot_sum:.2f}\", f\"{vat_sum:.2f}\"])\n\nprint(\"remaining in documents:\", os.listdir(src))\nprint(\"totals:\", tot_sum, vat_sum)\nPY\necho \"--- summary.csv ---\"; cat /app/invoices/summary.csv\necho \"--- invoices dir ---\"; ls /app/invoices\necho \"--- other dir ---\"; ls /app/other"
           },
@@ -955,7 +955,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/invoices /app/other\ncd /app\npython3 - <<'PY'\nimport shutil, csv, os\n\ninvoices = {\n    \"2lgKzDuI4E4g.jpg\": (6558.00, 0.0),\n    \"JOiylq2_7S18.jpg\": (6860.45, 623.68),\n    \"KrJiw0OZx7jf.jpg\": (9963.00, 0.0),\n    \"ivE2mt3HwvEO.jpg\": (819.06, 74.46),\n    \"lxtL9XrYRsVG.jpg\": (797.91, 72.54),\n    \"vvK89XK847m3.jpg\": (6204.19, 564.02),\n    \"w0i40MJP2Dzm.jpg\": (44745.59, 4067.78),\n    \"T0r6Ou8zvqTA.pdf\": (4031.00, 0.0),\n    \"UsN9tVTKskms.pdf\": (896.00, 0.0),\n    \"wIQEB5nR79b2.pdf\": (440.00, 0.0),\n}\nothers = [\n    \"6NVuAIhTV4KB.jpg\", \"F0oZMhSUm2dO.jpg\", \"QOoA_j33PD_E.jpg\",\n    \"WqWMArQQlSMv.jpg\", \"GFAlpKoFg81H.pdf\", \"dvkRkFVFhHga.pdf\",\n    \"dx0AWchV01ZJ.pdf\",\n]\n\nsrc = \"/app/documents\"\n# sanity: all files accounted for\npresent = set(os.listdir(src))\nassert present == set(invoices) | set(others), present ^ (set(invoices) | set(others))\n\nfor f in invoices:\n    shutil.move(os.path.join(src, f), os.path.join(\"/app/invoices\", f))\nfor f in others:\n    shutil.move(os.path.join(src, f), os.path.join(\"/app/other\", f))\n\ntot_sum = round(sum(v[0] for v in invoices.values()), 2)\nvat_sum = round(sum(v[1] for v in invoices.values()), 2)\n\nwith open(\"/app/invoices/summary.csv\", \"w\", newline=\"\") as fh:\n    w = csv.writer(fh)\n    w.writerow([\"filename\", \"total_amount\", \"vat_amount\"])\n    for f, (t, v) in invoices.items():\n        w.writerow([f, f\"{t:.2f}\", f\"{v:.2f}\"])\n    w.writerow([\"total\", f\"{tot_sum:.2f}\", f\"{vat_sum:.2f}\"])\n\nprint(\"remaining in documents:\", os.listdir(src))\nprint(\"totals:\", tot_sum, vat_sum)\nPY\necho \"--- summary.csv ---\"; cat /app/invoices/summary.csv\necho \"--- invoices dir ---\"; ls /app/invoices\necho \"--- other dir ---\"; ls /app/other"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

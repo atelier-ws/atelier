@@ -1,7 +1,7 @@
 # Baseline: Claude Code 2.1.152 / Claude Opus 4.8 on Terminal-Bench 2.1
 
 Reference numbers scraped from the public tbench.ai leaderboard, for comparing
-Atelier's own Harbor runs (`../atelier/<run>/...`) against the official
+LemonCrow's own Harbor runs (`../lemoncrow/<run>/...`) against the official
 Claude Code result on the same benchmark.
 
 **Source (view live here):**
@@ -68,49 +68,49 @@ needs refreshing (e.g. after a new terminal-bench version or rep).
   "No trial data available"); all 5 reps failed with no telemetry captured.
   Represented as a single placeholder row with `result = no data available`.
 
-## Cost comparison vs. Atelier's own run (`../atelier/2026-07-07__02-24-29/`)
+## Cost comparison vs. LemonCrow's own run (`../lemoncrow/2026-07-07__02-24-29/`)
 
-**`atelier_vs_baseline_per_task.csv`** — per-task comparison against Atelier's
+**`lemoncrow_vs_baseline_per_task.csv`** — per-task comparison against LemonCrow's
 Harbor run, matched on the 83 tasks both sides have cost data for. Columns:
-`task, baseline_resolved (x/5), atelier_resolved, baseline_avg_cost_corrected,
-atelier_cost, save_pct, baseline_rep_costs_corrected` (JSON list of the 5
+`task, baseline_resolved (x/5), lemoncrow_resolved, baseline_avg_cost_corrected,
+lemoncrow_cost, save_pct, baseline_rep_costs_corrected` (JSON list of the 5
 corrected per-rep costs).
 
 **Why "corrected":** tbench.ai's displayed cost treats cache tokens as **$0**
-(see Known gaps below) while Atelier's runs pay the real bill — cache reads
+(see Known gaps below) while LemonCrow's runs pay the real bill — cache reads
 ($0.50/M) and **1h ephemeral cache writes ($10/M, 2x input)**. To compare like
 for like, baseline costs here are recomputed as
 `(input − cache) × $5/M + output × $25/M + cache × blended_cache_rate`,
 where the blended cache rate prices a **5.13% write share at the 1h write
 rate** and the remainder as reads (≈ **$0.99/M**). The write share is the
 token-weighted `cache_creation_input_tokens` vs `cache_read_input_tokens`
-ratio measured across all 374 Atelier Harbor trials' `agent/claude-run.json`
-usage reports on disk (every rep of every run under `../atelier/`, not just
+ratio measured across all 374 LemonCrow Harbor trials' `agent/claude-run.json`
+usage reports on disk (every rep of every run under `../lemoncrow/`, not just
 the current one). tbench.ai doesn't expose a per-trial read/write split, so
 this ratio is an estimate applied uniformly, not a measured value per
 baseline trial. Regenerate both derived CSVs -- bump `RUN_DIR` in
-`compare_current_atelier_to_baseline.py` to the new run first -- with
-`uv run python benchmarks/harbor/compare_current_atelier_to_baseline.py &&
+`compare_current_lemoncrow_to_baseline.py` to the new run first -- with
+`uv run python benchmarks/harbor/compare_current_lemoncrow_to_baseline.py &&
 uv run python benchmarks/harbor/normalize_baseline_cost.py` (the first
-refreshes `atelier_resolved`/`atelier_cost` from `RUN_DIR`; the second
+refreshes `lemoncrow_resolved`/`lemoncrow_cost` from `RUN_DIR`; the second
 re-blends the baseline columns against them).
 
 **Result:** on the 83/89 tasks where both arms actually have cost telemetry,
-Atelier totals **$75.87** vs. baseline's corrected **$96.02** (**0.79x —
+LemonCrow totals **$75.87** vs. baseline's corrected **$96.02** (**0.79x —
 21.0% cheaper**). Same direction as the prior cut (0.84x, 16.4% cheaper) --
 this refresh adds cost data for 5 tasks that had previously timed out, and
 the wider sample lands slightly cheaper still. Caveat below: this $75.87 is
-an undercount -- 5 of the 6 remaining missing tasks are real Atelier spend
+an undercount -- 5 of the 6 remaining missing tasks are real LemonCrow spend
 with no recorded number, not tasks that were free or excluded by choice.
 
-| Baseline task cost | n tasks | avg baseline | avg atelier | avg delta |
+| Baseline task cost | n tasks | avg baseline | avg lemoncrow | avg delta |
 |---|---|---|---|---|
 | < $0.50 | 34 | $0.29 | $0.34 | +$0.05 (1.2x) |
 | $0.50–$1.50 | 31 | $0.85 | $0.68 | -$0.17 (0.8x) |
 | ≥ $1.50 | 18 | $3.32 | $2.39 | -$0.93 (0.7x) |
 
-Cheap tasks still run a mild ~20% overshoot on Atelier; mid and large tasks
-both come out cheaper. 27/83 tasks cost more on Atelier, 56/83 cost less.
+Cheap tasks still run a mild ~20% overshoot on LemonCrow; mid and large tasks
+both come out cheaper. 27/83 tasks cost more on LemonCrow, 56/83 cost less.
 Picture: [`cost_vs_savings_scatter.svg`](cost_vs_savings_scatter.svg)
 (regenerate with `uv run python scripts/gen_harbor_cost_vs_savings_scatter.py`
 after refreshing the CSVs above).
@@ -127,18 +127,18 @@ real and Anthropic billed for them -- the number is just never captured by
 the harness. Reward is unaffected (it's graded from on-disk task state, not
 the killed process), so 1 of these 5 (`mailman`) actually **passed** despite
 having no cost. The 6th, `protein-assembly`, is the one genuine
-like-for-like gap: Atelier finished it normally (cost **$0.0311**, failed),
+like-for-like gap: LemonCrow finished it normally (cost **$0.0311**, failed),
 but tbench.ai itself has zero per-trial telemetry for this task on the
 baseline side (a pre-existing gap, see Known gaps below) so there's nothing
 to compare it against.
 
-Net effect: **$75.87 understates Atelier's true total** -- add whatever the
+Net effect: **$75.87 understates LemonCrow's true total** -- add whatever the
 5 timed-out trials actually cost (each ran up to its full timeout budget, so
 not small) and the real gap to baseline's $96.02 is narrower than 21.0%,
 possibly reversed. Correctness across all 89 tasks (cost data or not, since
-reward doesn't depend on the cost report): Atelier resolved **69/89
+reward doesn't depend on the cost report): LemonCrow resolved **69/89
 (77.5%)**; baseline's tbench.ai 5-rep average implies **70.25/89 expected
-(78.9%)**. Atelier trails by 1.4 points on correctness while running
+(78.9%)**. LemonCrow trails by 1.4 points on correctness while running
 nominally 21.0% cheaper on the 83 tasks with telemetry -- read together with
 the SWE-bench Pro result in the top-level `BENCHMARKS.md`, correctness is the
 axis to watch here, not cost.
@@ -148,6 +148,6 @@ axis to watch here, not cost.
 `summary.txt`/`per_task.csv`/`aggregate.csv` are computed purely from the
 per-trial CSV — if that CSV is updated/replaced, regenerate them from it
 (group by `task`, average/sum the numeric columns, skip blank cells).
-`normalized_cost.csv` and `atelier_vs_baseline_per_task.csv` are regenerated
+`normalized_cost.csv` and `lemoncrow_vs_baseline_per_task.csv` are regenerated
 by `uv run python benchmarks/harbor/normalize_baseline_cost.py` (see
 `normalized_cost.README.txt` for the cost model).

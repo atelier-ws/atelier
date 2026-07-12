@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V7y3UpdkQDMTuDiptFrB9y",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && head -5 /app/data.txt && wc -l /app/data.txt && python3 -c \"import mteb; print(mteb.__version__)\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app && head -5 /app/data.txt && wc -l /app/data.txt && python3 -c \"import mteb; print(mteb.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RS8AYz8nyGfLQMPFFY4MbJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import torch, sentence_transformers; print('ok')\"; ls ~/.cache/huggingface 2>/dev/null; find / -iname \"*bge-small-zh*\" 2>/dev/null | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import torch, sentence_transformers; print('ok')\"; ls ~/.cache/huggingface 2>/dev/null; find / -iname \"*bge-small-zh*\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QQLbBkh9ybQSW7nit4ggir",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import torch; print('torch',torch.__version__)\" 2>&1 | tail -3; python3 -c \"import sentence_transformers as s; print('st',s.__version__)\" 2>&1 | tail -3"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import torch; print('torch',torch.__version__)\" 2>&1 | tail -3; python3 -c \"import sentence_transformers as s; print('st',s.__version__)\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Eh23QwerHiYZbFCDVWWEw9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "env | grep -i hf; env | grep -i hugg; find / -path /proc -prune -o -iname \"*.safetensors\" -print 2>/dev/null | head; find / -path /proc -prune -o -iname \"config.json\" -print 2>/dev/null | grep -i -E \"bge|zh|models\" | head"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "env | grep -i hf; env | grep -i hugg; find / -path /proc -prune -o -iname \"*.safetensors\" -print 2>/dev/null | head; find / -path /proc -prune -o -iname \"config.json\" -print 2>/dev/null | grep -i -E \"bge|zh|models\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -256,7 +256,7 @@
         "results": [
           {
             "source_call_id": "toolu_01Eh23QwerHiYZbFCDVWWEw9",
-            "content": "{\"type\": \"text\", \"text\": \"/atelier/benchmarks/jobs/solve-test5/2026-07-01__17-24-42/adaptive-rejection-sampler__TNNZhPd/config.json\\n/atelier/benchmarks/jobs/webenabled_v2/2026-07-03__21-52-50/cancel-async-tasks__pzHaaPt/config.json\"}"
+            "content": "{\"type\": \"text\", \"text\": \"/lemoncrow/benchmarks/jobs/solve-test5/2026-07-01__17-24-42/adaptive-rejection-sampler__TNNZhPd/config.json\\n/lemoncrow/benchmarks/jobs/webenabled_v2/2026-07-03__21-52-50/cancel-async-tasks__pzHaaPt/config.json\"}"
           }
         ]
       },
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LFNW6bdua21zcURooErzh1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -path /proc -prune -o -type d -iname \"*bge*\" -print 2>/dev/null; find / -path /proc -prune -o -type d -name \"*7999e1d3*\" -print 2>/dev/null; ls -la ~/.cache 2>/dev/null; python3 -c \"import os;print(os.environ.get('HF_HUB_OFFLINE'))\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "find / -path /proc -prune -o -type d -iname \"*bge*\" -print 2>/dev/null; find / -path /proc -prune -o -type d -name \"*7999e1d3*\" -print 2>/dev/null; ls -la ~/.cache 2>/dev/null; python3 -c \"import os;print(os.environ.get('HF_HUB_OFFLINE'))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
         "results": [
           {
             "source_call_id": "toolu_01LFNW6bdua21zcURooErzh1",
-            "content": "{\"type\": \"text\", \"text\": \"/atelier/reports/benchmark/codebench/fix_bge_semantic\\n/atelier/.venv-embed/lib/python3.13/site-packages/torch/include/ATen/native/hip/bgemm_kernels\\n/atelier/.venv-embed/lib/python3.13/site-packages/torch/include/fbgemm\\n/atelier/.venv/lib/python3.13/site-packages/torch/include/ATen/native/hip/bgemm_kernels\\n/atelier/.venv/lib/python3.13/site-packages/torch/include/fbgemm\\ntotal 24\\ndrwxr-xr-x 1 root root 4096 Jul  4 04:05 .\\ndrwx------ 1 root root 4096 Jul  4 04:05 ..\\ndrwxr-xr-x 3 root root 4096 Jul  4 04:05 claude-cli-nodejs\\ndrwxr-xr-x 3 root root 4096 Jul  4 04:05 huggingface\\ndrwxr-xr-x 2 root root 4096 Apr 30 03:18 rosetta\\nNone\"}"
+            "content": "{\"type\": \"text\", \"text\": \"/lemoncrow/reports/benchmark/codebench/fix_bge_semantic\\n/lemoncrow/.venv-embed/lib/python3.13/site-packages/torch/include/ATen/native/hip/bgemm_kernels\\n/lemoncrow/.venv-embed/lib/python3.13/site-packages/torch/include/fbgemm\\n/lemoncrow/.venv/lib/python3.13/site-packages/torch/include/ATen/native/hip/bgemm_kernels\\n/lemoncrow/.venv/lib/python3.13/site-packages/torch/include/fbgemm\\ntotal 24\\ndrwxr-xr-x 1 root root 4096 Jul  4 04:05 .\\ndrwx------ 1 root root 4096 Jul  4 04:05 ..\\ndrwxr-xr-x 3 root root 4096 Jul  4 04:05 claude-cli-nodejs\\ndrwxr-xr-x 3 root root 4096 Jul  4 04:05 huggingface\\ndrwxr-xr-x 2 root root 4096 Apr 30 03:18 rosetta\\nNone\"}"
           }
         ]
       },
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U15dzc49UR81MTZM7W6ifh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find ~/.cache/huggingface -maxdepth 4 2>/dev/null; echo \"---testnet---\"; timeout 10 python3 -c \"import urllib.request; urllib.request.urlopen('https://huggingface.co',timeout=8); print('NET OK')\" 2>&1 | tail -2"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "find ~/.cache/huggingface -maxdepth 4 2>/dev/null; echo \"---testnet---\"; timeout 10 python3 -c \"import urllib.request; urllib.request.urlopen('https://huggingface.co',timeout=8); print('NET OK')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HXbrVqADtirqNJBH8n6J1h",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -467,7 +467,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Du9CJ4rbcMySo44cueAR9W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 600 python3 solve.py 2>&1 | tail -30"
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 600 python3 solve.py 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018WbHut2SzovKzfunDSof4B",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -617,7 +617,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -690,7 +690,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XXrx8PRTKYJr8RrwEgCiyx",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/solve.py"
@@ -702,7 +702,7 @@
                 "/app/solve.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -763,7 +763,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0197EWHfBvv6D4oxNyCPoRyp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -783,7 +783,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -856,7 +856,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S2xfPcENZkagXu31QDpx1Y",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -876,7 +876,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -949,7 +949,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GkashioW5ggVty51oUbWuA",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "SentenceTransformerWrapper encode task_name"
           },
@@ -957,7 +957,7 @@
             "raw_arguments": {
               "query": "SentenceTransformerWrapper encode task_name"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1018,7 +1018,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019GSzSRpqPCG99EATcd1hR6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1038,7 +1038,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1111,7 +1111,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WqBB9zX9bytQXX9oATH3B7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PYEOF'\ncontent = '''import numpy as np\nimport mteb\n\nrevision = \"7999e1d3359715c523056ef9478215996d62a620\"\nmodel = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=revision)\n\nwith open(\"/app/data.txt\") as f:\n    docs = [line.rstrip(\"\\\\n\") for line in f]\n\nquery = \"terminal-bench\"\nq_emb = np.asarray(model.encode([query], task_name=\"terminal-bench\"))\nd_emb = np.asarray(model.encode(docs, task_name=\"terminal-bench\"))\n\ndef norm(x):\n    return x / np.linalg.norm(x, axis=1, keepdims=True)\n\nsims = (norm(d_emb) @ norm(q_emb).T).ravel()\norder = np.argsort(-sims)\nfifth = order[4]\nprint(\"top6:\")\nfor i in order[:6]:\n    print(f\"{sims[i]:.6f}  {docs[i]}\")\nwith open(\"/app/result.txt\", \"w\") as f:\n    f.write(docs[fifth] + \"\\\\n\")\nprint(\"RESULT:\", docs[fifth])\n'''\nopen(\"solve.py\",\"w\").write(content)\nprint(\"written\")\nPYEOF"
           },
@@ -1119,7 +1119,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PYEOF'\ncontent = '''import numpy as np\nimport mteb\n\nrevision = \"7999e1d3359715c523056ef9478215996d62a620\"\nmodel = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=revision)\n\nwith open(\"/app/data.txt\") as f:\n    docs = [line.rstrip(\"\\\\n\") for line in f]\n\nquery = \"terminal-bench\"\nq_emb = np.asarray(model.encode([query], task_name=\"terminal-bench\"))\nd_emb = np.asarray(model.encode(docs, task_name=\"terminal-bench\"))\n\ndef norm(x):\n    return x / np.linalg.norm(x, axis=1, keepdims=True)\n\nsims = (norm(d_emb) @ norm(q_emb).T).ravel()\norder = np.argsort(-sims)\nfifth = order[4]\nprint(\"top6:\")\nfor i in order[:6]:\n    print(f\"{sims[i]:.6f}  {docs[i]}\")\nwith open(\"/app/result.txt\", \"w\") as f:\n    f.write(docs[fifth] + \"\\\\n\")\nprint(\"RESULT:\", docs[fifth])\n'''\nopen(\"solve.py\",\"w\").write(content)\nprint(\"written\")\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1180,7 +1180,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X28ALP9EmqJtf16a3DqR7e",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 solve.py 2>&1 | tail -20"
           },
@@ -1188,7 +1188,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 solve.py 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1249,7 +1249,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BnKUACaHJTqH91ccxMJisG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 solve.py 2>&1 | tail -25"
           },
@@ -1257,7 +1257,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 solve.py 2>&1 | tail -25"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1318,7 +1318,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01H7Qi2RHCMbWYWVQ9T3rxQP",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/usr/local/lib/python3.10/site-packages/mteb/models/sentence_transformer_wrapper.py:L60-L140"
@@ -1330,7 +1330,7 @@
                 "/usr/local/lib/python3.10/site-packages/mteb/models/sentence_transformer_wrapper.py:L60-L140"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1391,7 +1391,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PMuf8HvGEssYHTCXMVvWNJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 solve.py 2>&1 | grep -v \"^top6\\|^[0-9]\" | tail -30"
           },
@@ -1399,7 +1399,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 solve.py 2>&1 | grep -v \"^top6\\|^[0-9]\" | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1460,7 +1460,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0184ixi78LWFTTCx1dyUfErL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 900 python3 solve.py >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"; echo \"==ERR==\"; cat /tmp/err.txt; echo \"==OUT==\"; cat /tmp/out.txt"
           },
@@ -1468,7 +1468,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 900 python3 solve.py >/tmp/out.txt 2>/tmp/err.txt; echo \"exit=$?\"; echo \"==ERR==\"; cat /tmp/err.txt; echo \"==OUT==\"; cat /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1529,7 +1529,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Axde5hwpX2NnEeo8etpQWK",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/err.txt"
@@ -1541,7 +1541,7 @@
                 "/tmp/err.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1602,7 +1602,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Wxb6AA41wpsoNj4w7EQTvK",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && grep -rn \"bge-small-zh-v1.5\\|bge_small_zh\\|model_prompts\" /usr/local/lib/python3.10/site-packages/mteb/models/bge_models.py 2>/dev/null | head; echo \"---\"; sed -n '1,60p' /usr/local/lib/python3.10/site-packages/mteb/models/wrapper.py"
           },
@@ -1610,7 +1610,7 @@
             "raw_arguments": {
               "command": "cd /app && grep -rn \"bge-small-zh-v1.5\\|bge_small_zh\\|model_prompts\" /usr/local/lib/python3.10/site-packages/mteb/models/bge_models.py 2>/dev/null | head; echo \"---\"; sed -n '1,60p' /usr/local/lib/python3.10/site-packages/mteb/models/wrapper.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1671,7 +1671,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0194pz2W6VkLkpPuxM7VfxXo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"bge-small-zh-v1.5\\|model_prompts\\|bge_small_zh\\|bge_chinese_training_data\\|BGE_small_zh\\|small_zh\" /usr/local/lib/python3.10/site-packages/mteb/models/bge_models.py | head -40"
           },
@@ -1679,7 +1679,7 @@
             "raw_arguments": {
               "command": "grep -n \"bge-small-zh-v1.5\\|model_prompts\\|bge_small_zh\\|bge_chinese_training_data\\|BGE_small_zh\\|small_zh\" /usr/local/lib/python3.10/site-packages/mteb/models/bge_models.py | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1740,7 +1740,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0194vAYmJV16oy5ZkSGiKu8k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport mteb\n# find a valid task name\ntasks = mteb.get_tasks(tasks=None)\nprint(tasks[0].metadata.name, tasks[0].metadata.type)\n\" 2>&1 | tail -5"
           },
@@ -1748,7 +1748,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport mteb\n# find a valid task name\ntasks = mteb.get_tasks(tasks=None)\nprint(tasks[0].metadata.name, tasks[0].metadata.type)\n\" 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1809,7 +1809,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Tj3571wdfEfhHezV2qDFXY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PYEOF' >/tmp/o.txt 2>/tmp/e.txt\nimport numpy as np, mteb\nfrom mteb.encoder_interface import PromptType\nrev=\"7999e1d3359715c523056ef9478215996d62a620\"\nmodel=mteb.get_model(\"BAAI/bge-small-zh-v1.5\",revision=rev)\ndocs=[l.rstrip(\"\\n\") for l in open(\"/app/data.txt\")]\ntn=\"CQADupstack-NL\"\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nd=norm(np.asarray(model.encode(docs,task_name=tn)))\nfor label,qkw in [(\"plain\",{}),(\"qprompt\",{\"prompt_type\":PromptType.query})]:\n    q=norm(np.asarray(model.encode([\"terminal-bench\"],task_name=tn,**qkw)))\n    sims=(d@q.T).ravel(); order=np.argsort(-sims)\n    print(\"===\",label)\n    for r,i in enumerate(order[:6]):\n        print(f\"{r+1} {sims[i]:.6f}  {docs[i]}\")\nPYEOF\necho exit=$?; cat /tmp/e.txt | tail -5; echo ---; cat /tmp/o.txt"
           },
@@ -1817,7 +1817,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PYEOF' >/tmp/o.txt 2>/tmp/e.txt\nimport numpy as np, mteb\nfrom mteb.encoder_interface import PromptType\nrev=\"7999e1d3359715c523056ef9478215996d62a620\"\nmodel=mteb.get_model(\"BAAI/bge-small-zh-v1.5\",revision=rev)\ndocs=[l.rstrip(\"\\n\") for l in open(\"/app/data.txt\")]\ntn=\"CQADupstack-NL\"\ndef norm(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nd=norm(np.asarray(model.encode(docs,task_name=tn)))\nfor label,qkw in [(\"plain\",{}),(\"qprompt\",{\"prompt_type\":PromptType.query})]:\n    q=norm(np.asarray(model.encode([\"terminal-bench\"],task_name=tn,**qkw)))\n    sims=(d@q.T).ravel(); order=np.argsort(-sims)\n    print(\"===\",label)\n    for r,i in enumerate(order[:6]):\n        print(f\"{r+1} {sims[i]:.6f}  {docs[i]}\")\nPYEOF\necho exit=$?; cat /tmp/e.txt | tail -5; echo ---; cat /tmp/o.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1878,7 +1878,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018sYWAkx7Q6iejhov4LUvRM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PYEOF'\ncontent = '''import numpy as np\nimport mteb\n\n# Load the exact model + revision through the mteb package.\nrevision = \"7999e1d3359715c523056ef9478215996d62a620\"\nmodel = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=revision)\n\nwith open(\"/app/data.txt\") as f:\n    docs = [line.rstrip(\"\\\\n\") for line in f]\n\nquery = \"terminal-bench\"\n\n# mteb's encode requires a valid task_name; the bge-small-zh-v1.5 meta only\n# defines a \"query\" prompt, so with prompt_type left as None (default) no\n# instruction prompt is applied and query/docs are encoded identically.\ntask_name = \"CQADupstack-NL\"\nq_emb = np.asarray(model.encode([query], task_name=task_name))\nd_emb = np.asarray(model.encode(docs, task_name=task_name))\n\ndef norm(x):\n    return x / np.linalg.norm(x, axis=1, keepdims=True)\n\nsims = (norm(d_emb) @ norm(q_emb).T).ravel()\norder = np.argsort(-sims)\nfifth = int(order[4])\n\nfor rank, i in enumerate(order[:6], 1):\n    print(f\"{rank} {sims[i]:.6f}  {docs[i]}\")\n\nwith open(\"/app/result.txt\", \"w\") as f:\n    f.write(docs[fifth] + \"\\\\n\")\nprint(\"RESULT:\", docs[fifth])\n'''\nopen(\"solve.py\",\"w\").write(content)\nprint(\"written\")\nPYEOF\ncd /app && python3 solve.py 2>/dev/null; echo \"=== result.txt ===\"; cat /app/result.txt"
           },
@@ -1886,7 +1886,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PYEOF'\ncontent = '''import numpy as np\nimport mteb\n\n# Load the exact model + revision through the mteb package.\nrevision = \"7999e1d3359715c523056ef9478215996d62a620\"\nmodel = mteb.get_model(\"BAAI/bge-small-zh-v1.5\", revision=revision)\n\nwith open(\"/app/data.txt\") as f:\n    docs = [line.rstrip(\"\\\\n\") for line in f]\n\nquery = \"terminal-bench\"\n\n# mteb's encode requires a valid task_name; the bge-small-zh-v1.5 meta only\n# defines a \"query\" prompt, so with prompt_type left as None (default) no\n# instruction prompt is applied and query/docs are encoded identically.\ntask_name = \"CQADupstack-NL\"\nq_emb = np.asarray(model.encode([query], task_name=task_name))\nd_emb = np.asarray(model.encode(docs, task_name=task_name))\n\ndef norm(x):\n    return x / np.linalg.norm(x, axis=1, keepdims=True)\n\nsims = (norm(d_emb) @ norm(q_emb).T).ravel()\norder = np.argsort(-sims)\nfifth = int(order[4])\n\nfor rank, i in enumerate(order[:6], 1):\n    print(f\"{rank} {sims[i]:.6f}  {docs[i]}\")\n\nwith open(\"/app/result.txt\", \"w\") as f:\n    f.write(docs[fifth] + \"\\\\n\")\nprint(\"RESULT:\", docs[fifth])\n'''\nopen(\"solve.py\",\"w\").write(content)\nprint(\"written\")\nPYEOF\ncd /app && python3 solve.py 2>/dev/null; echo \"=== result.txt ===\"; cat /app/result.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2002,7 +2002,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XnANWJXrP3pfE7JKV4wc5V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 solve.py 2>/dev/null | tail -1; echo \"--- result.txt ---\"; cat /app/result.txt; echo \"--- reproducibility (2nd run diff) ---\"; python3 solve.py 2>/dev/null > /tmp/run2.txt; tail -1 /tmp/run2.txt"
           },
@@ -2010,7 +2010,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 solve.py 2>/dev/null | tail -1; echo \"--- result.txt ---\"; cat /app/result.txt; echo \"--- reproducibility (2nd run diff) ---\"; python3 solve.py 2>/dev/null > /tmp/run2.txt; tail -1 /tmp/run2.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2071,7 +2071,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LDHNcjhRqErAAz7H4kYAJj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'PYEOF' 2>/dev/null\n# Verify: model loaded at requested revision, result.txt line is the true 5th-ranked doc, and it exists in data.txt.\nimport numpy as np, mteb\nrev=\"7999e1d3359715c523056ef9478215996d62a620\"\nm=mteb.get_model(\"BAAI/bge-small-zh-v1.5\",revision=rev)\ndocs=[l.rstrip(\"\\n\") for l in open(\"/app/data.txt\")]\nres=open(\"/app/result.txt\").read().rstrip(\"\\n\")\ndef n(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nd=n(np.asarray(m.encode(docs,task_name=\"CQADupstack-NL\")))\nq=n(np.asarray(m.encode([\"terminal-bench\"],task_name=\"CQADupstack-NL\")))\norder=np.argsort(-(d@q.T).ravel())\nprint(\"result in data.txt:\", res in docs)\nprint(\"result == 5th-ranked:\", docs[int(order[4])]==res)\nprint(\"distinct docs:\", len(docs)==len(set(docs)))\nPYEOF"
           },
@@ -2079,7 +2079,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'PYEOF' 2>/dev/null\n# Verify: model loaded at requested revision, result.txt line is the true 5th-ranked doc, and it exists in data.txt.\nimport numpy as np, mteb\nrev=\"7999e1d3359715c523056ef9478215996d62a620\"\nm=mteb.get_model(\"BAAI/bge-small-zh-v1.5\",revision=rev)\ndocs=[l.rstrip(\"\\n\") for l in open(\"/app/data.txt\")]\nres=open(\"/app/result.txt\").read().rstrip(\"\\n\")\ndef n(x): return x/np.linalg.norm(x,axis=1,keepdims=True)\nd=n(np.asarray(m.encode(docs,task_name=\"CQADupstack-NL\")))\nq=n(np.asarray(m.encode([\"terminal-bench\"],task_name=\"CQADupstack-NL\")))\norder=np.argsort(-(d@q.T).ravel())\nprint(\"result in data.txt:\", res in docs)\nprint(\"result == 5th-ranked:\", docs[int(order[4])]==res)\nprint(\"distinct docs:\", len(docs)==len(set(docs)))\nPYEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018veQkCXCHCy7ViDPfCGyQe",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.c",
@@ -47,12 +47,12 @@
                 "/app/decrypt.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01PcqFKJUM2HbReNG8VhbDgJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt",
             "cwd": "/app"
@@ -62,7 +62,7 @@
               "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -127,7 +127,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011mE5s2fNfRyU5CEcpGAGAG",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/pairs.txt",
@@ -141,7 +141,7 @@
                 "/app/ciphertexts.txt:L1-3"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -202,7 +202,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012TCwPnpw9rmi48PdgdQ7fp",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -222,7 +222,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -283,7 +283,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011c7FSzzquG7HA3mVj75eNP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o solve solve.c && time ./solve",
             "cwd": "/app"
@@ -293,7 +293,7 @@
               "command": "cd /app && gcc -O2 -o solve solve.c && time ./solve",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -354,7 +354,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FYxGCPph2eoP1VhfxHonBZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 0x68E63 0x62571 0x1F61C 0xB74A5 > ref.txt && diff -q ref.txt plaintexts.txt && echo \"MATCH decrypt.c\" && wc -l plaintexts.txt && head -3 plaintexts.txt\n# round-trip sanity: re-encrypt each recovered plaintext -> must equal ciphertext\npaste plaintexts.txt ciphertexts.txt | awk 'NR<=3'",
             "cwd": "/app"
@@ -364,7 +364,7 @@
               "command": "cd /app && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 0x68E63 0x62571 0x1F61C 0xB74A5 > ref.txt && diff -q ref.txt plaintexts.txt && echo \"MATCH decrypt.c\" && wc -l plaintexts.txt && head -3 plaintexts.txt\n# round-trip sanity: re-encrypt each recovered plaintext -> must equal ciphertext\npaste plaintexts.txt ciphertexts.txt | awk 'NR<=3'",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -425,7 +425,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AKxVMJz8s2r6tu6X7LyZG6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o feal feal.c\nok=1\nwhile read -r pt <&3 && read -r ct <&4; do\n  hexpt=$(printf '%016x' \"$pt\")\n  out=$(./feal \"$hexpt\" 0x68E63 0x62571 0x1F61C 0xB74A5 | awk '/Ciphertext/{print $2}')\n  dec=$(printf '%d' \"$out\")\n  [ \"$dec\" != \"$ct\" ] && { echo \"MISMATCH pt=$pt got=$dec want=$ct\"; ok=0; break; }\ndone 3<plaintexts.txt 4<ciphertexts.txt\n[ \"$ok\" = 1 ] && echo \"ALL 100 plaintexts re-encrypt to ciphertexts.txt — OK\"",
             "cwd": "/app"
@@ -435,7 +435,7 @@
               "command": "cd /app && gcc -O2 -o feal feal.c\nok=1\nwhile read -r pt <&3 && read -r ct <&4; do\n  hexpt=$(printf '%016x' \"$pt\")\n  out=$(./feal \"$hexpt\" 0x68E63 0x62571 0x1F61C 0xB74A5 | awk '/Ciphertext/{print $2}')\n  dec=$(printf '%d' \"$out\")\n  [ \"$dec\" != \"$ct\" ] && { echo \"MISMATCH pt=$pt got=$dec want=$ct\"; ok=0; break; }\ndone 3<plaintexts.txt 4<ciphertexts.txt\n[ \"$ok\" = 1 ] && echo \"ALL 100 plaintexts re-encrypt to ciphertexts.txt — OK\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -496,7 +496,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TFFrgzKg1nVcNQs2PbS277",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\ntypedef uint32_t u32; typedef uint64_t u64;\nstatic u32 expand(u32 k){return k^(k<<16)^(k*12345u);}\nstatic u32 F(u32 v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n uint8_t (*G)(uint8_t,uint8_t,uint8_t);\n #define g(a,b,c) ((uint8_t)((((uint8_t)((a)+(b)+(c))<<2)|((uint8_t)((a)+(b)+(c))>>6))&0xFF))\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n u32 o=0;for(int i=0;i<4;i++)o|=(u32)y[i]<<(8*i);return o;}\nstatic u64 enc(u64 pt,u32*key){u32 l=(pt>>32),r=pt&0xFFFFFFFFu;r^=l;\n for(int i=0;i<4;i++){u32 m=F(r^key[i]),t=r;r=l^m;l=t;}l^=r;return ((u64)r<<32)|l;}\nint main(){u32 key[4]={expand(0x68E63),expand(0x62571),expand(0x1F61C),expand(0xB74A5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1&&fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,key)!=ct)bad++;}\n printf(\"checked=%d mismatches=%d\\n\",n,bad);return bad?1:0;}\nEOF\ngcc -O2 -o rt rt.c && ./rt",
             "cwd": "/app"
@@ -506,7 +506,7 @@
               "command": "cd /app && cat > rt.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\ntypedef uint32_t u32; typedef uint64_t u64;\nstatic u32 expand(u32 k){return k^(k<<16)^(k*12345u);}\nstatic u32 F(u32 v){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=v&0xFF;v>>=8;}\n uint8_t (*G)(uint8_t,uint8_t,uint8_t);\n #define g(a,b,c) ((uint8_t)((((uint8_t)((a)+(b)+(c))<<2)|((uint8_t)((a)+(b)+(c))>>6))&0xFF))\n y[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\n u32 o=0;for(int i=0;i<4;i++)o|=(u32)y[i]<<(8*i);return o;}\nstatic u64 enc(u64 pt,u32*key){u32 l=(pt>>32),r=pt&0xFFFFFFFFu;r^=l;\n for(int i=0;i<4;i++){u32 m=F(r^key[i]),t=r;r=l^m;l=t;}l^=r;return ((u64)r<<32)|l;}\nint main(){u32 key[4]={expand(0x68E63),expand(0x62571),expand(0x1F61C),expand(0xB74A5)};\n FILE*a=fopen(\"plaintexts.txt\",\"r\"),*b=fopen(\"ciphertexts.txt\",\"r\");\n unsigned long long pt,ct;int n=0,bad=0;\n while(fscanf(a,\"%llu\",&pt)==1&&fscanf(b,\"%llu\",&ct)==1){n++;if(enc(pt,key)!=ct)bad++;}\n printf(\"checked=%d mismatches=%d\\n\",n,bad);return bad?1:0;}\nEOF\ngcc -O2 -o rt rt.c && ./rt",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -567,7 +567,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013spSZh5E5f8kqnydAtYhoW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f rt rt.c ref.txt solve decrypt feal && ls",
             "cwd": "/app"
@@ -577,7 +577,7 @@
               "command": "cd /app && rm -f rt rt.c ref.txt solve decrypt feal && ls",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -693,7 +693,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PsgvsFhZDsrVSr3mEdVhdV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -o solve solve.c && ./solve && echo \"--- verify plaintexts.txt via reference decrypt.c ---\" && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 0x68E63 0x62571 0x1F61C 0xB74A5 > ref.txt && diff -q ref.txt plaintexts.txt && echo \"REFERENCE MATCH\" && wc -l plaintexts.txt && rm -f solve decrypt ref.txt",
             "cwd": "/app"
@@ -703,7 +703,7 @@
               "command": "cd /app && gcc -O2 -o solve solve.c && ./solve && echo \"--- verify plaintexts.txt via reference decrypt.c ---\" && gcc -O2 -o decrypt decrypt.c && ./decrypt ciphertexts.txt 0x68E63 0x62571 0x1F61C 0xB74A5 > ref.txt && diff -q ref.txt plaintexts.txt && echo \"REFERENCE MATCH\" && wc -l plaintexts.txt && rm -f solve decrypt ref.txt",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

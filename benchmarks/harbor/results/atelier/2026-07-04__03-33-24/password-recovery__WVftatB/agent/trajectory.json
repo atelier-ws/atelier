@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BiLbnoxUurznzd8zQ7i1dJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"---\"; df -h; echo \"---\"; mount | head -50"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"---\"; df -h; echo \"---\"; mount | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01BiLbnoxUurznzd8zQ7i1dJ",
-            "content": "{\"type\": \"text\", \"text\": \"total 12\\ndrwxr-xr-x 1 root root 4096 Oct 22  2025 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 06:42 ..\\ndrwxr-xr-x 8 root root 4096 Oct 22  2025 varsea\\n---\\nFilesystem                         Size  Used Avail Use% Mounted on\\noverlay                            3.6T  1.4T  2.1T  41% /\\ntmpfs                               64M     0   64M   0% /dev\\nshm                                 64M     0   64M   0% /dev/shm\\n/dev/mapper/ubuntu--vg-ubuntu--lv  3.6T  1.4T  2.1T  41% /atelier\\ntmpfs                               63G     0   63G   0% /proc/acpi\\ntmpfs                               63G     0   63G   0% /proc/asound\\ntmpfs                               63G     0   63G   0% /proc/scsi\\ntmpfs                               63G     0   63G   0% /sys/devices/virtual/powercap\\ntmpfs                               63G     0   63G   0% /sys/firmware\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu0/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu1/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu2/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu3/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu4/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu5/thermal_throttle\\ntmpfs                               63G     0   6\\n... (6,675 chars trimmed) ...\\ncpu13/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu14/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu15/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu16/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu17/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu18/thermal_throttle type tmpfs (ro,relatime,inode64)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 12\\ndrwxr-xr-x 1 root root 4096 Oct 22  2025 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 06:42 ..\\ndrwxr-xr-x 8 root root 4096 Oct 22  2025 varsea\\n---\\nFilesystem                         Size  Used Avail Use% Mounted on\\noverlay                            3.6T  1.4T  2.1T  41% /\\ntmpfs                               64M     0   64M   0% /dev\\nshm                                 64M     0   64M   0% /dev/shm\\n/dev/mapper/ubuntu--vg-ubuntu--lv  3.6T  1.4T  2.1T  41% /lemoncrow\\ntmpfs                               63G     0   63G   0% /proc/acpi\\ntmpfs                               63G     0   63G   0% /proc/asound\\ntmpfs                               63G     0   63G   0% /proc/scsi\\ntmpfs                               63G     0   63G   0% /sys/devices/virtual/powercap\\ntmpfs                               63G     0   63G   0% /sys/firmware\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu0/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu1/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu2/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu3/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu4/thermal_throttle\\ntmpfs                               63G     0   63G   0% /sys/devices/system/cpu/cpu5/thermal_throttle\\ntmpfs                               63G     0   6\\n... (6,675 chars trimmed) ...\\ncpu13/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu14/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu15/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu16/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu17/thermal_throttle type tmpfs (ro,relatime,inode64)\\ntmpfs on /sys/devices/system/cpu/cpu18/thermal_throttle type tmpfs (ro,relatime,inode64)\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TLSUSaukLGVzX4GfBN4qFM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find /app -type f 2>/dev/null | head -100; echo \"---dirs---\"; find /app -type d 2>/dev/null"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "find /app -type f 2>/dev/null | head -100; echo \"---dirs---\"; find /app -type d 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011F6jxkBzScEhG7fsFdfxw1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; ls -laR; echo \"===FILE TYPES===\"; file disks/sub1/subA/subAlpha/ae3f4c.dat */*.bin 2>/dev/null"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; ls -laR; echo \"===FILE TYPES===\"; file disks/sub1/subA/subAlpha/ae3f4c.dat */*.bin 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013wVXQ4cNp1vYYeCV6jMfHA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; for f in */*.log; do echo \"== $f ==\"; cat \"$f\"; echo; done"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; for f in */*.log; do echo \"== $f ==\"; cat \"$f\"; echo; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017KhvaTr4xPmTjwYzArgJCs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; xxd disks/sub1/subA/subAlpha/ae3f4c.dat | head -40"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; xxd disks/sub1/subA/subAlpha/ae3f4c.dat | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CtJEjkKMuEv1JZJPtokftM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; od -A d -t x1z disks/sub1/subA/subAlpha/ae3f4c.dat | head -60"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; od -A d -t x1z disks/sub1/subA/subAlpha/ae3f4c.dat | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XYNVjUahf7tsGC3vH9WvhA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; for f in $(find . -type f); do echo \"== $f ==\"; strings -n 6 \"$f\" | grep -iE \"password|launchcode|8XD|W54\" ; done 2>/dev/null"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; for f in $(find . -type f); do echo \"== $f ==\"; strings -n 6 \"$f\" | grep -iE \"password|launchcode|8XD|W54\" ; done 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N4PKWVTRzp4BsZ73sYi2Q5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; strings -a -t d -n 4 \"$f\" | grep -iE \"launchcode|PK|W54|app/\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; strings -a -t d -n 4 \"$f\" | grep -iE \"launchcode|PK|W54|app/\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N79N4jnJcUh9arTwknhHCz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== region 3145600 ===\"; dd if=\"$f\" bs=1 skip=3145600 count=400 2>/dev/null | od -A d -t x1z; "
           },
@@ -593,7 +593,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== region 3145600 ===\"; dd if=\"$f\" bs=1 skip=3145600 count=400 2>/dev/null | od -A d -t x1z; "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -654,7 +654,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WqQJy76NnvcBtJ8EizttF2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== entry near 3145708 ===\"; dd if=\"$f\" bs=1 skip=3145708 count=33 2>/dev/null | od -A d -c"
           },
@@ -662,7 +662,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== entry near 3145708 ===\"; dd if=\"$f\" bs=1 skip=3145708 count=33 2>/dev/null | od -A d -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -723,7 +723,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VSDpGpPRLejy1wzzf9jh7n",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== region 1048540 ===\"; dd if=\"$f\" bs=1 skip=1048540 count=160 2>/dev/null | od -A d -t x1z"
           },
@@ -731,7 +731,7 @@
             "raw_arguments": {
               "command": "cd /app/varsea; f=disks/sub1/subA/subAlpha/ae3f4c.dat; echo \"=== region 1048540 ===\"; dd if=\"$f\" bs=1 skip=1048540 count=160 2>/dev/null | od -A d -t x1z"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -792,7 +792,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LGcV7q82UhwjGxifCuBndw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport zlib, itertools\nstart=\"8XDP5Q2RT9Z\"   # 11 chars from local header\nend=\"K7VB3BV4WW54\"    # 12 chars from central-dir copy\ntarget=0xb0725dc4\n# assume adjacency (11+12=23)\ncand=start+end\ncontent=(\"PASSWORD=\"+cand+\"\\n\").encode()\nprint(cand, len(cand), hex(zlib.crc32(content)), zlib.crc32(content)==target)\nEOF"
           },
@@ -800,7 +800,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport zlib, itertools\nstart=\"8XDP5Q2RT9Z\"   # 11 chars from local header\nend=\"K7VB3BV4WW54\"    # 12 chars from central-dir copy\ntarget=0xb0725dc4\n# assume adjacency (11+12=23)\ncand=start+end\ncontent=(\"PASSWORD=\"+cand+\"\\n\").encode()\nprint(cand, len(cand), hex(zlib.crc32(content)), zlib.crc32(content)==target)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -861,7 +861,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qf5fPP53fdgGAjzYZzPQPp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf '8XDP5Q2RT9ZK7VB3BV4WW54\\n' > /app/recovered_passwords.txt; cat /app/recovered_passwords.txt"
           },
@@ -869,7 +869,7 @@
             "raw_arguments": {
               "command": "printf '8XDP5Q2RT9ZK7VB3BV4WW54\\n' > /app/recovered_passwords.txt; cat /app/recovered_passwords.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

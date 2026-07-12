@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R4BzffRobPRb8qMr3zmvRT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.json /app/*.png 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; echo \"---\"; python3 --version; echo \"---\"; ls /app/*.json /app/*.png 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mtc3b3zXwKmcxMrw3APMDR",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/model.py"
@@ -114,7 +114,7 @@
                 "/app/model.py"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N2z4ECT7Jjuf5yAYNdVBNg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"---PIL---\"; python3 -c \"import PIL; print(PIL.__version__)\" 2>&1 | head; echo \"---gcc---\"; gcc --version 2>&1 | head -1; g++ --version 2>&1 | head -1"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 -c \"import torch; print(torch.__version__)\" 2>&1 | head; echo \"---PIL---\"; python3 -c \"import PIL; print(PIL.__version__)\" 2>&1 | head; echo \"---gcc---\"; gcc --version 2>&1 | head -1; g++ --version 2>&1 | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -244,7 +244,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014GTxuSWmmsQkqcgEcFRjMm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; gcc --version 2>&1 | head -1; g++ --version 2>&1 | head -1; echo \"---install torch---\"; uv pip install --system --break-system-packages torch numpy pillow 2>&1 | tail -5"
           },
@@ -252,7 +252,7 @@
             "raw_arguments": {
               "command": "cd /app; gcc --version 2>&1 | head -1; g++ --version 2>&1 | head -1; echo \"---install torch---\"; uv pip install --system --break-system-packages torch numpy pillow 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -313,7 +313,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013XVNsRirywKa4YCSnJnCcf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pip pip3 cc clang python3; echo \"---\"; apt-get update -qq 2>&1 | tail -2"
           },
@@ -321,7 +321,7 @@
             "raw_arguments": {
               "command": "which pip pip3 cc clang python3; echo \"---\"; apt-get update -qq 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -382,7 +382,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JPbLDkdJrFnznMtE5Ht6Td",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y -qq build-essential 2>&1 | tail -5; echo \"===\"; which gcc g++ cc"
           },
@@ -390,7 +390,7 @@
             "raw_arguments": {
               "command": "apt-get install -y -qq build-essential 2>&1 | tail -5; echo \"===\"; which gcc g++ cc"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CU85ifaE7rG6HnWH7wXVbC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; pip install --break-system-packages -q torch numpy pillow 2>&1 | tail -8"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app; pip install --break-system-packages -q torch numpy pillow 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SPLcChUzm6C5zpspXxuies",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 -c \"import torch; print(torch.__version__)\"; echo \"---\"; python3 - <<'EOF'\nimport torch\nsd = torch.load('model.pth', map_location='cpu')\nif hasattr(sd,'state_dict'): sd=sd.state_dict()\nfor k,v in sd.items():\n    print(k, tuple(v.shape), v.dtype)\nEOF"
           },
@@ -528,7 +528,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 -c \"import torch; print(torch.__version__)\"; echo \"---\"; python3 - <<'EOF'\nimport torch\nsd = torch.load('model.pth', map_location='cpu')\nif hasattr(sd,'state_dict'): sd=sd.state_dict()\nfor k,v in sd.items():\n    print(k, tuple(v.shape), v.dtype)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -589,7 +589,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AsMxynkD679q63hWJSUkT1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 - <<'EOF'\nfrom PIL import Image\nimport numpy as np\nim = Image.open('image.png')\nprint(im.size, im.mode)\na = np.array(im)\nprint(a.shape, a.dtype, a.min(), a.max())\nEOF"
           },
@@ -597,7 +597,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 - <<'EOF'\nfrom PIL import Image\nimport numpy as np\nim = Image.open('image.png')\nprint(im.size, im.mode)\na = np.array(im)\nprint(a.shape, a.dtype, a.min(), a.max())\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011BDJ9bc6bCbqgPYVeY2ctq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 - <<'EOF'\nimport torch, torch.nn as nn, numpy as np\nfrom PIL import Image\nfrom model import MnistModel\nm = MnistModel(784,16,10)\nm.load_state_dict(torch.load('model.pth',map_location='cpu'))\nm.eval()\na = np.array(Image.open('image.png'), dtype=np.float32).reshape(-1)\ndef run(x):\n    with torch.no_grad():\n        o = m(torch.tensor(x).unsqueeze(0))\n    return o.argmax().item(), o.softmax(1).max().item()\nprint(\"raw/255:\", run(a/255.0))\nprint(\"norm:\", run((a/255.0-0.1307)/0.3081))\nprint(\"raw:\", run(a))\nEOF"
           },
@@ -666,7 +666,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 - <<'EOF'\nimport torch, torch.nn as nn, numpy as np\nfrom PIL import Image\nfrom model import MnistModel\nm = MnistModel(784,16,10)\nm.load_state_dict(torch.load('model.pth',map_location='cpu'))\nm.eval()\na = np.array(Image.open('image.png'), dtype=np.float32).reshape(-1)\ndef run(x):\n    with torch.no_grad():\n        o = m(torch.tensor(x).unsqueeze(0))\n    return o.argmax().item(), o.softmax(1).max().item()\nprint(\"raw/255:\", run(a/255.0))\nprint(\"norm:\", run((a/255.0-0.1307)/0.3081))\nprint(\"raw:\", run(a))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -727,7 +727,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V1Q1qcsPhLEv5kMD57qmkP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 - <<'EOF'\nimport torch, json\nsd = torch.load('model.pth', map_location='cpu')\nout = {}\nfor k,v in sd.items():\n    out[k] = v.tolist()\nout['meta'] = {'input_dim':784,'hidden_dim':16,'num_classes':10,'mean':0.1307,'std':0.3081}\njson.dump(out, open('weights.json','w'))\nprint(\"wrote weights.json\", __import__('os').path.getsize('weights.json'))\nEOF"
           },
@@ -735,7 +735,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 - <<'EOF'\nimport torch, json\nsd = torch.load('model.pth', map_location='cpu')\nout = {}\nfor k,v in sd.items():\n    out[k] = v.tolist()\nout['meta'] = {'input_dim':784,'hidden_dim':16,'num_classes':10,'mean':0.1307,'std':0.3081}\njson.dump(out, open('weights.json','w'))\nprint(\"wrote weights.json\", __import__('os').path.getsize('weights.json'))\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -796,7 +796,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AVMFDPBHiFCwETJioQFGmF",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -816,7 +816,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -877,7 +877,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PZYreW5RptaviqCn89cjYG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | tail -20; echo \"exit=$?\"; ls -la cli_tool"
           },
@@ -885,7 +885,7 @@
             "raw_arguments": {
               "command": "cd /app; g++ -O2 -o cli_tool cli_tool.cpp cJSON.c lodepng.cpp 2>&1 | tail -20; echo \"exit=$?\"; ls -la cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -946,7 +946,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019Cyb1mDpjZMjfYMiaV6Re4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; ./cli_tool weights.json image.png; echo \"exit=$?\""
           },
@@ -954,7 +954,7 @@
             "raw_arguments": {
               "command": "cd /app; ./cli_tool weights.json image.png; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1015,7 +1015,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ACuVPEmR73Wb2KrF7L1DVx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; ./cli_tool weights.json image.png > prediction.txt; printf '%s' \"$(cat prediction.txt)\" > prediction.txt; cat prediction.txt; echo; echo \"---files---\"; ls -la cli_tool weights.json prediction.txt; file cli_tool"
           },
@@ -1023,7 +1023,7 @@
             "raw_arguments": {
               "command": "cd /app; ./cli_tool weights.json image.png > prediction.txt; printf '%s' \"$(cat prediction.txt)\" > prediction.txt; cat prediction.txt; echo; echo \"---files---\"; ls -la cli_tool weights.json prediction.txt; file cli_tool"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1084,7 +1084,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01L7qad1dtu9MtPJsnWsFk1r",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; xxd prediction.txt 2>/dev/null || od -c prediction.txt"
           },
@@ -1092,7 +1092,7 @@
             "raw_arguments": {
               "command": "cd /app; xxd prediction.txt 2>/dev/null || od -c prediction.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1208,7 +1208,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VV8nZsYk8caVrcPsyMbpyJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; python3 - <<'EOF'\nimport torch, numpy as np, subprocess, os\nfrom PIL import Image\nfrom model import MnistModel\nm = MnistModel(784,16,10); m.load_state_dict(torch.load('model.pth',map_location='cpu')); m.eval()\ndef ref(a):\n    x=(a.reshape(-1).astype(np.float32)/255.0-0.1307)/0.3081\n    with torch.no_grad(): return m(torch.tensor(x).unsqueeze(0)).argmax().item()\nrng=np.random.default_rng(0)\ncases=[('orig',np.array(Image.open('image.png')))]\nfor i in range(8):\n    a=rng.integers(0,256,(28,28),dtype=np.uint8)\n    cases.append((f'rand{i}',a))\ncases.append(('zeros',np.zeros((28,28),np.uint8)))\ncases.append(('ones',np.full((28,28),255,np.uint8)))\nok=True\nfor name,a in cases:\n    Image.fromarray(a.astype(np.uint8)).save('/tmp/t.png')\n    out=subprocess.run(['./cli_tool','weights.json','/tmp/t.png'],capture_output=True,text=True).stdout.strip()\n    r=ref(a)\n    match = (str(r)==out)\n    ok &= match\n    print(f\"{name:8} ref={r} tool={out} {'OK' if match else 'MISMATCH'}\")\nprint(\"ALL PASS\" if ok else \"FAILURES\")\nEOF"
           },
@@ -1216,7 +1216,7 @@
             "raw_arguments": {
               "command": "cd /app; python3 - <<'EOF'\nimport torch, numpy as np, subprocess, os\nfrom PIL import Image\nfrom model import MnistModel\nm = MnistModel(784,16,10); m.load_state_dict(torch.load('model.pth',map_location='cpu')); m.eval()\ndef ref(a):\n    x=(a.reshape(-1).astype(np.float32)/255.0-0.1307)/0.3081\n    with torch.no_grad(): return m(torch.tensor(x).unsqueeze(0)).argmax().item()\nrng=np.random.default_rng(0)\ncases=[('orig',np.array(Image.open('image.png')))]\nfor i in range(8):\n    a=rng.integers(0,256,(28,28),dtype=np.uint8)\n    cases.append((f'rand{i}',a))\ncases.append(('zeros',np.zeros((28,28),np.uint8)))\ncases.append(('ones',np.full((28,28),255,np.uint8)))\nok=True\nfor name,a in cases:\n    Image.fromarray(a.astype(np.uint8)).save('/tmp/t.png')\n    out=subprocess.run(['./cli_tool','weights.json','/tmp/t.png'],capture_output=True,text=True).stdout.strip()\n    r=ref(a)\n    match = (str(r)==out)\n    ok &= match\n    print(f\"{name:8} ref={r} tool={out} {'OK' if match else 'MISMATCH'}\")\nprint(\"ALL PASS\" if ok else \"FAILURES\")\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

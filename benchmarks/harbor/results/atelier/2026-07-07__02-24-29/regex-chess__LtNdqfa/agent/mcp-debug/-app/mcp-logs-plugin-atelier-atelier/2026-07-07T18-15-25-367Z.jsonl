@@ -1,6 +1,6 @@
 {"debug":"Starting connection with timeout of 30000ms","timestamp":"2026-07-07T18:15:25.765Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
 {"debug":"Successfully connected (transport: stdio) in 1409ms","timestamp":"2026-07-07T18:15:27.173Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
-{"debug":"Connection established with capabilities: {\"hasTools\":true,\"hasPrompts\":false,\"hasResources\":false,\"hasResourceSubscribe\":false,\"serverVersion\":{\"name\":\"atelier\",\"version\":\"0.2.0\"}}","timestamp":"2026-07-07T18:15:27.174Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
+{"debug":"Connection established with capabilities: {\"hasTools\":true,\"hasPrompts\":false,\"hasResources\":false,\"hasResourceSubscribe\":false,\"serverVersion\":{\"name\":\"lemoncrow\",\"version\":\"0.2.0\"}}","timestamp":"2026-07-07T18:15:27.174Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
 {"debug":"Calling MCP tool: bash","timestamp":"2026-07-07T18:28:24.481Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
 {"debug":"Tool 'bash' completed successfully in 173ms","timestamp":"2026-07-07T18:28:24.654Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}
 {"debug":"Calling MCP tool: read","timestamp":"2026-07-07T18:28:28.136Z","sessionId":"cee4d20b-4c1e-40eb-b0b4-74e49a483840","cwd":"/app"}

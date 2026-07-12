@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013DG8xVHzyjSa68TYy5bvnx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "whoami; uname -a; git --version; python3 --version; ls /git 2>/dev/null; which sshd nginx python3; cat /etc/os-release | head -3"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "whoami; uname -a; git --version; python3 --version; ls /git 2>/dev/null; which sshd nginx python3; cat /etc/os-release | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LRqWivmqaaFgzRz5puCHNA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/hosts; echo \"---\"; id user 2>/dev/null; echo \"---sshd---\"; ls -la /usr/sbin/sshd 2>/dev/null; service ssh status 2>/dev/null; echo \"---ports---\"; ss -tlnp 2>/dev/null | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cat /etc/hosts; echo \"---\"; id user 2>/dev/null; echo \"---sshd---\"; ls -la /usr/sbin/sshd 2>/dev/null; service ssh status 2>/dev/null; echo \"---ports---\"; ss -tlnp 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HL3Bf3ZJTmUs1zXLGCtUPk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\n# 1. Bare git repo the user clones over ssh\nmkdir -p /git\ngit init --bare /git/server\ngit -C /git/server symbolic-ref HEAD refs/heads/master\n\n# 2. Web root that the webserver serves\nmkdir -p /var/www/html\n\n# 3. post-receive hook: deploy pushed content into the web root\ncat > /git/server/hooks/post-receive <<'HOOK'\n#!/bin/sh\n# Deploy every pushed branch's tip working tree into the web root.\nGIT_DIR=/git/server\nWORK_TREE=/var/www/html\nexport GIT_DIR\nwhile read oldrev newrev refname; do\n    branch=$(git rev-parse --symbolic --abbrev-ref \"$refname\" 2>/dev/null)\n    # Only deploy the master branch to the live site.\n    if [ \"$branch\" = \"master\" ]; then\n        mkdir -p \"$WORK_TREE\"\n        git --work-tree=\"$WORK_TREE\" checkout -f master\n        echo \"Deployed $branch to $WORK_TREE\"\n    fi\ndone\nHOOK\nchmod +x /git/server/hooks/post-receive\necho \"=== hook ===\"; ls -l /git/server/hooks/post-receive\necho \"=== repo ===\"; ls /git/server"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "set -e\n# 1. Bare git repo the user clones over ssh\nmkdir -p /git\ngit init --bare /git/server\ngit -C /git/server symbolic-ref HEAD refs/heads/master\n\n# 2. Web root that the webserver serves\nmkdir -p /var/www/html\n\n# 3. post-receive hook: deploy pushed content into the web root\ncat > /git/server/hooks/post-receive <<'HOOK'\n#!/bin/sh\n# Deploy every pushed branch's tip working tree into the web root.\nGIT_DIR=/git/server\nWORK_TREE=/var/www/html\nexport GIT_DIR\nwhile read oldrev newrev refname; do\n    branch=$(git rev-parse --symbolic --abbrev-ref \"$refname\" 2>/dev/null)\n    # Only deploy the master branch to the live site.\n    if [ \"$branch\" = \"master\" ]; then\n        mkdir -p \"$WORK_TREE\"\n        git --work-tree=\"$WORK_TREE\" checkout -f master\n        echo \"Deployed $branch to $WORK_TREE\"\n    fi\ndone\nHOOK\nchmod +x /git/server/hooks/post-receive\necho \"=== hook ===\"; ls -l /git/server/hooks/post-receive\necho \"=== repo ===\"; ls /git/server"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011UfkRNdPZi6FEWBWghAttR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\n# Web server on port 8080 serving the deployed web root, as a durable daemon.\ncat > /usr/local/bin/webserver.sh <<'EOF'\n#!/bin/sh\nexec python3 -m http.server 8080 --directory /var/www/html\nEOF\nchmod +x /usr/local/bin/webserver.sh\nnohup /usr/local/bin/webserver.sh >/var/log/webserver.log 2>&1 &\nsleep 1\nss -tlnp 2>/dev/null | grep 8080 || netstat -tlnp 2>/dev/null | grep 8080\necho \"started\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "set -e\n# Web server on port 8080 serving the deployed web root, as a durable daemon.\ncat > /usr/local/bin/webserver.sh <<'EOF'\n#!/bin/sh\nexec python3 -m http.server 8080 --directory /var/www/html\nEOF\nchmod +x /usr/local/bin/webserver.sh\nnohup /usr/local/bin/webserver.sh >/var/log/webserver.log 2>&1 &\nsleep 1\nss -tlnp 2>/dev/null | grep 8080 || netstat -tlnp 2>/dev/null | grep 8080\necho \"started\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -256,7 +256,7 @@
         "results": [
           {
             "source_call_id": "toolu_011UfkRNdPZi6FEWBWghAttR",
-            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline sh execution is blocked; use Atelier tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\\nInline sh execution is blocked; use Atelier tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\"}"
+            "content": "{\"type\": \"text\", \"text\": \"status=blocked session_id=\\nInline sh execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\\nInline sh execution is blocked; use LemonCrow tools instead (allowed: running an existing script file — `sh path/to/script.sh` — and `sh -n` syntax checks)\"}"
           }
         ]
       },
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DyMccFJ7YYakjePHYxAjeC",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -329,7 +329,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -337,7 +337,7 @@
         "results": [
           {
             "source_call_id": "toolu_01DyMccFJ7YYakjePHYxAjeC",
-            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or ATELIER_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/usr/local/bin/webserver.sh\\\"]}],\\\"rolled_back\\\":true}\"}"
+            "content": "{\"type\": \"text\", \"text\": \"{\\\"failed\\\":[{\\\"error\\\":\\\"edit path escapes the workspace root; add the directory via additionalDirectories in ~/.claude/settings.json or LEMONCROW_ADDITIONAL_DIRS env to allow edits there\\\",\\\"paths\\\":[\\\"/usr/local/bin/webserver.sh\\\"]}],\\\"rolled_back\\\":true}\"}"
           }
         ]
       },
@@ -390,7 +390,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AfShJQ71xmKJe5L69Y2YgN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf '#!/bin/sh\\nexec python3 -m http.server 8080 --directory /var/www/html\\n' > /usr/local/bin/webserver.sh\nchmod +x /usr/local/bin/webserver.sh\ncat /usr/local/bin/webserver.sh"
           },
@@ -398,7 +398,7 @@
             "raw_arguments": {
               "command": "printf '#!/bin/sh\\nexec python3 -m http.server 8080 --directory /var/www/html\\n' > /usr/local/bin/webserver.sh\nchmod +x /usr/local/bin/webserver.sh\ncat /usr/local/bin/webserver.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XGPQXNx1DfT75P5ctNpH3E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nohup /usr/local/bin/webserver.sh >/var/log/webserver.log 2>&1 &\nsleep 1\nss -tlnp 2>/dev/null | grep 8080 || echo \"no ss match\"\ncurl -s http://localhost:8080/ | head -3"
           },
@@ -467,7 +467,7 @@
             "raw_arguments": {
               "command": "nohup /usr/local/bin/webserver.sh >/var/log/webserver.log 2>&1 &\nsleep 1\nss -tlnp 2>/dev/null | grep 8080 || echo \"no ss match\"\ncurl -s http://localhost:8080/ | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016WyU4jE6vgtS8i7wPiSf1a",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\nrm -rf /tmp/clientwork\ngit clone /git/server /tmp/clientwork 2>&1 | tail -2\ncd /tmp/clientwork\ngit config user.email t@t; git config user.name t\necho \"hello world\" > hello.html\ngit add hello.html\ngit commit -m \"add hello.html\" 2>&1 | tail -1\ngit push origin master 2>&1 | tail -8"
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "set -e\nrm -rf /tmp/clientwork\ngit clone /git/server /tmp/clientwork 2>&1 | tail -2\ncd /tmp/clientwork\ngit config user.email t@t; git config user.name t\necho \"hello world\" > hello.html\ngit add hello.html\ngit commit -m \"add hello.html\" 2>&1 | tail -1\ngit push origin master 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016tfsXKjK3QaKaA4LjoTtay",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== web root ===\"; ls -l /var/www/html\necho \"=== curl ===\"; curl -s http://localhost:8080/hello.html"
           },
@@ -605,7 +605,7 @@
             "raw_arguments": {
               "command": "echo \"=== web root ===\"; ls -l /var/www/html\necho \"=== curl ===\"; curl -s http://localhost:8080/hello.html"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -666,7 +666,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BS1R7cA66uiJwMK46H6ycU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -l /var/www/html; echo \"---proc---\"; ps aux | grep -i http.server | grep -v grep || echo \"webserver NOT running\""
           },
@@ -674,7 +674,7 @@
             "raw_arguments": {
               "command": "ls -l /var/www/html; echo \"---proc---\"; ps aux | grep -i http.server | grep -v grep || echo \"webserver NOT running\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -735,7 +735,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BMB2YpBMcH8LSzgMoHq3mt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import urllib.request; print(repr(urllib.request.urlopen('http://localhost:8080/hello.html').read().decode()))\""
           },
@@ -743,7 +743,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import urllib.request; print(repr(urllib.request.urlopen('http://localhost:8080/hello.html').read().decode()))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -804,7 +804,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014vTMe2drxDDESf7exGUfQA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\n# Remove my test push so the user's clone+commit+push runs cleanly on an empty repo\nrm -rf /tmp/clientwork\ngit -C /git/server update-ref -d refs/heads/master 2>/dev/null || true\nrm -f /git/server/packed-refs\ngit -C /git/server gc --prune=now 2>/dev/null | tail -1\nrm -f /var/www/html/*\necho \"=== repo refs ===\"; git -C /git/server show-ref || echo \"(no refs - empty repo, HEAD -> master)\"\ngit -C /git/server symbolic-ref HEAD\necho \"=== web root ===\"; ls -A /var/www/html || true\necho \"=== webserver ===\"; ps aux | grep '[h]ttp.server'"
           },
@@ -812,7 +812,7 @@
             "raw_arguments": {
               "command": "set -e\n# Remove my test push so the user's clone+commit+push runs cleanly on an empty repo\nrm -rf /tmp/clientwork\ngit -C /git/server update-ref -d refs/heads/master 2>/dev/null || true\nrm -f /git/server/packed-refs\ngit -C /git/server gc --prune=now 2>/dev/null | tail -1\nrm -f /var/www/html/*\necho \"=== repo refs ===\"; git -C /git/server show-ref || echo \"(no refs - empty repo, HEAD -> master)\"\ngit -C /git/server symbolic-ref HEAD\necho \"=== web root ===\"; ls -A /var/www/html || true\necho \"=== webserver ===\"; ps aux | grep '[h]ttp.server'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -928,7 +928,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AFT7aWJqSfkUXzzQWRE5VC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\nsh -n /usr/local/bin/webserver.sh && echo \"syntax OK\"\n# Full end-to-end test of the git-push -> deploy -> HTTP serve pipeline\nrm -rf /tmp/verify\ngit clone /git/server /tmp/verify 2>&1 | tail -1\ncd /tmp/verify\ngit config user.email t@t; git config user.name t\necho \"hello world\" > hello.html\ngit add hello.html\ngit commit -q -m \"add hello.html\"\ngit push origin master 2>&1 | grep -E \"Deployed|new branch\"\necho \"--- deployed file ---\"; ls -l /var/www/html/hello.html\necho \"--- HTTP response ---\"\npython3 -c \"import urllib.request; print(repr(urllib.request.urlopen('http://localhost:8080/hello.html').read().decode()))\""
           },
@@ -936,7 +936,7 @@
             "raw_arguments": {
               "command": "set -e\nsh -n /usr/local/bin/webserver.sh && echo \"syntax OK\"\n# Full end-to-end test of the git-push -> deploy -> HTTP serve pipeline\nrm -rf /tmp/verify\ngit clone /git/server /tmp/verify 2>&1 | tail -1\ncd /tmp/verify\ngit config user.email t@t; git config user.name t\necho \"hello world\" > hello.html\ngit add hello.html\ngit commit -q -m \"add hello.html\"\ngit push origin master 2>&1 | grep -E \"Deployed|new branch\"\necho \"--- deployed file ---\"; ls -l /var/www/html/hello.html\necho \"--- HTTP response ---\"\npython3 -c \"import urllib.request; print(repr(urllib.request.urlopen('http://localhost:8080/hello.html').read().decode()))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -997,7 +997,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XmtAe9L4mqtTWUexEhW1jv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "set -e\nrm -rf /tmp/verify\ngit -C /git/server update-ref -d refs/heads/master 2>/dev/null || true\nrm -f /git/server/packed-refs\ngit -C /git/server gc --prune=now 2>/dev/null | tail -1\nrm -f /var/www/html/*\ngit -C /git/server show-ref || echo \"(repo empty, HEAD -> $(git -C /git/server symbolic-ref HEAD))\"\nps aux | grep '[h]ttp.server' >/dev/null && echo \"webserver up on 8080\""
           },
@@ -1005,7 +1005,7 @@
             "raw_arguments": {
               "command": "set -e\nrm -rf /tmp/verify\ngit -C /git/server update-ref -d refs/heads/master 2>/dev/null || true\nrm -f /git/server/packed-refs\ngit -C /git/server gc --prune=now 2>/dev/null | tail -1\nrm -f /var/www/html/*\ngit -C /git/server show-ref || echo \"(repo empty, HEAD -> $(git -C /git/server symbolic-ref HEAD))\"\nps aux | grep '[h]ttp.server' >/dev/null && echo \"webserver up on 8080\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

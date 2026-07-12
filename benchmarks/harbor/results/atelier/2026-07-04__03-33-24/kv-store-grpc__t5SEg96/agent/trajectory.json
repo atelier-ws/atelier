@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015yKjQwEyCU1EMuK2f5VuDf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 --version; which pip uv; ls /app 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 --version; which pip uv; ls /app 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0163SPte9PK2EsVAJymsM3H1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages grpcio==1.73.0 grpcio-tools==1.73.0 2>&1 | tail -5"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages grpcio==1.73.0 grpcio-tools==1.73.0 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MSi2WT4rSJeXAJSZJkmQsj",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RTtuddtufLoxbBLLSg4gtv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. kv-store.proto && ls -la",
             "cwd": "/app"
@@ -262,7 +262,7 @@
               "command": "python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. kv-store.proto && ls -la",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -323,7 +323,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018eQdv7BZUcVydm5D5mvWCW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -n \"import\" kv_store_pb2_grpc.py | head",
             "cwd": "/app"
@@ -333,7 +333,7 @@
               "command": "grep -n \"import\" kv_store_pb2_grpc.py | head",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -394,7 +394,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015QxJFMU4KiSL9hgpfqEW3M",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -414,7 +414,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -475,7 +475,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01R3ac6BP249FE8RxXRmSeu8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "nohup python3 server.py > /app/server.log 2>&1 &\nsleep 2; echo \"started\"; cat /app/server.log; ss -ltnp 2>/dev/null | grep 5328 || netstat -ltnp 2>/dev/null | grep 5328",
             "cwd": "/app"
@@ -485,7 +485,7 @@
               "command": "nohup python3 server.py > /app/server.log 2>&1 &\nsleep 2; echo \"started\"; cat /app/server.log; ss -ltnp 2>/dev/null | grep 5328 || netstat -ltnp 2>/dev/null | grep 5328",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -546,7 +546,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RK2eNDD2DvJkdhZCexV4ib",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ps aux | grep -v grep | grep server.py; echo \"---log---\"; cat /app/server.log"
           },
@@ -554,7 +554,7 @@
             "raw_arguments": {
               "command": "ps aux | grep -v grep | grep server.py; echo \"---log---\"; cat /app/server.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -615,7 +615,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ASFoJAL7S1JV12ycJLyqAR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport grpc, kv_store_pb2, kv_store_pb2_grpc\nch = grpc.insecure_channel('localhost:5328')\nstub = kv_store_pb2_grpc.KVStoreStub(ch)\nprint('set', stub.SetVal(kv_store_pb2.SetValRequest(key='a', value=42)).val)\nprint('get', stub.GetVal(kv_store_pb2.GetValRequest(key='a')).val)\n\""
           },
@@ -623,7 +623,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport grpc, kv_store_pb2, kv_store_pb2_grpc\nch = grpc.insecure_channel('localhost:5328')\nstub = kv_store_pb2_grpc.KVStoreStub(ch)\nprint('set', stub.SetVal(kv_store_pb2.SetValRequest(key='a', value=42)).val)\nprint('get', stub.GetVal(kv_store_pb2.GetValRequest(key='a')).val)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -739,7 +739,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011LSnnsNDYHTNyGrX5bz5kY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport grpc, kv_store_pb2, kv_store_pb2_grpc\nch = grpc.insecure_channel('localhost:5328')\nstub = kv_store_pb2_grpc.KVStoreStub(ch)\nassert stub.SetVal(kv_store_pb2.SetValRequest(key='x', value=7)).val == 7\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='x')).val == 7\nassert stub.SetVal(kv_store_pb2.SetValRequest(key='x', value=-3)).val == -3\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='x')).val == -3\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='missing')).val == 0\nprint('ALL TESTS PASSED')\n\""
           },
@@ -747,7 +747,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport grpc, kv_store_pb2, kv_store_pb2_grpc\nch = grpc.insecure_channel('localhost:5328')\nstub = kv_store_pb2_grpc.KVStoreStub(ch)\nassert stub.SetVal(kv_store_pb2.SetValRequest(key='x', value=7)).val == 7\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='x')).val == 7\nassert stub.SetVal(kv_store_pb2.SetValRequest(key='x', value=-3)).val == -3\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='x')).val == -3\nassert stub.GetVal(kv_store_pb2.GetValRequest(key='missing')).val == 0\nprint('ALL TESTS PASSED')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

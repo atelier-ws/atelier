@@ -11,11 +11,11 @@
         "--dataset",
         "terminal-bench/terminal-bench-2-1",
         "--agent-import-path",
-        "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+        "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
         "--jobs-dir",
-        "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier",
+        "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/results/lemoncrow",
         "--mounts",
-        "[{\"type\": \"bind\", \"source\": \"/home/pankaj/Projects/leanchain/atelier\", \"target\": \"/atelier\", \"read_only\": true}, {\"type\": \"bind\", \"source\": \"/tmp/avbuild/atelier-bundle.tar.gz\", \"target\": \"/atelier-bundle.tar.gz\", \"read_only\": true}]",
+        "[{\"type\": \"bind\", \"source\": \"/home/pankaj/Projects/leanchain/lemoncrow\", \"target\": \"/lemoncrow\", \"read_only\": true}, {\"type\": \"bind\", \"source\": \"/tmp/avbuild/lemoncrow-bundle.tar.gz\", \"target\": \"/lemoncrow-bundle.tar.gz\", \"read_only\": true}]",
         "-k",
         "1",
         "-n",
@@ -50,7 +50,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -67,14 +67,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -98,7 +98,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -115,14 +115,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -146,7 +146,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -163,14 +163,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -194,7 +194,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -211,14 +211,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -242,7 +242,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -259,14 +259,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -290,7 +290,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -307,14 +307,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -338,7 +338,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -355,14 +355,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -386,7 +386,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -403,14 +403,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -434,7 +434,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -451,14 +451,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -482,7 +482,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -499,14 +499,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -530,7 +530,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -547,14 +547,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -578,7 +578,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -595,14 +595,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -626,7 +626,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -643,14 +643,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -674,7 +674,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -691,14 +691,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -722,7 +722,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -739,14 +739,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -770,7 +770,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -787,14 +787,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -818,7 +818,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -835,14 +835,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -866,7 +866,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -883,14 +883,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -914,7 +914,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -931,14 +931,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -962,7 +962,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -979,14 +979,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1010,7 +1010,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1027,14 +1027,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1058,7 +1058,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1075,14 +1075,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1106,7 +1106,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1123,14 +1123,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1154,7 +1154,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1171,14 +1171,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1202,7 +1202,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1219,14 +1219,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1250,7 +1250,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1267,14 +1267,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1298,7 +1298,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1315,14 +1315,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1346,7 +1346,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1363,14 +1363,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1394,7 +1394,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1411,14 +1411,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1442,7 +1442,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1459,14 +1459,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1490,7 +1490,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1507,14 +1507,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1538,7 +1538,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1555,14 +1555,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1586,7 +1586,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1603,14 +1603,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1634,7 +1634,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1651,14 +1651,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1682,7 +1682,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1699,14 +1699,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1730,7 +1730,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1747,14 +1747,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1778,7 +1778,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1795,14 +1795,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1826,7 +1826,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1843,14 +1843,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1874,7 +1874,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1891,14 +1891,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1922,7 +1922,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1939,14 +1939,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -1970,7 +1970,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -1987,14 +1987,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2018,7 +2018,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2035,14 +2035,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2066,7 +2066,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2083,14 +2083,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2114,7 +2114,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2131,14 +2131,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2162,7 +2162,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2179,14 +2179,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2210,7 +2210,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2227,14 +2227,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2258,7 +2258,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2275,14 +2275,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2306,7 +2306,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2323,14 +2323,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2354,7 +2354,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2371,14 +2371,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2402,7 +2402,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2419,14 +2419,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2450,7 +2450,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2467,14 +2467,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2498,7 +2498,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2515,14 +2515,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2546,7 +2546,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2563,14 +2563,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2594,7 +2594,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2611,14 +2611,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2642,7 +2642,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2659,14 +2659,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2690,7 +2690,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2707,14 +2707,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2738,7 +2738,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2755,14 +2755,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2786,7 +2786,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2803,14 +2803,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2834,7 +2834,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2851,14 +2851,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2882,7 +2882,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2899,14 +2899,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2930,7 +2930,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2947,14 +2947,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -2978,7 +2978,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -2995,14 +2995,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3026,7 +3026,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3043,14 +3043,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3074,7 +3074,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3091,14 +3091,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3122,7 +3122,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3139,14 +3139,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3170,7 +3170,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3187,14 +3187,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3218,7 +3218,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3235,14 +3235,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3266,7 +3266,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3283,14 +3283,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3314,7 +3314,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3331,14 +3331,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3362,7 +3362,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3379,14 +3379,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3410,7 +3410,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3427,14 +3427,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3458,7 +3458,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3475,14 +3475,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3506,7 +3506,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3523,14 +3523,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3554,7 +3554,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3571,14 +3571,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3602,7 +3602,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3619,14 +3619,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3650,7 +3650,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3667,14 +3667,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3698,7 +3698,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3715,14 +3715,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3746,7 +3746,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3763,14 +3763,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3794,7 +3794,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3811,14 +3811,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3842,7 +3842,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3859,14 +3859,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3890,7 +3890,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3907,14 +3907,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3938,7 +3938,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -3955,14 +3955,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -3986,7 +3986,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4003,14 +4003,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4034,7 +4034,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4051,14 +4051,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4082,7 +4082,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4099,14 +4099,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4130,7 +4130,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4147,14 +4147,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4178,7 +4178,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4195,14 +4195,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4226,7 +4226,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4243,14 +4243,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],
@@ -4274,7 +4274,7 @@
             "install_only": false,
             "timeout_multiplier": 1.0,
             "agent": {
-                "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
+                "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent",
                 "skills": [],
                 "extra_allowed_hosts": [],
                 "kwargs": {},
@@ -4291,14 +4291,14 @@
                 "mounts": [
                     {
                         "type": "bind",
-                        "source": "/home/pankaj/Projects/leanchain/atelier",
-                        "target": "/atelier",
+                        "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                        "target": "/lemoncrow",
                         "read_only": true
                     },
                     {
                         "type": "bind",
-                        "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                        "target": "/atelier-bundle.tar.gz",
+                        "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                        "target": "/lemoncrow-bundle.tar.gz",
                         "read_only": true
                     }
                 ],

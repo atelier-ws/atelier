@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YHg7CjBdKBMJE9KiRwBN52",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; echo \"---MAIN---\"; wc -l main.tex input.tex synonyms.txt 2>/dev/null"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la; echo \"---MAIN---\"; wc -l main.tex input.tex synonyms.txt 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01YHg7CjBdKBMJE9KiRwBN52",
-            "content": "{\"type\": \"text\", \"text\": \"total 32\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:59 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:58 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:59 .atelier\\n-rw-r--r-- 1 root root 5186 Apr  1 00:29 input.tex\\n-rw-r--r-- 1 root root  328 Apr  1 00:29 main.tex\\n-rw-r--r-- 1 root root 6008 Apr  1 00:29 synonyms.txt\\n---MAIN---\\n   17 main.tex\\n   19 input.tex\\n  110 synonyms.txt\\n  146 total\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 32\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:59 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:58 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:59 .lemoncrow\\n-rw-r--r-- 1 root root 5186 Apr  1 00:29 input.tex\\n-rw-r--r-- 1 root root  328 Apr  1 00:29 main.tex\\n-rw-r--r-- 1 root root 6008 Apr  1 00:29 synonyms.txt\\n---MAIN---\\n   17 main.tex\\n   19 input.tex\\n  110 synonyms.txt\\n  146 total\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ajti4HHB3fRyjPz8xhFLYy",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "main.tex",
@@ -118,7 +118,7 @@
                 "synonyms.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -179,7 +179,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JThP6tQgoy6Hk2Uw7Ko44b",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pdflatex; pdflatex --version 2>&1 | head -2"
           },
@@ -187,7 +187,7 @@
             "raw_arguments": {
               "command": "which pdflatex; pdflatex --version 2>&1 | head -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -248,7 +248,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VqmC8TeYmwRy3PnxyHHRzp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root 2>/dev/null; cd \"$(dirname $(find / -name main.tex 2>/dev/null | head -1))\"; pwd"
           },
@@ -256,7 +256,7 @@
             "raw_arguments": {
               "command": "cd /root 2>/dev/null; cd \"$(dirname $(find / -name main.tex 2>/dev/null | head -1))\"; pwd"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -317,7 +317,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CZa57f7dy68xR6nVPkiMSp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name main.tex 2>/dev/null"
           },
@@ -325,7 +325,7 @@
             "raw_arguments": {
               "command": "find / -name main.tex 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -386,7 +386,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ABkFkEJmc2s6Qxt7ZtqroX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; ls"
           },
@@ -394,7 +394,7 @@
             "raw_arguments": {
               "command": "pwd; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -455,7 +455,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DokpCXdqzjEChQR4CXGcGu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && pdflatex -interaction=nonstopmode main.tex 2>&1 | grep -i \"overfull\" "
           },
@@ -463,7 +463,7 @@
             "raw_arguments": {
               "command": "cd /app && pdflatex -interaction=nonstopmode main.tex 2>&1 | grep -i \"overfull\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -524,7 +524,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HWoRw4zQWVSyFwV6gsQ9Yn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && pdflatex -interaction=nonstopmode main.tex 2>&1 | grep -A3 -i \"overfull\""
           },
@@ -532,7 +532,7 @@
             "raw_arguments": {
               "command": "cd /app && pdflatex -interaction=nonstopmode main.tex 2>&1 | grep -A3 -i \"overfull\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -593,7 +593,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SCwGknAJmu8Eue2C5uXLWf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp input.tex input.orig.tex && cat > /app/solve.py <<'PY'\nimport re, subprocess, random, sys, os\n\nrandom.seed(1)\n\n# Load synonym families\nfamilies = []\nwith open('synonyms.txt') as f:\n    for line in f:\n        line=line.strip()\n        if not line: continue\n        members=[w.strip() for w in line.split(',')]\n        families.append(members)\n\n# map lowercased member -> list of members (as written)\nmember_to_family = {}\nfor fam in families:\n    for m in fam:\n        member_to_family[m.lower()] = fam\n\ndef apply_case(template, word):\n    # template: original occurrence casing; word: replacement (as written in file, lowercase-ish)\n    if template.isupper():\n        return word.upper()\n    if template[0].isupper():\n        return word[0].upper()+word[1:]\n    return word\n\norig = open('input.orig.tex').read()\n\n# Tokenize into words with positions; find replaceable occurrences\ntoken_re = re.compile(r\"[A-Za-z']+\")\noccurrences=[]  # (start,end,original_text, family)\nfor m in token_re.finditer(orig):\n    w=m.group()\n    key=w.lower()\n    if key in member_to_family:\n        occurrences.append((m.start(), m.end(), w, member_to_family[key]))\n\nprint(\"replaceable occurrences:\", len(occurrences), file=sys.stderr)\n\ndef build(choices):\n    # choices: dict idx-> chosen member (as written) or None for original\n    out=[]\n    last=0\n    for i,(s,e,w,fam) in enumerate(occurrences):\n        out.append(orig[last:s])\n        c=choices.get(i)\n        if c is None:\n            out.append(w)\n        else:\n            out.append(apply_case(w,c))\n        last=e\n    out.append(orig[last:])\n    return ''.join(out)\n\ndef overfull_count(text):\n    open('input.tex','w').write(text)\n    r=subprocess.run(['pdflatex','-interaction=nonstopmode','main.tex'],\n                     capture_output=True,text=True)\n    return r.stdout.count('Overfull \\\\hbox'), r.stdout\n\nchoices={}\ncur, log = overfull_count(build(choices))\nprint(\"start overfull:\", cur, file=sys.stderr)\n\nimport itertools\nimproved=True\nit=0\nbest=cur\nwhile best>0 and it<4000:\n    it+=1\n    i=random.randrange(len(occurrences))\n    fam=occurrences[i][3]\n    # candidate replacement (could be original word too)\n    cand=random.choice(fam)\n    old=choices.get(i)\n    choices[i]=None if cand.lower()==occurrences[i][2].lower() else cand\n    c,_=overfull_count(build(choices))\n    if c<=best:\n        if c<best:\n            print(f\"it {it}: {best}->{c}\", file=sys.stderr)\n        best=c\n    else:\n        choices[i]=old  # revert\n    if best==0:\n        break\n\nprint(\"final overfull:\", best, \"iters\", it, file=sys.stderr)\n# write final\nfinal=build(choices)\nopen('input.tex','w').write(final)\n# report changes\nfor i,(s,e,w,fam) in enumerate(occurrences):\n    c=choices.get(i)\n    if c is not None:\n        print(\"CHANGE:\", w, \"->\", apply_case(w,c), file=sys.stderr)\nPY\necho written"
           },
@@ -601,7 +601,7 @@
             "raw_arguments": {
               "command": "cd /app && cp input.tex input.orig.tex && cat > /app/solve.py <<'PY'\nimport re, subprocess, random, sys, os\n\nrandom.seed(1)\n\n# Load synonym families\nfamilies = []\nwith open('synonyms.txt') as f:\n    for line in f:\n        line=line.strip()\n        if not line: continue\n        members=[w.strip() for w in line.split(',')]\n        families.append(members)\n\n# map lowercased member -> list of members (as written)\nmember_to_family = {}\nfor fam in families:\n    for m in fam:\n        member_to_family[m.lower()] = fam\n\ndef apply_case(template, word):\n    # template: original occurrence casing; word: replacement (as written in file, lowercase-ish)\n    if template.isupper():\n        return word.upper()\n    if template[0].isupper():\n        return word[0].upper()+word[1:]\n    return word\n\norig = open('input.orig.tex').read()\n\n# Tokenize into words with positions; find replaceable occurrences\ntoken_re = re.compile(r\"[A-Za-z']+\")\noccurrences=[]  # (start,end,original_text, family)\nfor m in token_re.finditer(orig):\n    w=m.group()\n    key=w.lower()\n    if key in member_to_family:\n        occurrences.append((m.start(), m.end(), w, member_to_family[key]))\n\nprint(\"replaceable occurrences:\", len(occurrences), file=sys.stderr)\n\ndef build(choices):\n    # choices: dict idx-> chosen member (as written) or None for original\n    out=[]\n    last=0\n    for i,(s,e,w,fam) in enumerate(occurrences):\n        out.append(orig[last:s])\n        c=choices.get(i)\n        if c is None:\n            out.append(w)\n        else:\n            out.append(apply_case(w,c))\n        last=e\n    out.append(orig[last:])\n    return ''.join(out)\n\ndef overfull_count(text):\n    open('input.tex','w').write(text)\n    r=subprocess.run(['pdflatex','-interaction=nonstopmode','main.tex'],\n                     capture_output=True,text=True)\n    return r.stdout.count('Overfull \\\\hbox'), r.stdout\n\nchoices={}\ncur, log = overfull_count(build(choices))\nprint(\"start overfull:\", cur, file=sys.stderr)\n\nimport itertools\nimproved=True\nit=0\nbest=cur\nwhile best>0 and it<4000:\n    it+=1\n    i=random.randrange(len(occurrences))\n    fam=occurrences[i][3]\n    # candidate replacement (could be original word too)\n    cand=random.choice(fam)\n    old=choices.get(i)\n    choices[i]=None if cand.lower()==occurrences[i][2].lower() else cand\n    c,_=overfull_count(build(choices))\n    if c<=best:\n        if c<best:\n            print(f\"it {it}: {best}->{c}\", file=sys.stderr)\n        best=c\n    else:\n        choices[i]=old  # revert\n    if best==0:\n        break\n\nprint(\"final overfull:\", best, \"iters\", it, file=sys.stderr)\n# write final\nfinal=build(choices)\nopen('input.tex','w').write(final)\n# report changes\nfor i,(s,e,w,fam) in enumerate(occurrences):\n    c=choices.get(i)\n    if c is not None:\n        print(\"CHANGE:\", w, \"->\", apply_case(w,c), file=sys.stderr)\nPY\necho written"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -662,7 +662,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VcwQQ8eS63aXXPY3zdAunw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && timeout 1200 python3 solve.py 2>&1 | tail -40"
           },
@@ -670,7 +670,7 @@
             "raw_arguments": {
               "command": "cd /app && timeout 1200 python3 solve.py 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -731,7 +731,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U4nLHM3fbSBNteLYCSqaRM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"print(open('/dev/stdin').read())\" < /dev/null; grep -c CHANGE <(true); echo \"checking compile:\"; pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; grep -c \"Overfull \\\\\\\\hbox\" /tmp/out.txt"
           },
@@ -739,7 +739,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"print(open('/dev/stdin').read())\" < /dev/null; grep -c CHANGE <(true); echo \"checking compile:\"; pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; grep -c \"Overfull \\\\\\\\hbox\" /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -800,7 +800,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PDMPLfAaScecWZauquLDNh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /app/minimize.py <<'PY'\nimport re, subprocess, sys\n\ntoken_re = re.compile(r\"[A-Za-z']+\")\norig=open('input.orig.tex').read()\ncur=open('input.tex').read()\n\no=list(token_re.finditer(orig))\nc=list(token_re.finditer(cur))\n# Both should align 1:1 in token count\nassert len(o)==len(c), (len(o),len(c))\n\n# Build current as list of (orig_start,orig_end,orig_word,cur_word)\ndiffs=[]\nfor om,cm in zip(o,c):\n    if om.group()!=cm.group():\n        diffs.append((om.start(),om.end(),om.group(),cm.group()))\nprint(\"current diffs:\",len(diffs),file=sys.stderr)\n\n# state: dict start-> word (cur or orig). Start from cur words.\nstate={om.start():cm.group() for om,cm in zip(o,c)}\ndef build(state):\n    out=[];last=0\n    for om in o:\n        out.append(orig[last:om.start()]); out.append(state[om.start()]); last=om.end()\n    out.append(orig[last:]); return ''.join(out)\ndef overfull(text):\n    open('input.tex','w').write(text)\n    r=subprocess.run(['pdflatex','-interaction=nonstopmode','main.tex'],capture_output=True,text=True)\n    return r.stdout.count('Overfull \\\\hbox')\n\nassert overfull(build(state))==0\n# greedily revert\nfor (s,e,ow,cw) in diffs:\n    state[s]=ow\n    if overfull(build(state))!=0:\n        state[s]=cw  # keep change\nfinal=build(state)\nopen('input.tex','w').write(final)\nkept=[(s,ow,state[s]) for (s,e,ow,cw) in diffs if state[s]!=ow]\nprint(\"kept changes:\",len(kept),file=sys.stderr)\nfor s,ow,nw in kept:\n    print(\"KEEP:\",ow,\"->\",nw,file=sys.stderr)\nprint(\"final overfull:\",overfull(final),file=sys.stderr)\nPY\npython3 minimize.py 2>&1 | tail -40"
           },
@@ -808,7 +808,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /app/minimize.py <<'PY'\nimport re, subprocess, sys\n\ntoken_re = re.compile(r\"[A-Za-z']+\")\norig=open('input.orig.tex').read()\ncur=open('input.tex').read()\n\no=list(token_re.finditer(orig))\nc=list(token_re.finditer(cur))\n# Both should align 1:1 in token count\nassert len(o)==len(c), (len(o),len(c))\n\n# Build current as list of (orig_start,orig_end,orig_word,cur_word)\ndiffs=[]\nfor om,cm in zip(o,c):\n    if om.group()!=cm.group():\n        diffs.append((om.start(),om.end(),om.group(),cm.group()))\nprint(\"current diffs:\",len(diffs),file=sys.stderr)\n\n# state: dict start-> word (cur or orig). Start from cur words.\nstate={om.start():cm.group() for om,cm in zip(o,c)}\ndef build(state):\n    out=[];last=0\n    for om in o:\n        out.append(orig[last:om.start()]); out.append(state[om.start()]); last=om.end()\n    out.append(orig[last:]); return ''.join(out)\ndef overfull(text):\n    open('input.tex','w').write(text)\n    r=subprocess.run(['pdflatex','-interaction=nonstopmode','main.tex'],capture_output=True,text=True)\n    return r.stdout.count('Overfull \\\\hbox')\n\nassert overfull(build(state))==0\n# greedily revert\nfor (s,e,ow,cw) in diffs:\n    state[s]=ow\n    if overfull(build(state))!=0:\n        state[s]=cw  # keep change\nfinal=build(state)\nopen('input.tex','w').write(final)\nkept=[(s,ow,state[s]) for (s,e,ow,cw) in diffs if state[s]!=ow]\nprint(\"kept changes:\",len(kept),file=sys.stderr)\nfor s,ow,nw in kept:\n    print(\"KEEP:\",ow,\"->\",nw,file=sys.stderr)\nprint(\"final overfull:\",overfull(final),file=sys.stderr)\nPY\npython3 minimize.py 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -869,7 +869,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U6LJjdgrBjADvm1G8oEYsV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f main.aux main.log main.pdf && pdflatex -interaction=nonstopmode main.tex >/tmp/final.log 2>&1; echo \"exit=$?\"; echo \"overfull hbox count:\"; grep -c \"Overfull \\\\\\\\hbox\" /tmp/final.log; echo \"any overfull/underfull:\"; grep -i \"overfull\\|underfull\" /tmp/final.log || echo NONE; ls -la main.pdf"
           },
@@ -877,7 +877,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f main.aux main.log main.pdf && pdflatex -interaction=nonstopmode main.tex >/tmp/final.log 2>&1; echo \"exit=$?\"; echo \"overfull hbox count:\"; grep -c \"Overfull \\\\\\\\hbox\" /tmp/final.log; echo \"any overfull/underfull:\"; grep -i \"overfull\\|underfull\" /tmp/final.log || echo NONE; ls -la main.pdf"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -938,7 +938,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QBmLrGBCncynvkkX9a3xzP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && echo \"=== main.tex unchanged? ===\"; git diff --stat 2>/dev/null || true; echo \"=== diff input vs orig ===\"; diff <(tr ' ' '\\n' < input.orig.tex) <(tr ' ' '\\n' < input.tex) | grep '^[<>]'; echo \"=== cleanup scratch ===\"; rm -f input.orig.tex solve.py minimize.py main.aux main.log; ls"
           },
@@ -946,7 +946,7 @@
             "raw_arguments": {
               "command": "cd /app && echo \"=== main.tex unchanged? ===\"; git diff --stat 2>/dev/null || true; echo \"=== diff input vs orig ===\"; diff <(tr ' ' '\\n' < input.orig.tex) <(tr ' ' '\\n' < input.tex) | grep '^[<>]'; echo \"=== cleanup scratch ===\"; rm -f input.orig.tex solve.py minimize.py main.aux main.log; ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

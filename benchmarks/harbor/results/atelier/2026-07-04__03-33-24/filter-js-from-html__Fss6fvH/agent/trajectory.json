@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018mdJ64sskSv7V8NPf484Vo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ 2>/dev/null; python3 --version; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ 2>/dev/null; python3 --version; python3 -c \"import bs4; print(bs4.__version__)\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UNtncdN4gZ83AG81C5Df9v",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FYXWUC6Pk15vJepWfhi41i",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/t1.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Test &amp; Demo</title>\n  <script>alert('evil');</script>\n  <script src=\"http://evil.com/x.js\"></script>\n  <style>.a{color:red}</style>\n  <meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n  <meta http-equiv=\"refresh\" content=\"5\">\n</head>\n<body onload=\"steal()\">\n  <h1 class=\"title\">Hello</h1>\n  <table><tr><td>cell</td></tr></table>\n  <a href=\"javascript:alert(1)\">bad link</a>\n  <a href=\"https://example.com/?x=javascript:ok\">good link</a>\n  <img src=\"pic.png\" onerror=\"alert(2)\" alt=\"pic\"/>\n  <input type=text onfocus=alert(3) autofocus>\n  <iframe src=\"data:text/html,<script>alert(4)</script>\"></iframe>\n  <div style=\"color:blue;background:url(javascript:alert(5))\">styled</div>\n  <p>Some &lt;normal&gt; text with entities &copy;</p>\n  <svg onload=\"alert(6)\"><rect/></svg>\n  <a xlink:href=\"javascript:alert(7)\">svg link</a>\n</body>\n</html>\nEOF\ncp /tmp/t1.html /tmp/t1.out.html\npython3 /app/filter.py /tmp/t1.out.html\necho \"=== OUTPUT ===\"\ncat /tmp/t1.out.html\necho \"=== residual JS check ===\"\ngrep -in -E \"javascript:|onerror|onload|onfocus|<script|expression\\(|alert\" /tmp/t1.out.html || echo \"NONE FOUND\""
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/t1.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Test &amp; Demo</title>\n  <script>alert('evil');</script>\n  <script src=\"http://evil.com/x.js\"></script>\n  <style>.a{color:red}</style>\n  <meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n  <meta http-equiv=\"refresh\" content=\"5\">\n</head>\n<body onload=\"steal()\">\n  <h1 class=\"title\">Hello</h1>\n  <table><tr><td>cell</td></tr></table>\n  <a href=\"javascript:alert(1)\">bad link</a>\n  <a href=\"https://example.com/?x=javascript:ok\">good link</a>\n  <img src=\"pic.png\" onerror=\"alert(2)\" alt=\"pic\"/>\n  <input type=text onfocus=alert(3) autofocus>\n  <iframe src=\"data:text/html,<script>alert(4)</script>\"></iframe>\n  <div style=\"color:blue;background:url(javascript:alert(5))\">styled</div>\n  <p>Some &lt;normal&gt; text with entities &copy;</p>\n  <svg onload=\"alert(6)\"><rect/></svg>\n  <a xlink:href=\"javascript:alert(7)\">svg link</a>\n</body>\n</html>\nEOF\ncp /tmp/t1.html /tmp/t1.out.html\npython3 /app/filter.py /tmp/t1.out.html\necho \"=== OUTPUT ===\"\ncat /tmp/t1.out.html\necho \"=== residual JS check ===\"\ngrep -in -E \"javascript:|onerror|onload|onfocus|<script|expression\\(|alert\" /tmp/t1.out.html || echo \"NONE FOUND\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KQE9sNVmGmTf9sS5FYWSY5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "diff <(cat /tmp/t1.html) <(cat /tmp/t1.out.html)\necho \"--- obfuscation + edge tests ---\"\ncat > /tmp/t2.html <<'EOF'\n<a href=\"jAvAsCrIpT:alert(1)\">x</a>\n<a href=\"java&#115;cript:alert(1)\">y</a>\n<a href=\"  javascript:alert(1)\">z</a>\n<a href=\"jav\tascript:alert(1)\">tab</a>\n<img src=x onerror=alert(1)>\n<SCRIPT>alert(1)</SCRIPT>\n<script\n  type=\"text/javascript\">alert(1)</script>\n<script/>\n<div data-x=\"keep me\">ok</div>\n<p title=\"on the roof\">not a handler</p>\n<a href=\"mailto:a@b.com\">mail</a>\n<iframe srcdoc=\"&lt;script&gt;alert(1)&lt;/script&gt;\"></iframe>\nEOF\ncp /tmp/t2.html /tmp/t2.out.html\npython3 /app/filter.py /tmp/t2.out.html\ncat /tmp/t2.out.html\necho \"=== residual ===\"\ngrep -in -E \"javascript:|onerror|<script|alert|srcdoc\" /tmp/t2.out.html || echo NONE"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "diff <(cat /tmp/t1.html) <(cat /tmp/t1.out.html)\necho \"--- obfuscation + edge tests ---\"\ncat > /tmp/t2.html <<'EOF'\n<a href=\"jAvAsCrIpT:alert(1)\">x</a>\n<a href=\"java&#115;cript:alert(1)\">y</a>\n<a href=\"  javascript:alert(1)\">z</a>\n<a href=\"jav\tascript:alert(1)\">tab</a>\n<img src=x onerror=alert(1)>\n<SCRIPT>alert(1)</SCRIPT>\n<script\n  type=\"text/javascript\">alert(1)</script>\n<script/>\n<div data-x=\"keep me\">ok</div>\n<p title=\"on the roof\">not a handler</p>\n<a href=\"mailto:a@b.com\">mail</a>\n<iframe srcdoc=\"&lt;script&gt;alert(1)&lt;/script&gt;\"></iframe>\nEOF\ncp /tmp/t2.html /tmp/t2.out.html\npython3 /app/filter.py /tmp/t2.out.html\ncat /tmp/t2.out.html\necho \"=== residual ===\"\ngrep -in -E \"javascript:|onerror|<script|alert|srcdoc\" /tmp/t2.out.html || echo NONE"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UFdFjxUTVKCkk9WqDuL7Dn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "printf '<html>\\r\\n<body>\\r\\n<p class=\"x\">hi &amp; bye</p>\\r\\n<table><tr><td>1</td></tr></table>\\r\\n</body>\\r\\n</html>' > /tmp/clean.html\ncp /tmp/clean.html /tmp/clean.bak\npython3 /app/filter.py /tmp/clean.html\nif cmp -s /tmp/clean.html /tmp/clean.bak; then echo \"IDENTICAL (CRLF + entities preserved)\"; else echo \"CHANGED\"; diff /tmp/clean.bak /tmp/clean.html; fi"
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "printf '<html>\\r\\n<body>\\r\\n<p class=\"x\">hi &amp; bye</p>\\r\\n<table><tr><td>1</td></tr></table>\\r\\n</body>\\r\\n</html>' > /tmp/clean.html\ncp /tmp/clean.html /tmp/clean.bak\npython3 /app/filter.py /tmp/clean.html\nif cmp -s /tmp/clean.html /tmp/clean.bak; then echo \"IDENTICAL (CRLF + entities preserved)\"; else echo \"CHANGED\"; diff /tmp/clean.bak /tmp/clean.html; fi"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -445,7 +445,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012TYT1yb5RLBWmLede2HSvA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/test_filter.py <<'EOF'\nimport subprocess, sys, tempfile, os\n\ndef run(html):\n    fd, path = tempfile.mkstemp(suffix=\".html\")\n    os.write(fd, html.encode(\"utf-8\")); os.close(fd)\n    r = subprocess.run([sys.executable, \"/app/filter.py\", path])\n    assert r.returncode == 0, \"nonzero exit\"\n    with open(path, \"rb\") as f:\n        out = f.read().decode(\"utf-8\")\n    os.unlink(path)\n    return out\n\ncases = []\ndef check(name, html, must_absent=(), must_present=()):\n    out = run(html)\n    for s in must_absent:\n        assert s.lower() not in out.lower(), f\"[{name}] leaked: {s!r}\\n{out}\"\n    for s in must_present:\n        assert s in out, f\"[{name}] lost: {s!r}\\n{out}\"\n    cases.append(name)\n\ncheck(\"script\", \"<div>x</div><script>alert(1)</script>\",\n      [\"<script\", \"alert(1)\"], [\"<div>x</div>\"])\ncheck(\"script-upper\", \"<SCRIPT>alert(1)</SCRIPT>ok\", [\"alert(1)\", \"<script\"], [\"ok\"])\ncheck(\"script-ext\", '<script src=\"e.js\"></script>hi', [\"<script\", \"e.js\"], [\"hi\"])\ncheck(\"script-selfclose\", \"a<script/>b\", [\"<script\"], [\"a\", \"b\"])\ncheck(\"script-multiline\", \"<script\\n type='text/javascript'>\\nalert(1)\\n</script>Z\",\n      [\"alert\", \"<script\"], [\"Z\"])\ncheck(\"onerror\", '<img src=x onerror=\"alert(1)\" alt=\"p\">',\n      [\"onerror\", \"alert(1)\"], ['src=x', 'alt=\"p\"'])\ncheck(\"onload-body\", '<body onload=\"steal()\">hi</body>', [\"onload\", \"steal\"], [\"hi\"])\ncheck(\"href-js\", '<a href=\"javascript:alert(1)\">t</a>', [\"javascript:alert\", \"href\"], [\">t</a>\"])\ncheck(\"href-js-case\", '<a href=\"jAvAsCrIpT:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\ncheck(\"href-js-entity\", '<a href=\"java&#115;cript:alert(1)\">t</a>', [\"alert(1)\"], [\"t</a>\"])\ncheck(\"href-js-ws\", '<a href=\"  javascript:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\ncheck(\"href-js-tab\", '<a href=\"jav\\tascript:alert(1)\">t</a>', [\"alert(1)\"], [\"t</a>\"])\ncheck(\"meta-refresh-js\", '<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">',\n      [\"javascript:alert\"], [\"refresh\"])\ncheck(\"meta-refresh-ok\", '<meta http-equiv=\"refresh\" content=\"5\">', [], ['content=\"5\"'])\ncheck(\"data-html\", '<iframe src=\"data:text/html,<script>alert(1)</script>\"></iframe>',\n      [\"data:text/html\", \"alert(1)\"], [\"<iframe\", \"</iframe>\"])\ncheck(\"style-expr\", '<div style=\"width:expression(alert(1))\">x</div>',\n      [\"expression(\", \"style\"], [\">x</div>\"])\ncheck(\"srcdoc\", '<iframe srcdoc=\"&lt;script&gt;alert(1)&lt;/script&gt;\"></iframe>',\n      [\"srcdoc\"], [\"<iframe\"])\ncheck(\"svg-onload\", '<svg onload=\"alert(1)\"><rect/></svg>', [\"onload\", \"alert\"], [\"<rect/>\"])\ncheck(\"xlink\", '<a xlink:href=\"javascript:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\n# preservation / no false positives\ncheck(\"keep-data-attr\", '<div data-x=\"v\" class=\"c\">y</div>', [], ['data-x=\"v\"', 'class=\"c\"', \">y</div>\"])\ncheck(\"keep-title-on\", '<p title=\"on the roof\">z</p>', [], ['title=\"on the roof\"', \">z</p>\"])\ncheck(\"keep-mailto\", '<a href=\"mailto:a@b.com\">m</a>', [], ['href=\"mailto:a@b.com\"'])\ncheck(\"keep-js-in-query\", '<a href=\"https://e.com/?x=javascript:ok\">g</a>', [],\n      ['href=\"https://e.com/?x=javascript:ok\"'])\ncheck(\"keep-style-ok\", '<style>.a{color:red}</style>', [], [\"<style>.a{color:red}</style>\"])\n\n# byte-identical no-op on clean doc (incl CRLF + entities)\nclean = '<html>\\r\\n<body>\\r\\n<p class=\"x\">hi &amp; bye</p>\\r\\n<table><tr><td>1</td></tr></table>\\r\\n</body>\\r\\n</html>'\nassert run(clean) == clean, \"clean doc altered\"\ncases.append(\"noop-clean\")\n\nprint(f\"OK: {len(cases)} tests passed\")\nfor c in cases: print(\"  -\", c)\nEOF\npython3 /tmp/test_filter.py"
           },
@@ -453,7 +453,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/test_filter.py <<'EOF'\nimport subprocess, sys, tempfile, os\n\ndef run(html):\n    fd, path = tempfile.mkstemp(suffix=\".html\")\n    os.write(fd, html.encode(\"utf-8\")); os.close(fd)\n    r = subprocess.run([sys.executable, \"/app/filter.py\", path])\n    assert r.returncode == 0, \"nonzero exit\"\n    with open(path, \"rb\") as f:\n        out = f.read().decode(\"utf-8\")\n    os.unlink(path)\n    return out\n\ncases = []\ndef check(name, html, must_absent=(), must_present=()):\n    out = run(html)\n    for s in must_absent:\n        assert s.lower() not in out.lower(), f\"[{name}] leaked: {s!r}\\n{out}\"\n    for s in must_present:\n        assert s in out, f\"[{name}] lost: {s!r}\\n{out}\"\n    cases.append(name)\n\ncheck(\"script\", \"<div>x</div><script>alert(1)</script>\",\n      [\"<script\", \"alert(1)\"], [\"<div>x</div>\"])\ncheck(\"script-upper\", \"<SCRIPT>alert(1)</SCRIPT>ok\", [\"alert(1)\", \"<script\"], [\"ok\"])\ncheck(\"script-ext\", '<script src=\"e.js\"></script>hi', [\"<script\", \"e.js\"], [\"hi\"])\ncheck(\"script-selfclose\", \"a<script/>b\", [\"<script\"], [\"a\", \"b\"])\ncheck(\"script-multiline\", \"<script\\n type='text/javascript'>\\nalert(1)\\n</script>Z\",\n      [\"alert\", \"<script\"], [\"Z\"])\ncheck(\"onerror\", '<img src=x onerror=\"alert(1)\" alt=\"p\">',\n      [\"onerror\", \"alert(1)\"], ['src=x', 'alt=\"p\"'])\ncheck(\"onload-body\", '<body onload=\"steal()\">hi</body>', [\"onload\", \"steal\"], [\"hi\"])\ncheck(\"href-js\", '<a href=\"javascript:alert(1)\">t</a>', [\"javascript:alert\", \"href\"], [\">t</a>\"])\ncheck(\"href-js-case\", '<a href=\"jAvAsCrIpT:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\ncheck(\"href-js-entity\", '<a href=\"java&#115;cript:alert(1)\">t</a>', [\"alert(1)\"], [\"t</a>\"])\ncheck(\"href-js-ws\", '<a href=\"  javascript:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\ncheck(\"href-js-tab\", '<a href=\"jav\\tascript:alert(1)\">t</a>', [\"alert(1)\"], [\"t</a>\"])\ncheck(\"meta-refresh-js\", '<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">',\n      [\"javascript:alert\"], [\"refresh\"])\ncheck(\"meta-refresh-ok\", '<meta http-equiv=\"refresh\" content=\"5\">', [], ['content=\"5\"'])\ncheck(\"data-html\", '<iframe src=\"data:text/html,<script>alert(1)</script>\"></iframe>',\n      [\"data:text/html\", \"alert(1)\"], [\"<iframe\", \"</iframe>\"])\ncheck(\"style-expr\", '<div style=\"width:expression(alert(1))\">x</div>',\n      [\"expression(\", \"style\"], [\">x</div>\"])\ncheck(\"srcdoc\", '<iframe srcdoc=\"&lt;script&gt;alert(1)&lt;/script&gt;\"></iframe>',\n      [\"srcdoc\"], [\"<iframe\"])\ncheck(\"svg-onload\", '<svg onload=\"alert(1)\"><rect/></svg>', [\"onload\", \"alert\"], [\"<rect/>\"])\ncheck(\"xlink\", '<a xlink:href=\"javascript:alert(1)\">t</a>', [\"javascript:alert\"], [\"t</a>\"])\n# preservation / no false positives\ncheck(\"keep-data-attr\", '<div data-x=\"v\" class=\"c\">y</div>', [], ['data-x=\"v\"', 'class=\"c\"', \">y</div>\"])\ncheck(\"keep-title-on\", '<p title=\"on the roof\">z</p>', [], ['title=\"on the roof\"', \">z</p>\"])\ncheck(\"keep-mailto\", '<a href=\"mailto:a@b.com\">m</a>', [], ['href=\"mailto:a@b.com\"'])\ncheck(\"keep-js-in-query\", '<a href=\"https://e.com/?x=javascript:ok\">g</a>', [],\n      ['href=\"https://e.com/?x=javascript:ok\"'])\ncheck(\"keep-style-ok\", '<style>.a{color:red}</style>', [], [\"<style>.a{color:red}</style>\"])\n\n# byte-identical no-op on clean doc (incl CRLF + entities)\nclean = '<html>\\r\\n<body>\\r\\n<p class=\"x\">hi &amp; bye</p>\\r\\n<table><tr><td>1</td></tr></table>\\r\\n</body>\\r\\n</html>'\nassert run(clean) == clean, \"clean doc altered\"\ncases.append(\"noop-clean\")\n\nprint(f\"OK: {len(cases)} tests passed\")\nfor c in cases: print(\"  -\", c)\nEOF\npython3 /tmp/test_filter.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

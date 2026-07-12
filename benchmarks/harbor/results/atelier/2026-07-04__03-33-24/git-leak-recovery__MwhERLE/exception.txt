@@ -12,7 +12,7 @@ Traceback (most recent call last):
            ^^^^^^^^^
   File "/home/pankaj/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 448, in setup
     await self.install(environment)
-  File "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/atelier_agent.py", line 404, in install
+  File "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/lemoncrow_agent.py", line 404, in install
     await self.exec_as_root(
     ...<7 lines>...
     )

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CTvNdWvrGz8sAFK2GFLX1z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && echo \"---PDB---\" && cat /app/pdb_ids.txt && echo \"---ANTIBODY---\" && cat /app/antibody.fasta"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/ && echo \"---PDB---\" && cat /app/pdb_ids.txt && echo \"---ANTIBODY---\" && cat /app/antibody.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_015ULcXjgJZ2BQaayp5nWX6t",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/plasmid.gb"
@@ -58,7 +58,7 @@
                 "/app/plasmid.gb"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -123,7 +123,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Hr5dHRtdVeEhsQra5KN6GV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s --max-time 15 \"https://www.rcsb.org/fasta/entry/1YZW\" ; echo \"===EXIT $?===\""
           },
@@ -131,7 +131,7 @@
             "raw_arguments": {
               "command": "curl -s --max-time 15 \"https://www.rcsb.org/fasta/entry/1YZW\" ; echo \"===EXIT $?===\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014uHT1QLqP5r79X6ReGs6M9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/entry/1YZW\" -o /tmp/1yzw.json ; echo \"EXIT $?\"; head -c 300 /tmp/1yzw.json"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/entry/1YZW\" -o /tmp/1yzw.json ; echo \"EXIT $?\"; head -c 300 /tmp/1yzw.json"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -261,7 +261,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QswxhjJwExwLHArSKgoHFB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for id in 2IB5 4KGE 4Q7T 1KFD 5JZL 6AA7 3ADF 5WJ2 3M22 2H5Q 3MGF 5Y01 2VZX 4CQH 1YZW 2CHA 5P21 1H6R 1AK4 3KZY; do\n  t=$(curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/entry/$id\" | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d['struct']['title'])\" 2>/dev/null)\n  echo \"$id :: $t\"\ndone"
           },
@@ -269,7 +269,7 @@
             "raw_arguments": {
               "command": "for id in 2IB5 4KGE 4Q7T 1KFD 5JZL 6AA7 3ADF 5WJ2 3M22 2H5Q 3MGF 5Y01 2VZX 4CQH 1YZW 2CHA 5P21 1H6R 1AK4 3KZY; do\n  t=$(curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/entry/$id\" | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d['struct']['title'])\" 2>/dev/null)\n  echo \"$id :: $t\"\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -330,7 +330,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011pYmeRZehwYHiKyYzBUxtN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for n in Clover mCherry TagRFP mKO2 \"Kusabira Orange\" PSmOrange Dendra2 HcRed \"Azami Green\" muGFP Gamillus; do\n  echo \"=== $n ===\"\n  curl -s --max-time 20 \"https://www.fpbase.org/api/proteins/?name__icontains=$(python3 -c \"import urllib.parse,sys;print(urllib.parse.quote('$n'))\")&format=json\" | python3 -c \"import sys,json;\nd=json.load(sys.stdin)\nfor p in d:\n  st=p.get('states',[])\n  for s in st:\n    print(p['name'],'ex',s.get('ex_max'),'em',s.get('em_max'))\" 2>/dev/null\ndone"
           },
@@ -338,7 +338,7 @@
             "raw_arguments": {
               "command": "for n in Clover mCherry TagRFP mKO2 \"Kusabira Orange\" PSmOrange Dendra2 HcRed \"Azami Green\" muGFP Gamillus; do\n  echo \"=== $n ===\"\n  curl -s --max-time 20 \"https://www.fpbase.org/api/proteins/?name__icontains=$(python3 -c \"import urllib.parse,sys;print(urllib.parse.quote('$n'))\")&format=json\" | python3 -c \"import sys,json;\nd=json.load(sys.stdin)\nfor p in d:\n  st=p.get('states',[])\n  for s in st:\n    print(p['name'],'ex',s.get('ex_max'),'em',s.get('em_max'))\" 2>/dev/null\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -399,7 +399,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JZUUn2xVdE2hZxqqzPv3kJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for id in 5WJ2 2H5Q 3KZY; do\n  echo \"=== $id ===\"\n  curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/polymer_entity/$id/1\" | python3 -c \"import sys,json;d=json.load(sys.stdin);e=d['entity_poly'];print('canon:',e.get('pdbx_seq_one_letter_code_can'))\" 2>/dev/null\ndone"
           },
@@ -407,7 +407,7 @@
             "raw_arguments": {
               "command": "for id in 5WJ2 2H5Q 3KZY; do\n  echo \"=== $id ===\"\n  curl -s --max-time 20 \"https://data.rcsb.org/rest/v1/core/polymer_entity/$id/1\" | python3 -c \"import sys,json;d=json.load(sys.stdin);e=d['entity_poly'];print('canon:',e.get('pdbx_seq_one_letter_code_can'))\" 2>/dev/null\ndone"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -468,7 +468,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JgHTybzG5rz9KJqfmv1KE2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request\nfor id in [\"5WJ2\",\"2H5Q\",\"3KZY\"]:\n    url=f\"https://www.rcsb.org/fasta/entry/{id}\"\n    try:\n        r=urllib.request.urlopen(url,timeout=20)\n        print(\"===\",id,\"===\")\n        print(r.read().decode())\n    except Exception as e:\n        print(id,\"ERR\",e)\nEOF"
           },
@@ -476,7 +476,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request\nfor id in [\"5WJ2\",\"2H5Q\",\"3KZY\"]:\n    url=f\"https://www.rcsb.org/fasta/entry/{id}\"\n    try:\n        r=urllib.request.urlopen(url,timeout=20)\n        print(\"===\",id,\"===\")\n        print(r.read().decode())\n    except Exception as e:\n        print(id,\"ERR\",e)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -537,7 +537,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017VbqgebpTmArVrmNxHbCC3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request, json\nseq=\"QVQLQQSAAELARPGASVKMSCKASGYSFTTYTIHWVKQRPGQGLEWIGYINPSSGYAAYNQNFKDETTLTADPSSSTAYMELNSLTSEDSAVYYCAREKFYGYDYWGQGATLTVSS\"\nq={\n \"query\":{\"type\":\"terminal\",\"service\":\"sequence\",\n   \"parameters\":{\"evalue_cutoff\":1,\"identity_cutoff\":0.9,\"sequence_type\":\"protein\",\"value\":seq}},\n \"return_type\":\"polymer_entity\",\n \"request_options\":{\"paginate\":{\"start\":0,\"rows\":25}}\n}\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\nimport urllib.parse\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\ntry:\n    r=urllib.request.urlopen(url,timeout=30)\n    d=json.load(r)\n    for m in d.get(\"result_set\",[]):\n        print(m[\"identifier\"], round(m[\"services\"][0][\"nodes\"][0][\"match_context\"][0][\"sequence_identity\"],3))\nexcept Exception as e:\n    print(\"ERR\",e)\nEOF"
           },
@@ -545,7 +545,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request, json\nseq=\"QVQLQQSAAELARPGASVKMSCKASGYSFTTYTIHWVKQRPGQGLEWIGYINPSSGYAAYNQNFKDETTLTADPSSSTAYMELNSLTSEDSAVYYCAREKFYGYDYWGQGATLTVSS\"\nq={\n \"query\":{\"type\":\"terminal\",\"service\":\"sequence\",\n   \"parameters\":{\"evalue_cutoff\":1,\"identity_cutoff\":0.9,\"sequence_type\":\"protein\",\"value\":seq}},\n \"return_type\":\"polymer_entity\",\n \"request_options\":{\"paginate\":{\"start\":0,\"rows\":25}}\n}\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\nimport urllib.parse\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\ntry:\n    r=urllib.request.urlopen(url,timeout=30)\n    d=json.load(r)\n    for m in d.get(\"result_set\",[]):\n        print(m[\"identifier\"], round(m[\"services\"][0][\"nodes\"][0][\"match_context\"][0][\"sequence_identity\"],3))\nexcept Exception as e:\n    print(\"ERR\",e)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -606,7 +606,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BfTFy7mHt7oRdLcaZvS1Nh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request, json, urllib.parse\nseq=\"QVQLQQSAAELARPGASVKMSCKASGYSFTTYTIHWVKQRPGQGLEWIGYINPSSGYAAYNQNFKDETTLTADPSSSTAYMELNSLTSEDSAVYYCAREKFYGYDYWGQGATLTVSS\"\nq={\n \"query\":{\"type\":\"terminal\",\"service\":\"sequence\",\n   \"parameters\":{\"evalue_cutoff\":1,\"identity_cutoff\":0.9,\"sequence_type\":\"protein\",\"value\":seq}},\n \"return_type\":\"polymer_entity\",\n \"request_options\":{\"paginate\":{\"start\":0,\"rows\":25},\"results_verbosity\":\"verbose\"}\n}\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\nr=urllib.request.urlopen(url,timeout=30)\nd=json.load(r)\nprint(\"total\",d.get(\"total_count\"))\nids=[m[\"identifier\"] for m in d.get(\"result_set\",[])]\nprint(ids)\nEOF"
           },
@@ -614,7 +614,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request, json, urllib.parse\nseq=\"QVQLQQSAAELARPGASVKMSCKASGYSFTTYTIHWVKQRPGQGLEWIGYINPSSGYAAYNQNFKDETTLTADPSSSTAYMELNSLTSEDSAVYYCAREKFYGYDYWGQGATLTVSS\"\nq={\n \"query\":{\"type\":\"terminal\",\"service\":\"sequence\",\n   \"parameters\":{\"evalue_cutoff\":1,\"identity_cutoff\":0.9,\"sequence_type\":\"protein\",\"value\":seq}},\n \"return_type\":\"polymer_entity\",\n \"request_options\":{\"paginate\":{\"start\":0,\"rows\":25},\"results_verbosity\":\"verbose\"}\n}\nurl=\"https://search.rcsb.org/rcsbsearch/v2/query?json=\"+urllib.parse.quote(json.dumps(q))\nr=urllib.request.urlopen(url,timeout=30)\nd=json.load(r)\nprint(\"total\",d.get(\"total_count\"))\nids=[m[\"identifier\"] for m in d.get(\"result_set\",[])]\nprint(ids)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -675,7 +675,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011nid4YahyPZqMZ65cdTJQs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request, json\nfor id in [\"7BG1\",\"8RMO\"]:\n    d=json.load(urllib.request.urlopen(f\"https://data.rcsb.org/rest/v1/core/entry/{id}\",timeout=20))\n    print(\"===\",id,\"===\",d['struct']['title'])\n    n=d['rcsb_entry_info']['polymer_entity_count']\n    for e in range(1,n+1):\n        try:\n            pe=json.load(urllib.request.urlopen(f\"https://data.rcsb.org/rest/v1/core/polymer_entity/{id}/{e}\",timeout=20))\n            desc=pe.get('rcsb_polymer_entity',{}).get('pdbx_description')\n            org=None\n            try: org=pe['rcsb_entity_source_organism'][0]['ncbi_scientific_name']\n            except: pass\n            seq=pe['entity_poly']['pdbx_seq_one_letter_code_can']\n            print(f\"  ent{e}: {desc} | {org} | len {len(seq)}\")\n        except Exception as ex:\n            print(\"  ent\",e,\"ERR\",ex)\nEOF"
           },
@@ -683,7 +683,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request, json\nfor id in [\"7BG1\",\"8RMO\"]:\n    d=json.load(urllib.request.urlopen(f\"https://data.rcsb.org/rest/v1/core/entry/{id}\",timeout=20))\n    print(\"===\",id,\"===\",d['struct']['title'])\n    n=d['rcsb_entry_info']['polymer_entity_count']\n    for e in range(1,n+1):\n        try:\n            pe=json.load(urllib.request.urlopen(f\"https://data.rcsb.org/rest/v1/core/polymer_entity/{id}/{e}\",timeout=20))\n            desc=pe.get('rcsb_polymer_entity',{}).get('pdbx_description')\n            org=None\n            try: org=pe['rcsb_entity_source_organism'][0]['ncbi_scientific_name']\n            except: pass\n            seq=pe['entity_poly']['pdbx_seq_one_letter_code_can']\n            print(f\"  ent{e}: {desc} | {org} | len {len(seq)}\")\n        except Exception as ex:\n            print(\"  ent\",e,\"ERR\",ex)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -744,7 +744,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Czyjw3wHjpxkPWkrcWokuW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'EOF'\nimport urllib.request, json\npe=json.load(urllib.request.urlopen(\"https://data.rcsb.org/rest/v1/core/polymer_entity/8RMO/1\",timeout=20))\nprint(\"FLAG:\",pe['entity_poly']['pdbx_seq_one_letter_code_can'])\nEOF"
           },
@@ -752,7 +752,7 @@
             "raw_arguments": {
               "command": "python3 - <<'EOF'\nimport urllib.request, json\npe=json.load(urllib.request.urlopen(\"https://data.rcsb.org/rest/v1/core/polymer_entity/8RMO/1\",timeout=20))\nprint(\"FLAG:\",pe['entity_poly']['pdbx_seq_one_letter_code_can'])\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -813,7 +813,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018aVWkmD53PkeHpb1GtfsFn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/build.py <<'PY'\ncodon = {\n 'A':['GCT','GCC','GCA','GCG'],\n 'R':['CGT','CGC','CGA','CGG','AGA','AGG'],\n 'N':['AAT','AAC'],\n 'D':['GAT','GAC'],\n 'C':['TGT','TGC'],\n 'Q':['CAA','CAG'],\n 'E':['GAA','GAG'],\n 'G':['GGT','GGC','GGA','GGG'],\n 'H':['CAT','CAC'],\n 'I':['ATT','ATC','ATA'],\n 'L':['TTA','TTG','CTT','CTC','CTA','CTG'],\n 'K':['AAA','AAG'],\n 'M':['ATG'],\n 'F':['TTT','TTC'],\n 'P':['CCT','CCC','CCA','CCG'],\n 'S':['TCT','TCC','TCA','TCG','AGT','AGC'],\n 'T':['ACT','ACC','ACA','ACG'],\n 'W':['TGG'],\n 'Y':['TAT','TAC'],\n 'V':['GTT','GTC','GTA','GTG'],\n}\n\n# subproteins\nFLAG=\"DYKDDDDK\"\nClover=\"MGSSHHHHHHSSGENLYFQGHMVSKGEELFTGVVPILVELDGDVNGHKFSVRGEGEGDATNGKLTLKFICTTGKLPVPWPTLVTTFXVACFSRYPDHMKQHDFFKSAMPEGYVQERTISFKDDGTYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNFNSHNVYITADKQKNGIKANFKIRHNVEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSHQSALSKDPNEKRDHMVLLEFVTAAGITHGMDELYK\"\nDHFR=\"MISLIAALAVDRVIGMENAMPWNLPADLAWFKRNTLNKPVIMGRHTWESIGRPLPGRKNIILSSQPGTDDRVTWVKSVDEAIAACGDVPEIMVIGGGRVYEQFLPKAQKLYLTHIDAEVEGDTHFPDYEPDDWESVFSEFHDADAQNSHSYCFEILERR\"\nmCherry=\"MVSKGEEDNMAIIKEFMRFKVHMEGSVNGHEFEIEGEGEGRPYEGTQTAKLKVTKGGPLPFAWDILSPQFXSKAYVKHPADIPDYLKLSFPEGFKWERVMNFEDGGVVTVTQDSSLQDGEFIYKVKLRGTNFPSDGPVMQKKTMGWEASSERMYPEDGALKGEIKQRLKLKDGGHYDAEVKTTYKAKKPVQLPGAYNVNIKLDITSHNEDYTIVEQYERAEGRHSTGGMDELYK\"\nSNAP=\"GPGSDKDCEMKRTTLDSPLGKLELSGCEQGLHEIIFLGKGTSAADAVEVPAPAAVLGGPEPLMQATAWLNAYFHQPEAIEEFPVPALHHPVFQQESFTRQVLWKLLKVVKFGEVISYSHLAALAGNPAATAAVKTALSGNPVPILIPCHRVVQGDLDVGGYEGGLAVKEWLLAHEGHRLGKR\"\n\ndef strip_met(s): return s[1:] if s[0]=='M' else s\ndef fixX(s): return s.replace('X','Y')\n\nFLAGp = strip_met(FLAG)\nCloverp = fixX(strip_met(Clover))\nDHFRp = strip_met(DHFR)\nmCherryp = fixX(strip_met(mCherry))\nSNAPp = SNAP  # starts with G\n\nL1=\"GGGGS\"\nL2=\"GGGGSGGGGS\"\nL3=\"GGGGSGGGGS\"\nL4=\"GGGGS\"\n\nprotein = FLAGp+L1+Cloverp+L2+DHFRp+L3+mCherryp+L4+SNAPp\nprint(\"subprotein lens (post-processing):\",len(FLAGp),len(Cloverp),len(DHFRp),len(mCherryp),len(SNAPp))\nprint(\"linker lens:\",len(L1),len(L2),len(L3),len(L4))\nprint(\"total aa:\",len(protein),\"nt:\",len(protein)*3)\nassert 'X' not in protein\nassert '*' not in protein\n\n# greedy codon optimizer keeping last-50nt GC near 50%\ndef gc(s): return sum(c in 'GC' for c in s)\nimport random\nrandom.seed(7)\ndef build(protein):\n    seq=[]\n    for i,aa in enumerate(protein):\n        opts=codon[aa]\n        best=None;bestscore=None\n        for c in opts:\n            cand=''.join(seq[-16:])+c  # look back ~50nt\n            tail=(''.join(seq)+c)[-50:]\n            g=gc(tail)/len(tail)\n            score=abs(g-0.5)\n            # forbid stop codons (none in table) ; keep\n            if best is None or score<bestscore or (score==bestscore and random.random()<0.5):\n                best=c;bestscore=score\n        seq.append(best)\n    return ''.join(seq)\n\ndna=build(protein)\n# verify windows\ndef check(dna):\n    bad=[]\n    for i in range(0,len(dna)-49):\n        w=dna[i:i+50]\n        g=gc(w)/50\n        if g<0.30 or g>0.70: bad.append((i,g))\n    return bad\nbad=check(dna)\nprint(\"len dna\",len(dna),\"bad windows\",len(bad))\nif bad: print(bad[:5])\n# no stop codons check\nstops={'TAA','TAG','TGA'}\ncodons=[dna[i:i+3] for i in range(0,len(dna),3)]\nprint(\"internal stop codons:\",sum(c in stops for c in codons))\nprint(\"first codon:\",codons[0],\"last codon:\",codons[-1])\n# translate back to verify\ntable={}\nfor aa,cs in codon.items():\n    for c in cs: table[c]=aa\nprot2=''.join(table[c] for c in codons)\nprint(\"translation matches:\",prot2==protein)\nopen('/tmp/dna.txt','w').write(dna)\nprint(\"GC overall %.1f\"%(100*gc(dna)/len(dna)))\nPY\npython3 /tmp/build.py"
           },
@@ -821,7 +821,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/build.py <<'PY'\ncodon = {\n 'A':['GCT','GCC','GCA','GCG'],\n 'R':['CGT','CGC','CGA','CGG','AGA','AGG'],\n 'N':['AAT','AAC'],\n 'D':['GAT','GAC'],\n 'C':['TGT','TGC'],\n 'Q':['CAA','CAG'],\n 'E':['GAA','GAG'],\n 'G':['GGT','GGC','GGA','GGG'],\n 'H':['CAT','CAC'],\n 'I':['ATT','ATC','ATA'],\n 'L':['TTA','TTG','CTT','CTC','CTA','CTG'],\n 'K':['AAA','AAG'],\n 'M':['ATG'],\n 'F':['TTT','TTC'],\n 'P':['CCT','CCC','CCA','CCG'],\n 'S':['TCT','TCC','TCA','TCG','AGT','AGC'],\n 'T':['ACT','ACC','ACA','ACG'],\n 'W':['TGG'],\n 'Y':['TAT','TAC'],\n 'V':['GTT','GTC','GTA','GTG'],\n}\n\n# subproteins\nFLAG=\"DYKDDDDK\"\nClover=\"MGSSHHHHHHSSGENLYFQGHMVSKGEELFTGVVPILVELDGDVNGHKFSVRGEGEGDATNGKLTLKFICTTGKLPVPWPTLVTTFXVACFSRYPDHMKQHDFFKSAMPEGYVQERTISFKDDGTYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNFNSHNVYITADKQKNGIKANFKIRHNVEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSHQSALSKDPNEKRDHMVLLEFVTAAGITHGMDELYK\"\nDHFR=\"MISLIAALAVDRVIGMENAMPWNLPADLAWFKRNTLNKPVIMGRHTWESIGRPLPGRKNIILSSQPGTDDRVTWVKSVDEAIAACGDVPEIMVIGGGRVYEQFLPKAQKLYLTHIDAEVEGDTHFPDYEPDDWESVFSEFHDADAQNSHSYCFEILERR\"\nmCherry=\"MVSKGEEDNMAIIKEFMRFKVHMEGSVNGHEFEIEGEGEGRPYEGTQTAKLKVTKGGPLPFAWDILSPQFXSKAYVKHPADIPDYLKLSFPEGFKWERVMNFEDGGVVTVTQDSSLQDGEFIYKVKLRGTNFPSDGPVMQKKTMGWEASSERMYPEDGALKGEIKQRLKLKDGGHYDAEVKTTYKAKKPVQLPGAYNVNIKLDITSHNEDYTIVEQYERAEGRHSTGGMDELYK\"\nSNAP=\"GPGSDKDCEMKRTTLDSPLGKLELSGCEQGLHEIIFLGKGTSAADAVEVPAPAAVLGGPEPLMQATAWLNAYFHQPEAIEEFPVPALHHPVFQQESFTRQVLWKLLKVVKFGEVISYSHLAALAGNPAATAAVKTALSGNPVPILIPCHRVVQGDLDVGGYEGGLAVKEWLLAHEGHRLGKR\"\n\ndef strip_met(s): return s[1:] if s[0]=='M' else s\ndef fixX(s): return s.replace('X','Y')\n\nFLAGp = strip_met(FLAG)\nCloverp = fixX(strip_met(Clover))\nDHFRp = strip_met(DHFR)\nmCherryp = fixX(strip_met(mCherry))\nSNAPp = SNAP  # starts with G\n\nL1=\"GGGGS\"\nL2=\"GGGGSGGGGS\"\nL3=\"GGGGSGGGGS\"\nL4=\"GGGGS\"\n\nprotein = FLAGp+L1+Cloverp+L2+DHFRp+L3+mCherryp+L4+SNAPp\nprint(\"subprotein lens (post-processing):\",len(FLAGp),len(Cloverp),len(DHFRp),len(mCherryp),len(SNAPp))\nprint(\"linker lens:\",len(L1),len(L2),len(L3),len(L4))\nprint(\"total aa:\",len(protein),\"nt:\",len(protein)*3)\nassert 'X' not in protein\nassert '*' not in protein\n\n# greedy codon optimizer keeping last-50nt GC near 50%\ndef gc(s): return sum(c in 'GC' for c in s)\nimport random\nrandom.seed(7)\ndef build(protein):\n    seq=[]\n    for i,aa in enumerate(protein):\n        opts=codon[aa]\n        best=None;bestscore=None\n        for c in opts:\n            cand=''.join(seq[-16:])+c  # look back ~50nt\n            tail=(''.join(seq)+c)[-50:]\n            g=gc(tail)/len(tail)\n            score=abs(g-0.5)\n            # forbid stop codons (none in table) ; keep\n            if best is None or score<bestscore or (score==bestscore and random.random()<0.5):\n                best=c;bestscore=score\n        seq.append(best)\n    return ''.join(seq)\n\ndna=build(protein)\n# verify windows\ndef check(dna):\n    bad=[]\n    for i in range(0,len(dna)-49):\n        w=dna[i:i+50]\n        g=gc(w)/50\n        if g<0.30 or g>0.70: bad.append((i,g))\n    return bad\nbad=check(dna)\nprint(\"len dna\",len(dna),\"bad windows\",len(bad))\nif bad: print(bad[:5])\n# no stop codons check\nstops={'TAA','TAG','TGA'}\ncodons=[dna[i:i+3] for i in range(0,len(dna),3)]\nprint(\"internal stop codons:\",sum(c in stops for c in codons))\nprint(\"first codon:\",codons[0],\"last codon:\",codons[-1])\n# translate back to verify\ntable={}\nfor aa,cs in codon.items():\n    for c in cs: table[c]=aa\nprot2=''.join(table[c] for c in codons)\nprint(\"translation matches:\",prot2==protein)\nopen('/tmp/dna.txt','w').write(dna)\nprint(\"GC overall %.1f\"%(100*gc(dna)/len(dna)))\nPY\npython3 /tmp/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -882,7 +882,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XH96dBeiY5kecPtiQk2mYV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\ndna=open('/tmp/dna.txt').read().strip()\nopen('/app/gblock.txt','w').write(dna)   # no trailing newline\nd=open('/app/gblock.txt').read()\nprint(\"bytes\",len(d),\"has_newline\",('\\n' in d),\"len_nt\",len(d))\nprint(\"head\",d[:30],\"tail\",d[-30:])\nPY\necho \"----wc----\"; wc -c /app/gblock.txt; echo; ls -la /app/gblock.txt"
           },
@@ -890,7 +890,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\ndna=open('/tmp/dna.txt').read().strip()\nopen('/app/gblock.txt','w').write(dna)   # no trailing newline\nd=open('/app/gblock.txt').read()\nprint(\"bytes\",len(d),\"has_newline\",('\\n' in d),\"len_nt\",len(d))\nprint(\"head\",d[:30],\"tail\",d[-30:])\nPY\necho \"----wc----\"; wc -c /app/gblock.txt; echo; ls -la /app/gblock.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -951,7 +951,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017NRC8Hqxe8K3LKWc1CpSWy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nimport re\ndna=open('/app/gblock.txt').read()\ntable={}\nbases='TCAG'\naas='FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG'\ni=0\nfor a in bases:\n for b in bases:\n  for c in bases:\n   table[a+b+c]=aas[i];i+=1\ncodons=[dna[i:i+3] for i in range(0,len(dna),3)]\nprot=''.join(table[c] for c in codons)\nprint(\"len_nt\",len(dna),\"<=3000:\",len(dna)<=3000, \"len%3==0:\",len(dna)%3==0)\nprint(\"in-frame stops:\",prot.count('*'))\nprint(\"first codon ATG?\",codons[0]=='ATG',\"last codon stop?\",codons[-1] in ('TAA','TAG','TGA'))\n# GC windows\ndef gc(s):return sum(x in 'GC' for x in s)\nbad=[(i,gc(dna[i:i+50])/50) for i in range(0,len(dna)-49) if not 0.30<=gc(dna[i:i+50])/50<=0.70]\nprint(\"bad GC windows:\",len(bad))\n# fasta refs (X->Y, strip leading M), DHFR from plasmid\nClover=\"MGSSHHHHHHSSGENLYFQGHMVSKGEELFTGVVPILVELDGDVNGHKFSVRGEGEGDATNGKLTLKFICTTGKLPVPWPTLVTTFXVACFSRYPDHMKQHDFFKSAMPEGYVQERTISFKDDGTYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNFNSHNVYITADKQKNGIKANFKIRHNVEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSHQSALSKDPNEKRDHMVLLEFVTAAGITHGMDELYK\"\nmCherry=\"MVSKGEEDNMAIIKEFMRFKVHMEGSVNGHEFEIEGEGEGRPYEGTQTAKLKVTKGGPLPFAWDILSPQFXSKAYVKHPADIPDYLKLSFPEGFKWERVMNFEDGGVVTVTQDSSLQDGEFIYKVKLRGTNFPSDGPVMQKKTMGWEASSERMYPEDGALKGEIKQRLKLKDGGHYDAEVKTTYKAKKPVQLPGAYNVNIKLDITSHNEDYTIVEQYERAEGRHSTGGMDELYK\"\nSNAP=\"GPGSDKDCEMKRTTLDSPLGKLELSGCEQGLHEIIFLGKGTSAADAVEVPAPAAVLGGPEPLMQATAWLNAYFHQPEAIEEFPVPALHHPVFQQESFTRQVLWKLLKVVKFGEVISYSHLAALAGNPAATAAVKTALSGNPVPILIPCHRVVQGDLDVGGYEGGLAVKEWLLAHEGHRLGKR\"\nDHFR=\"MISLIAALAVDRVIGMENAMPWNLPADLAWFKRNTLNKPVIMGRHTWESIGRPLPGRKNIILSSQPGTDDRVTWVKSVDEAIAACGDVPEIMVIGGGRVYEQFLPKAQKLYLTHIDAEVEGDTHFPDYEPDDWESVFSEFHDADAQNSHSYCFEILERR\"\nFLAG=\"DYKDDDDK\"\ndef pat(s):  # strip leading M, X->wildcard\n    s=s[1:] if s[0]=='M' else s\n    return s.replace('X','.')\nfor name,ref in [(\"FLAG\",FLAG[1:] if FLAG[0]=='M' else FLAG),(\"Clover\",pat(Clover)),(\"DHFR\",pat(DHFR)),(\"mCherry\",pat(mCherry)),(\"SNAP\",pat(SNAP))]:\n    print(name,\"present:\",bool(re.search(ref,prot)))\n# order check\nidx={n:re.search(pat(r) if 'X' in r or r[0]=='M' else r,prot).start() for n,r in\n     [(\"FLAG\",FLAG),(\"Clover\",Clover),(\"DHFR\",DHFR),(\"mCherry\",mCherry),(\"SNAP\",SNAP)]}\nprint(\"order\",sorted(idx,key=idx.get))\nprint(\"total aa\",len(prot))\nPY"
           },
@@ -959,7 +959,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nimport re\ndna=open('/app/gblock.txt').read()\ntable={}\nbases='TCAG'\naas='FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG'\ni=0\nfor a in bases:\n for b in bases:\n  for c in bases:\n   table[a+b+c]=aas[i];i+=1\ncodons=[dna[i:i+3] for i in range(0,len(dna),3)]\nprot=''.join(table[c] for c in codons)\nprint(\"len_nt\",len(dna),\"<=3000:\",len(dna)<=3000, \"len%3==0:\",len(dna)%3==0)\nprint(\"in-frame stops:\",prot.count('*'))\nprint(\"first codon ATG?\",codons[0]=='ATG',\"last codon stop?\",codons[-1] in ('TAA','TAG','TGA'))\n# GC windows\ndef gc(s):return sum(x in 'GC' for x in s)\nbad=[(i,gc(dna[i:i+50])/50) for i in range(0,len(dna)-49) if not 0.30<=gc(dna[i:i+50])/50<=0.70]\nprint(\"bad GC windows:\",len(bad))\n# fasta refs (X->Y, strip leading M), DHFR from plasmid\nClover=\"MGSSHHHHHHSSGENLYFQGHMVSKGEELFTGVVPILVELDGDVNGHKFSVRGEGEGDATNGKLTLKFICTTGKLPVPWPTLVTTFXVACFSRYPDHMKQHDFFKSAMPEGYVQERTISFKDDGTYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNFNSHNVYITADKQKNGIKANFKIRHNVEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSHQSALSKDPNEKRDHMVLLEFVTAAGITHGMDELYK\"\nmCherry=\"MVSKGEEDNMAIIKEFMRFKVHMEGSVNGHEFEIEGEGEGRPYEGTQTAKLKVTKGGPLPFAWDILSPQFXSKAYVKHPADIPDYLKLSFPEGFKWERVMNFEDGGVVTVTQDSSLQDGEFIYKVKLRGTNFPSDGPVMQKKTMGWEASSERMYPEDGALKGEIKQRLKLKDGGHYDAEVKTTYKAKKPVQLPGAYNVNIKLDITSHNEDYTIVEQYERAEGRHSTGGMDELYK\"\nSNAP=\"GPGSDKDCEMKRTTLDSPLGKLELSGCEQGLHEIIFLGKGTSAADAVEVPAPAAVLGGPEPLMQATAWLNAYFHQPEAIEEFPVPALHHPVFQQESFTRQVLWKLLKVVKFGEVISYSHLAALAGNPAATAAVKTALSGNPVPILIPCHRVVQGDLDVGGYEGGLAVKEWLLAHEGHRLGKR\"\nDHFR=\"MISLIAALAVDRVIGMENAMPWNLPADLAWFKRNTLNKPVIMGRHTWESIGRPLPGRKNIILSSQPGTDDRVTWVKSVDEAIAACGDVPEIMVIGGGRVYEQFLPKAQKLYLTHIDAEVEGDTHFPDYEPDDWESVFSEFHDADAQNSHSYCFEILERR\"\nFLAG=\"DYKDDDDK\"\ndef pat(s):  # strip leading M, X->wildcard\n    s=s[1:] if s[0]=='M' else s\n    return s.replace('X','.')\nfor name,ref in [(\"FLAG\",FLAG[1:] if FLAG[0]=='M' else FLAG),(\"Clover\",pat(Clover)),(\"DHFR\",pat(DHFR)),(\"mCherry\",pat(mCherry)),(\"SNAP\",pat(SNAP))]:\n    print(name,\"present:\",bool(re.search(ref,prot)))\n# order check\nidx={n:re.search(pat(r) if 'X' in r or r[0]=='M' else r,prot).start() for n,r in\n     [(\"FLAG\",FLAG),(\"Clover\",Clover),(\"DHFR\",DHFR),(\"mCherry\",mCherry),(\"SNAP\",SNAP)]}\nprint(\"order\",sorted(idx,key=idx.get))\nprint(\"total aa\",len(prot))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

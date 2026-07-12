@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01G4CJ1MtgxCvqGxnrw6BeBx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>/dev/null; python3 --version; python3 -c \"import bleach; print('bleach', bleach.__version__)\" 2>&1; python3 -c \"import bs4; print('bs4', bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>/dev/null; python3 --version; python3 -c \"import bleach; print('bleach', bleach.__version__)\" 2>&1; python3 -c \"import bs4; print('bs4', bs4.__version__)\" 2>&1; python3 -c \"import lxml; print('lxml ok')\" 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01G4CJ1MtgxCvqGxnrw6BeBx",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=1\\n... (2 lines omitted) ...\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .atelier\\nPython 3.13.7\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\n    import bleach; print('bleach', bleach.__version__)\\n    ^^^^^^^^^^^^^\\nModuleNotFoundError: No module named 'bleach'\\nbs4 4.13.4\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\n    import lxml; print('lxml ok')\\n    ^^^^^^^^^^^\\n... (1 lines omitted) ...\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=1\\n... (2 lines omitted) ...\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .lemoncrow\\nPython 3.13.7\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\n    import bleach; print('bleach', bleach.__version__)\\n    ^^^^^^^^^^^^^\\nModuleNotFoundError: No module named 'bleach'\\nbs4 4.13.4\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\n    import lxml; print('lxml ok')\\n    ^^^^^^^^^^^\\n... (1 lines omitted) ...\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AsZH3aRD1M5bCqMq41wUpy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 - <<'PY'\nfrom html.parser import HTMLParser\nimport html\nclass P(HTMLParser):\n    def handle_starttag(self,t,a):\n        print(\"START\",t,a,\"pos\",self.getpos(),\"raw=\",repr(self.get_starttag_text()))\n    def handle_endtag(self,t):\n        print(\"END\",t,\"pos\",self.getpos())\ns='''<a href=\"JavaScript:alert(1)\">x</a>\n<img src=x onerror=\"alert(1)\">\n<script>var a=\"</b>\";</script>\n<div title=\" onclick=bad\" onmouseover=\"e()\">hi</div>\n<p>&colon; &amp;</p>\n'''\np=P(convert_charrefs=True); p.feed(s)\nprint(\"unescape colon:\",html.unescape(\"javascript&colon;alert\"))\nPY"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "python3 - <<'PY'\nfrom html.parser import HTMLParser\nimport html\nclass P(HTMLParser):\n    def handle_starttag(self,t,a):\n        print(\"START\",t,a,\"pos\",self.getpos(),\"raw=\",repr(self.get_starttag_text()))\n    def handle_endtag(self,t):\n        print(\"END\",t,\"pos\",self.getpos())\ns='''<a href=\"JavaScript:alert(1)\">x</a>\n<img src=x onerror=\"alert(1)\">\n<script>var a=\"</b>\";</script>\n<div title=\" onclick=bad\" onmouseover=\"e()\">hi</div>\n<p>&colon; &amp;</p>\n'''\np=P(convert_charrefs=True); p.feed(s)\nprint(\"unescape colon:\",html.unescape(\"javascript&colon;alert\"))\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011WYEiFmmu8zebQL945XCw2",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017Y5UfqkK27kQGU5artjq5a",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\ncat > t.html <<'EOF'\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Test &amp; Demo</title>\n  <meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n  <style>body { color: red; }</style>\n</head>\n<body class=\"main\" data-x=\"1\">\n  <h1>Hello   World</h1>\n  <table border=\"1\">\n    <tr><th>A</th><td>b &lt; c</td></tr>\n  </table>\n  <a href=\"https://example.com\" title=\"ok\">link</a>\n  <a href=\"JavaScript:alert(1)\">bad</a>\n  <a href=\"  javascript:alert(2)\">bad2</a>\n  <img src=x onerror=\"alert(3)\" alt=\"pic\">\n  <div onclick=\"steal()\" style=\"color:blue\">x</div>\n  <div style=\"width:expression(alert(1))\">y</div>\n  <p title=\" onclick=notreal\" onmouseover=\"e()\">keep title</p>\n  <script>var s = \"</p> not closed\"; alert(1);</script>\n  <svg onload=\"alert(1)\"><rect/></svg>\n  <iframe src=\"data:text/html,<script>alert(1)</script>\"></iframe>\n  <object data=\"javascript:alert(1)\"></object>\n  <input type=\"text\" onfocus=\"x()\" autofocus>\n  <BUTTON FORMACTION=\"javascript:go()\">Go</BUTTON>\n  <br/>\n  <img src=\"data:image/png;base64,AAAA\" />\n</body>\n</html>\nEOF\ncp t.html orig.html\npython3 filter.py t.html\necho \"=== OUTPUT ===\"\ncat t.html\necho \"=== residual JS check (should be empty) ===\"\ngrep -niE 'javascript:|onerror|onclick|onload|onmouseover|onfocus|formaction=|<script|expression\\(|url=javascript' t.html || echo \"CLEAN\""
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app\ncat > t.html <<'EOF'\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Test &amp; Demo</title>\n  <meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">\n  <style>body { color: red; }</style>\n</head>\n<body class=\"main\" data-x=\"1\">\n  <h1>Hello   World</h1>\n  <table border=\"1\">\n    <tr><th>A</th><td>b &lt; c</td></tr>\n  </table>\n  <a href=\"https://example.com\" title=\"ok\">link</a>\n  <a href=\"JavaScript:alert(1)\">bad</a>\n  <a href=\"  javascript:alert(2)\">bad2</a>\n  <img src=x onerror=\"alert(3)\" alt=\"pic\">\n  <div onclick=\"steal()\" style=\"color:blue\">x</div>\n  <div style=\"width:expression(alert(1))\">y</div>\n  <p title=\" onclick=notreal\" onmouseover=\"e()\">keep title</p>\n  <script>var s = \"</p> not closed\"; alert(1);</script>\n  <svg onload=\"alert(1)\"><rect/></svg>\n  <iframe src=\"data:text/html,<script>alert(1)</script>\"></iframe>\n  <object data=\"javascript:alert(1)\"></object>\n  <input type=\"text\" onfocus=\"x()\" autofocus>\n  <BUTTON FORMACTION=\"javascript:go()\">Go</BUTTON>\n  <br/>\n  <img src=\"data:image/png;base64,AAAA\" />\n</body>\n</html>\nEOF\ncp t.html orig.html\npython3 filter.py t.html\necho \"=== OUTPUT ===\"\ncat t.html\necho \"=== residual JS check (should be empty) ===\"\ngrep -niE 'javascript:|onerror|onclick|onload|onmouseover|onfocus|formaction=|<script|expression\\(|url=javascript' t.html || echo \"CLEAN\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -321,7 +321,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Fe31Te1UDyNkPLAfevXDGp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\ncat > benign.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head><title>Report</title></head>\n<body>\n  <h1>Q3   Results</h1>\n  <table>\n    <tr><th>Name</th><th>Score</th></tr>\n    <tr><td>Alice</td><td>95%</td></tr>\n  </table>\n  <p style=\"font-weight:bold\">Note: a &lt; b &amp; c &gt; d</p>\n  <a href=\"https://example.com/path?x=1&amp;y=2\">visit</a>\n  <img src=\"pic.png\" alt='a \"quoted\" alt' width=100 />\n  <!-- a comment -->\n  <input disabled type=checkbox>\n</body>\n</html>\nEOF\ncp benign.html benign.orig\npython3 filter.py benign.html\nif diff -q benign.orig benign.html >/dev/null; then echo \"BYTE-IDENTICAL (benign unchanged)\"; else echo \"DIFF:\"; diff benign.orig benign.html; fi\n# idempotency + empty/edge\nprintf '<div>no newline at eof onerror=x in text</div>' > edge.html\npython3 filter.py edge.html; echo \"---edge---\"; cat edge.html; echo\npython3 filter.py t.html >/dev/null; echo \"second-run-on-cleaned rc=$?\""
           },
@@ -329,7 +329,7 @@
             "raw_arguments": {
               "command": "cd /app\ncat > benign.html <<'EOF'\n<!DOCTYPE html>\n<html>\n<head><title>Report</title></head>\n<body>\n  <h1>Q3   Results</h1>\n  <table>\n    <tr><th>Name</th><th>Score</th></tr>\n    <tr><td>Alice</td><td>95%</td></tr>\n  </table>\n  <p style=\"font-weight:bold\">Note: a &lt; b &amp; c &gt; d</p>\n  <a href=\"https://example.com/path?x=1&amp;y=2\">visit</a>\n  <img src=\"pic.png\" alt='a \"quoted\" alt' width=100 />\n  <!-- a comment -->\n  <input disabled type=checkbox>\n</body>\n</html>\nEOF\ncp benign.html benign.orig\npython3 filter.py benign.html\nif diff -q benign.orig benign.html >/dev/null; then echo \"BYTE-IDENTICAL (benign unchanged)\"; else echo \"DIFF:\"; diff benign.orig benign.html; fi\n# idempotency + empty/edge\nprintf '<div>no newline at eof onerror=x in text</div>' > edge.html\npython3 filter.py edge.html; echo \"---edge---\"; cat edge.html; echo\npython3 filter.py t.html >/dev/null; echo \"second-run-on-cleaned rc=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -445,7 +445,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TX2mrs53mdJJWPWkrSyx6w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; ls -la; find / -name 'test*filter*' -o -name '*filter*test*' 2>/dev/null | grep -v proc | head"
           },
@@ -453,7 +453,7 @@
             "raw_arguments": {
               "command": "cd /app; ls -la; find / -name 'test*filter*' -o -name '*filter*test*' 2>/dev/null | grep -v proc | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -461,7 +461,7 @@
         "results": [
           {
             "source_call_id": "toolu_01TX2mrs53mdJJWPWkrSyx6w",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\natelier/.venv-build/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\natelier/.venv-embed/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\natelier/.venv-embed/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/.venv-embed/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/.venv-embed/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\natelier/.venv/lib/python3.13/site-packages/matplotlib/tests/test_agg_filter.py\\natelier/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\natelier/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/matplotlib/tests/test_agg_filter.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/networkx/classes/tests/test_filters.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/frame/methods/test_filter.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/groupby/test_filters.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/scipy/ndimage/tests/test_filters.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/scipy/signal/tests/test_filter_design.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nopt/atelier-venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nopt/atelier-venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nopt/atelier-venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nopt/atelier-venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nusr/local/lib/python3.13/site-packages/bs4/tests/__pycache__/test_filter.cpython-313.pyc\\nusr/local/lib/python3.13/site-packages/bs4/tests/test_filter.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nlemoncrow/.venv/lib/python3.13/site-packages/matplotlib/tests/test_agg_filter.py\\nlemoncrow/.venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/.venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/.venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/matplotlib/tests/test_agg_filter.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/networkx/classes/tests/test_filters.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/frame/methods/test_filter.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/groupby/test_filters.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/scipy/ndimage/tests/test_filters.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/scipy/signal/tests/test_filter_design.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/networkx/classes/tests/test_filters.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/frame/methods/test_filter.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/groupby/test_filters.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/scipy/ndimage/tests/test_filters.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/scipy/signal/tests/test_filter_design.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/scipy/signal/tests/test_fir_filter_design.py\\nusr/local/lib/python3.13/site-packages/bs4/tests/__pycache__/test_filter.cpython-313.pyc\\nusr/local/lib/python3.13/site-packages/bs4/tests/test_filter.py\"}"
           }
         ]
       },
@@ -514,7 +514,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013rLy8CR5nkbwkjXaG6dEJa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\ncat > /tmp/run_tests.py <<'PY'\nimport subprocess, sys, tempfile, os, importlib.util\n\nspec = importlib.util.spec_from_file_location(\"filter\", \"/app/filter.py\")\nmod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)\nS = mod.sanitize\n\ndef eq(name, inp, want):\n    got = S(inp)\n    ok = got == want\n    print((\"PASS\" if ok else \"FAIL\"), name)\n    if not ok:\n        print(\"   in :\", repr(inp)); print(\"   got:\", repr(got)); print(\"   want:\", repr(want))\n    return ok\n\ndef nojs(name, inp, banned):\n    got = S(inp)\n    ok = all(b.lower() not in got.lower() for b in banned)\n    print((\"PASS\" if ok else \"FAIL\"), name, \"\" if ok else (\"-> \"+repr(got)))\n    return ok\n\nresults = []\n# --- removal of JS ---\nresults.append(nojs(\"script element\", '<p>a</p><script>alert(1)</script><p>b</p>', ['<script','alert']))\nresults.append(eq  (\"script keeps surrounding\", '<p>a</p><script>alert(1)</script><p>b</p>', '<p>a</p><p>b</p>'))\nresults.append(nojs(\"onerror attr\", '<img src=x onerror=\"alert(1)\">', ['onerror','alert']))\nresults.append(nojs(\"onclick attr\", '<div onclick=\"x()\">y</div>', ['onclick']))\nresults.append(nojs(\"js href\", '<a href=\"javascript:alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"js href leading ws/case\", '<a href=\"  JavaScript:alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"js href entity\", '<a href=\"javascript&colon;alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"vbscript\", '<a href=\"vbscript:msgbox(1)\">x</a>', ['vbscript:']))\nresults.append(nojs(\"meta refresh js\", '<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">', ['javascript:']))\nresults.append(nojs(\"svg onload\", '<svg onload=\"alert(1)\"></svg>', ['onload']))\nresults.append(nojs(\"iframe data html\", '<iframe src=\"data:text/html,<script>x</script>\"></iframe>', ['data:text/html','<script']))\nresults.append(nojs(\"object js data\", '<object data=\"javascript:alert(1)\"></object>', ['javascript:']))\nresults.append(nojs(\"style expression\", '<div style=\"width:expression(alert(1))\">y</div>', ['expression(']))\nresults.append(nojs(\"formaction js\", '<button formaction=\"javascript:x()\">g</button>', ['javascript:']))\nresults.append(nojs(\"input onfocus\", '<input onfocus=\"x()\" autofocus>', ['onfocus']))\n\n# --- preservation ---\nresults.append(eq(\"benign anchor kept\", '<a href=\"https://ex.com\" title=\"t\">x</a>', '<a href=\"https://ex.com\" title=\"t\">x</a>'))\nresults.append(eq(\"data image kept\", '<img src=\"data:image/png;base64,AAAA\" />', '<img src=\"data:image/png;base64,AAAA\" />'))\nresults.append(eq(\"benign style kept\", '<div style=\"color:blue\">x</div>', '<div style=\"color:blue\">x</div>'))\nresults.append(eq(\"table/entities/ws kept\",\n    '<table border=\"1\">\\n <tr><th>A</th><td>b &lt; c &amp; d</td></tr>\\n</table>',\n    '<table border=\"1\">\\n <tr><th>A</th><td>b &lt; c &amp; d</td></tr>\\n</table>'))\nresults.append(eq(\"onerror-in-text kept\", '<p>write onerror=x here</p>', '<p>write onerror=x here</p>'))\nresults.append(eq(\"title value not stripped\", '<p title=\" onclick=notreal\">k</p>', '<p title=\" onclick=notreal\">k</p>'))\nresults.append(eq(\"no trailing newline preserved\", '<b>x</b>', '<b>x</b>'))\nresults.append(eq(\"selfclose slash kept\", '<br/><hr />', '<br/><hr />'))\nresults.append(eq(\"only harmful attr removed, others exact\",\n    '<img  src=x   onerror=\"a()\"  alt=\"pic\">', '<img  src=x   alt=\"pic\">'))\nresults.append(eq(\"idempotent\",\n    S('<img src=x onerror=a()><script>y</script>'),\n    S(S('<img src=x onerror=a()><script>y</script>'))))\n\nprint(\"\\n%d/%d passed\" % (sum(results), len(results)))\nsys.exit(0 if all(results) else 1)\nPY\npython3 /tmp/run_tests.py"
           },
@@ -522,7 +522,7 @@
             "raw_arguments": {
               "command": "cd /app\ncat > /tmp/run_tests.py <<'PY'\nimport subprocess, sys, tempfile, os, importlib.util\n\nspec = importlib.util.spec_from_file_location(\"filter\", \"/app/filter.py\")\nmod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)\nS = mod.sanitize\n\ndef eq(name, inp, want):\n    got = S(inp)\n    ok = got == want\n    print((\"PASS\" if ok else \"FAIL\"), name)\n    if not ok:\n        print(\"   in :\", repr(inp)); print(\"   got:\", repr(got)); print(\"   want:\", repr(want))\n    return ok\n\ndef nojs(name, inp, banned):\n    got = S(inp)\n    ok = all(b.lower() not in got.lower() for b in banned)\n    print((\"PASS\" if ok else \"FAIL\"), name, \"\" if ok else (\"-> \"+repr(got)))\n    return ok\n\nresults = []\n# --- removal of JS ---\nresults.append(nojs(\"script element\", '<p>a</p><script>alert(1)</script><p>b</p>', ['<script','alert']))\nresults.append(eq  (\"script keeps surrounding\", '<p>a</p><script>alert(1)</script><p>b</p>', '<p>a</p><p>b</p>'))\nresults.append(nojs(\"onerror attr\", '<img src=x onerror=\"alert(1)\">', ['onerror','alert']))\nresults.append(nojs(\"onclick attr\", '<div onclick=\"x()\">y</div>', ['onclick']))\nresults.append(nojs(\"js href\", '<a href=\"javascript:alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"js href leading ws/case\", '<a href=\"  JavaScript:alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"js href entity\", '<a href=\"javascript&colon;alert(1)\">x</a>', ['javascript:']))\nresults.append(nojs(\"vbscript\", '<a href=\"vbscript:msgbox(1)\">x</a>', ['vbscript:']))\nresults.append(nojs(\"meta refresh js\", '<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">', ['javascript:']))\nresults.append(nojs(\"svg onload\", '<svg onload=\"alert(1)\"></svg>', ['onload']))\nresults.append(nojs(\"iframe data html\", '<iframe src=\"data:text/html,<script>x</script>\"></iframe>', ['data:text/html','<script']))\nresults.append(nojs(\"object js data\", '<object data=\"javascript:alert(1)\"></object>', ['javascript:']))\nresults.append(nojs(\"style expression\", '<div style=\"width:expression(alert(1))\">y</div>', ['expression(']))\nresults.append(nojs(\"formaction js\", '<button formaction=\"javascript:x()\">g</button>', ['javascript:']))\nresults.append(nojs(\"input onfocus\", '<input onfocus=\"x()\" autofocus>', ['onfocus']))\n\n# --- preservation ---\nresults.append(eq(\"benign anchor kept\", '<a href=\"https://ex.com\" title=\"t\">x</a>', '<a href=\"https://ex.com\" title=\"t\">x</a>'))\nresults.append(eq(\"data image kept\", '<img src=\"data:image/png;base64,AAAA\" />', '<img src=\"data:image/png;base64,AAAA\" />'))\nresults.append(eq(\"benign style kept\", '<div style=\"color:blue\">x</div>', '<div style=\"color:blue\">x</div>'))\nresults.append(eq(\"table/entities/ws kept\",\n    '<table border=\"1\">\\n <tr><th>A</th><td>b &lt; c &amp; d</td></tr>\\n</table>',\n    '<table border=\"1\">\\n <tr><th>A</th><td>b &lt; c &amp; d</td></tr>\\n</table>'))\nresults.append(eq(\"onerror-in-text kept\", '<p>write onerror=x here</p>', '<p>write onerror=x here</p>'))\nresults.append(eq(\"title value not stripped\", '<p title=\" onclick=notreal\">k</p>', '<p title=\" onclick=notreal\">k</p>'))\nresults.append(eq(\"no trailing newline preserved\", '<b>x</b>', '<b>x</b>'))\nresults.append(eq(\"selfclose slash kept\", '<br/><hr />', '<br/><hr />'))\nresults.append(eq(\"only harmful attr removed, others exact\",\n    '<img  src=x   onerror=\"a()\"  alt=\"pic\">', '<img  src=x   alt=\"pic\">'))\nresults.append(eq(\"idempotent\",\n    S('<img src=x onerror=a()><script>y</script>'),\n    S(S('<img src=x onerror=a()><script>y</script>'))))\n\nprint(\"\\n%d/%d passed\" % (sum(results), len(results)))\nsys.exit(0 if all(results) else 1)\nPY\npython3 /tmp/run_tests.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -583,7 +583,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q9is7wNPd5FBsoxE5n6tPz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nsed -i \"s|'<img  src=x   alt=\\\"pic\\\">'))|'<img  src=x  alt=\\\"pic\\\">'))|\" /tmp/run_tests.py\npython3 /tmp/run_tests.py\necho \"exit=$?\"\nrm -f /app/t.html /app/orig.html /app/benign.html /app/benign.orig /app/edge.html /tmp/run_tests.py\nls -la /app"
           },
@@ -591,7 +591,7 @@
             "raw_arguments": {
               "command": "cd /app\nsed -i \"s|'<img  src=x   alt=\\\"pic\\\">'))|'<img  src=x  alt=\\\"pic\\\">'))|\" /tmp/run_tests.py\npython3 /tmp/run_tests.py\necho \"exit=$?\"\nrm -f /app/t.html /app/orig.html /app/benign.html /app/benign.orig /app/edge.html /tmp/run_tests.py\nls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -599,7 +599,7 @@
         "results": [
           {
             "source_call_id": "toolu_01Q9is7wNPd5FBsoxE5n6tPz",
-            "content": "{\"type\": \"text\", \"text\": \"PASS script element \\nPASS script keeps surrounding\\nPASS onerror attr \\nPASS onclick attr \\nPASS js href \\nPASS js href leading ws/case \\nPASS js href entity \\nPASS vbscript \\nPASS meta refresh js \\nPASS svg onload \\nPASS iframe data html \\nPASS object js data \\nPASS style expression \\nPASS formaction js \\nPASS input onfocus \\nPASS benign anchor kept\\nPASS data image kept\\nPASS benign style kept\\nPASS table/entities/ws kept\\nPASS onerror-in-text kept\\nPASS title value not stripped\\nPASS no trailing newline preserved\\nPASS selfclose slash kept\\nPASS only harmful attr removed, others exact\\nPASS idempotent\\n\\n25/25 passed\\nexit=0\\ntotal 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:42 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .git\\ndrwxr-xr-x 2 root root 4096 Jul  3 22:42 __pycache__\\n-rw------- 1 root root 6768 Jul  3 22:41 filter.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"PASS script element \\nPASS script keeps surrounding\\nPASS onerror attr \\nPASS onclick attr \\nPASS js href \\nPASS js href leading ws/case \\nPASS js href entity \\nPASS vbscript \\nPASS meta refresh js \\nPASS svg onload \\nPASS iframe data html \\nPASS object js data \\nPASS style expression \\nPASS formaction js \\nPASS input onfocus \\nPASS benign anchor kept\\nPASS data image kept\\nPASS benign style kept\\nPASS table/entities/ws kept\\nPASS onerror-in-text kept\\nPASS title value not stripped\\nPASS no trailing newline preserved\\nPASS selfclose slash kept\\nPASS only harmful attr removed, others exact\\nPASS idempotent\\n\\n25/25 passed\\nexit=0\\ntotal 28\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:42 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .git\\ndrwxr-xr-x 2 root root 4096 Jul  3 22:42 __pycache__\\n-rw------- 1 root root 6768 Jul  3 22:41 filter.py\"}"
           }
         ]
       },
@@ -652,7 +652,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Pd93y67p17iqKbnzFWASVD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; rm -rf __pycache__; ls -la /app"
           },
@@ -660,7 +660,7 @@
             "raw_arguments": {
               "command": "cd /app; rm -rf __pycache__; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -721,7 +721,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJNrA74Tr3ZhmUWjkMmobY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; rm -f __pycache__/*.pyc; rmdir __pycache__ 2>/dev/null; ls -la /app"
           },
@@ -729,7 +729,7 @@
             "raw_arguments": {
               "command": "cd /app; rm -f __pycache__/*.pyc; rmdir __pycache__ 2>/dev/null; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -737,7 +737,7 @@
         "results": [
           {
             "source_call_id": "toolu_01SJNrA74Tr3ZhmUWjkMmobY",
-            "content": "{\"type\": \"text\", \"text\": \"total 24\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:42 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .atelier\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .git\\n-rw------- 1 root root 6768 Jul  3 22:41 filter.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 24\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:42 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .lemoncrow\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:37 .git\\n-rw------- 1 root root 6768 Jul  3 22:41 filter.py\"}"
           }
         ]
       },

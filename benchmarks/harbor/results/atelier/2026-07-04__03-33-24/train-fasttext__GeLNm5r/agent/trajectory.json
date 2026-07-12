@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FFQouz72VtnCjLrz6gyxcc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/data/ && echo \"---\" && head -c 500 /app/data/* 2>/dev/null | head -50"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app/data/ && echo \"---\" && head -c 500 /app/data/* 2>/dev/null | head -50"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_019kmXyUBK7N8k5Z6KXpeKkn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import fasttext; print(fasttext.__version__)\" 2>&1; echo \"---\"; ls /app"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import fasttext; print(fasttext.__version__)\" 2>&1; echo \"---\"; ls /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WzNZbsSSTcS4PZKb1CQFwW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/app/data/test-00000-of-00001.parquet'); print(df.shape); print(df.columns.tolist()); print(df.head(3)); print(df['label'].value_counts() if 'label' in df.columns else '')\" 2>&1 | head -40"
           },
@@ -127,12 +127,12 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/app/data/test-00000-of-00001.parquet'); print(df.shape); print(df.columns.tolist()); print(df.head(3)); print(df['label'].value_counts() if 'label' in df.columns else '')\" 2>&1 | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01LpJiU5SfyN8YyZYBaaSqZG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages fasttext pandas pyarrow 2>&1 | tail -5"
           },
@@ -140,7 +140,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages fasttext pandas pyarrow 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -205,7 +205,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LyPxrPBBG87P8Eain4yZFD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | tail -5; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
           },
@@ -213,12 +213,12 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages fasttext 2>&1 | tail -5; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01AXEjobW589xE1cXeVX9HFa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/app/data/train-00000-of-00001.parquet'); print(df.shape); print(df['label'].value_counts())\" 2>&1 | head"
           },
@@ -226,7 +226,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/app/data/train-00000-of-00001.parquet'); print(df.shape); print(df['label'].value_counts())\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -291,7 +291,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017VQRqkRV4MvSYNQzgMyXFV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext-wheel 2>&1 | tail -6; python3 -c \"import fasttext; print('ok', fasttext.__file__)\" 2>&1 | tail -2"
           },
@@ -299,7 +299,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages fasttext-wheel 2>&1 | tail -6; python3 -c \"import fasttext; print('ok', fasttext.__file__)\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -360,7 +360,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012WsZUtoMHtmQnpYH6EuYVJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error|fatal|numpy|pybind|g\\+\\+|gcc|command\" | head -20"
           },
@@ -368,7 +368,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error|fatal|numpy|pybind|g\\+\\+|gcc|command\" | head -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -429,7 +429,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017eAwVtjqvjuFnz1TittYTC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error:|\\.h:|\\.cc:|undefined|fatal error\" | head -30"
           },
@@ -437,7 +437,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error:|\\.h:|\\.cc:|undefined|fatal error\" | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -498,7 +498,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019qtaqhBzknWRzYD7Sa1fLc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages \"pybind11==2.11.1\" 2>&1 | tail -2; pip install --break-system-packages --no-build-isolation fasttext 2>&1 | tail -6; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
           },
@@ -506,7 +506,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages \"pybind11==2.11.1\" 2>&1 | tail -2; pip install --break-system-packages --no-build-isolation fasttext 2>&1 | tail -6; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -567,7 +567,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Tci6kavEQSxCAsrFwL7VCL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages setuptools wheel 2>&1 | tail -2\nPYBIND11_GLOBAL=1 pip install --break-system-packages fasttext 2>&1 | tail -4\npython3 -c \"import fasttext; print('ok')\" 2>&1 | tail -3"
           },
@@ -575,7 +575,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages setuptools wheel 2>&1 | tail -2\nPYBIND11_GLOBAL=1 pip install --break-system-packages fasttext 2>&1 | tail -4\npython3 -c \"import fasttext; print('ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -636,7 +636,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KXCFyC6JjkWtrqDxCNGuX7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pybind11; print(pybind11.__version__)\"; pip install --break-system-packages --no-build-isolation fasttext 2>&1 | tail -5; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -3"
           },
@@ -644,7 +644,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pybind11; print(pybind11.__version__)\"; pip install --break-system-packages --no-build-isolation fasttext 2>&1 | tail -5; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -705,7 +705,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SSNAmvgsvevnkdXhqzM5Tf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages --no-build-isolation fasttext 2>&1 | grep -iE \"error|fatal|C\\+\\+17|numpy\" | head"
           },
@@ -713,7 +713,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages --no-build-isolation fasttext 2>&1 | grep -iE \"error|fatal|C\\+\\+17|numpy\" | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -774,7 +774,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015QrVJif6a37ETaggbW2XNd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which g++ gcc cc; g++ --version 2>&1 | head -1; echo 'int main(){return 0;}' > /tmp/t.cpp && g++ -std=c++17 /tmp/t.cpp -o /tmp/t 2>&1 && echo \"compile OK\""
           },
@@ -782,7 +782,7 @@
             "raw_arguments": {
               "command": "which g++ gcc cc; g++ --version 2>&1 | head -1; echo 'int main(){return 0;}' > /tmp/t.cpp && g++ -std=c++17 /tmp/t.cpp -o /tmp/t 2>&1 && echo \"compile OK\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -843,7 +843,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018PfhoMymBJwfQf6D3QuxoF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -1; apt-get install -y g++ build-essential 2>&1 | tail -3; which g++ && g++ --version | head -1"
           },
@@ -851,7 +851,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -1; apt-get install -y g++ build-essential 2>&1 | tail -3; which g++ && g++ --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -912,7 +912,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U4FwguLPPzygjvLnBobYaX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | tail -3; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
           },
@@ -920,7 +920,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages fasttext 2>&1 | tail -3; python3 -c \"import fasttext; print('ok')\" 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -981,7 +981,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FZfTYVYSoBNNYpA4AAVkcV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/prep.py << 'EOF'\nimport pandas as pd, re, html\n\ndef clean(t):\n    t = html.unescape(str(t))\n    t = t.replace('\\\\n',' ').replace('\\n',' ')\n    t = t.lower()\n    t = re.sub(r\"([.!?,/()\\\"';:])\", r\" \\1 \", t)\n    t = re.sub(r\"\\s+\", \" \", t).strip()\n    return t\n\nfor split,fn in [(\"train\",\"/app/data/train-00000-of-00001.parquet\"),\n                 (\"test\",\"/app/data/test-00000-of-00001.parquet\")]:\n    df = pd.read_parquet(fn)\n    with open(f\"/app/{split}.txt\",\"w\") as f:\n        for lab,txt in zip(df[\"label\"],df[\"text\"]):\n            f.write(f\"__label__{lab} {clean(txt)}\\n\")\n    print(split, len(df))\nEOF\npython3 /app/prep.py"
           },
@@ -989,7 +989,7 @@
             "raw_arguments": {
               "command": "cat > /app/prep.py << 'EOF'\nimport pandas as pd, re, html\n\ndef clean(t):\n    t = html.unescape(str(t))\n    t = t.replace('\\\\n',' ').replace('\\n',' ')\n    t = t.lower()\n    t = re.sub(r\"([.!?,/()\\\"';:])\", r\" \\1 \", t)\n    t = re.sub(r\"\\s+\", \" \", t).strip()\n    return t\n\nfor split,fn in [(\"train\",\"/app/data/train-00000-of-00001.parquet\"),\n                 (\"test\",\"/app/data/test-00000-of-00001.parquet\")]:\n    df = pd.read_parquet(fn)\n    with open(f\"/app/{split}.txt\",\"w\") as f:\n        for lab,txt in zip(df[\"label\"],df[\"text\"]):\n            f.write(f\"__label__{lab} {clean(txt)}\\n\")\n    print(split, len(df))\nEOF\npython3 /app/prep.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1050,7 +1050,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019LJu34H4zCE7hRaoLyhLLm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input=\"/app/train.txt\",\n    lr=0.5, epoch=6, wordNgrams=2, dim=100,\n    bucket=2000000, minCount=1, loss=\"softmax\", thread=os.cpu_count())\ndef ev(tag):\n    r = m.test(\"/app/test.txt\")\n    print(tag, \"N=%d P@1=%.4f\"%(r[0],r[1]))\nev(\"full\")\nm.save_model(\"/tmp/full.bin\")\nprint(\"full size MB\", os.path.getsize(\"/tmp/full.bin\")/1e6)\n# quantize to shrink under 150MB while keeping accuracy\nm.quantize(input=\"/app/train.txt\", qnorm=True, retrain=True,\n           epoch=4, lr=0.5, cutoff=200000, thread=os.cpu_count())\nev(\"quant\")\nm.save_model(\"/app/model.bin\")\nprint(\"quant size MB\", os.path.getsize(\"/app/model.bin\")/1e6)\nEOF\npython3 /app/train.py 2>&1 | grep -vE \"^Progress|Read|Number of\" | tail -20"
           },
@@ -1058,7 +1058,7 @@
             "raw_arguments": {
               "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input=\"/app/train.txt\",\n    lr=0.5, epoch=6, wordNgrams=2, dim=100,\n    bucket=2000000, minCount=1, loss=\"softmax\", thread=os.cpu_count())\ndef ev(tag):\n    r = m.test(\"/app/test.txt\")\n    print(tag, \"N=%d P@1=%.4f\"%(r[0],r[1]))\nev(\"full\")\nm.save_model(\"/tmp/full.bin\")\nprint(\"full size MB\", os.path.getsize(\"/tmp/full.bin\")/1e6)\n# quantize to shrink under 150MB while keeping accuracy\nm.quantize(input=\"/app/train.txt\", qnorm=True, retrain=True,\n           epoch=4, lr=0.5, cutoff=200000, thread=os.cpu_count())\nev(\"quant\")\nm.save_model(\"/app/model.bin\")\nprint(\"quant size MB\", os.path.getsize(\"/app/model.bin\")/1e6)\nEOF\npython3 /app/train.py 2>&1 | grep -vE \"^Progress|Read|Number of\" | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1066,7 +1066,7 @@
         "results": [
           {
             "source_call_id": "toolu_019LJu34H4zCE7hRaoLyhLLm",
-            "content": "{\"type\": \"text\", \"text\": \"Progress:   0.1% words/sec/thread:  193090 lr:  0.499502 avg.loss:  1.613028 ETA:   0h 1m42s\\nProgress:   0.2% words/sec/thread:  161811 lr:  0.499174 avg.loss:  1.597841 ETA:   0h 2m 2s\\nProgress:   0.2% words/sec/thread:  152203 lr:  0.498838 avg.loss:  1.587628 ETA:   0h 2m 9s\\nProgress:   0.3% words/sec/thread:  146424 lr:  0.498512 avg.loss:  1.378020 ETA:   0h 2m14s\\nProgress:   0.4% words/sec/thread:  139804 lr:  0.498225 avg.loss:  1.372716 ETA:   0h 2m21s\\nProgress:   0.4% words/sec/thread:  135639 lr:  0.497935 avg.loss:  1.343027 ETA:   0h 2m25s\\nProgress:   0.5% words/sec/thread:  132246 lr:  0.497653 avg.loss:  1.306879 ETA:   0h 2m28s\\nProgress:   0.5% words/sec/thread:  130076 lr:  0.497362 avg.loss:  1.291492 ETA:   0h 2m31s\\nProgress:   0.6% words/sec/thread:  117848 lr:  0.497096 avg.loss:  1.290974 ETA:   0h 2m47s\\nProgress:   0.6% words/sec/thread:  115482 lr:  0.496862 avg.loss:  1.286930 ETA:   0h 2m50s\\nProgress:   0.7% words/sec/thread:  115462 lr:  0.496571 avg.loss:  1.285257 ETA:   0h 2m50s\\nProgress:   0.7% words/sec/thread:  115704 lr:  0.496271 avg.loss:  1.289198 ETA:   0h 2m49s\\nProgress:   0.8% words/sec/thread:  115472 lr:  0.495986 avg.loss:  1.269868 ETA:   0h 2m50s\\nProgress:   0.9% words/sec/thread:  116076 lr:  0.495672 avg.loss:  1.256686 ETA:   0h 2m49s\\nProgress:   0.9% words/sec/thread:  115904 lr:  0.495385 avg.loss:  1.254786 ETA:   0h 2m49s\\nProgress:   1.0% words/sec/thread:  115246 lr:  0.495119 avg.loss:  1.249174 ETA:   0h 2m50s\\nProgress:   1.0% words/sec/thread:  115355 lr:  0.494823 avg.loss:  1.228536 ETA:   0h 2m49s\\nProgress:   1.1% words/sec/thread:  115551 lr:  0.494522 avg.loss:  1.212569 ETA:   0h 2m49s\\nProgress:   1.2% words/sec/thread:  114244 lr:  0.494010 avg.loss:  1.200262 ETA:   0h 2m51s\\nProgress:   1.3% words/sec/thread:  114527 lr:  0.493706 avg.loss:  1.190723 ETA:   0h 2m50s\\nProgress:   1.3% words/sec/thread:  115367 lr:  0.493368 avg.loss:  1.190269 ETA:   0h 2m49s\\nProgress:   1.4% words/sec/thread:  115408 lr:  0.493073 avg.loss:  1.188828 ETA:   0h 2m49s\\nProgress:   1.5% words/sec/thread:  116096 lr:  0.492739 avg.loss:  1.188402 ETA:   0h 2m48s\\nProgress:   1.5% words/sec/thread:  115619 lr:  0.492476 avg.loss:  1.189006 ETA:   0h 2m48s\\nProgress:   1.6% words/sec/thread:  115148 lr:  0.492216 avg.loss:  1.187641 ETA:   0h 2m49s\\nProgress:   1.6% words/sec/thread:  115183 lr:  0.491923 avg.loss:  1.187462 ETA:   0h 2m49s\\nProgress:   1.7% words/sec/thread:  114992 lr:  0.491645 avg.loss:  1.194959 ETA:   0h 2m49s\\nProgress:   1.7% words/sec/thread:  114908 lr:  0.491360 avg.loss:  1.194638 ETA:   0h 2m49s\\nProgress:   1.8% words/sec/thread:  114958 lr:  0.491066 avg.loss:  1.194806 ETA:   0h 2m49s\\nProgress:   1.9% words/sec/thread:  114202 lr:  0.490551 avg.loss:  1.195314 ETA:   0h 2m50s\\nProgress:   2.0% words/sec/thread:  116520 lr:  0.490056 avg.loss:  1.194324 ETA:   0h 2m46s\\nProgress:   2.1% words/sec/thread:  114875 lr:  0.489625 avg.loss:  1.194963 ETA:   0h 2m48s\\nProgress:   2.1% words/sec/thread:  114679 lr:  0.489353 avg.loss:  1.196174 ETA:   0h 2m48s\\nProgress:   2.2% words/sec/thread:  114454 lr:  0.489085 avg.loss:  1.186363 ETA:   0h 2m49s\\nProgress:   2.2% words/sec/thread:  114644 lr:  0.488777 avg.loss:  1.185140 ETA:   0h 2m48s\\nProgress:   2.3% words/sec/thread:  114376 lr:  0.488513 avg.loss:  1.187184 ETA:   0h 2m49s\\nProgress:   2.4% words/sec/thread:  114190 lr:  0.488243 avg.loss:  1.182144 ETA:   0h 2m49s\\nProgress:   2.4% words/sec/thread:  114056 lr:  0.487969 avg.loss:  1.166699 ETA:   0h 2m49s\\nProgress:   2.5% words/sec/thread:  114100 lr:  0.487389 avg.loss:  1.165442 ETA:   0h 2m49s\\nProgress:   2.6% words/sec/thread:  114349 lr:  0.487073 avg.loss:  1.165553 ETA:   0h 2m48s\\nProgress:   2.6% words/sec/thread:  114217 lr:  0.486799 avg.loss:  1.164643 ETA:   0h 2m48s\\nProgress:   2.7% words/sec/thread:  114209 lr:  0.486511 avg.loss:  1.159677 ETA:   0h 2m48s\\nProgress:   2.8% words/sec/thread:  114105 lr:  0.486236 avg.loss:  1.159496 ETA:   0h 2m48s\\nProgress:   2.8% words/sec/thread:  114051 lr:  0.485953 avg.loss:  1.159000 ETA:   0h 2m48s\\nProgress:   2.9% words/sec/thread:  113846 lr:  0.485690 avg.loss:  1.159512 ETA:   0h 2m48s\\nProgress:   2.9% words/sec/thread:  113700 lr:  0.485421 avg.loss:  1.160159 ETA:   0h 2m49s\\nProgress:   3.0% words/sec/thread:  113371 lr:  0.484893 avg.loss:  1.160343 ETA:   0h 2m49s\\nProgress:   3.1% words/sec/thread:  113555 lr:  0.484582 avg.loss:  1.159671 ETA:   0h 2m48s\\nProgress:   3.1% words/sec/thread: \\n... (12,399 chars trimmed) ...\\n110104 lr:  0.007224 avg.loss:  0.742889 ETA:   0h 0m 1s\\nProgress:  98.7% words/sec/thread:  110067 lr:  0.006569 avg.loss:  0.742829 ETA:   0h 0m 1s\\nProgress:  98.8% words/sec/thread:  110067 lr:  0.006152 avg.loss:  0.742773 ETA:   0h 0m 1s\\nProgress:  98.9% words/sec/thread:  110069 lr:  0.005727 avg.loss:  0.742766 ETA:   0h 0m 1s\\nProgress:  98.9% words/sec/thread:  110063 lr:  0.005340 avg.loss:  0.742044 ETA:   0h 0m 1s\\nProgress:  99.0% words/sec/thread:  110095 lr:  0.004757 avg.loss:  0.741790 ETA:   0h 0m 1s\\nProgress:  99.2% words/sec/thread:  110038 lr:  0.004197 avg.loss:  0.741839 ETA:   0h 0m 1s\\nProgress:  99.3% words/sec/thread:  110109 lr:  0.003439 avg.loss:  0.741777 ETA:   0h 0m 0s\\nProgress:  99.4% words/sec/thread:  110052 lr:  0.002885 avg.loss:  0.741863 ETA:   0h 0m 0s\\nProgress:  99.5% words/sec/thread:  110074 lr:  0.002358 avg.loss:  0.741774 ETA:   0h 0m 0s\\nProgress:  99.6% words/sec/thread:  110003 lr:  0.001854 avg.loss:  0.741479 ETA:   0h 0m 0s\\nProgress:  99.7% words/sec/thread:  110014 lr:  0.001376 avg.loss:  0.741043 ETA:   0h 0m 0s\\nProgress:  99.8% words/sec/thread:  109954 lr:  0.000828 avg.loss:  0.740726 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109987 lr:  0.000248 avg.loss:  0.740701 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109949 lr: -0.000009 avg.loss:  0.740651 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109949 lr:  0.000000 avg.loss:  0.740651 ETA:   0h 0m 0s\\nquant N=10000 P@1=0.6278\\nquant size MB 12.139197\\n\\n[output truncated: 1923 lines omitted; full output (196980B) spilled to /tmp/atelier-spill/original-bash-1783131774870-32045521.txt; read /tmp/atelier-spill/original-bash-1783131774870-32045521.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"Progress:   0.1% words/sec/thread:  193090 lr:  0.499502 avg.loss:  1.613028 ETA:   0h 1m42s\\nProgress:   0.2% words/sec/thread:  161811 lr:  0.499174 avg.loss:  1.597841 ETA:   0h 2m 2s\\nProgress:   0.2% words/sec/thread:  152203 lr:  0.498838 avg.loss:  1.587628 ETA:   0h 2m 9s\\nProgress:   0.3% words/sec/thread:  146424 lr:  0.498512 avg.loss:  1.378020 ETA:   0h 2m14s\\nProgress:   0.4% words/sec/thread:  139804 lr:  0.498225 avg.loss:  1.372716 ETA:   0h 2m21s\\nProgress:   0.4% words/sec/thread:  135639 lr:  0.497935 avg.loss:  1.343027 ETA:   0h 2m25s\\nProgress:   0.5% words/sec/thread:  132246 lr:  0.497653 avg.loss:  1.306879 ETA:   0h 2m28s\\nProgress:   0.5% words/sec/thread:  130076 lr:  0.497362 avg.loss:  1.291492 ETA:   0h 2m31s\\nProgress:   0.6% words/sec/thread:  117848 lr:  0.497096 avg.loss:  1.290974 ETA:   0h 2m47s\\nProgress:   0.6% words/sec/thread:  115482 lr:  0.496862 avg.loss:  1.286930 ETA:   0h 2m50s\\nProgress:   0.7% words/sec/thread:  115462 lr:  0.496571 avg.loss:  1.285257 ETA:   0h 2m50s\\nProgress:   0.7% words/sec/thread:  115704 lr:  0.496271 avg.loss:  1.289198 ETA:   0h 2m49s\\nProgress:   0.8% words/sec/thread:  115472 lr:  0.495986 avg.loss:  1.269868 ETA:   0h 2m50s\\nProgress:   0.9% words/sec/thread:  116076 lr:  0.495672 avg.loss:  1.256686 ETA:   0h 2m49s\\nProgress:   0.9% words/sec/thread:  115904 lr:  0.495385 avg.loss:  1.254786 ETA:   0h 2m49s\\nProgress:   1.0% words/sec/thread:  115246 lr:  0.495119 avg.loss:  1.249174 ETA:   0h 2m50s\\nProgress:   1.0% words/sec/thread:  115355 lr:  0.494823 avg.loss:  1.228536 ETA:   0h 2m49s\\nProgress:   1.1% words/sec/thread:  115551 lr:  0.494522 avg.loss:  1.212569 ETA:   0h 2m49s\\nProgress:   1.2% words/sec/thread:  114244 lr:  0.494010 avg.loss:  1.200262 ETA:   0h 2m51s\\nProgress:   1.3% words/sec/thread:  114527 lr:  0.493706 avg.loss:  1.190723 ETA:   0h 2m50s\\nProgress:   1.3% words/sec/thread:  115367 lr:  0.493368 avg.loss:  1.190269 ETA:   0h 2m49s\\nProgress:   1.4% words/sec/thread:  115408 lr:  0.493073 avg.loss:  1.188828 ETA:   0h 2m49s\\nProgress:   1.5% words/sec/thread:  116096 lr:  0.492739 avg.loss:  1.188402 ETA:   0h 2m48s\\nProgress:   1.5% words/sec/thread:  115619 lr:  0.492476 avg.loss:  1.189006 ETA:   0h 2m48s\\nProgress:   1.6% words/sec/thread:  115148 lr:  0.492216 avg.loss:  1.187641 ETA:   0h 2m49s\\nProgress:   1.6% words/sec/thread:  115183 lr:  0.491923 avg.loss:  1.187462 ETA:   0h 2m49s\\nProgress:   1.7% words/sec/thread:  114992 lr:  0.491645 avg.loss:  1.194959 ETA:   0h 2m49s\\nProgress:   1.7% words/sec/thread:  114908 lr:  0.491360 avg.loss:  1.194638 ETA:   0h 2m49s\\nProgress:   1.8% words/sec/thread:  114958 lr:  0.491066 avg.loss:  1.194806 ETA:   0h 2m49s\\nProgress:   1.9% words/sec/thread:  114202 lr:  0.490551 avg.loss:  1.195314 ETA:   0h 2m50s\\nProgress:   2.0% words/sec/thread:  116520 lr:  0.490056 avg.loss:  1.194324 ETA:   0h 2m46s\\nProgress:   2.1% words/sec/thread:  114875 lr:  0.489625 avg.loss:  1.194963 ETA:   0h 2m48s\\nProgress:   2.1% words/sec/thread:  114679 lr:  0.489353 avg.loss:  1.196174 ETA:   0h 2m48s\\nProgress:   2.2% words/sec/thread:  114454 lr:  0.489085 avg.loss:  1.186363 ETA:   0h 2m49s\\nProgress:   2.2% words/sec/thread:  114644 lr:  0.488777 avg.loss:  1.185140 ETA:   0h 2m48s\\nProgress:   2.3% words/sec/thread:  114376 lr:  0.488513 avg.loss:  1.187184 ETA:   0h 2m49s\\nProgress:   2.4% words/sec/thread:  114190 lr:  0.488243 avg.loss:  1.182144 ETA:   0h 2m49s\\nProgress:   2.4% words/sec/thread:  114056 lr:  0.487969 avg.loss:  1.166699 ETA:   0h 2m49s\\nProgress:   2.5% words/sec/thread:  114100 lr:  0.487389 avg.loss:  1.165442 ETA:   0h 2m49s\\nProgress:   2.6% words/sec/thread:  114349 lr:  0.487073 avg.loss:  1.165553 ETA:   0h 2m48s\\nProgress:   2.6% words/sec/thread:  114217 lr:  0.486799 avg.loss:  1.164643 ETA:   0h 2m48s\\nProgress:   2.7% words/sec/thread:  114209 lr:  0.486511 avg.loss:  1.159677 ETA:   0h 2m48s\\nProgress:   2.8% words/sec/thread:  114105 lr:  0.486236 avg.loss:  1.159496 ETA:   0h 2m48s\\nProgress:   2.8% words/sec/thread:  114051 lr:  0.485953 avg.loss:  1.159000 ETA:   0h 2m48s\\nProgress:   2.9% words/sec/thread:  113846 lr:  0.485690 avg.loss:  1.159512 ETA:   0h 2m48s\\nProgress:   2.9% words/sec/thread:  113700 lr:  0.485421 avg.loss:  1.160159 ETA:   0h 2m49s\\nProgress:   3.0% words/sec/thread:  113371 lr:  0.484893 avg.loss:  1.160343 ETA:   0h 2m49s\\nProgress:   3.1% words/sec/thread:  113555 lr:  0.484582 avg.loss:  1.159671 ETA:   0h 2m48s\\nProgress:   3.1% words/sec/thread: \\n... (12,399 chars trimmed) ...\\n110104 lr:  0.007224 avg.loss:  0.742889 ETA:   0h 0m 1s\\nProgress:  98.7% words/sec/thread:  110067 lr:  0.006569 avg.loss:  0.742829 ETA:   0h 0m 1s\\nProgress:  98.8% words/sec/thread:  110067 lr:  0.006152 avg.loss:  0.742773 ETA:   0h 0m 1s\\nProgress:  98.9% words/sec/thread:  110069 lr:  0.005727 avg.loss:  0.742766 ETA:   0h 0m 1s\\nProgress:  98.9% words/sec/thread:  110063 lr:  0.005340 avg.loss:  0.742044 ETA:   0h 0m 1s\\nProgress:  99.0% words/sec/thread:  110095 lr:  0.004757 avg.loss:  0.741790 ETA:   0h 0m 1s\\nProgress:  99.2% words/sec/thread:  110038 lr:  0.004197 avg.loss:  0.741839 ETA:   0h 0m 1s\\nProgress:  99.3% words/sec/thread:  110109 lr:  0.003439 avg.loss:  0.741777 ETA:   0h 0m 0s\\nProgress:  99.4% words/sec/thread:  110052 lr:  0.002885 avg.loss:  0.741863 ETA:   0h 0m 0s\\nProgress:  99.5% words/sec/thread:  110074 lr:  0.002358 avg.loss:  0.741774 ETA:   0h 0m 0s\\nProgress:  99.6% words/sec/thread:  110003 lr:  0.001854 avg.loss:  0.741479 ETA:   0h 0m 0s\\nProgress:  99.7% words/sec/thread:  110014 lr:  0.001376 avg.loss:  0.741043 ETA:   0h 0m 0s\\nProgress:  99.8% words/sec/thread:  109954 lr:  0.000828 avg.loss:  0.740726 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109987 lr:  0.000248 avg.loss:  0.740701 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109949 lr: -0.000009 avg.loss:  0.740651 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread:  109949 lr:  0.000000 avg.loss:  0.740651 ETA:   0h 0m 0s\\nquant N=10000 P@1=0.6278\\nquant size MB 12.139197\\n\\n[output truncated: 1923 lines omitted; full output (196980B) spilled to /tmp/lemoncrow-spill/original-bash-1783131774870-32045521.txt; read /tmp/lemoncrow-spill/original-bash-1783131774870-32045521.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -1119,15 +1119,15 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AbDFCJqfBpXFZKCHpn8pkt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
-            "command": "grep -E \"^full |^quant |size MB\" /tmp/atelier-spill/original-bash-1783131774870-32045521.txt 2>/dev/null\nls -la /app/model.bin\npython3 -c \"\nimport fasttext\nm=fasttext.load_model('/app/model.bin')\nr=m.test('/app/test.txt')\nprint('reload P@1=%.4f N=%d'%(r[1],r[0]))\n\""
+            "command": "grep -E \"^full |^quant |size MB\" /tmp/lemoncrow-spill/original-bash-1783131774870-32045521.txt 2>/dev/null\nls -la /app/model.bin\npython3 -c \"\nimport fasttext\nm=fasttext.load_model('/app/model.bin')\nr=m.test('/app/test.txt')\nprint('reload P@1=%.4f N=%d'%(r[1],r[0]))\n\""
           },
           "extra": {
             "raw_arguments": {
-              "command": "grep -E \"^full |^quant |size MB\" /tmp/atelier-spill/original-bash-1783131774870-32045521.txt 2>/dev/null\nls -la /app/model.bin\npython3 -c \"\nimport fasttext\nm=fasttext.load_model('/app/model.bin')\nr=m.test('/app/test.txt')\nprint('reload P@1=%.4f N=%d'%(r[1],r[0]))\n\""
+              "command": "grep -E \"^full |^quant |size MB\" /tmp/lemoncrow-spill/original-bash-1783131774870-32045521.txt 2>/dev/null\nls -la /app/model.bin\npython3 -c \"\nimport fasttext\nm=fasttext.load_model('/app/model.bin')\nr=m.test('/app/test.txt')\nprint('reload P@1=%.4f N=%d'%(r[1],r[0]))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

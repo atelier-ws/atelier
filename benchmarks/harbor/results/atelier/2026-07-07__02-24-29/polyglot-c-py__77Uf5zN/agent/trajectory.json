@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TX6soXQUKLznNJuN7F7JYZ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/polyglot/main.py.c",
             "new": "#if 0\n\"\"\"\n#endif\n#include <stdio.h>\n#include <stdlib.h>\nint main(int argc, char **argv) {\n    if (argc < 2) { fprintf(stderr, \"usage: %s N\\n\", argv[0]); return 1; }\n    long long n = atoll(argv[1]);\n    unsigned long long a = 0, b = 1;\n    for (long long i = 0; i < n; i++) {\n        unsigned long long t = a + b;\n        a = b;\n        b = t;\n    }\n    printf(\"%llu\\n\", a);\n    return 0;\n}\n#if 0\n\"\"\"\nimport sys\n\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(int(sys.argv[1])))\n#endif\n",
@@ -45,7 +45,7 @@
               "new": "#if 0\n\"\"\"\n#endif\n#include <stdio.h>\n#include <stdlib.h>\nint main(int argc, char **argv) {\n    if (argc < 2) { fprintf(stderr, \"usage: %s N\\n\", argv[0]); return 1; }\n    long long n = atoll(argv[1]);\n    unsigned long long a = 0, b = 1;\n    for (long long i = 0; i < n; i++) {\n        unsigned long long t = a + b;\n        a = b;\n        b = t;\n    }\n    printf(\"%llu\\n\", a);\n    return 0;\n}\n#if 0\n\"\"\"\nimport sys\n\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(int(sys.argv[1])))\n#endif\n",
               "replace": "true"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -106,7 +106,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XqFRBYwwKBUS4kfAUstmuL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && for k in 0 1 2 10 20; do echo -n \"py f($k)=\"; python3 main.py.c $k; done && gcc main.py.c -o cmain 2>&1 && for k in 0 1 2 10 20; do echo -n \"c f($k)=\"; ./cmain $k; done"
           },
@@ -114,7 +114,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && for k in 0 1 2 10 20; do echo -n \"py f($k)=\"; python3 main.py.c $k; done && gcc main.py.c -o cmain 2>&1 && for k in 0 1 2 10 20; do echo -n \"c f($k)=\"; ./cmain $k; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JWLyccTs4ytc63h8n38a5M",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rm -f cmain && ls"
           },
@@ -183,7 +183,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rm -f cmain && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -299,7 +299,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PhPe4j39oR2Z6eazVAojso",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && ok=1; for k in $(seq 0 93); do p=$(python3 main.py.c $k); c=$(./cmain $k); if [ \"$p\" != \"$c\" ]; then echo \"MISMATCH k=$k py=$p c=$c\"; ok=0; fi; done; echo \"py f(93)=$(python3 main.py.c 93)\"; python3 - <<'EOF'\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,a+b\n    return a\nprint(\"expected f(93)=\",fib(93))\nEOF\n[ $ok -eq 1 ] && echo \"ALL MATCH 0..93\"; rm -f cmain"
           },
@@ -307,7 +307,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && gcc main.py.c -o cmain 2>/dev/null && ok=1; for k in $(seq 0 93); do p=$(python3 main.py.c $k); c=$(./cmain $k); if [ \"$p\" != \"$c\" ]; then echo \"MISMATCH k=$k py=$p c=$c\"; ok=0; fi; done; echo \"py f(93)=$(python3 main.py.c 93)\"; python3 - <<'EOF'\ndef fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,a+b\n    return a\nprint(\"expected f(93)=\",fib(93))\nEOF\n[ $ok -eq 1 ] && echo \"ALL MATCH 0..93\"; rm -f cmain"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

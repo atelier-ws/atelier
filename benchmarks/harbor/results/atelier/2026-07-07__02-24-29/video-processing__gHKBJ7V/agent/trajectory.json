@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PMTJ3XPCoFNoAvkpKroynd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import cv2, numpy, toml; print(cv2.__version__, numpy.__version__)\"; ls -la /app"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import cv2, numpy, toml; print(cv2.__version__, numpy.__version__)\"; ls -la /app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019hjEC7xgoEAni1QurZ1ENb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages toml opencv-python-headless numpy 2>&1 | tail -3"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages toml opencv-python-headless numpy 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013qQRhQmtxCDFvXgxKT8DRD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages toml opencv-python-headless numpy 2>&1 | tail -5; python3 -c \"import cv2,numpy,toml; print('ok', cv2.__version__)\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages toml opencv-python-headless numpy 2>&1 | tail -5; python3 -c \"import cv2,numpy,toml; print('ok', cv2.__version__)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011R6z1w4YQXn26RGXLeZrne",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2\nc=cv2.VideoCapture('example_video.mp4')\nprint('frames',c.get(cv2.CAP_PROP_FRAME_COUNT))\nprint('fps',c.get(cv2.CAP_PROP_FPS))\nprint('w',c.get(cv2.CAP_PROP_FRAME_WIDTH),'h',c.get(cv2.CAP_PROP_FRAME_HEIGHT))\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2\nc=cv2.VideoCapture('example_video.mp4')\nprint('frames',c.get(cv2.CAP_PROP_FRAME_COUNT))\nprint('fps',c.get(cv2.CAP_PROP_FPS))\nprint('w',c.get(cv2.CAP_PROP_FRAME_WIDTH),'h',c.get(cv2.CAP_PROP_FRAME_HEIGHT))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PDtVmxEeyNnbXr5uKDq4pm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.cvtColor(first,cv2.COLOR_BGR2GRAY).astype(np.int16)\ni=0\nprint('frame cx cy top bottom left right area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.cvtColor(f,cv2.COLOR_BGR2GRAY).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,30,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((3,3),np.uint8))\n    ys,xs=np.where(th>0)\n    if len(xs)<50:\n        print(i,'none')\n        continue\n    print(i, int(xs.mean()), int(ys.mean()), ys.min(), ys.max(), xs.min(), xs.max(), len(xs))\n\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.cvtColor(first,cv2.COLOR_BGR2GRAY).astype(np.int16)\ni=0\nprint('frame cx cy top bottom left right area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.cvtColor(f,cv2.COLOR_BGR2GRAY).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,30,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((3,3),np.uint8))\n    ys,xs=np.where(th>0)\n    if len(xs)<50:\n        print(i,'none')\n        continue\n    print(i, int(xs.mean()), int(ys.mean()), ys.min(), ys.max(), xs.min(), xs.max(), len(xs))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Bhy1F1C9PMdVk51mCSLtqw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.GaussianBlur(cv2.cvtColor(first,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\ni=0\nprint('fr cx cy top bot left right area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.GaussianBlur(cv2.cvtColor(f,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,40,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((5,5),np.uint8))\n    th=cv2.morphologyEx(th,cv2.MORPH_CLOSE,np.ones((15,15),np.uint8))\n    n,lab,stats,cent=cv2.connectedComponentsWithStats(th)\n    if n<=1:\n        print(i,'none'); continue\n    # largest non-bg\n    idx=1+np.argmax(stats[1:,cv2.CC_STAT_AREA])\n    x,y,w,h,a=stats[idx]\n    if a<200:\n        print(i,'small',a); continue\n    print(i, int(cent[idx][0]), int(cent[idx][1]), y, y+h, x, x+w, a)\n\""
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.GaussianBlur(cv2.cvtColor(first,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\ni=0\nprint('fr cx cy top bot left right area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.GaussianBlur(cv2.cvtColor(f,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,40,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((5,5),np.uint8))\n    th=cv2.morphologyEx(th,cv2.MORPH_CLOSE,np.ones((15,15),np.uint8))\n    n,lab,stats,cent=cv2.connectedComponentsWithStats(th)\n    if n<=1:\n        print(i,'none'); continue\n    # largest non-bg\n    idx=1+np.argmax(stats[1:,cv2.CC_STAT_AREA])\n    x,y,w,h,a=stats[idx]\n    if a<200:\n        print(i,'small',a); continue\n    print(i, int(cent[idx][0]), int(cent[idx][1]), y, y+h, x, x+w, a)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DkAxXSzSqgt3RqnE1Z3jd7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.GaussianBlur(cv2.cvtColor(first,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\ni=0\nprint('fr cx top bot h area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.GaussianBlur(cv2.cvtColor(f,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,35,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((3,3),np.uint8))\n    th=cv2.dilate(th,np.ones((25,25),np.uint8))\n    n,lab,stats,cent=cv2.connectedComponentsWithStats(th)\n    if n<=1:\n        print(i,'none'); continue\n    idx=1+np.argmax(stats[1:,cv2.CC_STAT_AREA])\n    x,y,w,h,a=stats[idx]\n    if a<800:\n        print(i,'small',a); continue\n    # feet = max y within original(before dilate) restricted to this comp bbox\n    print(i, int(cent[idx][0]), y+12, y+h-12, h, a)\n\" "
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfirst=cv2.GaussianBlur(cv2.cvtColor(first,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\ni=0\nprint('fr cx top bot h area')\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.GaussianBlur(cv2.cvtColor(f,cv2.COLOR_BGR2GRAY),(5,5),0).astype(np.int16)\n    d=np.abs(g-first).astype(np.uint8)\n    _,th=cv2.threshold(d,35,255,cv2.THRESH_BINARY)\n    th=cv2.morphologyEx(th,cv2.MORPH_OPEN,np.ones((3,3),np.uint8))\n    th=cv2.dilate(th,np.ones((25,25),np.uint8))\n    n,lab,stats,cent=cv2.connectedComponentsWithStats(th)\n    if n<=1:\n        print(i,'none'); continue\n    idx=1+np.argmax(stats[1:,cv2.CC_STAT_AREA])\n    x,y,w,h,a=stats[idx]\n    if a<800:\n        print(i,'small',a); continue\n    # feet = max y within original(before dilate) restricted to this comp bbox\n    print(i, int(cent[idx][0]), y+12, y+h-12, h, a)\n\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WEzTEEMDZawkaCE8E8Yxcp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfg=cv2.cvtColor(first,cv2.COLOR_BGR2GRAY).astype(np.int16)\ni=0\nprev=fg.copy()\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.cvtColor(f,cv2.COLOR_BGR2GRAY).astype(np.int16)\n    dbg=np.abs(g-fg).mean()\n    dprev=np.abs(g-prev).mean()\n    prev=g\n    if i>=44:\n        print(i, 'vsBG %.2f'%dbg, 'vsPrev %.2f'%dprev, 'meanlum %.1f'%g.mean())\n\""
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport cv2, numpy as np\ncap=cv2.VideoCapture('example_video.mp4')\nret,first=cap.read()\nfg=cv2.cvtColor(first,cv2.COLOR_BGR2GRAY).astype(np.int16)\ni=0\nprev=fg.copy()\nwhile True:\n    ret,f=cap.read()\n    if not ret: break\n    i+=1\n    g=cv2.cvtColor(f,cv2.COLOR_BGR2GRAY).astype(np.int16)\n    dbg=np.abs(g-fg).mean()\n    dprev=np.abs(g-prev).mean()\n    prev=g\n    if i>=44:\n        print(i, 'vsBG %.2f'%dbg, 'vsPrev %.2f'%dprev, 'meanlum %.1f'%g.mean())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TZKu32Vbdozrdp9YVh1n1h",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -605,7 +605,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -666,7 +666,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Xo4vV6S5UtAGtwU3SSdAPC",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 jump_analyzer.py && echo \"---\" && cat output.toml"
           },
@@ -674,7 +674,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 jump_analyzer.py && echo \"---\" && cat output.toml"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -790,7 +790,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Rw42yJKnebeao8KBBkWzZa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; find / -name \"*test*jump*\" -o -name \"*jump*test*\" 2>/dev/null | grep -v proc; python3 -c \"import ast; ast.parse(open('/app/jump_analyzer.py').read()); print('syntax OK')\""
           },
@@ -798,7 +798,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; find / -name \"*test*jump*\" -o -name \"*jump*test*\" 2>/dev/null | grep -v proc; python3 -c \"import ast; ast.parse(open('/app/jump_analyzer.py').read()); print('syntax OK')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -859,7 +859,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014Cb8bos4n3TqTkMydQv8p1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la; echo \"---syntax---\"; python3 -c \"import ast; ast.parse(open('/app/jump_analyzer.py').read()); print('syntax OK')\""
           },
@@ -867,7 +867,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la; echo \"---syntax---\"; python3 -c \"import ast; ast.parse(open('/app/jump_analyzer.py').read()); print('syntax OK')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -928,7 +928,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EwRXZZqyu6p7iDSgTd5Mct",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f output.toml && python3 jump_analyzer.py >/dev/null && python3 -c \"\nimport toml\nd = toml.load('/app/output.toml')\nassert set(d.keys()) == {'jump_takeoff_frame_number','jump_land_frame_number'}, d.keys()\nt,l = d['jump_takeoff_frame_number'], d['jump_land_frame_number']\nassert isinstance(t,int) and isinstance(l,int), (type(t),type(l))\nassert 0 <= t < l <= 120, (t,l)\nprint('CONTRACT OK', d)\n\""
           },
@@ -936,7 +936,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f output.toml && python3 jump_analyzer.py >/dev/null && python3 -c \"\nimport toml\nd = toml.load('/app/output.toml')\nassert set(d.keys()) == {'jump_takeoff_frame_number','jump_land_frame_number'}, d.keys()\nt,l = d['jump_takeoff_frame_number'], d['jump_land_frame_number']\nassert isinstance(t,int) and isinstance(l,int), (type(t),type(l))\nassert 0 <= t < l <= 120, (t,l)\nprint('CONTRACT OK', d)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019R9maaySj9xbapRWEQyeAb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /tmp/CompCert/ 2>&1 | head -50; echo \"---\"; uname -a; echo \"---\"; cat /etc/os-release 2>/dev/null | head; echo \"---\"; which ocaml coqc menhir 2>&1"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls /tmp/CompCert/ 2>&1 | head -50; echo \"---\"; uname -a; echo \"---\"; cat /etc/os-release 2>/dev/null | head; echo \"---\"; which ocaml coqc menhir 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Nodq6c46nrEcWwUf738fv8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/os-release | head; echo \"===\"; find / -iname '*compcert*' 2>/dev/null | head; echo \"===tools===\"; which ocaml coqc menhir opam gcc make 2>&1; echo \"===ocaml===\"; ocaml -version 2>&1; coqc --version 2>&1 | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cat /etc/os-release | head; echo \"===\"; find / -iname '*compcert*' 2>/dev/null | head; echo \"===tools===\"; which ocaml coqc menhir opam gcc make 2>&1; echo \"===ocaml===\"; ocaml -version 2>&1; coqc --version 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SkB3mqt73x3QVi4tq6Jski",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /etc/os-release; echo \"===\"; which ocaml coqc menhir opam gcc make wget curl git 2>&1; echo \"===versions===\"; ocaml -version 2>&1; coqc --version 2>&1 | head -3; menhir --version 2>&1"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cat /etc/os-release; echo \"===\"; which ocaml coqc menhir opam gcc make wget curl git 2>&1; echo \"===versions===\"; ocaml -version 2>&1; coqc --version 2>&1 | head -3; menhir --version 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015iBb2TXxVjdqqmJyojQVVa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / \\( -iname '*compcert*' -o -iname 'compcert*.tar*' \\) 2>/dev/null | head; echo \"===opam/coq caches===\"; ls ~/.opam 2>/dev/null; ls /root/.opam 2>/dev/null; find / -iname 'coqc' 2>/dev/null | head; find / -iname 'menhir*' 2>/dev/null | head; echo \"===apt cache===\"; ls /var/cache/apt/archives/*.deb 2>/dev/null | head; echo \"===net test===\"; timeout 10 curl -sSI https://github.com 2>&1 | head -3"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "find / \\( -iname '*compcert*' -o -iname 'compcert*.tar*' \\) 2>/dev/null | head; echo \"===opam/coq caches===\"; ls ~/.opam 2>/dev/null; ls /root/.opam 2>/dev/null; find / -iname 'coqc' 2>/dev/null | head; find / -iname 'menhir*' 2>/dev/null | head; echo \"===apt cache===\"; ls /var/cache/apt/archives/*.deb 2>/dev/null | head; echo \"===net test===\"; timeout 10 curl -sSI https://github.com 2>&1 | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W58oxBv2viyEhedZHtUQ4q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo net; timeout 15 curl -sS -o /dev/null -w \"%{http_code}\\n\" https://github.com 2>&1; echo \"---opam---\"; ls -a /root/ 2>&1 | head; echo \"---apt cache---\"; ls /var/cache/apt/archives/ 2>&1 | head"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "echo net; timeout 15 curl -sS -o /dev/null -w \"%{http_code}\\n\" https://github.com 2>&1; echo \"---opam---\"; ls -a /root/ 2>&1 | head; echo \"---apt cache---\"; ls /var/cache/apt/archives/ 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -325,7 +325,7 @@
         "results": [
           {
             "source_call_id": "toolu_01W58oxBv2viyEhedZHtUQ4q",
-            "content": "{\"type\": \"text\", \"text\": \"net\\n200\\n---opam---\\n.\\n..\\n.atelier\\n.bashrc\\n.cache\\n.claude-bench\\n.config\\n.npm\\n.npmrc\\n.profile\\n---apt cache---\\nlock\\npartial\"}"
+            "content": "{\"type\": \"text\", \"text\": \"net\\n200\\n---opam---\\n.\\n..\\n.lemoncrow\\n.bashrc\\n.cache\\n.claude-bench\\n.config\\n.npm\\n.npmrc\\n.profile\\n---apt cache---\\nlock\\npartial\"}"
           }
         ]
       },
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X2xKDZdRxpcW1scqSSkTmB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get update -qq 2>&1 | tail -3; echo \"===\"; apt-cache policy coq ocaml-nox menhir 2>&1 | grep -E 'coq|ocaml|menhir|Candidate' "
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "apt-get update -qq 2>&1 | tail -3; echo \"===\"; apt-cache policy coq ocaml-nox menhir 2>&1 | grep -E 'coq|ocaml|menhir|Candidate' "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KGSaeVW5q85RNbA2B7obHV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && timeout 120 curl -sSL -o compcert.tgz https://github.com/AbsInt/CompCert/archive/refs/tags/v3.13.1.tar.gz && ls -la compcert.tgz && tar tzf compcert.tgz | head -3"
           },
@@ -455,7 +455,7 @@
             "raw_arguments": {
               "command": "cd /tmp && timeout 120 curl -sSL -o compcert.tgz https://github.com/AbsInt/CompCert/archive/refs/tags/v3.13.1.tar.gz && ls -la compcert.tgz && tar tzf compcert.tgz | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -516,7 +516,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01M5LXPWY7nXa8eNm19GWG8b",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && tar xzf compcert.tgz && mv CompCert-3.13.1 CompCert && ls /tmp/CompCert | head; echo \"===configure coq version check===\"; grep -n -i 'coq' /tmp/CompCert/configure | grep -iE 'version|8\\.' | head -30"
           },
@@ -524,7 +524,7 @@
             "raw_arguments": {
               "command": "cd /tmp && tar xzf compcert.tgz && mv CompCert-3.13.1 CompCert && ls /tmp/CompCert | head; echo \"===configure coq version check===\"; grep -n -i 'coq' /tmp/CompCert/configure | grep -iE 'version|8\\.' | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -585,7 +585,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HgfLmRFF7Vm31ZfRM39t92",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/CompCert/configure:L490-L525"
@@ -597,7 +597,7 @@
                 "/tmp/CompCert/configure:L490-L525"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -658,7 +658,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W2jVBfCmQhGEgYorJHBAKg",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/CompCert/configure:L525-L575"
@@ -670,7 +670,7 @@
                 "/tmp/CompCert/configure:L525-L575"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -731,7 +731,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BEdSEpDeouhgBkvvMbxLqd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq opam bubblewrap m4 build-essential 2>&1 | tail -5; echo \"===\"; opam --version"
           },
@@ -739,7 +739,7 @@
             "raw_arguments": {
               "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq opam bubblewrap m4 build-essential 2>&1 | tail -5; echo \"===\"; opam --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -800,7 +800,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RQVaS7XwADBo7inaGZdBWp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && opam init --disable-sandboxing --bare -y 2>&1 | tail -5; echo \"===switch===\"; opam switch create compcert 4.14.1 -y 2>&1 | tail -8"
           },
@@ -808,7 +808,7 @@
             "raw_arguments": {
               "command": "cd /tmp && opam init --disable-sandboxing --bare -y 2>&1 | tail -5; echo \"===switch===\"; opam switch create compcert 4.14.1 -y 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -869,7 +869,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014o4AaKWgiVLFywRoBKoRrT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && eval $(opam env --switch=compcert) && opam install -y -j$(nproc) coq.8.16.1 menhir 2>&1 | tail -20",
             "bg": true,
@@ -881,7 +881,7 @@
               "bg": true,
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -942,7 +942,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013siqDDA4386cERXdbxX6JZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "id": "896a47d7a5bd4f9fb19de00d05cd2d40",
             "timeout": 2400
@@ -952,7 +952,7 @@
               "id": "896a47d7a5bd4f9fb19de00d05cd2d40",
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1013,7 +1013,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015KZkkBC5SHu4MrHL7T5FER",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgmp-dev pkg-config 2>&1 | tail -2; echo done"
           },
@@ -1021,7 +1021,7 @@
             "raw_arguments": {
               "command": "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgmp-dev pkg-config 2>&1 | tail -2; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1082,7 +1082,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RqSFJq7yjY3TBJNF5kGPP5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && eval $(opam env --switch=compcert) && opam install -y --assume-depexts -j$(nproc) coq.8.16.1 menhir 2>&1 | tail -25",
             "bg": true,
@@ -1094,7 +1094,7 @@
               "bg": true,
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1155,7 +1155,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AKvwpEHS9YreH86amLAexg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "id": "109ea7f6f4e84389bc1734a98e36af93",
             "timeout": 2400
@@ -1165,7 +1165,7 @@
               "id": "109ea7f6f4e84389bc1734a98e36af93",
               "timeout": 2400
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1226,7 +1226,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X7J5rCEgxAHEgzuMVznV1C",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && ./configure x86_64-linux 2>&1 | tail -30"
           },
@@ -1234,7 +1234,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && ./configure x86_64-linux 2>&1 | tail -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1295,7 +1295,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NHmRLdj8Gsv41ukEyuRTov",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && make -j$(nproc) 2>&1 | tail -30",
             "bg": true,
@@ -1307,7 +1307,7 @@
               "bg": true,
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1368,7 +1368,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BA7no2GbxhCEH9hAKegzNL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "id": "5bd5f529edc4425aa6e876cc37b06f53",
             "timeout": 3600
@@ -1378,7 +1378,7 @@
               "id": "5bd5f529edc4425aa6e876cc37b06f53",
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1439,7 +1439,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016QoaDELRrVPUgy9AYeoL5E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && eval $(opam env --switch=compcert) && opam install -y menhir.20220210 2>&1 | tail -8"
           },
@@ -1447,7 +1447,7 @@
             "raw_arguments": {
               "command": "cd /tmp && eval $(opam env --switch=compcert) && opam install -y menhir.20220210 2>&1 | tail -8"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1508,7 +1508,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LLL6c8aiP941T3Ejttbh9w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && ls cparser/Parser.v extraction/*.ml 2>/dev/null | head; find . -name 'Parser.v' 2>/dev/null; rm -f cparser/Parser.v cparser/Parser.vo cparser/Parser.glob 2>/dev/null; echo cleaned"
           },
@@ -1516,7 +1516,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && ls cparser/Parser.v extraction/*.ml 2>/dev/null | head; find . -name 'Parser.v' 2>/dev/null; rm -f cparser/Parser.v cparser/Parser.vo cparser/Parser.glob 2>/dev/null; echo cleaned"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1577,7 +1577,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XdB1FcAYVe27gwrs7BFSwR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && find . -name '*.vy' ; ls cparser/ | head -40"
           },
@@ -1585,7 +1585,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && find . -name '*.vy' ; ls cparser/ | head -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1646,7 +1646,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011mzNpz6dDVjhPBvt3k6DPM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && ls cparser/ ; echo \"===grep vy in makefile===\"; grep -rn 'menhir' Makefile* | head"
           },
@@ -1654,7 +1654,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && ls cparser/ ; echo \"===grep vy in makefile===\"; grep -rn 'menhir' Makefile* | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1715,7 +1715,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HxNmz5g3e4oZraEHt9vnGh",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && rm -f cparser/Parser.v cparser/Parser.vo cparser/Parser.vok cparser/Parser.vos cparser/Parser.glob cparser/ErrorReports.cmx cparser/ErrorReports.cmi cparser/ErrorReports.o && eval $(opam env --switch=compcert) && make -j$(nproc) 2>&1 | tail -30",
             "bg": true,
@@ -1727,7 +1727,7 @@
               "bg": true,
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1788,7 +1788,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018YDWhAb7hjvF1Mouo2MFpQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "id": "facb8a157e3847b68e39efde1e5ec1e0",
             "timeout": 3600
@@ -1798,7 +1798,7 @@
               "id": "facb8a157e3847b68e39efde1e5ec1e0",
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1859,7 +1859,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01P1sP7TVia6zpM9VUGqQZ8Q",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && rm -f cparser/pre_parser.ml cparser/pre_parser.mli cparser/pre_parser.automaton cparser/pre_parser.conflicts cparser/pre_parser.cm* cparser/pre_parser.o && grep -rn '20260209' cparser/ 2>/dev/null | head; echo \"---checking other stale---\"; grep -rln 'require_20260209' . 2>/dev/null | head"
           },
@@ -1867,7 +1867,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && rm -f cparser/pre_parser.ml cparser/pre_parser.mli cparser/pre_parser.automaton cparser/pre_parser.conflicts cparser/pre_parser.cm* cparser/pre_parser.o && grep -rn '20260209' cparser/ 2>/dev/null | head; echo \"---checking other stale---\"; grep -rln 'require_20260209' . 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1928,7 +1928,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015Rxd5ZiZRD1Zks81HRNEAt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && make -j$(nproc) 2>&1 | tail -25",
             "bg": true,
@@ -1940,7 +1940,7 @@
               "bg": true,
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2001,7 +2001,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JiTJGB8Adh8PxYvn12BaCY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "id": "d735007e968b4ec3ab29af4223afb602",
             "timeout": 3600
@@ -2011,7 +2011,7 @@
               "id": "d735007e968b4ec3ab29af4223afb602",
               "timeout": 3600
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2072,7 +2072,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012gxy1F5NgVuaVCS1D3YYNi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && ls -la ccomp && printf '#include <stdio.h>\\nint main(){int s=0;for(int i=1;i<=10;i++)s+=i;printf(\"sum=%d\\\\n\",s);return 0;}\\n' > /tmp/t.c && ./ccomp -o /tmp/t.exe /tmp/t.c && /tmp/t.exe && echo \"===version===\"; ./ccomp --version | head -3"
           },
@@ -2080,7 +2080,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && ls -la ccomp && printf '#include <stdio.h>\\nint main(){int s=0;for(int i=1;i<=10;i++)s+=i;printf(\"sum=%d\\\\n\",s);return 0;}\\n' > /tmp/t.c && ./ccomp -o /tmp/t.exe /tmp/t.c && /tmp/t.exe && echo \"===version===\"; ./ccomp --version | head -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2141,7 +2141,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013mm6A1KC6PFahSsPBiGE21",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && make install 2>&1 | tail -6; echo \"===retest===\"; ./ccomp -o /tmp/t.exe /tmp/t.c && /tmp/t.exe"
           },
@@ -2149,7 +2149,7 @@
             "raw_arguments": {
               "command": "cd /tmp/CompCert && eval $(opam env --switch=compcert) && make install 2>&1 | tail -6; echo \"===retest===\"; ./ccomp -o /tmp/t.exe /tmp/t.c && /tmp/t.exe"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2210,7 +2210,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UrrUeHi1WN6Evf65QANfeS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp && cat t.c; echo \"===recompile===\"; /tmp/CompCert/ccomp -o /tmp/t2.exe /tmp/t.c 2>/dev/null && /tmp/t2.exe; echo \"exit=$?\"; echo \"===gcc ref===\"; gcc -o /tmp/tg.exe /tmp/t.c && /tmp/tg.exe"
           },
@@ -2218,7 +2218,7 @@
             "raw_arguments": {
               "command": "cd /tmp && cat t.c; echo \"===recompile===\"; /tmp/CompCert/ccomp -o /tmp/t2.exe /tmp/t.c 2>/dev/null && /tmp/t2.exe; echo \"exit=$?\"; echo \"===gcc ref===\"; gcc -o /tmp/tg.exe /tmp/t.c && /tmp/tg.exe"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2279,7 +2279,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016wzu97bdwr4bPApKc7Fdmn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/t.c <<'EOF'\n#include <stdio.h>\nint main(){int s=0;for(int i=1;i<=10;i++)s+=i;printf(\"sum=%d\\n\",s);return 0;}\nEOF\n/tmp/CompCert/ccomp -o /tmp/t.exe /tmp/t.c 2>/dev/null && /tmp/t.exe; echo \"exit=$?\""
           },
@@ -2287,7 +2287,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/t.c <<'EOF'\n#include <stdio.h>\nint main(){int s=0;for(int i=1;i<=10;i++)s+=i;printf(\"sum=%d\\n\",s);return 0;}\nEOF\n/tmp/CompCert/ccomp -o /tmp/t.exe /tmp/t.c 2>/dev/null && /tmp/t.exe; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2348,7 +2348,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XTSKeyRMQJJEKfb1qzckfA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tmp/t.c /tmp/t.exe /tmp/t2.exe /tmp/tg.exe /tmp/compcert.tgz; ls -la /tmp/CompCert/ccomp; /tmp/CompCert/ccomp --version | head -1"
           },
@@ -2356,7 +2356,7 @@
             "raw_arguments": {
               "command": "rm -f /tmp/t.c /tmp/t.exe /tmp/t2.exe /tmp/tg.exe /tmp/compcert.tgz; ls -la /tmp/CompCert/ccomp; /tmp/CompCert/ccomp --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

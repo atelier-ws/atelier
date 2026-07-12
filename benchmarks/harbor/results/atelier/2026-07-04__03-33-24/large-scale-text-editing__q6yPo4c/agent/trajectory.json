@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018cmGTsVaWSEuU7jkJKRRBk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/input.csv; echo \"---EXPECTED---\"; head -5 /app/expected.csv; echo \"---\"; wc -l /app/input.csv /app/expected.csv"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "head -5 /app/input.csv; echo \"---EXPECTED---\"; head -5 /app/expected.csv; echo \"---\"; wc -l /app/input.csv /app/expected.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VgiGcJyHn3Ur74RYW77zFE",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/input.csv:L999995-L1000000",
@@ -116,12 +116,12 @@
                 "/app/expected.csv:L999995-L1000000"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01JeTAkgSEBDhaJfWH7QuPdj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "awk -F',' 'NF!=3{c++} END{print \"rows with !=3 fields:\", c+0}' /app/input.csv; echo \"---spaces inside values check---\"; grep -nE '[A-Za-z0-9] +[A-Za-z0-9]' /app/input.csv | head -3; echo \"---tail bytes---\"; tail -c 40 /app/input.csv | xxd | tail -3; echo \"=== expected tail ===\"; tail -c 40 /app/expected.csv | xxd | tail -3"
           },
@@ -129,7 +129,7 @@
             "raw_arguments": {
               "command": "awk -F',' 'NF!=3{c++} END{print \"rows with !=3 fields:\", c+0}' /app/input.csv; echo \"---spaces inside values check---\"; grep -nE '[A-Za-z0-9] +[A-Za-z0-9]' /app/input.csv | head -3; echo \"---tail bytes---\"; tail -c 40 /app/input.csv | xxd | tail -3; echo \"=== expected tail ===\"; tail -c 40 /app/expected.csv | xxd | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -194,7 +194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JpYQZRLfNh5hCwX3hLyzDE",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -214,7 +214,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -275,7 +275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AnnFHACxM6cQkWxPieeq62",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/apply_macros.vim"
@@ -287,7 +287,7 @@
                 "/app/apply_macros.vim"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -348,7 +348,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LjZkptJQ63JqDLeimA5EK3",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cp input.csv input.bak && time vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim; echo \"exit=$?\"; cmp input.csv expected.csv && echo \"MATCH BYTE-FOR-BYTE\" || echo \"DIFFER\"; mv input.bak input.csv"
           },
@@ -356,7 +356,7 @@
             "raw_arguments": {
               "command": "cd /app && cp input.csv input.bak && time vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim; echo \"exit=$?\"; cmp input.csv expected.csv && echo \"MATCH BYTE-FOR-BYTE\" || echo \"DIFFER\"; mv input.bak input.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

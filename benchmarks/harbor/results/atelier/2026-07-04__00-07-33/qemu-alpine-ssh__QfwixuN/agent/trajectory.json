@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019GK1S17kBtbc7gppegCHi2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/ && which qemu-system-x86_64 qemu-system-i386 ssh sshpass 2>/dev/null; echo \"---\"; nproc; free -m"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/ && which qemu-system-x86_64 qemu-system-i386 ssh sshpass 2>/dev/null; echo \"---\"; nproc; free -m"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_019GK1S17kBtbc7gppegCHi2",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 980180\\ndrwxr-xr-x 1 root root       4096 Jul  3 22:08 .\\ndrwxr-xr-x 1 root root       4096 Jul  3 22:07 ..\\ndrwxr-xr-x 3 root root       4096 Jul  3 22:08 .atelier\\n-rw-r--r-- 1 root root     197120 Oct 22  2025 alpine-disk.qcow2\\n-rw-r--r-- 1 root root 1003487232 Dec  7  2023 alpine.iso\\n/usr/bin/qemu-system-x86_64\\n/usr/bin/qemu-system-i386\\n/usr/bin/ssh\\n---\\n32\\n\\nbash: line 1: free: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 980180\\ndrwxr-xr-x 1 root root       4096 Jul  3 22:08 .\\ndrwxr-xr-x 1 root root       4096 Jul  3 22:07 ..\\ndrwxr-xr-x 3 root root       4096 Jul  3 22:08 .lemoncrow\\n-rw-r--r-- 1 root root     197120 Oct 22  2025 alpine-disk.qcow2\\n-rw-r--r-- 1 root root 1003487232 Dec  7  2023 alpine.iso\\n/usr/bin/qemu-system-x86_64\\n/usr/bin/qemu-system-i386\\n/usr/bin/ssh\\n---\\n32\\n\\nbash: line 1: free: command not found\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VGuiShZCRkq9VBCFDs8bFB",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -l /dev/kvm 2>/dev/null; qemu-system-x86_64 --version; echo \"---iso---\"; file /app/alpine.iso; qemu-img info /app/alpine-disk.qcow2; echo \"---net---\"; which sshpass expect socat nc; cat /proc/cpuinfo | grep -m1 flags | tr ' ' '\\n' | grep -E 'vmx|svm' | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "ls -l /dev/kvm 2>/dev/null; qemu-system-x86_64 --version; echo \"---iso---\"; file /app/alpine.iso; qemu-img info /app/alpine-disk.qcow2; echo \"---net---\"; which sshpass expect socat nc; cat /proc/cpuinfo | grep -m1 flags | tr ' ' '\\n' | grep -E 'vmx|svm' | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013mu3whyMYcDcBp6minAUNo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -l /dev/kvm; echo \"kvm_exit=$?\"; echo \"---tools---\"; which mount 7z 7za bsdtar xorriso isoinfo osirrox 2>/dev/null; echo \"---try mount---\"; mkdir -p /mnt/iso; mount -o loop,ro /app/alpine.iso /mnt/iso 2>&1 | head; ls /mnt/iso 2>/dev/null"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "ls -l /dev/kvm; echo \"kvm_exit=$?\"; echo \"---tools---\"; which mount 7z 7za bsdtar xorriso isoinfo osirrox 2>/dev/null; echo \"---try mount---\"; mkdir -p /mnt/iso; mount -o loop,ro /app/alpine.iso /mnt/iso 2>&1 | head; ls /mnt/iso 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UBKJh5yteW9CSaJhkTPtwJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which losetup python3; losetup -f 2>&1 | head; echo \"---losetup try---\"; losetup -f --show -r /app/alpine.iso 2>&1 | head; echo \"---py iso libs---\"; python3 -c \"import pycdlib; print('pycdlib ok')\" 2>&1 | head -1; ls /dev/loop* 2>&1 | head"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "which losetup python3; losetup -f 2>&1 | head; echo \"---losetup try---\"; losetup -f --show -r /app/alpine.iso 2>&1 | head; echo \"---py iso libs---\"; python3 -c \"import pycdlib; print('pycdlib ok')\" 2>&1 | head -1; ls /dev/loop* 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017yJUyxqxKoKjwsCBF1msSe",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; timeout 90 qemu-system-x86_64 -m 1024 -smp 2 -accel tcg \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -cdrom /app/alpine.iso -boot d \\\n  -nographic -serial file:/tmp/serial.log -display none >/tmp/qemu.out 2>&1\necho \"exit=$?\"; echo \"=== serial.log ===\"; head -c 4000 /tmp/serial.log; echo; echo \"=== qemu.out ===\"; head -c 2000 /tmp/qemu.out"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app; timeout 90 qemu-system-x86_64 -m 1024 -smp 2 -accel tcg \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -cdrom /app/alpine.iso -boot d \\\n  -nographic -serial file:/tmp/serial.log -display none >/tmp/qemu.out 2>&1\necho \"exit=$?\"; echo \"=== serial.log ===\"; head -c 4000 /tmp/serial.log; echo; echo \"=== qemu.out ===\"; head -c 2000 /tmp/qemu.out"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BmJpHdiFTCSygwRm1Mgx87",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app\nrm -f /tmp/ttyS0.sock\nnohup qemu-system-x86_64 -m 2048 -smp 2 -accel tcg \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -cdrom /app/alpine.iso -boot d \\\n  -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \\\n  -nographic -monitor none -display none \\\n  -serial unix:/tmp/ttyS0.sock,server,nowait \\\n  >/tmp/qemu.log 2>&1 &\necho \"qemu pid=$!\"\nsleep 3\nls -l /tmp/ttyS0.sock; cat /tmp/qemu.log"
           },
@@ -386,7 +386,7 @@
             "raw_arguments": {
               "command": "cd /app\nrm -f /tmp/ttyS0.sock\nnohup qemu-system-x86_64 -m 2048 -smp 2 -accel tcg \\\n  -drive file=/app/alpine-disk.qcow2,format=qcow2,if=virtio \\\n  -cdrom /app/alpine.iso -boot d \\\n  -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \\\n  -nographic -monitor none -display none \\\n  -serial unix:/tmp/ttyS0.sock,server,nowait \\\n  >/tmp/qemu.log 2>&1 &\necho \"qemu pid=$!\"\nsleep 3\nls -l /tmp/ttyS0.sock; cat /tmp/qemu.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -447,7 +447,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012XeckM3qGk1ixG75YNMGkt",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -467,7 +467,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -528,7 +528,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EvispHvUoXPHb8K7EcpHAP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp; timeout 900 python3 drive.py 2>&1 | tail -80"
           },
@@ -536,7 +536,7 @@
             "raw_arguments": {
               "command": "cd /tmp; timeout 900 python3 drive.py 2>&1 | tail -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -597,7 +597,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BnqwzRqdA5UfJVqLFoA5ee",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\ncat > sshtest.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    timeout { puts \"TIMEOUT waiting for pw\"; exit 2 }\n}\nexpect {\n    -re {[#\\$] $} { send \"echo SSH_OK_MARKER; hostname; id\\r\" }\n    timeout { puts \"TIMEOUT after pw\"; exit 3 }\n}\nexpect \"SSH_OK_MARKER\"\nexpect -re {[#\\$] $}\nsend \"exit\\r\"\nexpect eof\nEOF\nexpect sshtest.exp 2>&1 | tail -20"
           },
@@ -605,7 +605,7 @@
             "raw_arguments": {
               "command": "cd /tmp\ncat > sshtest.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    timeout { puts \"TIMEOUT waiting for pw\"; exit 2 }\n}\nexpect {\n    -re {[#\\$] $} { send \"echo SSH_OK_MARKER; hostname; id\\r\" }\n    timeout { puts \"TIMEOUT after pw\"; exit 3 }\n}\nexpect \"SSH_OK_MARKER\"\nexpect -re {[#\\$] $}\nsend \"exit\\r\"\nexpect eof\nEOF\nexpect sshtest.exp 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -666,7 +666,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U8K5reFf7Hokb5nXJEFE47",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\ncat > sshtest2.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"echo GRADE_OK; whoami; cat /etc/alpine-release\"\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    timeout { exit 2 }\n}\nexpect eof\nEOF\nexpect sshtest2.exp 2>&1 | tail -12\necho \"=== qemu still running? ===\"; ps aux | grep -c \"[q]emu-system\""
           },
@@ -674,7 +674,7 @@
             "raw_arguments": {
               "command": "cd /tmp\ncat > sshtest2.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"echo GRADE_OK; whoami; cat /etc/alpine-release\"\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    timeout { exit 2 }\n}\nexpect eof\nEOF\nexpect sshtest2.exp 2>&1 | tail -12\necho \"=== qemu still running? ===\"; ps aux | grep -c \"[q]emu-system\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -735,7 +735,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019hWvN6CtzNU8drsTgBANPA",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "for p in /proc/[0-9]*; do c=$(tr '\\0' ' ' < $p/cmdline 2>/dev/null); case \"$c\" in *qemu-system*) echo \"PID ${p#/proc/}: running qemu\";; esac; done\necho \"--- host port 2222 ---\"; (ss -tlnp 2>/dev/null || cat /proc/net/tcp | awk 'NR>1{print $2}') | grep -i -E '08AE|:2222' | head"
           },
@@ -743,7 +743,7 @@
             "raw_arguments": {
               "command": "for p in /proc/[0-9]*; do c=$(tr '\\0' ' ' < $p/cmdline 2>/dev/null); case \"$c\" in *qemu-system*) echo \"PID ${p#/proc/}: running qemu\";; esac; done\necho \"--- host port 2222 ---\"; (ss -tlnp 2>/dev/null || cat /proc/net/tcp | awk 'NR>1{print $2}') | grep -i -E '08AE|:2222' | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -859,7 +859,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012cvoi4CMeCMr8TtxytPYzv",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\ncat > verify.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"echo GRADE_OK=$(whoami)@$(hostname); cat /etc/alpine-release\"\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    \"assword:\" { send \"password123\\r\" }\n    timeout { puts \"FAIL: no password prompt\"; exit 2 }\n}\nexpect eof\nEOF\nexpect verify.exp 2>&1 | grep -aE 'GRADE_OK|alpine|FAIL|[0-9]+\\.[0-9]+\\.[0-9]+'"
           },
@@ -867,7 +867,7 @@
             "raw_arguments": {
               "command": "cd /tmp\ncat > verify.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"echo GRADE_OK=$(whoami)@$(hostname); cat /etc/alpine-release\"\nexpect {\n    \"password:\" { send \"password123\\r\" }\n    \"assword:\" { send \"password123\\r\" }\n    timeout { puts \"FAIL: no password prompt\"; exit 2 }\n}\nexpect eof\nEOF\nexpect verify.exp 2>&1 | grep -aE 'GRADE_OK|alpine|FAIL|[0-9]+\\.[0-9]+\\.[0-9]+'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -928,7 +928,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01UWc2XkXLBX32ocLjvvpUpb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /tmp\ncat > verify.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"id; hostname; cat /etc/alpine-release; echo RESULT_DONE\"\nexpect {\n    \"assword:\" { send \"password123\\r\" }\n    timeout { puts \"FAIL: no password prompt\"; exit 2 }\n}\nexpect eof\nEOF\nexpect verify.exp 2>&1 | sed -n '3,20p'"
           },
@@ -936,7 +936,7 @@
             "raw_arguments": {
               "command": "cd /tmp\ncat > verify.exp <<'EOF'\nset timeout 60\nspawn ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost \"id; hostname; cat /etc/alpine-release; echo RESULT_DONE\"\nexpect {\n    \"assword:\" { send \"password123\\r\" }\n    timeout { puts \"FAIL: no password prompt\"; exit 2 }\n}\nexpect eof\nEOF\nexpect verify.exp 2>&1 | sed -n '3,20p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

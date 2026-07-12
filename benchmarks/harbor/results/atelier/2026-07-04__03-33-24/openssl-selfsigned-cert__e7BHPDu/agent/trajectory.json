@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SgmVVd1xNU3H13h5Y7b9VW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "mkdir -p /app/ssl && cd /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && chmod 600 server.key && cat server.key server.crt > server.pem && ls -la /app/ssl"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "mkdir -p /app/ssl && cd /app/ssl && openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 365 -subj \"/O=DevOps Team/CN=dev-internal.company.local\" && chmod 600 server.key && cat server.key server.crt > server.pem && ls -la /app/ssl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01N62sfVQt3CewEYs8X8SZ1K",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ssl && { echo \"=== Subject ===\"; openssl x509 -in server.crt -noout -subject; echo; echo \"=== Validity ===\"; openssl x509 -in server.crt -noout -dates; echo; echo \"=== SHA-256 Fingerprint ===\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
           },
@@ -110,12 +110,12 @@
             "raw_arguments": {
               "command": "cd /app/ssl && { echo \"=== Subject ===\"; openssl x509 -in server.crt -noout -subject; echo; echo \"=== Validity ===\"; openssl x509 -in server.crt -noout -dates; echo; echo \"=== SHA-256 Fingerprint ===\"; openssl x509 -in server.crt -noout -fingerprint -sha256; } > verification.txt && cat verification.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01ASg8AoR99zFzm7dNZtdsJc",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/check_cert.py",
             "replace": "true",
@@ -127,7 +127,7 @@
               "replace": "true",
               "new": "#!/usr/bin/env python3\n\"\"\"Verify the self-signed TLS certificate at /app/ssl/server.crt.\"\"\"\nimport sys\nfrom datetime import datetime\n\nCERT_PATH = \"/app/ssl/server.crt\"\n\n\ndef load_certificate(path):\n    \"\"\"Load an X.509 certificate from a PEM file, return (cert, backend).\"\"\"\n    try:\n        from cryptography import x509\n        from cryptography.hazmat.backends import default_backend\n        with open(path, \"rb\") as fh:\n            cert = x509.load_pem_x509_certificate(fh.read(), default_backend())\n        return cert, \"cryptography\"\n    except ImportError:\n        # Fall back to the openssl CLI if cryptography is unavailable.\n        import subprocess\n        subprocess.run(\n            [\"openssl\", \"x509\", \"-in\", path, \"-noout\"],\n            check=True,\n        )\n        return None, \"openssl\"\n\n\ndef get_common_name(cert):\n    from cryptography.x509.oid import NameOID\n    attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)\n    return attrs[0].value if attrs else \"(unknown)\"\n\n\ndef get_expiration(cert):\n    try:\n        return cert.not_valid_after_utc\n    except AttributeError:\n        return cert.not_valid_after\n\n\ndef main():\n    import os\n    if not os.path.exists(CERT_PATH):\n        print(f\"ERROR: certificate not found at {CERT_PATH}\")\n        sys.exit(1)\n\n    cert, backend = load_certificate(CERT_PATH)\n\n    if backend == \"cryptography\":\n        cn = get_common_name(cert)\n        expires = get_expiration(cert)\n        print(f\"Certificate loaded from: {CERT_PATH}\")\n        print(f\"Common Name: {cn}\")\n        print(f\"Expiration date: {expires.strftime('%Y-%m-%d')}\")\n    else:\n        import subprocess\n        cn = subprocess.run(\n            [\"openssl\", \"x509\", \"-in\", CERT_PATH, \"-noout\", \"-subject\"],\n            capture_output=True, text=True, check=True,\n        ).stdout.strip()\n        enddate = subprocess.run(\n            [\"openssl\", \"x509\", \"-in\", CERT_PATH, \"-noout\", \"-enddate\"],\n            capture_output=True, text=True, check=True,\n        ).stdout.strip().split(\"=\", 1)[1]\n        parsed = datetime.strptime(enddate.replace(\" GMT\", \"\"), \"%b %d %H:%M:%S %Y\")\n        print(f\"Certificate loaded from: {CERT_PATH}\")\n        print(f\"Common Name: {cn}\")\n        print(f\"Expiration date: {parsed.strftime('%Y-%m-%d')}\")\n\n    print(\"Certificate verification successful\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Nr1vFtjQarLdEg5frnwy8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import cryptography\" 2>/dev/null && echo \"cryptography present\" || uv pip install --system --break-system-packages cryptography >/dev/null 2>&1; python3 /app/check_cert.py"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import cryptography\" 2>/dev/null && echo \"cryptography present\" || uv pip install --system --break-system-packages cryptography >/dev/null 2>&1; python3 /app/check_cert.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -261,7 +261,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mid68FfBL9BNMxz1oaA2NW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import cryptography; print('ok', cryptography.__version__)\" 2>&1; echo \"---\"; python3 /app/check_cert.py"
           },
@@ -269,7 +269,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import cryptography; print('ok', cryptography.__version__)\" 2>&1; echo \"---\"; python3 /app/check_cert.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -330,7 +330,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KVY5CPTUHcEm9bSAf7DWW7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages cryptography 2>&1 | tail -3; echo \"===\"; python3 /app/check_cert.py"
           },
@@ -338,7 +338,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages cryptography 2>&1 | tail -3; echo \"===\"; python3 /app/check_cert.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -399,7 +399,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018UFmW35qdPrc6aPbaEf3Py",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages cryptography 2>&1 | tail -2 || python3 -m pip install --break-system-packages cryptography 2>&1 | tail -2"
           },
@@ -407,7 +407,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages cryptography 2>&1 | tail -2 || python3 -m pip install --break-system-packages cryptography 2>&1 | tail -2"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -468,7 +468,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E59sGGqTiDbvTbG5266Tq7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import cryptography; print('ok', cryptography.__version__)\"; echo \"===\"; python3 /app/check_cert.py"
           },
@@ -476,7 +476,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import cryptography; print('ok', cryptography.__version__)\"; echo \"===\"; python3 /app/check_cert.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -537,7 +537,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013q2chXbKRby53PoMA5Wu7H",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/ssl && ls -la && echo \"=== perms server.key ===\" && stat -c '%a' server.key && echo \"=== pem contains key+cert ===\" && grep -c 'BEGIN' server.pem && echo \"=== verification.txt ===\" && cat verification.txt && echo \"=== cert verify ===\" && openssl x509 -in server.crt -noout -checkend 0 && echo \"key/cert match:\" && diff <(openssl x509 -in server.crt -noout -modulus) <(openssl rsa -in server.key -noout -modulus) && echo MATCH"
           },
@@ -545,7 +545,7 @@
             "raw_arguments": {
               "command": "cd /app/ssl && ls -la && echo \"=== perms server.key ===\" && stat -c '%a' server.key && echo \"=== pem contains key+cert ===\" && grep -c 'BEGIN' server.pem && echo \"=== verification.txt ===\" && cat verification.txt && echo \"=== cert verify ===\" && openssl x509 -in server.crt -noout -checkend 0 && echo \"key/cert match:\" && diff <(openssl x509 -in server.crt -noout -modulus) <(openssl rsa -in server.key -noout -modulus) && echo MATCH"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -661,7 +661,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U4jTk7bRDancj8s9a8cc1z",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; echo \"===\"; find /app -name '*test*' -o -name 'conftest.py' 2>/dev/null | grep -v ssl"
           },
@@ -669,7 +669,7 @@
             "raw_arguments": {
               "command": "ls -la /app; echo \"===\"; find /app -name '*test*' -o -name 'conftest.py' 2>/dev/null | grep -v ssl"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -730,7 +730,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YVW3ddAZXEDWfbtkfHGRCd",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app 2>&1; echo \"=== find tests ===\"; find / -path /proc -prune -o \\( -name 'test_*.py' -o -name '*_test.py' \\) -print 2>/dev/null | grep -iv site-packages | head"
           },
@@ -738,7 +738,7 @@
             "raw_arguments": {
               "command": "ls -la /app 2>&1; echo \"=== find tests ===\"; find / -path /proc -prune -o \\( -name 'test_*.py' -o -name '*_test.py' \\) -print 2>/dev/null | grep -iv site-packages | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -746,7 +746,7 @@
         "results": [
           {
             "source_call_id": "toolu_01YVW3ddAZXEDWfbtkfHGRCd",
-            "content": "{\"type\": \"text\", \"text\": \"total 20\\ndrwxr-xr-x 1 root root 4096 Jul  4 01:36 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 01:35 ..\\ndrwxr-xr-x 3 root root 4096 Jul  4 01:36 .git\\n-rw------- 1 root root 2360 Jul  4 01:36 check_cert.py\\ndrwxr-xr-x 2 root root 4096 Jul  4 01:36 ssl\\n=== find tests ===\\n/usr/lib/python3.11/test/test_support.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/atelier/.claude/worktrees/agent-a82f164b3e29472c3/tests/docs/test_no_hardcoded_savings_yaml.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 20\\ndrwxr-xr-x 1 root root 4096 Jul  4 01:36 .\\ndrwxr-xr-x 1 root root 4096 Jul  4 01:35 ..\\ndrwxr-xr-x 3 root root 4096 Jul  4 01:36 .git\\n-rw------- 1 root root 2360 Jul  4 01:36 check_cert.py\\ndrwxr-xr-x 2 root root 4096 Jul  4 01:36 ssl\\n=== find tests ===\\n/usr/lib/python3.11/test/test_support.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/test_gyp.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/input_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/MSVSSettings_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/ninja_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/msvs_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/generator/xcode_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/easy_xml_test.py\\n/usr/lib/node_modules/npm/node_modules/node-gyp/gyp/pylib/gyp/common_test.py\\n/lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/tests/docs/test_no_hardcoded_savings_yaml.py\"}"
           }
         ]
       },
@@ -799,7 +799,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GNcYrxC1j2aygmRg9Wz5GU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== 1. Normal run (cryptography path) ===\"; python3 /app/check_cert.py; echo \"exit=$?\"\necho; echo \"=== 2. openssl fallback path (hide cryptography) ===\"; python3 -c \"\nimport sys, importlib\n# Block cryptography to force fallback\nclass Blocker:\n    def find_module(self, name, path=None):\n        if name=='cryptography' or name.startswith('cryptography.'):\n            return self\n    def load_module(self, name):\n        raise ImportError(name)\nsys.meta_path.insert(0, Blocker())\nsys.argv=['check_cert.py']\nexec(open('/app/check_cert.py').read())\n\"; echo \"exit=$?\"\necho; echo \"=== 3. missing-cert path (exit 1 expected) ===\"; python3 -c \"\nimport runpy,sys\nimport check_cert as c\n\" 2>/dev/null; python3 - <<'PY'\nimport subprocess, sys, tempfile, os, shutil\n# temporarily point script at nonexistent by copying and patching\nsrc=open('/app/check_cert.py').read().replace('/app/ssl/server.crt','/nonexistent/x.crt')\nopen('/tmp/cc_missing.py','w').write(src)\nr=subprocess.run([sys.executable,'/tmp/cc_missing.py'],capture_output=True,text=True)\nprint(r.stdout.strip()); print('exit=%d'%r.returncode)\nos.remove('/tmp/cc_missing.py')\nPY"
           },
@@ -807,7 +807,7 @@
             "raw_arguments": {
               "command": "echo \"=== 1. Normal run (cryptography path) ===\"; python3 /app/check_cert.py; echo \"exit=$?\"\necho; echo \"=== 2. openssl fallback path (hide cryptography) ===\"; python3 -c \"\nimport sys, importlib\n# Block cryptography to force fallback\nclass Blocker:\n    def find_module(self, name, path=None):\n        if name=='cryptography' or name.startswith('cryptography.'):\n            return self\n    def load_module(self, name):\n        raise ImportError(name)\nsys.meta_path.insert(0, Blocker())\nsys.argv=['check_cert.py']\nexec(open('/app/check_cert.py').read())\n\"; echo \"exit=$?\"\necho; echo \"=== 3. missing-cert path (exit 1 expected) ===\"; python3 -c \"\nimport runpy,sys\nimport check_cert as c\n\" 2>/dev/null; python3 - <<'PY'\nimport subprocess, sys, tempfile, os, shutil\n# temporarily point script at nonexistent by copying and patching\nsrc=open('/app/check_cert.py').read().replace('/app/ssl/server.crt','/nonexistent/x.crt')\nopen('/tmp/cc_missing.py','w').write(src)\nr=subprocess.run([sys.executable,'/tmp/cc_missing.py'],capture_output=True,text=True)\nprint(r.stdout.strip()); print('exit=%d'%r.returncode)\nos.remove('/tmp/cc_missing.py')\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -868,7 +868,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DrCQ1jnRLCEcgi82329T5J",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "echo \"=== 1. cryptography path ===\"; python3 /app/check_cert.py; echo \"exit=$?\"\necho; echo \"=== 2. openssl fallback path ===\"; python3 -c \"\nimport sys\nclass Blocker:\n    def find_module(self, name, path=None):\n        if name=='cryptography' or name.startswith('cryptography.'): return self\n    def load_module(self, name): raise ImportError(name)\nsys.meta_path.insert(0, Blocker())\nsys.argv=['check_cert.py']\nexec(open('/app/check_cert.py').read())\n\"; echo \"exit=$?\""
           },
@@ -876,7 +876,7 @@
             "raw_arguments": {
               "command": "echo \"=== 1. cryptography path ===\"; python3 /app/check_cert.py; echo \"exit=$?\"\necho; echo \"=== 2. openssl fallback path ===\"; python3 -c \"\nimport sys\nclass Blocker:\n    def find_module(self, name, path=None):\n        if name=='cryptography' or name.startswith('cryptography.'): return self\n    def load_module(self, name): raise ImportError(name)\nsys.meta_path.insert(0, Blocker())\nsys.argv=['check_cert.py']\nexec(open('/app/check_cert.py').read())\n\"; echo \"exit=$?\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

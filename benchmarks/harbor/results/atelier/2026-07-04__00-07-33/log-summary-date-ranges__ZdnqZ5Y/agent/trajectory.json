@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QDEkB46jehZbtPFEUerSBL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l; echo \"---\"; head -5 /app/logs/$(ls /app/logs | head -1)"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls /app/logs | head; echo \"---\"; ls /app/logs | wc -l; echo \"---\"; head -5 /app/logs/$(ls /app/logs | head -1)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PfhhaZqqck9Z3ootjY7VBj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "grep -rhoE '\\[(ERROR|WARNING|INFO)\\]' /app/logs | sort | uniq -c; echo \"---samples---\"; grep -rL '\\[' /app/logs | head"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "grep -rhoE '\\[(ERROR|WARNING|INFO)\\]' /app/logs | sort | uniq -c; echo \"---samples---\"; grep -rL '\\[' /app/logs | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WkoiNoHKvMkM31K4e4EykQ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -191,7 +191,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SMegfGDg93gKdN4fHKwnHf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 summarize.py"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 summarize.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ae8wyN5TofgnkwqQtsJeDg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport os,re\nfrom datetime import date,timedelta\nREF=date(2025,8,12)\npat=re.compile(r'\\[(ERROR|WARNING|INFO)\\]')\nfr=re.compile(r'^(\\d{4})-(\\d{2})-(\\d{2})_.*\\.log$')\ntot={};today={};l7={};l30={};mtd={}\nfor fn in os.listdir('logs'):\n    m=fr.match(fn); d=date(*map(int,m.groups()))\n    for line in open('logs/'+fn,errors='replace'):\n        x=pat.search(line)\n        if not x: continue\n        s=x.group(1)\n        tot[s]=tot.get(s,0)+1\n        if d==REF: today[s]=today.get(s,0)+1\n        if REF-timedelta(days=6)<=d<=REF: l7[s]=l7.get(s,0)+1\n        if REF-timedelta(days=29)<=d<=REF: l30[s]=l30.get(s,0)+1\n        if date(2025,8,1)<=d<=REF: mtd[s]=mtd.get(s,0)+1\nprint(\"today\",today); print(\"l7\",l7); print(\"l30\",l30); print(\"mtd\",mtd); print(\"tot\",tot)\nprint(\"CSV matches:\", open('summary.csv').read().strip()==open('summary.csv').read().strip())\nEOF\necho \"=== file ===\"; ls -l /app/summary.csv"
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport os,re\nfrom datetime import date,timedelta\nREF=date(2025,8,12)\npat=re.compile(r'\\[(ERROR|WARNING|INFO)\\]')\nfr=re.compile(r'^(\\d{4})-(\\d{2})-(\\d{2})_.*\\.log$')\ntot={};today={};l7={};l30={};mtd={}\nfor fn in os.listdir('logs'):\n    m=fr.match(fn); d=date(*map(int,m.groups()))\n    for line in open('logs/'+fn,errors='replace'):\n        x=pat.search(line)\n        if not x: continue\n        s=x.group(1)\n        tot[s]=tot.get(s,0)+1\n        if d==REF: today[s]=today.get(s,0)+1\n        if REF-timedelta(days=6)<=d<=REF: l7[s]=l7.get(s,0)+1\n        if REF-timedelta(days=29)<=d<=REF: l30[s]=l30.get(s,0)+1\n        if date(2025,8,1)<=d<=REF: mtd[s]=mtd.get(s,0)+1\nprint(\"today\",today); print(\"l7\",l7); print(\"l30\",l30); print(\"mtd\",mtd); print(\"tot\",tot)\nprint(\"CSV matches:\", open('summary.csv').read().strip()==open('summary.csv').read().strip())\nEOF\necho \"=== file ===\"; ls -l /app/summary.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LePfcNsNNWZQ51txTa7meS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && file a.out && node --version"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && file a.out && node --version"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -49,7 +49,7 @@
         "results": [
           {
             "source_call_id": "toolu_01LePfcNsNNWZQ51txTa7meS",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 32\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:46 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:45 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:46 .atelier\\n-rwxr-xr-x 1 root root 15960 Oct 31  2025 a.out\\n-rw-r--r-- 1 root root    61 Oct 24  2025 hi.c\\n\\nbash: line 1: file: command not found\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=127\\ntotal 32\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:46 .\\ndrwxr-xr-x 1 root root  4096 Jul  3 22:45 ..\\ndrwxr-xr-x 3 root root  4096 Jul  3 22:46 .lemoncrow\\n-rwxr-xr-x 1 root root 15960 Oct 31  2025 a.out\\n-rw-r--r-- 1 root root    61 Oct 24  2025 hi.c\\n\\nbash: line 1: file: command not found\"}"
           }
         ]
       },
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011ukhE7N3e8AqzvMgg4BGF4",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && which node; node --version 2>&1; readelf -h a.out 2>&1 | head -30"
           },
@@ -110,12 +110,12 @@
             "raw_arguments": {
               "command": "cd /app && which node; node --version 2>&1; readelf -h a.out 2>&1 | head -30"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01QZ97HAWubPqS5SuFBYWuQg",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/hi.c"
@@ -127,7 +127,7 @@
                 "/app/hi.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -192,7 +192,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PL7yk4jKVZTtfh7AMnqKNj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && readelf -l a.out 2>&1"
           },
@@ -200,7 +200,7 @@
             "raw_arguments": {
               "command": "cd /app && readelf -l a.out 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -261,7 +261,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013sfAwRscqA3pkbyGLmfAjD",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -281,7 +281,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -342,7 +342,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SHieMt2hy8nmaJixJZ15Yg",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json && node -e \"const o=require('./out.json');const k=Object.keys(o);console.log('count',k.length);console.log('first',k[0],o[k[0]]);console.log('4194304',o['4194304']);console.log('4194308',o['4194308']);\""
           },
@@ -350,7 +350,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json && node -e \"const o=require('./out.json');const k=Object.keys(o);console.log('count',k.length);console.log('first',k[0],o[k[0]]);console.log('4194304',o['4194304']);console.log('4194308',o['4194308']);\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -411,7 +411,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FunDmsoyiwqfUn84zD2sgy",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node -e \"const o=require('./out.json');const k=Object.keys(o).map(Number);console.log('total',k.length,'min',k[0].toString(16),'max',k[k.length-1].toString(16));console.log('sample RW', o[0x400000+0x3db8]);\" && python3 -c \"import json;d=json.load(open('out.json'));print('valid json, entries',len(d),'all ints',all(isinstance(v,int) for v in d.values()))\""
           },
@@ -419,7 +419,7 @@
             "raw_arguments": {
               "command": "cd /app && node -e \"const o=require('./out.json');const k=Object.keys(o).map(Number);console.log('total',k.length,'min',k[0].toString(16),'max',k[k.length-1].toString(16));console.log('sample RW', o[0x400000+0x3db8]);\" && python3 -c \"import json;d=json.load(open('out.json'));print('valid json, entries',len(d),'all ints',all(isinstance(v,int) for v in d.values()))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -535,7 +535,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HNKAG1pcXpnbwRbHTBSvdZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && node extract.js /app/a.out > out.json; echo \"exit=$?\"; python3 - <<'PY'\nimport json\nd=json.load(open('out.json'))\nassert all(isinstance(v,int) for v in d.values()), \"non-int value\"\nassert all(k.isdigit() for k in d), \"non-numeric key\"\n# keys 4-byte aligned relative to base, ascending, stepping by 4 within segments\nks=sorted(int(k) for k in d)\nassert ks[0]==0x400000, ks[0]\nassert d['4194304']==0x464c457f  # \\x7fELF magic word at load base\nprint(\"entries:\", len(d))\nprint(\"addr range: 0x%x .. 0x%x\" % (ks[0], ks[-1]))\nprint(\"all values int:\", True)\nprint(\"keys numeric strings, 4-aligned:\", all((int(k)%4)==0 for k in d))\nprint(\"OK\")\nPY"
           },
@@ -543,7 +543,7 @@
             "raw_arguments": {
               "command": "cd /app && node extract.js /app/a.out > out.json; echo \"exit=$?\"; python3 - <<'PY'\nimport json\nd=json.load(open('out.json'))\nassert all(isinstance(v,int) for v in d.values()), \"non-int value\"\nassert all(k.isdigit() for k in d), \"non-numeric key\"\n# keys 4-byte aligned relative to base, ascending, stepping by 4 within segments\nks=sorted(int(k) for k in d)\nassert ks[0]==0x400000, ks[0]\nassert d['4194304']==0x464c457f  # \\x7fELF magic word at load base\nprint(\"entries:\", len(d))\nprint(\"addr range: 0x%x .. 0x%x\" % (ks[0], ks[-1]))\nprint(\"all values int:\", True)\nprint(\"keys numeric strings, 4-aligned:\", all((int(k)%4)==0 for k in d))\nprint(\"OK\")\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

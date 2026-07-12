@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MgmUXedfRYEQrJs7K2rXtc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && ls -la && python3 -c \"import torch; sd=torch.load('weights.pt'); [print(k, tuple(v.shape)) for k,v in sd.items()]\""
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "cd /app && ls -la && python3 -c \"import torch; sd=torch.load('weights.pt'); [print(k, tuple(v.shape)) for k,v in sd.items()]\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013vJNfRQiEJTrdpJYjAU2GX",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nsd=torch.load('weights.pt')\nks=list(sd.keys())\nimport re\n# count encoder/decoder layers\nenc=set(); dec=set()\nfor k in ks:\n    m=re.match(r'transformer_encoder.layers.(\\d+)',k)\n    if m: enc.add(int(m.group(1)))\n    m=re.match(r'transformer_decoder.layers.(\\d+)',k)\n    if m: dec.add(int(m.group(1)))\nprint('enc layers',sorted(enc))\nprint('dec layers',sorted(dec))\nprint('---decoder keys layer0---')\nfor k in ks:\n    if 'transformer_decoder.layers.0' in k: print(k, tuple(sd[k].shape))\nprint('--- non-layer keys ---')\nfor k in ks:\n    if '.layers.' not in k: print(k, tuple(sd[k].shape), sd[k].dtype)\n\" 2>/dev/null"
           },
@@ -110,12 +110,12 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nsd=torch.load('weights.pt')\nks=list(sd.keys())\nimport re\n# count encoder/decoder layers\nenc=set(); dec=set()\nfor k in ks:\n    m=re.match(r'transformer_encoder.layers.(\\d+)',k)\n    if m: enc.add(int(m.group(1)))\n    m=re.match(r'transformer_decoder.layers.(\\d+)',k)\n    if m: dec.add(int(m.group(1)))\nprint('enc layers',sorted(enc))\nprint('dec layers',sorted(dec))\nprint('---decoder keys layer0---')\nfor k in ks:\n    if 'transformer_decoder.layers.0' in k: print(k, tuple(sd[k].shape))\nprint('--- non-layer keys ---')\nfor k in ks:\n    if '.layers.' not in k: print(k, tuple(sd[k].shape), sd[k].dtype)\n\" 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_014XuyxHmFYBU33V1MvPFgZt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch\nd=torch.load('dataset.pt')\nprint(type(d))\nif isinstance(d,dict):\n    for k,v in d.items(): print(k, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\nelif isinstance(d,(list,tuple)):\n    for i,v in enumerate(d): print(i, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\n\" 2>/dev/null"
           },
@@ -123,7 +123,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch\nd=torch.load('dataset.pt')\nprint(type(d))\nif isinstance(d,dict):\n    for k,v in d.items(): print(k, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\nelif isinstance(d,(list,tuple)):\n    for i,v in enumerate(d): print(i, type(v), getattr(v,'shape',None), getattr(v,'dtype',None))\n\" 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01K7vGy9GFQd6uY7Vf5rP3FP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > build.py <<'EOF'\nimport torch, torch.nn as nn\n\nclass PositionalEncoding(nn.Module):\n    def __init__(self, d_model=128, max_len=5000):\n        super().__init__()\n        pe = torch.zeros(1, max_len, d_model)\n        self.register_buffer('pe', pe)\n    def forward(self, x):\n        return x + self.pe[:, :x.size(1)]\n\nclass RecoveredModel(nn.Module):\n    def __init__(self, feat=64, d_model=128, nhead=8, ff=256,\n                 num_enc=3, num_dec=1):\n        super().__init__()\n        self.embedding = nn.Linear(feat, d_model)\n        self.pos_encoder = PositionalEncoding(d_model)\n        enc_layer = nn.TransformerEncoderLayer(d_model, nhead, ff, batch_first=True)\n        self.transformer_encoder = nn.TransformerEncoder(enc_layer, num_enc)\n        dec_layer = nn.TransformerDecoderLayer(d_model, nhead, ff, batch_first=True)\n        self.transformer_decoder = nn.TransformerDecoder(dec_layer, num_dec)\n        self.output_layer = nn.Linear(d_model, feat)\n    def encode(self, src):\n        s = self.pos_encoder(self.embedding(src))\n        return self.transformer_encoder(s)\n    def decode(self, tgt, memory):\n        t = self.pos_encoder(self.embedding(tgt))\n        return self.transformer_decoder(t, memory)\n    def forward(self, src, tgt):\n        memory = self.encode(src)\n        h = self.decode(tgt, memory)\n        return self.output_layer(h)\n\ndef main():\n    sd = torch.load('weights.pt')\n    model = RecoveredModel()\n    missing, unexpected = model.load_state_dict(sd, strict=False)\n    assert not missing, missing\n    assert not unexpected, unexpected\n    model.eval()\n    data = torch.load('dataset.pt')\n    src, tgt = data['src_sequences'], data['tgt_sequences']\n    lossf = nn.MSELoss()\n    with torch.no_grad():\n        out0 = model(src, tgt)\n        mse0 = lossf(out0, tgt).item()\n        # decoder features for closed-form fit of output_layer\n        h = model.decode(tgt, model.encode(src))  # (B,S,128)\n    print('original MSE', mse0)\n    # closed form least squares: minimize ||H W^T + b - Y||^2\n    B,S,D = h.shape\n    F = tgt.shape[-1]\n    H = h.reshape(-1, D)\n    Y = tgt.reshape(-1, F)\n    ones = torch.ones(H.shape[0], 1)\n    Haug = torch.cat([H, ones], dim=1)  # (N, D+1)\n    # solve Haug @ theta = Y ; theta (D+1, F)\n    sol = torch.linalg.lstsq(Haug, Y).solution\n    W = sol[:D, :].t().contiguous()   # (F, D)\n    b = sol[D, :].contiguous()        # (F,)\n    with torch.no_grad():\n        model.output_layer.weight.copy_(W)\n        model.output_layer.bias.copy_(b)\n        out1 = model(src, tgt)\n        mse1 = lossf(out1, tgt).item()\n    print('new MSE', mse1)\n    assert mse1 < mse0, (mse1, mse0)\n    # verify only output_layer differs\n    new_sd = model.state_dict()\n    diff = [k for k in sd if not torch.equal(sd[k], new_sd[k])]\n    print('changed keys', diff)\n    assert all(k.startswith('output_layer') for k in diff), diff\n    scripted = torch.jit.script(model)\n    scripted.save('model.pt')\n    print('saved model.pt')\n\nif __name__ == '__main__':\n    main()\nEOF\npython3 build.py 2>&1 | grep -v NumPy"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > build.py <<'EOF'\nimport torch, torch.nn as nn\n\nclass PositionalEncoding(nn.Module):\n    def __init__(self, d_model=128, max_len=5000):\n        super().__init__()\n        pe = torch.zeros(1, max_len, d_model)\n        self.register_buffer('pe', pe)\n    def forward(self, x):\n        return x + self.pe[:, :x.size(1)]\n\nclass RecoveredModel(nn.Module):\n    def __init__(self, feat=64, d_model=128, nhead=8, ff=256,\n                 num_enc=3, num_dec=1):\n        super().__init__()\n        self.embedding = nn.Linear(feat, d_model)\n        self.pos_encoder = PositionalEncoding(d_model)\n        enc_layer = nn.TransformerEncoderLayer(d_model, nhead, ff, batch_first=True)\n        self.transformer_encoder = nn.TransformerEncoder(enc_layer, num_enc)\n        dec_layer = nn.TransformerDecoderLayer(d_model, nhead, ff, batch_first=True)\n        self.transformer_decoder = nn.TransformerDecoder(dec_layer, num_dec)\n        self.output_layer = nn.Linear(d_model, feat)\n    def encode(self, src):\n        s = self.pos_encoder(self.embedding(src))\n        return self.transformer_encoder(s)\n    def decode(self, tgt, memory):\n        t = self.pos_encoder(self.embedding(tgt))\n        return self.transformer_decoder(t, memory)\n    def forward(self, src, tgt):\n        memory = self.encode(src)\n        h = self.decode(tgt, memory)\n        return self.output_layer(h)\n\ndef main():\n    sd = torch.load('weights.pt')\n    model = RecoveredModel()\n    missing, unexpected = model.load_state_dict(sd, strict=False)\n    assert not missing, missing\n    assert not unexpected, unexpected\n    model.eval()\n    data = torch.load('dataset.pt')\n    src, tgt = data['src_sequences'], data['tgt_sequences']\n    lossf = nn.MSELoss()\n    with torch.no_grad():\n        out0 = model(src, tgt)\n        mse0 = lossf(out0, tgt).item()\n        # decoder features for closed-form fit of output_layer\n        h = model.decode(tgt, model.encode(src))  # (B,S,128)\n    print('original MSE', mse0)\n    # closed form least squares: minimize ||H W^T + b - Y||^2\n    B,S,D = h.shape\n    F = tgt.shape[-1]\n    H = h.reshape(-1, D)\n    Y = tgt.reshape(-1, F)\n    ones = torch.ones(H.shape[0], 1)\n    Haug = torch.cat([H, ones], dim=1)  # (N, D+1)\n    # solve Haug @ theta = Y ; theta (D+1, F)\n    sol = torch.linalg.lstsq(Haug, Y).solution\n    W = sol[:D, :].t().contiguous()   # (F, D)\n    b = sol[D, :].contiguous()        # (F,)\n    with torch.no_grad():\n        model.output_layer.weight.copy_(W)\n        model.output_layer.bias.copy_(b)\n        out1 = model(src, tgt)\n        mse1 = lossf(out1, tgt).item()\n    print('new MSE', mse1)\n    assert mse1 < mse0, (mse1, mse0)\n    # verify only output_layer differs\n    new_sd = model.state_dict()\n    diff = [k for k in sd if not torch.equal(sd[k], new_sd[k])]\n    print('changed keys', diff)\n    assert all(k.startswith('output_layer') for k in diff), diff\n    scripted = torch.jit.script(model)\n    scripted.save('model.pt')\n    print('saved model.pt')\n\nif __name__ == '__main__':\n    main()\nEOF\npython3 build.py 2>&1 | grep -v NumPy"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GsD5Lczew94bgnWtUgyVe7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport torch, torch.nn as nn\nm=torch.jit.load('model.pt')\nsd=torch.load('weights.pt')\nm.load_state_dict(sd)   # must not error\ndata=torch.load('dataset.pt'); src,tgt=data['src_sequences'],data['tgt_sequences']\nlf=nn.MSELoss()\nwith torch.no_grad(): print('MSE w/ orig weights',lf(m(src,tgt),tgt).item())\n# reload scripted (tuned) fresh\nm2=torch.jit.load('model.pt')\nwith torch.no_grad(): print('MSE tuned',lf(m2(src,tgt),tgt).item())\nms=m2.state_dict()\ndiff=[k for k in sd if not torch.equal(sd[k],ms[k])]\nprint('diff',diff)\n\" 2>&1 | grep -v -E 'NumPy|_conversion'\nrm -f /app/build.py"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport torch, torch.nn as nn\nm=torch.jit.load('model.pt')\nsd=torch.load('weights.pt')\nm.load_state_dict(sd)   # must not error\ndata=torch.load('dataset.pt'); src,tgt=data['src_sequences'],data['tgt_sequences']\nlf=nn.MSELoss()\nwith torch.no_grad(): print('MSE w/ orig weights',lf(m(src,tgt),tgt).item())\n# reload scripted (tuned) fresh\nm2=torch.jit.load('model.pt')\nwith torch.no_grad(): print('MSE tuned',lf(m2(src,tgt),tgt).item())\nms=m2.state_dict()\ndiff=[k for k in sd if not torch.equal(sd[k],ms[k])]\nprint('diff',diff)\n\" 2>&1 | grep -v -E 'NumPy|_conversion'\nrm -f /app/build.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

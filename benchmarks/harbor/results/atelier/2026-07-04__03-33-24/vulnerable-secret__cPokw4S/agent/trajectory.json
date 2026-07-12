@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E2VntyJqkNakcgau4p7stS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; file /app/*"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app; file /app/*"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ct2CztLTAifePamrd7EAkQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; head -c 20 vulnerable | xxd; echo \"---strings---\"; strings -n 6 vulnerable | grep -iE \"flag|secret|key|pass|xor|enter|usage\" "
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app; head -c 20 vulnerable | xxd; echo \"---strings---\"; strings -n 6 vulnerable | grep -iE \"flag|secret|key|pass|xor|enter|usage\" "
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0151VFwucUjMv2Why3L3MRrF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; strings -n 4 vulnerable"
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app; strings -n 4 vulnerable"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012Va9mcSM6EYSykav5bnyqc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; strings -n 4 vulnerable | sed -n '1,120p'"
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app; strings -n 4 vulnerable | sed -n '1,120p'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01D1vmgypmLn1P8Wj5xCQy2t",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; strings -n 4 vulnerable > /tmp/str.txt; wc -l /tmp/str.txt"
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app; strings -n 4 vulnerable > /tmp/str.txt; wc -l /tmp/str.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -378,7 +378,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VK9ptxEMNjWk74ZHMbngdf",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/str.txt"
@@ -390,7 +390,7 @@
                 "/tmp/str.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -451,7 +451,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01W3DrusvZfXCRq3yMyMP898",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; objdump -d -M intel vulnerable > /tmp/dis.txt 2>&1; wc -l /tmp/dis.txt; echo \"===\"; objdump -s -j .rodata vulnerable"
           },
@@ -459,7 +459,7 @@
             "raw_arguments": {
               "command": "cd /app; objdump -d -M intel vulnerable > /tmp/dis.txt 2>&1; wc -l /tmp/dis.txt; echo \"===\"; objdump -s -j .rodata vulnerable"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -520,7 +520,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018mTMyAM2tZrKU1YUzKNX23",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/tmp/dis.txt:expand"
@@ -532,7 +532,7 @@
                 "/tmp/dis.txt:expand"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -593,7 +593,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ABQeWGX25AcsZkxkDg1r17",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app; objdump -s -j .data vulnerable"
           },
@@ -601,7 +601,7 @@
             "raw_arguments": {
               "command": "cd /app; objdump -s -j .data vulnerable"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -662,7 +662,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012e9URFbVEvgqALC3MmbBWn",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c '\nb=bytes.fromhex(\"040e0305392076242471301d72347130242e72351d2f76313671301d29713b1d70727076 3f42\".replace(\" \",\"\"))\nprint(\"\".join(chr(x^0x42) for x in b[:-1]))\n' | tee /app/results.txt"
           },
@@ -670,7 +670,7 @@
             "raw_arguments": {
               "command": "python3 -c '\nb=bytes.fromhex(\"040e0305392076242471301d72347130242e72351d2f76313671301d29713b1d70727076 3f42\".replace(\" \",\"\"))\nprint(\"\".join(chr(x^0x42) for x in b[:-1]))\n' | tee /app/results.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

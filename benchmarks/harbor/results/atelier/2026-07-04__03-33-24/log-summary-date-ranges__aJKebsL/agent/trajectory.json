@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LxKxkgrJqMhqpCokLsSEjq",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls /app/logs | head -50; echo \"---count---\"; ls /app/logs | wc -l"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls /app/logs | head -50; echo \"---count---\"; ls /app/logs | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01MdKRDd9oTJjn8CJRxUPTMD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/logs/$(ls /app/logs | head -1)"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "head -5 /app/logs/$(ls /app/logs | head -1)"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019zwBFLqwxrGJ6taVUYwwdG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/summarize.py",
             "new": "import os, re, csv\nfrom collections import defaultdict\nfrom datetime import date, timedelta\n\nREF = date(2025, 8, 12)\nLOGDIR = \"/app/logs\"\nSEVS = [\"ERROR\", \"WARNING\", \"INFO\"]\n\nperiods = {\n    \"today\": lambda d: d == REF,\n    \"last_7_days\": lambda d: REF - timedelta(days=6) <= d <= REF,\n    \"last_30_days\": lambda d: REF - timedelta(days=29) <= d <= REF,\n    \"month_to_date\": lambda d: d.year == REF.year and d.month == REF.month and d <= REF,\n    \"total\": lambda d: True,\n}\n\ncounts = {p: defaultdict(int) for p in periods}\nsev_re = re.compile(r\"\\[(ERROR|WARNING|INFO)\\]\")\n\nfor fn in os.listdir(LOGDIR):\n    m = re.match(r\"(\\d{4})-(\\d{2})-(\\d{2})_.+\\.log$\", fn)\n    if not m:\n        continue\n    d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))\n    with open(os.path.join(LOGDIR, fn)) as f:\n        for line in f:\n            sm = sev_re.search(line)\n            if not sm:\n                continue\n            sev = sm.group(1)\n            for p, test in periods.items():\n                if test(d):\n                    counts[p][sev] += 1\n\nwith open(\"/app/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"period\", \"severity\", \"count\"])\n    for p in [\"today\", \"last_7_days\", \"last_30_days\", \"month_to_date\", \"total\"]:\n        for sev in SEVS:\n            w.writerow([p, sev, counts[p][sev]])\n\nprint(open(\"/app/summary.csv\").read())\n"
@@ -129,7 +129,7 @@
               "path": "/app/summarize.py",
               "new": "import os, re, csv\nfrom collections import defaultdict\nfrom datetime import date, timedelta\n\nREF = date(2025, 8, 12)\nLOGDIR = \"/app/logs\"\nSEVS = [\"ERROR\", \"WARNING\", \"INFO\"]\n\nperiods = {\n    \"today\": lambda d: d == REF,\n    \"last_7_days\": lambda d: REF - timedelta(days=6) <= d <= REF,\n    \"last_30_days\": lambda d: REF - timedelta(days=29) <= d <= REF,\n    \"month_to_date\": lambda d: d.year == REF.year and d.month == REF.month and d <= REF,\n    \"total\": lambda d: True,\n}\n\ncounts = {p: defaultdict(int) for p in periods}\nsev_re = re.compile(r\"\\[(ERROR|WARNING|INFO)\\]\")\n\nfor fn in os.listdir(LOGDIR):\n    m = re.match(r\"(\\d{4})-(\\d{2})-(\\d{2})_.+\\.log$\", fn)\n    if not m:\n        continue\n    d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))\n    with open(os.path.join(LOGDIR, fn)) as f:\n        for line in f:\n            sm = sev_re.search(line)\n            if not sm:\n                continue\n            sev = sm.group(1)\n            for p, test in periods.items():\n                if test(d):\n                    counts[p][sev] += 1\n\nwith open(\"/app/summary.csv\", \"w\", newline=\"\") as f:\n    w = csv.writer(f)\n    w.writerow([\"period\", \"severity\", \"count\"])\n    for p in [\"today\", \"last_7_days\", \"last_30_days\", \"month_to_date\", \"total\"]:\n        for sev in SEVS:\n            w.writerow([p, sev, counts[p][sev]])\n\nprint(open(\"/app/summary.csv\").read())\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -190,7 +190,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AMtAwYGFsqhEZjocAf2CXb",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 summarize.py"
           },
@@ -198,7 +198,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 summarize.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -314,7 +314,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016kMd1rXgfoFvMJbhZHA3No",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/logs && echo \"total ERROR:\"; grep -h \"\\[ERROR\\]\" *.log | wc -l; echo \"today ERROR:\"; grep -h \"\\[ERROR\\]\" 2025-08-12_*.log | wc -l; echo \"mtd ERROR:\"; grep -h \"\\[ERROR\\]\" 2025-08-0*_*.log 2025-08-1[0-2]_*.log | wc -l"
           },
@@ -322,7 +322,7 @@
             "raw_arguments": {
               "command": "cd /app/logs && echo \"total ERROR:\"; grep -h \"\\[ERROR\\]\" *.log | wc -l; echo \"today ERROR:\"; grep -h \"\\[ERROR\\]\" 2025-08-12_*.log | wc -l; echo \"mtd ERROR:\"; grep -h \"\\[ERROR\\]\" 2025-08-0*_*.log 2025-08-1[0-2]_*.log | wc -l"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

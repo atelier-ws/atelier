@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VCwehhrZY2VhsXNfjooXBs",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app/"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "ls -la /app/"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Do7bDX7wfhziuGNqEEENK1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && xxd main.db-wal | head -60"
           },
@@ -110,7 +110,7 @@
             "raw_arguments": {
               "command": "cd /app && xxd main.db-wal | head -60"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -171,7 +171,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NojZsFD4WPMBsNr62qshew",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\ndata=open('main.db-wal','rb').read()\ndec=bytes(b^0x42 for b in data)\nopen('main.db-wal','wb').write(dec)\nprint(dec[:32].hex())\n\""
           },
@@ -179,7 +179,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\ndata=open('main.db-wal','rb').read()\ndec=bytes(b^0x42 for b in data)\nopen('main.db-wal','wb').write(dec)\nprint(dec[:32].hex())\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -240,7 +240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Mjt4Htf23jMs4D1pE9BDoz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport sqlite3\nc=sqlite3.connect('main.db')\nc.execute('PRAGMA journal_mode=WAL')\nfor row in c.execute(\\\"SELECT name FROM sqlite_master WHERE type='table'\\\"):\n    print('table',row[0])\n\""
           },
@@ -248,7 +248,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport sqlite3\nc=sqlite3.connect('main.db')\nc.execute('PRAGMA journal_mode=WAL')\nfor row in c.execute(\\\"SELECT name FROM sqlite_master WHERE type='table'\\\"):\n    print('table',row[0])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -309,7 +309,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EbQQaj3oa9V5qb6fkmX6E8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nimport sqlite3,json\nc=sqlite3.connect('main.db')\nrows=c.execute('SELECT id,name,value FROM items ORDER BY id').fetchall()\nprint(len(rows))\ndata=[{'id':r[0],'name':r[1],'value':r[2]} for r in rows]\njson.dump(data,open('recovered.json','w'))\nprint(data)\n\""
           },
@@ -317,7 +317,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nimport sqlite3,json\nc=sqlite3.connect('main.db')\nrows=c.execute('SELECT id,name,value FROM items ORDER BY id').fetchall()\nprint(len(rows))\ndata=[{'id':r[0],'name':r[1],'value':r[2]} for r in rows]\njson.dump(data,open('recovered.json','w'))\nprint(data)\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

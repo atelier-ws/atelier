@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018iKRCZ9sgu3FP6ZLjp6j6e",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root/dclm 2>/dev/null && pwd && git rev-parse --show-toplevel 2>/dev/null; ls -la"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "cd /root/dclm 2>/dev/null && pwd && git rev-parse --show-toplevel 2>/dev/null; ls -la"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_016xKvjdVSoKXpSqDAbRdi8N",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -maxdepth 4 -type d -name dclm 2>/dev/null"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "find / -maxdepth 4 -type d -name dclm 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -62,7 +62,7 @@
         "results": [
           {
             "source_call_id": "toolu_018iKRCZ9sgu3FP6ZLjp6j6e",
-            "content": "{\"type\": \"text\", \"text\": \"total 132\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:37 .\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 ..\\ndrwxr-xr-x 3 root root  4096 Jul  4 04:37 .atelier\\ndrwxr-xr-x 8 root root  4096 Sep 13  2025 .git\\n-rw-r--r-- 1 root root  4039 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root  1070 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root 34439 Sep 13  2025 README.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 assets\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 baselines\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 bib\\n-rw-r--r-- 1 root root  3714 Sep 13  2025 contributing.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 data\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 dedup\\ndrwxr-xr-x 4 root root  4096 Sep 13  2025 eval\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 exp_data\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 ray_processing\\n-rw-r--r-- 1 root root   400 Sep 13  2025 requirements.txt\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 rust_processing\\n-rw-r--r-- 1 root root  9680 Sep 13  2025 setup.py\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 tests\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 tools\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 training\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 132\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:37 .\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 ..\\ndrwxr-xr-x 3 root root  4096 Jul  4 04:37 .lemoncrow\\ndrwxr-xr-x 8 root root  4096 Sep 13  2025 .git\\n-rw-r--r-- 1 root root  4039 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root  1070 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root 34439 Sep 13  2025 README.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 assets\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 baselines\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 bib\\n-rw-r--r-- 1 root root  3714 Sep 13  2025 contributing.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 data\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 dedup\\ndrwxr-xr-x 4 root root  4096 Sep 13  2025 eval\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 exp_data\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 ray_processing\\n-rw-r--r-- 1 root root   400 Sep 13  2025 requirements.txt\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 rust_processing\\n-rw-r--r-- 1 root root  9680 Sep 13  2025 setup.py\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 tests\\ndrwxr-xr-x 3 root root  4096 Sep 13  2025 tools\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 training\"}"
           },
           {
             "source_call_id": "toolu_016xKvjdVSoKXpSqDAbRdi8N",
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GR6ntxT4TcrRfLuH9VFwVM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; echo \"---\"; ls -la /app/dclm | head"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "pwd; echo \"---\"; ls -la /app/dclm | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -135,7 +135,7 @@
         "results": [
           {
             "source_call_id": "toolu_01GR6ntxT4TcrRfLuH9VFwVM",
-            "content": "{\"type\": \"text\", \"text\": \"/app/dclm\\n---\\ntotal 136\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:37 .\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 ..\\ndrwxr-xr-x 3 root root  4096 Jul  4 04:37 .atelier\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:38 .git\\n-rw-r--r-- 1 root root  4039 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root  1070 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root 34439 Sep 13  2025 README.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 assets\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 baselines\"}"
+            "content": "{\"type\": \"text\", \"text\": \"/app/dclm\\n---\\ntotal 136\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:37 .\\ndrwxr-xr-x 1 root root  4096 Sep 13  2025 ..\\ndrwxr-xr-x 3 root root  4096 Jul  4 04:37 .lemoncrow\\ndrwxr-xr-x 1 root root  4096 Jul  4 04:38 .git\\n-rw-r--r-- 1 root root  4039 Sep 13  2025 .gitignore\\n-rw-r--r-- 1 root root  1070 Sep 13  2025 LICENSE\\n-rw-r--r-- 1 root root 34439 Sep 13  2025 README.md\\ndrwxr-xr-x 2 root root  4096 Sep 13  2025 assets\\ndrwxr-xr-x 5 root root  4096 Sep 13  2025 baselines\"}"
           }
         ]
       },
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GyxoFeeKAtzB9asGfku6SQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && grep -rEn 'AKIA[0-9A-Z]{16}|aws_access_key|aws_secret|secret_access|ghp_[A-Za-z0-9]{36}|github_pat_|gho_|ghs_|hf_[A-Za-z0-9]{34,}|api[_-]?key|token|secret|password|passwd|BEGIN [A-Z ]*PRIVATE KEY' --include='*.py' --include='*.md' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.sh' --include='*.txt' --include='*.cfg' --include='*.ini' --include='*.env' -i . 2>/dev/null | grep -viE 'tokenizer|tokeniz|tokens|# |def |import|placeholder' | head -80"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && grep -rEn 'AKIA[0-9A-Z]{16}|aws_access_key|aws_secret|secret_access|ghp_[A-Za-z0-9]{36}|github_pat_|gho_|ghs_|hf_[A-Za-z0-9]{34,}|api[_-]?key|token|secret|password|passwd|BEGIN [A-Z ]*PRIVATE KEY' --include='*.py' --include='*.md' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.sh' --include='*.txt' --include='*.cfg' --include='*.ini' --include='*.env' -i . 2>/dev/null | grep -viE 'tokenizer|tokeniz|tokens|# |def |import|placeholder' | head -80"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0121F1aDSkbxabU67EpcSf6a",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/dclm/ray_processing/process.py:L110-L130",
@@ -277,7 +277,7 @@
                 "/app/dclm/rust_processing/tokshuf-rs/README.md:L60-L75"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -338,7 +338,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CZtgsTRrA9QSojJ1AqDbuj",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && grep -rEn 'AKIA[0-9A-Z]{16}|D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF|ghp_[A-Za-z0-9]+|gho_[A-Za-z0-9]+|ghs_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|hf_[A-Za-z0-9]+' . 2>/dev/null | grep -v '.git/'"
           },
@@ -346,7 +346,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && grep -rEn 'AKIA[0-9A-Z]{16}|D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF|ghp_[A-Za-z0-9]+|gho_[A-Za-z0-9]+|ghs_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|hf_[A-Za-z0-9]+' . 2>/dev/null | grep -v '.git/'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -407,7 +407,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CNcKdBkkakzhDcGBrLuWZ7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && git ls-files | grep -vE '\\.(png|jpg|jpeg|gif|pdf|ico)$' | xargs grep -lEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|BEGIN.*PRIVATE KEY|D4w8z9wKN' 2>/dev/null"
           },
@@ -415,7 +415,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && git ls-files | grep -vE '\\.(png|jpg|jpeg|gif|pdf|ico)$' | xargs grep -lEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|BEGIN.*PRIVATE KEY|D4w8z9wKN' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -476,7 +476,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015WeH4JYqJwpKhPuLTscxbG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && for f in \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" \"rust_processing/tokshuf-rs/EleutherAI_gpt-neox-20b.tiktoken\"; do echo \"=== $f ===\"; grep -nEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|D4w8z9wKN' \"$f\" | head; done"
           },
@@ -484,7 +484,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && for f in \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" \"rust_processing/tokshuf-rs/EleutherAI_gpt-neox-20b.tiktoken\"; do echo \"=== $f ===\"; grep -nEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|D4w8z9wKN' \"$f\" | head; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -545,7 +545,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015cGZREGbSo1SN7nktfF5np",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && echo \"=== json real-secret check ===\"; grep -oEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|D4w8z9wKN[A-Za-z0-9]+' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort -u"
           },
@@ -553,7 +553,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && echo \"=== json real-secret check ===\"; grep -oEi 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20}|hf_[A-Za-z0-9]{20}|D4w8z9wKN[A-Za-z0-9]+' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort -u"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -614,7 +614,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018itEw5Dpy6uwnnVGxqPtnz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && grep -n 'hf_oCfFIJsVdYHmydnCHMEx' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" -o; echo \"--- context ---\"; grep -oE '.{80}hf_oCfFIJsVdYHmydnCHMEx.{40}' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\""
           },
@@ -622,7 +622,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && grep -n 'hf_oCfFIJsVdYHmydnCHMEx' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" -o; echo \"--- context ---\"; grep -oE '.{80}hf_oCfFIJsVdYHmydnCHMEx.{40}' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -683,7 +683,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017FQFBKrLtLd5WKQUrqaqRm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && grep -oE 'hf_oCfFIJsVdYHmydnCHMEx[A-Za-z0-9]*' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort -u; echo \"--- count occurrences of HF_TOKEN in that file ---\"; grep -oE \"HF_TOKEN=hf_[A-Za-z0-9]+\" \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort | uniq -c"
           },
@@ -691,7 +691,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && grep -oE 'hf_oCfFIJsVdYHmydnCHMEx[A-Za-z0-9]*' \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort -u; echo \"--- count occurrences of HF_TOKEN in that file ---\"; grep -oE \"HF_TOKEN=hf_[A-Za-z0-9]+\" \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\" | sort | uniq -c"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -752,7 +752,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E2CGJ2wuoXWen4VmL7TjqW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && git ls-files -z | xargs -0 grep -oEn 'HF_TOKEN=hf_[A-Za-z0-9]+|hf_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|D4w8z9wKN[A-Za-z0-9]+' 2>/dev/null | grep -v 'EleutherAI_gpt-neox-20b.tiktoken' | sort -u"
           },
@@ -760,7 +760,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && git ls-files -z | xargs -0 grep -oEn 'HF_TOKEN=hf_[A-Za-z0-9]+|hf_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|D4w8z9wKN[A-Za-z0-9]+' 2>/dev/null | grep -v 'EleutherAI_gpt-neox-20b.tiktoken' | sort -u"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -821,7 +821,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0165RxpxQmxV9eudGZu14ghz",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -871,7 +871,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -944,7 +944,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01ESHDoT79jc4vngHtP7dhNn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/dclm/ray_processing/process.py:L122-L123",
@@ -960,7 +960,7 @@
                 "/app/dclm/exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json:L18-L18"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1021,7 +1021,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DLYpE4hWXhqauD5zkgqF9n",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1081,7 +1081,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1154,7 +1154,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HJD9crAjdPdQmNTuZ1N7La",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/dclm/ray_processing/process.py:L118-L124",
@@ -1168,7 +1168,7 @@
                 "/app/dclm/ray_processing/ray_cluster.yaml:L27-L44"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1229,7 +1229,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01DXRmZ6wxMQebZmnLH5pYR6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1289,7 +1289,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1362,7 +1362,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Kr5SmuP9YeniqJNcM62pBr",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY os.environ process_local_chunk",
             "paths": "ray_processing"
@@ -1372,7 +1372,7 @@
               "query": "AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY os.environ process_local_chunk",
               "paths": "ray_processing"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1433,7 +1433,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0195pqVTd4hZe8tqMis5PwnG",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1453,7 +1453,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1526,7 +1526,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014UQnTJQ9Gy4FDPMFbZozBY",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "ray_processing/process.py:L122-L123"
@@ -1538,12 +1538,12 @@
                 "ray_processing/process.py:L122-L123"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_0143V3ocF5tfNMEU4TEce9Kg",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1563,7 +1563,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1640,7 +1640,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01NP8YAcBGfJUz3hjkuw9Pex",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/sanitize.py <<'PYEOF'\nimport io, sys\n\nrepls = {\n    \"ray_processing/process.py\": [\n        ('os.environ[\"AWS_ACCESS_KEY_ID\"] = \"AKIA1234567890123456\"',\n         'os.environ[\"AWS_ACCESS_KEY_ID\"] = \"<your-aws-access-key-id>\"'),\n        ('os.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\"',\n         'os.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"<your-aws-secret-access-key>\"'),\n    ],\n    \"ray_processing/ray_cluster.yaml\": [\n        (\"export AWS_ACCESS_KEY_ID=AKIA1234567890123456\",\n         \"export AWS_ACCESS_KEY_ID=<your-aws-access-key-id>\"),\n        (\"export AWS_SECRET_ACCESS_KEY=D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\",\n         \"export AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>\"),\n        (\"https://ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789@github.com\",\n         \"https://<your-github-token>@github.com\"),\n        (\"--token hf_abcdefghijklmnopqrstuvwxyz123456 -y\",\n         \"--token <your-huggingface-token> -y\"),\n    ],\n    \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\": [\n        (\"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\",\n         \"<your-huggingface-token>\"),\n    ],\n}\n\nimport os\nos.chdir(\"/app/dclm\")\nfor path, pairs in repls.items():\n    with io.open(path, \"r\", encoding=\"utf-8\") as f:\n        data = f.read()\n    for old, new in pairs:\n        n = data.count(old)\n        if n == 0:\n            print(f\"WARN: not found in {path}: {old[:40]!r}\")\n        data = data.replace(old, new)\n        print(f\"{path}: replaced {n} of {old[:40]!r}\")\n    with io.open(path, \"w\", encoding=\"utf-8\") as f:\n        f.write(data)\nprint(\"done\")\nPYEOF\npython3 /tmp/sanitize.py"
           },
@@ -1648,7 +1648,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/sanitize.py <<'PYEOF'\nimport io, sys\n\nrepls = {\n    \"ray_processing/process.py\": [\n        ('os.environ[\"AWS_ACCESS_KEY_ID\"] = \"AKIA1234567890123456\"',\n         'os.environ[\"AWS_ACCESS_KEY_ID\"] = \"<your-aws-access-key-id>\"'),\n        ('os.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\"',\n         'os.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"<your-aws-secret-access-key>\"'),\n    ],\n    \"ray_processing/ray_cluster.yaml\": [\n        (\"export AWS_ACCESS_KEY_ID=AKIA1234567890123456\",\n         \"export AWS_ACCESS_KEY_ID=<your-aws-access-key-id>\"),\n        (\"export AWS_SECRET_ACCESS_KEY=D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\",\n         \"export AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>\"),\n        (\"https://ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789@github.com\",\n         \"https://<your-github-token>@github.com\"),\n        (\"--token hf_abcdefghijklmnopqrstuvwxyz123456 -y\",\n         \"--token <your-huggingface-token> -y\"),\n    ],\n    \"exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json\": [\n        (\"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\",\n         \"<your-huggingface-token>\"),\n    ],\n}\n\nimport os\nos.chdir(\"/app/dclm\")\nfor path, pairs in repls.items():\n    with io.open(path, \"r\", encoding=\"utf-8\") as f:\n        data = f.read()\n    for old, new in pairs:\n        n = data.count(old)\n        if n == 0:\n            print(f\"WARN: not found in {path}: {old[:40]!r}\")\n        data = data.replace(old, new)\n        print(f\"{path}: replaced {n} of {old[:40]!r}\")\n    with io.open(path, \"w\", encoding=\"utf-8\") as f:\n        f.write(data)\nprint(\"done\")\nPYEOF\npython3 /tmp/sanitize.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1709,7 +1709,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014AQHVe9ucgBNdd9F3M6Tf1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /tmp/verify.py <<'PYEOF'\nimport os, re\nos.chdir(\"/app/dclm\")\nsecrets = [\n    \"AKIA1234567890123456\",\n    \"D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\",\n    \"ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789\",\n    \"hf_abcdefghijklmnopqrstuvwxyz123456\",\n    \"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\",\n]\n# also generic patterns\npats = [re.compile(p) for p in [\n    r\"AKIA[0-9A-Z]{16}\",\n    r\"ghp_[A-Za-z0-9]{36}\",\n    r\"gho_[A-Za-z0-9]{36}\",\n    r\"ghs_[A-Za-z0-9]{36}\",\n    r\"github_pat_[A-Za-z0-9_]{50,}\",\n    r\"hf_[A-Za-z0-9]{34,}\",\n]]\nhits = 0\nfor root, dirs, files in os.walk(\".\"):\n    if \".git\" in dirs: dirs.remove(\".git\")\n    for fn in files:\n        if fn == \"EleutherAI_gpt-neox-20b.tiktoken\":\n            continue  # tokenizer vocab, base64 substrings only\n        p = os.path.join(root, fn)\n        try:\n            with open(p, \"r\", encoding=\"utf-8\", errors=\"ignore\") as f:\n                data = f.read()\n        except Exception:\n            continue\n        for s in secrets:\n            if s in data:\n                print(f\"SECRET literal {s!r} in {p}\"); hits += 1\n        for pat in pats:\n            for m in pat.finditer(data):\n                print(f\"PATTERN {pat.pattern} -> {m.group()!r} in {p}\"); hits += 1\nprint(\"TOTAL HITS:\", hits)\nPYEOF\npython3 /tmp/verify.py"
           },
@@ -1717,7 +1717,7 @@
             "raw_arguments": {
               "command": "cat > /tmp/verify.py <<'PYEOF'\nimport os, re\nos.chdir(\"/app/dclm\")\nsecrets = [\n    \"AKIA1234567890123456\",\n    \"D4w8z9wKN1aVeT3BpQj6kIuN7wH8X0M9KfV5OqzF\",\n    \"ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789\",\n    \"hf_abcdefghijklmnopqrstuvwxyz123456\",\n    \"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\",\n]\n# also generic patterns\npats = [re.compile(p) for p in [\n    r\"AKIA[0-9A-Z]{16}\",\n    r\"ghp_[A-Za-z0-9]{36}\",\n    r\"gho_[A-Za-z0-9]{36}\",\n    r\"ghs_[A-Za-z0-9]{36}\",\n    r\"github_pat_[A-Za-z0-9_]{50,}\",\n    r\"hf_[A-Za-z0-9]{34,}\",\n]]\nhits = 0\nfor root, dirs, files in os.walk(\".\"):\n    if \".git\" in dirs: dirs.remove(\".git\")\n    for fn in files:\n        if fn == \"EleutherAI_gpt-neox-20b.tiktoken\":\n            continue  # tokenizer vocab, base64 substrings only\n        p = os.path.join(root, fn)\n        try:\n            with open(p, \"r\", encoding=\"utf-8\", errors=\"ignore\") as f:\n                data = f.read()\n        except Exception:\n            continue\n        for s in secrets:\n            if s in data:\n                print(f\"SECRET literal {s!r} in {p}\"); hits += 1\n        for pat in pats:\n            for m in pat.finditer(data):\n                print(f\"PATTERN {pat.pattern} -> {m.group()!r} in {p}\"); hits += 1\nprint(\"TOTAL HITS:\", hits)\nPYEOF\npython3 /tmp/verify.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1778,7 +1778,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_015WvaEaft3nvv8pFbsMHRko",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && echo \"=== git diff stat ===\"; git diff --stat; echo; echo \"=== placeholder occurrences ===\"; python3 - <<'PY'\nimport os\nos.chdir(\"/app/dclm\")\nfor ph in [\"<your-aws-access-key-id>\",\"<your-aws-secret-access-key>\",\"<your-github-token>\",\"<your-huggingface-token>\"]:\n    import subprocess\n    out=subprocess.run([\"grep\",\"-rIl\",\"--exclude-dir=.git\",ph,\".\"],capture_output=True,text=True).stdout.strip().splitlines()\n    print(ph, \"->\", out)\nPY"
           },
@@ -1786,7 +1786,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && echo \"=== git diff stat ===\"; git diff --stat; echo; echo \"=== placeholder occurrences ===\"; python3 - <<'PY'\nimport os\nos.chdir(\"/app/dclm\")\nfor ph in [\"<your-aws-access-key-id>\",\"<your-aws-secret-access-key>\",\"<your-github-token>\",\"<your-huggingface-token>\"]:\n    import subprocess\n    out=subprocess.run([\"grep\",\"-rIl\",\"--exclude-dir=.git\",ph,\".\"],capture_output=True,text=True).stdout.strip().splitlines()\n    print(ph, \"->\", out)\nPY"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1847,7 +1847,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XHqVXRumyhB7Yv4nz9jT9w",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "rm -f /tmp/sanitize.py /tmp/verify.py; cd /app/dclm && git diff"
           },
@@ -1855,7 +1855,7 @@
             "raw_arguments": {
               "command": "rm -f /tmp/sanitize.py /tmp/verify.py; cd /app/dclm && git diff"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1971,7 +1971,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01REXHYsRPxYsuJkvLAY5ZDM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && python3 -m py_compile ray_processing/process.py && echo \"process.py compiles OK\"; python3 -c \"import json,yaml\" 2>/dev/null; python3 -c \"import json; json.load(open('exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json')); print('json valid')\"; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\" 2>&1 | tail -1; echo \"--- tests touching ray_processing ---\"; ls tests; find tests -name '*.py' | xargs grep -l 'ray_processing\\|process' 2>/dev/null"
           },
@@ -1979,7 +1979,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && python3 -m py_compile ray_processing/process.py && echo \"process.py compiles OK\"; python3 -c \"import json,yaml\" 2>/dev/null; python3 -c \"import json; json.load(open('exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json')); print('json valid')\"; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\" 2>&1 | tail -1; echo \"--- tests touching ray_processing ---\"; ls tests; find tests -name '*.py' | xargs grep -l 'ray_processing\\|process' 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2040,7 +2040,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PtqjAYyVKsmAayAzoPky5h",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && echo \"== py_compile ==\"; python3 -m py_compile ray_processing/process.py && echo OK_process; echo \"== json ==\"; python3 -c \"import json; json.load(open('exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json')); print('json valid')\"; echo \"== yaml ==\"; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\" 2>&1 | tail -1"
           },
@@ -2048,7 +2048,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && echo \"== py_compile ==\"; python3 -m py_compile ray_processing/process.py && echo OK_process; echo \"== json ==\"; python3 -c \"import json; json.load(open('exp_data/datasets/tokenized/rw_v2_fasttext_openhermes_vs_rw_v2_bigram_0.1_arcade100k.json')); print('json valid')\"; echo \"== yaml ==\"; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\" 2>&1 | tail -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2109,7 +2109,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VrU1yZdxxqhBBXqBW6UKr6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && pip install --break-system-packages -q pyyaml 2>&1 | tail -1; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\""
           },
@@ -2117,7 +2117,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && pip install --break-system-packages -q pyyaml 2>&1 | tail -1; python3 -c \"import yaml; yaml.safe_load(open('ray_processing/ray_cluster.yaml')); print('yaml valid')\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2178,7 +2178,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016NRgcTT4mAybZumUgFoiGw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/dclm && grep -rn \"ray_processing\" tests/ 2>/dev/null | head; echo \"--- import test ---\"; python3 -c \"import ray_processing.process\" 2>&1 | tail -3"
           },
@@ -2186,7 +2186,7 @@
             "raw_arguments": {
               "command": "cd /app/dclm && grep -rn \"ray_processing\" tests/ 2>/dev/null | head; echo \"--- import test ---\"; python3 -c \"import ray_processing.process\" 2>&1 | tail -3"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

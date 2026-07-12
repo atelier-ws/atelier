@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Q6LDPQmcUbR14tDn1disfD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /data/source_a /data/source_b /data/source_c; echo ---; python3 -c \"import pandas, pyarrow; print('ok')\" 2>&1 | head"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /data/source_a /data/source_b /data/source_c; echo ---; python3 -c \"import pandas, pyarrow; print('ok')\" 2>&1 | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01Kz5aCxqgtsDWHySb1aJAcV",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/data/source_a/users.json",
@@ -60,7 +60,7 @@
                 "/data/source_b/users.csv"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019SsWfTwzwj4Qs7U9CTX84p",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_dict('records'))\""
           },
@@ -133,7 +133,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df.dtypes); print(df.to_dict('records'))\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -194,7 +194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CmUHL7ussa4B8SWuNm5xho",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df['email'].tolist()); print(df['joined'].tolist())\""
           },
@@ -202,7 +202,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_parquet('/data/source_c/users.parquet'); print(df['email'].tolist()); print(df['joined'].tolist())\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -263,7 +263,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Qt9NRGZFnWxFL1KuSZVjvX",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/merge_users.py",
             "new": "import json\nimport csv\nimport pandas as pd\n\nFIELD_MAP = {\n    \"user_id\": \"user_id\", \"id\": \"user_id\", \"userId\": \"user_id\",\n    \"email\": \"email\", \"email_address\": \"email\",\n    \"full_name\": \"name\", \"name\": \"name\", \"userName\": \"name\",\n    \"registration_date\": \"created_date\", \"created_at\": \"created_date\", \"joined\": \"created_date\",\n    \"status\": \"status\",\n}\n\n\ndef normalize(record):\n    out = {}\n    for k, v in record.items():\n        if k in FIELD_MAP:\n            out[FIELD_MAP[k]] = v\n    return out\n\n\ndef load_source_a():\n    with open(\"/data/source_a/users.json\") as f:\n        data = json.load(f)\n    return [normalize(r) for r in data]\n\n\ndef load_source_b():\n    rows = []\n    with open(\"/data/source_b/users.csv\", newline=\"\") as f:\n        for r in csv.DictReader(f):\n            rows.append(normalize(r))\n    return rows\n\n\ndef load_source_c():\n    df = pd.read_parquet(\"/data/source_c/users.parquet\")\n    return [normalize(r) for r in df.to_dict(\"records\")]\n\n\ndef to_date(v):\n    if v is None:\n        return None\n    return str(pd.to_datetime(v).date())\n\n\ndef coerce(record):\n    out = {}\n    if record.get(\"user_id\") is not None:\n        out[\"user_id\"] = int(record[\"user_id\"])\n    if record.get(\"name\") is not None:\n        out[\"name\"] = str(record[\"name\"])\n    if record.get(\"email\") is not None:\n        out[\"email\"] = str(record[\"email\"])\n    if record.get(\"created_date\") is not None:\n        out[\"created_date\"] = to_date(record[\"created_date\"])\n    if record.get(\"status\") is not None:\n        out[\"status\"] = str(record[\"status\"])\n    return out\n\n\nsources = {\n    \"source_a\": [coerce(r) for r in load_source_a()],\n    \"source_b\": [coerce(r) for r in load_source_b()],\n    \"source_c\": [coerce(r) for r in load_source_c()],\n}\nPRIORITY = [\"source_a\", \"source_b\", \"source_c\"]\n\n# index by user_id per source\nby_source = {s: {r[\"user_id\"]: r for r in recs} for s, recs in sources.items()}\n\nall_ids = sorted({uid for s in PRIORITY for uid in by_source[s]})\n\nFIELDS = [\"name\", \"email\", \"created_date\", \"status\"]\n\nmerged = []\nconflicts = []\nfor uid in all_ids:\n    present = [s for s in PRIORITY if uid in by_source[s]]\n    row = {\"user_id\": uid}\n    for field in FIELDS:\n        vals = {}\n        for s in present:\n            v = by_source[s][uid].get(field)\n            if v is not None:\n                vals[s] = v\n        if not vals:\n            continue\n        selected = next(vals[s] for s in PRIORITY if s in vals)\n        row[field] = selected\n        distinct = set(vals.values())\n        if len(distinct) > 1:\n            conflicts.append({\n                \"user_id\": uid,\n                \"field\": field,\n                \"values\": vals,\n                \"selected\": selected,\n            })\n    merged.append(row)\n\nout_df = pd.DataFrame(merged, columns=[\"user_id\", \"name\", \"email\", \"created_date\", \"status\"])\nout_df[\"user_id\"] = out_df[\"user_id\"].astype(\"int64\")\nfor c in [\"name\", \"email\", \"created_date\", \"status\"]:\n    out_df[c] = out_df[c].astype(\"object\")\nout_df.to_parquet(\"/app/merged_users.parquet\", index=False)\n\nreport = {\"total_conflicts\": len(conflicts), \"conflicts\": conflicts}\nwith open(\"/app/conflicts.json\", \"w\") as f:\n    json.dump(report, f, indent=2)\n\nprint(out_df.to_string())\nprint(json.dumps(report, indent=2))\n"
@@ -273,7 +273,7 @@
               "path": "/app/merge_users.py",
               "new": "import json\nimport csv\nimport pandas as pd\n\nFIELD_MAP = {\n    \"user_id\": \"user_id\", \"id\": \"user_id\", \"userId\": \"user_id\",\n    \"email\": \"email\", \"email_address\": \"email\",\n    \"full_name\": \"name\", \"name\": \"name\", \"userName\": \"name\",\n    \"registration_date\": \"created_date\", \"created_at\": \"created_date\", \"joined\": \"created_date\",\n    \"status\": \"status\",\n}\n\n\ndef normalize(record):\n    out = {}\n    for k, v in record.items():\n        if k in FIELD_MAP:\n            out[FIELD_MAP[k]] = v\n    return out\n\n\ndef load_source_a():\n    with open(\"/data/source_a/users.json\") as f:\n        data = json.load(f)\n    return [normalize(r) for r in data]\n\n\ndef load_source_b():\n    rows = []\n    with open(\"/data/source_b/users.csv\", newline=\"\") as f:\n        for r in csv.DictReader(f):\n            rows.append(normalize(r))\n    return rows\n\n\ndef load_source_c():\n    df = pd.read_parquet(\"/data/source_c/users.parquet\")\n    return [normalize(r) for r in df.to_dict(\"records\")]\n\n\ndef to_date(v):\n    if v is None:\n        return None\n    return str(pd.to_datetime(v).date())\n\n\ndef coerce(record):\n    out = {}\n    if record.get(\"user_id\") is not None:\n        out[\"user_id\"] = int(record[\"user_id\"])\n    if record.get(\"name\") is not None:\n        out[\"name\"] = str(record[\"name\"])\n    if record.get(\"email\") is not None:\n        out[\"email\"] = str(record[\"email\"])\n    if record.get(\"created_date\") is not None:\n        out[\"created_date\"] = to_date(record[\"created_date\"])\n    if record.get(\"status\") is not None:\n        out[\"status\"] = str(record[\"status\"])\n    return out\n\n\nsources = {\n    \"source_a\": [coerce(r) for r in load_source_a()],\n    \"source_b\": [coerce(r) for r in load_source_b()],\n    \"source_c\": [coerce(r) for r in load_source_c()],\n}\nPRIORITY = [\"source_a\", \"source_b\", \"source_c\"]\n\n# index by user_id per source\nby_source = {s: {r[\"user_id\"]: r for r in recs} for s, recs in sources.items()}\n\nall_ids = sorted({uid for s in PRIORITY for uid in by_source[s]})\n\nFIELDS = [\"name\", \"email\", \"created_date\", \"status\"]\n\nmerged = []\nconflicts = []\nfor uid in all_ids:\n    present = [s for s in PRIORITY if uid in by_source[s]]\n    row = {\"user_id\": uid}\n    for field in FIELDS:\n        vals = {}\n        for s in present:\n            v = by_source[s][uid].get(field)\n            if v is not None:\n                vals[s] = v\n        if not vals:\n            continue\n        selected = next(vals[s] for s in PRIORITY if s in vals)\n        row[field] = selected\n        distinct = set(vals.values())\n        if len(distinct) > 1:\n            conflicts.append({\n                \"user_id\": uid,\n                \"field\": field,\n                \"values\": vals,\n                \"selected\": selected,\n            })\n    merged.append(row)\n\nout_df = pd.DataFrame(merged, columns=[\"user_id\", \"name\", \"email\", \"created_date\", \"status\"])\nout_df[\"user_id\"] = out_df[\"user_id\"].astype(\"int64\")\nfor c in [\"name\", \"email\", \"created_date\", \"status\"]:\n    out_df[c] = out_df[c].astype(\"object\")\nout_df.to_parquet(\"/app/merged_users.parquet\", index=False)\n\nreport = {\"total_conflicts\": len(conflicts), \"conflicts\": conflicts}\nwith open(\"/app/conflicts.json\", \"w\") as f:\n    json.dump(report, f, indent=2)\n\nprint(out_df.to_string())\nprint(json.dumps(report, indent=2))\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -334,7 +334,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01112Yn3sAeqyifesYMEwmL5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 merge_users.py"
           },
@@ -342,7 +342,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 merge_users.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -403,7 +403,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJD7miLXykVxQPZEQFQko5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"import pandas as pd; d=pd.read_parquet('merged_users.parquet'); print(d.dtypes); print(len(d),'rows'); print(d['user_id'].tolist())\""
           },
@@ -411,7 +411,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"import pandas as pd; d=pd.read_parquet('merged_users.parquet'); print(d.dtypes); print(len(d),'rows'); print(d['user_id'].tolist())\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -527,7 +527,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YFnY29c5vL8V3PiyYP75LQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; find / -name 'test*merge*' -o -name '*merge*test*' 2>/dev/null | grep -v proc | head"
           },
@@ -535,7 +535,7 @@
             "raw_arguments": {
               "command": "ls -la /app; find / -name 'test*merge*' -o -name '*merge*test*' 2>/dev/null | grep -v proc | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -543,7 +543,7 @@
         "results": [
           {
             "source_call_id": "toolu_01YFnY29c5vL8V3PiyYP75LQ",
-            "content": "{\"type\": \"text\", \"text\": \"atelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/.claude/worktrees/agent-a82f164b3e29472c3/tests/infra/code_intel/git_history/test_search_merge.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/.claude/worktrees/agent-a8bfbf5de5b35c6b0/tests/infra/code_intel/git_history/test_search_merge.py\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.claude/worktrees/agent-ab8fc2a735551d473/tests/infra/code_intel/git_history/test_search_merge.py\\natelier/.claude/worktrees/retrieval-fixes/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.claude/worktrees/retrieval-fixes/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\natelier/.claude/worktrees/retrieval-fixes/tests/infra/code_intel/git_history/test_search_merge.py\\natelier/.claude/worktrees/retrieval-speed/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.claude/worktrees/retrieval-speed/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\natelier/.claude/worktrees/retrieval-speed/tests/infra/code_intel/git_history/test_search_merge.py\\natelier/.venv-build/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/.venv-embed/lib/python3.13/site-packages/accelerate/test_utils/scripts/test_merge_weights.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/mypy/test/testmerge.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\natelier/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\natelier/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\natelier/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-314-pytest-9.0.2.pyc\\natelier/tests/infra/code_intel/git_history/test_search_merge.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nopt/atelier-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_asof.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_cross.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_index_as_string.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_ordered.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\"}"
+            "content": "{\"type\": \"text\", \"text\": \"lemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/.claude/worktrees/agent-a82f164b3e29472c3/tests/infra/code_intel/git_history/test_search_merge.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/.claude/worktrees/agent-a8bfbf5de5b35c6b0/tests/infra/code_intel/git_history/test_search_merge.py\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.claude/worktrees/agent-ab8fc2a735551d473/tests/infra/code_intel/git_history/test_search_merge.py\\nlemoncrow/.claude/worktrees/retrieval-fixes/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.claude/worktrees/retrieval-fixes/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\nlemoncrow/.claude/worktrees/retrieval-fixes/tests/infra/code_intel/git_history/test_search_merge.py\\nlemoncrow/.claude/worktrees/retrieval-speed/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.claude/worktrees/retrieval-speed/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\nlemoncrow/.claude/worktrees/retrieval-speed/tests/infra/code_intel/git_history/test_search_merge.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/.venv-build/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/accelerate/test_utils/scripts/test_merge_weights.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/.venv-embed/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/.venv/lib/python3.13/site-packages/mypy/test/testmerge.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/.venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/mypy/test/testmerge.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nlemoncrow/benchmarks/.venv/lib/python3.12/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nlemoncrow/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-313-pytest-9.0.3.pyc\\nlemoncrow/tests/infra/code_intel/git_history/__pycache__/test_search_merge.cpython-314-pytest-9.0.2.pyc\\nlemoncrow/tests/infra/code_intel/git_history/test_search_merge.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_antijoin.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nopt/lemoncrow-venv/lib/python3.13/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_asof.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_cross.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_index_as_string.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/__pycache__/test_merge_ordered.cpython-311.pyc\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_asof.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_cross.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_index_as_string.py\\nusr/local/lib/python3.11/site-packages/pandas/tests/reshape/merge/test_merge_ordered.py\"}"
           }
         ]
       },
@@ -596,7 +596,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01E1dCiebwxnspBQnkf6aV2q",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "path": "/app/test_merge_users.py",
             "new": "import json\nimport re\nimport pandas as pd\n\n\ndef test_outputs():\n    df = pd.read_parquet(\"/app/merged_users.parquet\")\n    report = json.load(open(\"/app/conflicts.json\"))\n\n    # all unique users present\n    assert sorted(df[\"user_id\"].tolist()) == [101, 102, 103, 104]\n    assert df[\"user_id\"].is_unique\n\n    # dtypes / columns\n    assert str(df[\"user_id\"].dtype) == \"int64\"\n    for c in [\"user_id\", \"name\", \"email\", \"created_date\", \"status\"]:\n        assert c in df.columns\n\n    # date format YYYY-MM-DD\n    for d in df[\"created_date\"].dropna():\n        assert re.fullmatch(r\"\\d{4}-\\d{2}-\\d{2}\", str(d)), d\n\n    # priority resolution for shared user 101 (source_a wins)\n    r = df[df[\"user_id\"] == 101].iloc[0]\n    assert r[\"name\"] == \"John Doe\"\n    assert r[\"email\"] == \"john@a.com\"\n    assert r[\"created_date\"] == \"2024-01-15\"\n    assert r[\"status\"] == \"active\"\n\n    # field mapping applied (userName/full_name/name -> name etc.)\n    assert df[df[\"user_id\"] == 104].iloc[0][\"name\"] == \"Alice Brown\"\n    assert df[df[\"user_id\"] == 103].iloc[0][\"email\"] == \"bob@b.com\"\n\n    # conflict report integrity\n    assert report[\"total_conflicts\"] == len(report[\"conflicts\"])\n    for c in report[\"conflicts\"]:\n        assert set(c) >= {\"user_id\", \"field\", \"values\", \"selected\"}\n        # selected equals highest-priority available value\n        for s in [\"source_a\", \"source_b\", \"source_c\"]:\n            if s in c[\"values\"]:\n                assert c[\"selected\"] == c[\"values\"][s]\n                break\n        assert len(set(c[\"values\"].values())) > 1  # real conflict\n    # 101 differs in name/email/date across sources\n    fields = {c[\"field\"] for c in report[\"conflicts\"] if c[\"user_id\"] == 101}\n    assert {\"name\", \"email\", \"created_date\"} <= fields\n\n    print(\"all assertions passed\")\n\n\nif __name__ == \"__main__\":\n    test_outputs()\n"
@@ -606,7 +606,7 @@
               "path": "/app/test_merge_users.py",
               "new": "import json\nimport re\nimport pandas as pd\n\n\ndef test_outputs():\n    df = pd.read_parquet(\"/app/merged_users.parquet\")\n    report = json.load(open(\"/app/conflicts.json\"))\n\n    # all unique users present\n    assert sorted(df[\"user_id\"].tolist()) == [101, 102, 103, 104]\n    assert df[\"user_id\"].is_unique\n\n    # dtypes / columns\n    assert str(df[\"user_id\"].dtype) == \"int64\"\n    for c in [\"user_id\", \"name\", \"email\", \"created_date\", \"status\"]:\n        assert c in df.columns\n\n    # date format YYYY-MM-DD\n    for d in df[\"created_date\"].dropna():\n        assert re.fullmatch(r\"\\d{4}-\\d{2}-\\d{2}\", str(d)), d\n\n    # priority resolution for shared user 101 (source_a wins)\n    r = df[df[\"user_id\"] == 101].iloc[0]\n    assert r[\"name\"] == \"John Doe\"\n    assert r[\"email\"] == \"john@a.com\"\n    assert r[\"created_date\"] == \"2024-01-15\"\n    assert r[\"status\"] == \"active\"\n\n    # field mapping applied (userName/full_name/name -> name etc.)\n    assert df[df[\"user_id\"] == 104].iloc[0][\"name\"] == \"Alice Brown\"\n    assert df[df[\"user_id\"] == 103].iloc[0][\"email\"] == \"bob@b.com\"\n\n    # conflict report integrity\n    assert report[\"total_conflicts\"] == len(report[\"conflicts\"])\n    for c in report[\"conflicts\"]:\n        assert set(c) >= {\"user_id\", \"field\", \"values\", \"selected\"}\n        # selected equals highest-priority available value\n        for s in [\"source_a\", \"source_b\", \"source_c\"]:\n            if s in c[\"values\"]:\n                assert c[\"selected\"] == c[\"values\"][s]\n                break\n        assert len(set(c[\"values\"].values())) > 1  # real conflict\n    # 101 differs in name/email/date across sources\n    fields = {c[\"field\"] for c in report[\"conflicts\"] if c[\"user_id\"] == 101}\n    assert {\"name\", \"email\", \"created_date\"} <= fields\n\n    print(\"all assertions passed\")\n\n\nif __name__ == \"__main__\":\n    test_outputs()\n"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -667,7 +667,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MZQidd2C4V2h5ZxZ2S8so9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -m pytest test_merge_users.py -q 2>&1 | tail -20"
           },
@@ -675,7 +675,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -m pytest test_merge_users.py -q 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -736,7 +736,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LAscgDQ58b13K68f9Bo7Eu",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 test_merge_users.py"
           },
@@ -744,7 +744,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 test_merge_users.py"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

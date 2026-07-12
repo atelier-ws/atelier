@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01S7FAFt64DKCX5RHiKJ3Xfo",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which rustc g++; rustc --version; g++ --version | head -1; ls /app 2>/dev/null; mkdir -p /app/polyglot"
           },
@@ -41,7 +41,7 @@
             "raw_arguments": {
               "command": "which rustc g++; rustc --version; g++ --version | head -1; ls /app 2>/dev/null; mkdir -p /app/polyglot"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -102,7 +102,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RcNpgvUQ4MtMaLN82cekHR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -122,7 +122,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -183,7 +183,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017NtUpd5H9GxUdpQXBSUDA7",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rustc main.rs 2>&1 && echo \"--rust--\" && for n in 0 1 2 3 4 5 6 10; do printf \"%s:\" $n; ./main $n; done && echo \"==cpp==\" && g++ -x c++ main.rs -o cmain 2>&1 && for n in 0 1 2 3 4 5 6 10; do printf \"%s:\" $n; ./cmain $n; done"
           },
@@ -191,7 +191,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rustc main.rs 2>&1 && echo \"--rust--\" && for n in 0 1 2 3 4 5 6 10; do printf \"%s:\" $n; ./main $n; done && echo \"==cpp==\" && g++ -x c++ main.rs -o cmain 2>&1 && for n in 0 1 2 3 4 5 6 10; do printf \"%s:\" $n; ./cmain $n; done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -252,7 +252,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WN21oYsy4k5ZZ4z77wsPwm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rm -f main cmain && ls"
           },
@@ -260,7 +260,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rm -f main cmain && ls"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -376,7 +376,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BETASAeUL15DG2VEzQGbCV",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app/polyglot && rustc main.rs 2>&1 && g++ -x c++ main.rs -o cmain 2>&1 && pass=1; for n in 0 1 2 3 4 5 6 7 8 9 10 20 30; do r=$(./main $n); c=$(./cmain $n); if [ \"$r\" != \"$c\" ]; then echo \"MISMATCH n=$n rust=$r cpp=$c\"; pass=0; fi; done; echo \"rust: $(for n in 0 1 2 3 4 5 6 7 8 9 10; do ./main $n | tr '\\n' ' '; done)\"; echo \"cpp : $(for n in 0 1 2 3 4 5 6 7 8 9 10; do ./cmain $n | tr '\\n' ' '; done)\"; [ $pass -eq 1 ] && echo \"ALL MATCH\"; rm -f main cmain"
           },
@@ -384,7 +384,7 @@
             "raw_arguments": {
               "command": "cd /app/polyglot && rustc main.rs 2>&1 && g++ -x c++ main.rs -o cmain 2>&1 && pass=1; for n in 0 1 2 3 4 5 6 7 8 9 10 20 30; do r=$(./main $n); c=$(./cmain $n); if [ \"$r\" != \"$c\" ]; then echo \"MISMATCH n=$n rust=$r cpp=$c\"; pass=0; fi; done; echo \"rust: $(for n in 0 1 2 3 4 5 6 7 8 9 10; do ./main $n | tr '\\n' ' '; done)\"; echo \"cpp : $(for n in 0 1 2 3 4 5 6 7 8 9 10; do ./cmain $n | tr '\\n' ' '; done)\"; [ $pass -eq 1 ] && echo \"ALL MATCH\"; rm -f main cmain"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

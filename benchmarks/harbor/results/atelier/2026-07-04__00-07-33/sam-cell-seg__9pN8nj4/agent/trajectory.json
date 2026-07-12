@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WyR2hgDT5fA5od42Gg4XQp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app && echo \"---META---\" && head -c 2000 /app/demo_metadata.csv && echo \"\" && echo \"---COLS---\" && python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv'); print(df.columns.tolist()); print(df.shape); print(df.head(2).to_dict())\""
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la /app && echo \"---META---\" && head -c 2000 /app/demo_metadata.csv && echo \"\" && echo \"---COLS---\" && python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv'); print(df.columns.tolist()); print(df.shape); print(df.head(2).to_dict())\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01UQDsghLLFaFGFHjYB5XJEL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import mobile_sam; print('mobile_sam ok', mobile_sam.__file__)\" 2>&1 | head; echo \"---\"; python3 -c \"import torch, cv2, numpy; print('torch', torch.__version__); print('cv2', cv2.__version__)\" 2>&1 | head; echo \"---weights---\"; find / -iname \"*.pt\" 2>/dev/null | head"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import mobile_sam; print('mobile_sam ok', mobile_sam.__file__)\" 2>&1 | head; echo \"---\"; python3 -c \"import torch, cv2, numpy; print('torch', torch.__version__); print('cv2', cv2.__version__)\" 2>&1 | head; echo \"---weights---\"; find / -iname \"*.pt\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -62,7 +62,7 @@
         "results": [
           {
             "source_call_id": "toolu_01WyR2hgDT5fA5od42Gg4XQp",
-            "content": "{\"type\": \"text\", \"text\": \"exit_code=1\\ntotal 204\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:37 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .atelier\\n-rw-r--r-- 1 root root   7072 Oct 24  2025 demo_metadata.csv\\n-rw-r--r-- 1 root root 187898 Oct 24  2025 demo_rgb.png\\n---META---\\n,raw_classification,main_classification,super_classification,type,xmin,ymin,xmax,ymax,coords_x,coords_y\\n0,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,rectangle,43,67,139,107,\\\"43,139,139,43,43\\\",\\\"67,67,107,107,67\\\"\\n1,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,22,208,88,246,\\\"68,88,87,86,82,67,56,35,29,24,22,22,23,25,43,53,59,64,68\\\",\\\"212,233,243,245,246,245,243,241,238,236,227,226,222,219,212,208,208,209,212\\\"\\n2,unlabeled,AMBIGUOUS,AMBIGUOUS,polyline,315,163,364,216,\\\"362,353,348,330,319,315,315,319,322,327,333,338,349,362,363,364,364,362\\\",\\\"204,216,213,199,189,182,175,169,166,163,163,164,173,185,189,195,197,204\\\"\\n3,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,35,310,85,355,\\\"35,38,51,58,71,77,83,85,85,83,62,40,38,35\\\",\\\"342,332,318,310,310,313,319,323,324,328,348,355,350,342\\\"\\n4,unlabeled,AMBIGUOUS,AMBIGUOUS,polyline,318,13,374,47,\\\"318,318,319,323,333,339,349,368,374,371,367,330,322,320,318\\\",\\\"34,28,23,19,13,13,15,29,39,43,44,47,47,43,34\\\"\\n5,tumor,tumor_nonMitotic,tumor_any,rectangle,314,97,362,140,\\\"314,362,362,314,314\\\",\\\"97,97,140,140,97\\\"\\n6,unlabeled,AMBIGUOUS,AMBIGUOUS,rectangle,246,0,294,38,\\\"246,294,294,246,246\\\",\\\"0,0,38,38,0\\\"\\n7,lymphocyte,lymphocyte,sTIL,polyline,148,106,202,134,\\\"189,165,\\n... (292 chars trimmed) ...\\n149,305,204,323,\\\"149,204,204,149,149\\\",\\\"305,305,323,323,305\\\"\\n10,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,37,163,87,190,\\\"37,38,59,66,68,80,87,87,82,54,44,37,37\\\",\\\"180,179,163,163,164,170,183,184,187,190,188,183,180\\\"\\n11,lymphocyte,lymphocyte,sTIL,polyline,146,25,194,53,\\\"146,149,161,174,187,192,194,193,189,156,146\\\",\\\"42,25,25,27,32,34,39,44,48,53,42\\\"\\n12,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,rectangle,207,125,250,158,\\\"207,250,250,207,207\\\",\\\"125,125,158,158,125\\\"\\n13,lympho\\n---COLS---\\n\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\nModuleNotFoundError: No module named 'pandas'\"}"
+            "content": "{\"type\": \"text\", \"text\": \"exit_code=1\\ntotal 204\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:37 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .lemoncrow\\n-rw-r--r-- 1 root root   7072 Oct 24  2025 demo_metadata.csv\\n-rw-r--r-- 1 root root 187898 Oct 24  2025 demo_rgb.png\\n---META---\\n,raw_classification,main_classification,super_classification,type,xmin,ymin,xmax,ymax,coords_x,coords_y\\n0,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,rectangle,43,67,139,107,\\\"43,139,139,43,43\\\",\\\"67,67,107,107,67\\\"\\n1,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,22,208,88,246,\\\"68,88,87,86,82,67,56,35,29,24,22,22,23,25,43,53,59,64,68\\\",\\\"212,233,243,245,246,245,243,241,238,236,227,226,222,219,212,208,208,209,212\\\"\\n2,unlabeled,AMBIGUOUS,AMBIGUOUS,polyline,315,163,364,216,\\\"362,353,348,330,319,315,315,319,322,327,333,338,349,362,363,364,364,362\\\",\\\"204,216,213,199,189,182,175,169,166,163,163,164,173,185,189,195,197,204\\\"\\n3,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,35,310,85,355,\\\"35,38,51,58,71,77,83,85,85,83,62,40,38,35\\\",\\\"342,332,318,310,310,313,319,323,324,328,348,355,350,342\\\"\\n4,unlabeled,AMBIGUOUS,AMBIGUOUS,polyline,318,13,374,47,\\\"318,318,319,323,333,339,349,368,374,371,367,330,322,320,318\\\",\\\"34,28,23,19,13,13,15,29,39,43,44,47,47,43,34\\\"\\n5,tumor,tumor_nonMitotic,tumor_any,rectangle,314,97,362,140,\\\"314,362,362,314,314\\\",\\\"97,97,140,140,97\\\"\\n6,unlabeled,AMBIGUOUS,AMBIGUOUS,rectangle,246,0,294,38,\\\"246,294,294,246,246\\\",\\\"0,0,38,38,0\\\"\\n7,lymphocyte,lymphocyte,sTIL,polyline,148,106,202,134,\\\"189,165,\\n... (292 chars trimmed) ...\\n149,305,204,323,\\\"149,204,204,149,149\\\",\\\"305,305,323,323,305\\\"\\n10,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,polyline,37,163,87,190,\\\"37,38,59,66,68,80,87,87,82,54,44,37,37\\\",\\\"180,179,163,163,164,170,183,184,187,190,188,183,180\\\"\\n11,lymphocyte,lymphocyte,sTIL,polyline,146,25,194,53,\\\"146,149,161,174,187,192,194,193,189,156,146\\\",\\\"42,25,25,27,32,34,39,44,48,53,42\\\"\\n12,fibroblast,nonTILnonMQ_stromal,nonTIL_stromal,rectangle,207,125,250,158,\\\"207,250,250,207,207\\\",\\\"125,125,158,158,125\\\"\\n13,lympho\\n---COLS---\\n\\nTraceback (most recent call last):\\n  File \\\"<string>\\\", line 1, in <module>\\nModuleNotFoundError: No module named 'pandas'\"}"
           },
           {
             "source_call_id": "toolu_01UQDsghLLFaFGFHjYB5XJEL",
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Y6b37UDHCMf1k887eYfB5d",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import torch\" 2>&1 | head -1; python3 -c \"import mobile_sam\" 2>&1 | head -1; python3 -c \"import cv2\" 2>&1 | head -1; python3 -c \"import numpy\" 2>&1 | head -1; which uv pip pip3 2>&1"
           },
@@ -127,7 +127,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import torch\" 2>&1 | head -1; python3 -c \"import mobile_sam\" 2>&1 | head -1; python3 -c \"import cv2\" 2>&1 | head -1; python3 -c \"import numpy\" 2>&1 | head -1; which uv pip pip3 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -188,7 +188,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016KBH2zizVjfNtJ9avZ5TUY",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages uv 2>&1 | tail -2; echo \"=== installing ===\"; uv pip install --system --break-system-packages numpy pandas pillow tqdm opencv-python-headless torch torchvision 2>&1 | tail -15"
           },
@@ -196,7 +196,7 @@
             "raw_arguments": {
               "command": "pip install --break-system-packages uv 2>&1 | tail -2; echo \"=== installing ===\"; uv pip install --system --break-system-packages numpy pandas pillow tqdm opencv-python-headless torch torchvision 2>&1 | tail -15"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -257,7 +257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016ZJYkQdjMULSxEEjx7begf",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "uv pip install --system --break-system-packages mobile_sam 2>&1 | tail -5; echo \"===\"; find / -iname \"*mobile*sam*\" 2>/dev/null | head; find / -path \"*mobile_sam*\" -name \"*.py\" 2>/dev/null | head"
           },
@@ -265,7 +265,7 @@
             "raw_arguments": {
               "command": "uv pip install --system --break-system-packages mobile_sam 2>&1 | tail -5; echo \"===\"; find / -iname \"*mobile*sam*\" 2>/dev/null | head; find / -path \"*mobile_sam*\" -name \"*.py\" 2>/dev/null | head"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -326,7 +326,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RdCDjU5REUcTXoutxAhWY2",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import mobile_sam; print(mobile_sam.__file__)\" 2>&1 | head -3; echo \"===\"; pip download mobile_sam 2>&1 | tail -5"
           },
@@ -334,7 +334,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import mobile_sam; print(mobile_sam.__file__)\" 2>&1 | head -3; echo \"===\"; pip download mobile_sam 2>&1 | tail -5"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -395,7 +395,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SZfsJju6nmhuwJ1gwpM2xc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv', index_col=0); print(df.columns.tolist()); print(df.shape); print(df['type'].value_counts().to_dict())\"; python3 -c \"from PIL import Image; print(Image.open('/app/demo_rgb.png').size)\""
           },
@@ -403,7 +403,7 @@
             "raw_arguments": {
               "command": "python3 -c \"import pandas as pd; df=pd.read_csv('/app/demo_metadata.csv', index_col=0); print(df.columns.tolist()); print(df.shape); print(df['type'].value_counts().to_dict())\"; python3 -c \"from PIL import Image; print(Image.open('/app/demo_rgb.png').size)\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -464,7 +464,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0197duqH7JBQuxYZr3K6rHG2",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -484,7 +484,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -545,7 +545,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XptvfhATUayrEN73bj9rzR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -565,7 +565,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -626,7 +626,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YY2kVgnWzUGF6G7MftCKYt",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -20"
           },
@@ -634,7 +634,7 @@
             "raw_arguments": {
               "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -20"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -695,7 +695,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Vj8MBMmQNRfGSZLDjcPh29",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport pandas as pd, numpy as np\nfrom shapely.geometry import Polygon  # may not exist\nEOF\necho \"shapely?\"; python3 -c \"import shapely\" 2>&1 | head -1\npython3 - <<'EOF'\nimport pandas as pd, numpy as np\ninp=pd.read_csv('/app/demo_metadata.csv', index_col=0)\nout=pd.read_csv('/tmp/out.csv', index_col=0)\nprint(\"cols match:\", list(inp.columns)==list(out.columns))\nprint(\"shape:\", out.shape)\nprint(\"types:\", out['type'].value_counts().to_dict())\n# check each mask is non-rectangular polyline & closed, check bbox consistency\nimport cv2\ndef pc(s):\n    return [float(t) for t in str(s).split(',') if t.strip()]\nmasks=[]\nfor i,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    assert len(xs)==len(ys) and len(xs)>=4, (i,len(xs))\n    assert xs[0]==xs[-1] and ys[0]==ys[-1], (\"not closed\",i)\n    n_unique=len(set(zip(xs[:-1],ys[:-1])))\n    # rectangle would have 4 unique pts\n    assert min(xs)==r['xmin'] and max(xs)==r['xmax'], (i,min(xs),r['xmin'])\n    masks.append((xs,ys,n_unique))\nprint(\"min unique verts:\", min(m[2] for m in masks), \"max:\", max(m[2] for m in masks))\nprint(\"any 4-vertex(rect-like):\", sum(1 for m in masks if m[2]<=4))\n# overlap check via rasterization\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0\nfor idx,(xs,ys,_) in enumerate(masks):\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8)\n    cv2.fillPoly(m,[poly],1)\n    ys2,xs2=np.where(m>0)\n    claimed=canvas[ys2,xs2]\n    overlap+=int((claimed>=0).sum())\n    canvas[ys2,xs2]=idx\n    # contiguity: one component\n    num,_=cv2.connectedComponents(m)\n    assert num==2, (\"noncontig\",idx,num)\nprint(\"overlap pixels:\", overlap)\nEOF"
           },
@@ -703,7 +703,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport pandas as pd, numpy as np\nfrom shapely.geometry import Polygon  # may not exist\nEOF\necho \"shapely?\"; python3 -c \"import shapely\" 2>&1 | head -1\npython3 - <<'EOF'\nimport pandas as pd, numpy as np\ninp=pd.read_csv('/app/demo_metadata.csv', index_col=0)\nout=pd.read_csv('/tmp/out.csv', index_col=0)\nprint(\"cols match:\", list(inp.columns)==list(out.columns))\nprint(\"shape:\", out.shape)\nprint(\"types:\", out['type'].value_counts().to_dict())\n# check each mask is non-rectangular polyline & closed, check bbox consistency\nimport cv2\ndef pc(s):\n    return [float(t) for t in str(s).split(',') if t.strip()]\nmasks=[]\nfor i,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    assert len(xs)==len(ys) and len(xs)>=4, (i,len(xs))\n    assert xs[0]==xs[-1] and ys[0]==ys[-1], (\"not closed\",i)\n    n_unique=len(set(zip(xs[:-1],ys[:-1])))\n    # rectangle would have 4 unique pts\n    assert min(xs)==r['xmin'] and max(xs)==r['xmax'], (i,min(xs),r['xmin'])\n    masks.append((xs,ys,n_unique))\nprint(\"min unique verts:\", min(m[2] for m in masks), \"max:\", max(m[2] for m in masks))\nprint(\"any 4-vertex(rect-like):\", sum(1 for m in masks if m[2]<=4))\n# overlap check via rasterization\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0\nfor idx,(xs,ys,_) in enumerate(masks):\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8)\n    cv2.fillPoly(m,[poly],1)\n    ys2,xs2=np.where(m>0)\n    claimed=canvas[ys2,xs2]\n    overlap+=int((claimed>=0).sum())\n    canvas[ys2,xs2]=idx\n    # contiguity: one component\n    num,_=cv2.connectedComponents(m)\n    assert num==2, (\"noncontig\",idx,num)\nprint(\"overlap pixels:\", overlap)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -764,7 +764,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PVGWswwczee6D4USrEK3Nx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; minv=1e9\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    nu=len(set(zip(xs[:-1],ys[:-1]))); minv=min(minv,nu); rectlike+= nu<=4\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap pixels:\",overlap,\"| rectlike(<=4v):\",rectlike,\"| min unique verts:\",minv)\nEOF"
           },
@@ -772,7 +772,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; minv=1e9\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    nu=len(set(zip(xs[:-1],ys[:-1]))); minv=min(minv,nu); rectlike+= nu<=4\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap pixels:\",overlap,\"| rectlike(<=4v):\",rectlike,\"| min unique verts:\",minv)\nEOF"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -833,7 +833,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01AhejksDawwG2tBoPom696e",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -853,7 +853,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -914,7 +914,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01A4mG5xBmvHQQoeihbKwTtE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; empty=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    if len(xs)<4: empty+=1; continue\n    nu=len(set(zip(xs[:-1],ys[:-1]))); rectlike+= nu<=4\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap:\",overlap,\"rectlike:\",rectlike,\"empty/degenerate:\",empty)\nEOF\nrm -f /app/dummy.pt"
           },
@@ -922,7 +922,7 @@
             "raw_arguments": {
               "command": "cd /app && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; empty=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    if len(xs)<4: empty+=1; continue\n    nu=len(set(zip(xs[:-1],ys[:-1]))); rectlike+= nu<=4\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap:\",overlap,\"rectlike:\",rectlike,\"empty/degenerate:\",empty)\nEOF\nrm -f /app/dummy.pt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -983,7 +983,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LFjk6Gxza6Kdb9JexnJPXJ",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1003,7 +1003,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1064,7 +1064,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EMK6SQmGRkRTgQ4CjgTVwz",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; vmax=0; vsum=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    nu=len(set(zip(xs[:-1],ys[:-1]))); rectlike+= nu<=4; vmax=max(vmax,len(xs)); vsum+=len(xs)\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap:\",overlap,\"rectlike:\",rectlike,\"maxverts:\",vmax,\"avgverts:\",round(vsum/len(out),1))\nEOF\nrm -f /app/dummy.pt"
           },
@@ -1072,7 +1072,7 @@
             "raw_arguments": {
               "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\nout=pd.read_csv('/tmp/out.csv', index_col=0)\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,dtype=np.int32)\noverlap=0; rectlike=0; vmax=0; vsum=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    nu=len(set(zip(xs[:-1],ys[:-1]))); rectlike+= nu<=4; vmax=max(vmax,len(xs)); vsum+=len(xs)\n    poly=np.array(list(zip(xs,ys)),dtype=np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2,(idx,num)\n    ys2,xs2=np.where(m>0)\n    overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nprint(\"overlap:\",overlap,\"rectlike:\",rectlike,\"maxverts:\",vmax,\"avgverts:\",round(vsum/len(out),1))\nEOF\nrm -f /app/dummy.pt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1133,7 +1133,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Cs2mFwAfEU29H89QYodu31",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la /app; rm -rf /tmp/stub /tmp/out.csv; python3 -m py_compile /app/convert_masks.py && echo \"compile OK\""
           },
@@ -1141,7 +1141,7 @@
             "raw_arguments": {
               "command": "ls -la /app; rm -rf /tmp/stub /tmp/out.csv; python3 -m py_compile /app/convert_masks.py && echo \"compile OK\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1149,7 +1149,7 @@
         "results": [
           {
             "source_call_id": "toolu_01Cs2mFwAfEU29H89QYodu31",
-            "content": "{\"type\": \"text\", \"text\": \"total 216\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:41 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .atelier\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .git\\n-rw------- 1 root root   8089 Jul  3 22:40 convert_masks.py\\n-rw-r--r-- 1 root root   7072 Oct 24  2025 demo_metadata.csv\\n-rw-r--r-- 1 root root 187898 Oct 24  2025 demo_rgb.png\\ncompile OK\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 216\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:41 .\\ndrwxr-xr-x 1 root root   4096 Jul  3 22:36 ..\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .lemoncrow\\ndrwxr-xr-x 3 root root   4096 Jul  3 22:37 .git\\n-rw------- 1 root root   8089 Jul  3 22:40 convert_masks.py\\n-rw-r--r-- 1 root root   7072 Oct 24  2025 demo_metadata.csv\\n-rw-r--r-- 1 root root 187898 Oct 24  2025 demo_rgb.png\\ncompile OK\"}"
           }
         ]
       },
@@ -1257,7 +1257,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VBuiaz6vzBVBsyyRsZbTPH",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1277,7 +1277,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1338,7 +1338,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0159saUVbgL8oyW757GvkHhm",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\ninp=pd.read_csv('/app/demo_metadata.csv', index_col=0)\nout=pd.read_csv('/tmp/out.csv', index_col=0)\nassert list(inp.columns)==list(out.columns), \"columns changed\"\nassert inp.shape==out.shape, \"row count changed\"\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,np.int32); overlap=0; rectlike=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    assert len(xs)==len(ys)>=4 and xs[0]==xs[-1] and ys[0]==ys[-1], (\"bad polyline\",idx)\n    assert min(xs)==r['xmin'] and max(xs)==r['xmax'] and min(ys)==r['ymin'] and max(ys)==r['ymax'], (\"bbox mismatch\",idx)\n    rectlike += len(set(zip(xs[:-1],ys[:-1])))<=4\n    poly=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2, (\"noncontiguous\",idx,num)\n    ys2,xs2=np.where(m>0); overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nassert (out['type']=='polyline').all(), \"type not all polyline\"\nassert overlap==0 and rectlike==0, (overlap,rectlike)\nprint(\"PASS: 48 masks | overlap=%d rectangles=%d | all closed polylines, contiguous, bbox consistent\"%(overlap,rectlike))\nEOF\nrm -f /app/dummy.pt; rm -rf /tmp/stub /tmp/out.csv"
           },
@@ -1346,7 +1346,7 @@
             "raw_arguments": {
               "command": "cd /app && touch dummy.pt && PYTHONPATH=/tmp/stub python3 convert_masks.py --weights_path dummy.pt --output_path /tmp/out.csv --rgb_path demo_rgb.png --csv_path demo_metadata.csv 2>&1 | tail -1 && python3 - <<'EOF'\nimport pandas as pd, numpy as np, cv2\ninp=pd.read_csv('/app/demo_metadata.csv', index_col=0)\nout=pd.read_csv('/tmp/out.csv', index_col=0)\nassert list(inp.columns)==list(out.columns), \"columns changed\"\nassert inp.shape==out.shape, \"row count changed\"\ndef pc(s): return [float(t) for t in str(s).split(',') if t.strip()]\nH,W=355,374\ncanvas=np.full((H,W),-1,np.int32); overlap=0; rectlike=0\nfor idx,r in out.iterrows():\n    xs=pc(r['coords_x']); ys=pc(r['coords_y'])\n    assert len(xs)==len(ys)>=4 and xs[0]==xs[-1] and ys[0]==ys[-1], (\"bad polyline\",idx)\n    assert min(xs)==r['xmin'] and max(xs)==r['xmax'] and min(ys)==r['ymin'] and max(ys)==r['ymax'], (\"bbox mismatch\",idx)\n    rectlike += len(set(zip(xs[:-1],ys[:-1])))<=4\n    poly=np.array(list(zip(xs,ys)),np.int32)\n    m=np.zeros((H,W),np.uint8); cv2.fillPoly(m,[poly],1)\n    num,_=cv2.connectedComponents(m); assert num==2, (\"noncontiguous\",idx,num)\n    ys2,xs2=np.where(m>0); overlap+=int((canvas[ys2,xs2]>=0).sum()); canvas[ys2,xs2]=idx\nassert (out['type']=='polyline').all(), \"type not all polyline\"\nassert overlap==0 and rectlike==0, (overlap,rectlike)\nprint(\"PASS: 48 masks | overlap=%d rectangles=%d | all closed polylines, contiguous, bbox consistent\"%(overlap,rectlike))\nEOF\nrm -f /app/dummy.pt; rm -rf /tmp/stub /tmp/out.csv"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

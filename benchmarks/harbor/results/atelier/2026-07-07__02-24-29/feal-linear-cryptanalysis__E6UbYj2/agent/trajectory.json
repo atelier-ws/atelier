@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Li8o7cTHRym1dCrdntViTZ",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/feal.c",
@@ -47,12 +47,12 @@
                 "/app/decrypt.c"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01NzF1xQnU9qdi3jXQAbwmgL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt"
           },
@@ -60,7 +60,7 @@
             "raw_arguments": {
               "command": "head -5 /app/pairs.txt; echo ---; wc -l /app/pairs.txt /app/ciphertexts.txt; echo ---; head -5 /app/ciphertexts.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_019DQswPgHKvUPc4curiso5k",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat /app/pairs.txt; echo ===; cat /app/ciphertexts.txt | head; echo count; wc -l /app/ciphertexts.txt"
           },
@@ -133,7 +133,7 @@
             "raw_arguments": {
               "command": "cat /app/pairs.txt; echo ===; cat /app/ciphertexts.txt | head; echo count; wc -l /app/ciphertexts.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -194,7 +194,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FtP5SbxxDV1YkeKDG56Dbv",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -214,7 +214,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -275,7 +275,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KJch8vAViQVsQ7myB3TJmc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -o attack attack.cpp && time ./attack"
           },
@@ -283,7 +283,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -o attack attack.cpp && time ./attack"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -344,7 +344,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016thp5UZfgAH1mZzzeAfmfN",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which gcc cc clang 2>/dev/null; cc --version 2>/dev/null | head -1"
           },
@@ -352,7 +352,7 @@
             "raw_arguments": {
               "command": "which gcc cc clang 2>/dev/null; cc --version 2>/dev/null | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -413,7 +413,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011bKxVq7j5xiag64QScohsD",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && gcc -O2 -x c++ -o attack attack.cpp -lstdc++ 2>&1 | head; echo \"---run---\"; time ./attack"
           },
@@ -421,7 +421,7 @@
             "raw_arguments": {
               "command": "cd /app && gcc -O2 -x c++ -o attack attack.cpp -lstdc++ 2>&1 | head; echo \"---run---\"; time ./attack"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -482,7 +482,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013m9W3SmV1NaG2rxbaN7ncQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y g++ >/dev/null 2>&1 && which g++ || echo \"no-install\""
           },
@@ -490,7 +490,7 @@
             "raw_arguments": {
               "command": "apt-get install -y g++ >/dev/null 2>&1 && which g++ || echo \"no-install\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -551,7 +551,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_013T2gwfYCUWkBqVTX5WpCRi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -o attack attack.cpp && time ./attack"
           },
@@ -559,7 +559,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -o attack attack.cpp && time ./attack"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -620,7 +620,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JjJy3DGm4X6UKkmTMseW8V",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && wc -l plaintexts.txt && head -3 plaintexts.txt && echo \"--- verify roundtrip ---\" && cat > /tmp/v.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint8_t rl(uint8_t t){return (t<<2)|(t>>6);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){return rl((a+b+x)&0xFF);}\nuint32_t F(uint32_t in){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=in&0xFF;in>>=8;}\ny[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\nuint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint32_t key[4]={0xB24DCA68,0x0D14A358,0xA888FA20,0x5CC59C18};\nuint64_t enc(uint64_t p){uint32_t l=p>>32,r=p;r^=l;for(int i=0;i<4;i++){uint32_t m=F(r^key[i]);uint32_t t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){FILE*a=fopen(\"/app/plaintexts.txt\",\"r\");FILE*b=fopen(\"/app/ciphertexts.txt\",\"r\");\nunsigned long long p,c;int ok=1,n=0;while(fscanf(a,\"%llu\",&p)==1&&fscanf(b,\"%llu\",&c)==1){n++;if(enc(p)!=c){ok=0;printf(\"MISMATCH line %d\\n\",n);}}\nprintf(\"checked %d, %s\\n\",n,ok?\"ALL OK\":\"FAIL\");return 0;}\nEOF\ngcc -O2 -o /tmp/v /tmp/v.c && /tmp/v"
           },
@@ -628,7 +628,7 @@
             "raw_arguments": {
               "command": "cd /app && wc -l plaintexts.txt && head -3 plaintexts.txt && echo \"--- verify roundtrip ---\" && cat > /tmp/v.c <<'EOF'\n#include <stdio.h>\n#include <stdint.h>\nuint8_t rl(uint8_t t){return (t<<2)|(t>>6);}\nuint8_t g(uint8_t a,uint8_t b,uint8_t x){return rl((a+b+x)&0xFF);}\nuint32_t F(uint32_t in){uint8_t x[4],y[4];for(int i=0;i<4;i++){x[i]=in&0xFF;in>>=8;}\ny[2]=g(x[3]^x[2],x[1]^x[0],1);y[3]=g(x[3],y[2],0);y[1]=g(x[1]^x[0],y[2],0);y[0]=g(x[0],y[1],1);\nuint32_t o=0;for(int i=0;i<4;i++)o|=(uint32_t)y[i]<<(8*i);return o;}\nuint32_t key[4]={0xB24DCA68,0x0D14A358,0xA888FA20,0x5CC59C18};\nuint64_t enc(uint64_t p){uint32_t l=p>>32,r=p;r^=l;for(int i=0;i<4;i++){uint32_t m=F(r^key[i]);uint32_t t=r;r=l^m;l=t;}l^=r;return((uint64_t)r<<32)|l;}\nint main(){FILE*a=fopen(\"/app/plaintexts.txt\",\"r\");FILE*b=fopen(\"/app/ciphertexts.txt\",\"r\");\nunsigned long long p,c;int ok=1,n=0;while(fscanf(a,\"%llu\",&p)==1&&fscanf(b,\"%llu\",&c)==1){n++;if(enc(p)!=c){ok=0;printf(\"MISMATCH line %d\\n\",n);}}\nprintf(\"checked %d, %s\\n\",n,ok?\"ALL OK\":\"FAIL\");return 0;}\nEOF\ngcc -O2 -o /tmp/v /tmp/v.c && /tmp/v"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -744,7 +744,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RzLovpwTjcicryQHf9sajS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && g++ -O2 -o attack attack.cpp && ./attack && echo \"=== independent roundtrip ===\" && /tmp/v"
           },
@@ -752,7 +752,7 @@
             "raw_arguments": {
               "command": "cd /app && g++ -O2 -o attack attack.cpp && ./attack && echo \"=== independent roundtrip ===\" && /tmp/v"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

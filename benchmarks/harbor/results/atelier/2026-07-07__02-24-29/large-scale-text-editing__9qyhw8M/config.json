@@ -5,23 +5,23 @@
         "source": "terminal-bench/terminal-bench-2-1"
     },
     "trial_name": "large-scale-text-editing__9qyhw8M",
-    "trials_dir": "/home/pankaj/Projects/leanchain/atelier/benchmarks/harbor/results/atelier/2026-07-07__02-24-29",
+    "trials_dir": "/home/pankaj/Projects/leanchain/lemoncrow/benchmarks/harbor/results/lemoncrow/2026-07-07__02-24-29",
     "agent": {
-        "import_path": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent"
+        "import_path": "benchmarks.harbor.lemoncrow_agent:LemonCrowClaudeCodeHarborAgent"
     },
     "environment": {
         "type": "docker",
         "mounts": [
             {
                 "type": "bind",
-                "source": "/home/pankaj/Projects/leanchain/atelier",
-                "target": "/atelier",
+                "source": "/home/pankaj/Projects/leanchain/lemoncrow",
+                "target": "/lemoncrow",
                 "read_only": true
             },
             {
                 "type": "bind",
-                "source": "/tmp/avbuild/atelier-bundle.tar.gz",
-                "target": "/atelier-bundle.tar.gz",
+                "source": "/tmp/avbuild/lemoncrow-bundle.tar.gz",
+                "target": "/lemoncrow-bundle.tar.gz",
                 "read_only": true
             }
         ]

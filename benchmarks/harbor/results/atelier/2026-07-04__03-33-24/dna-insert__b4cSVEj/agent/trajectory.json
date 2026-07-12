@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RpSrfAwrCqBXbL3LmfxtPc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "find / -name sequences.fasta 2>/dev/null"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "find / -name sequences.fasta 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_018hAUDWFykgLz6P4cPfMVvi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which oligotm primer3_core 2>/dev/null; ls /usr/bin | grep -i primer 2>/dev/null; echo done"
           },
@@ -54,7 +54,7 @@
             "raw_arguments": {
               "command": "which oligotm primer3_core 2>/dev/null; ls /usr/bin | grep -i primer 2>/dev/null; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -119,7 +119,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QDBSyFK9Ya7gQX4qcwn8jn",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "app/sequences.fasta"
@@ -131,12 +131,12 @@
                 "app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_01MTrs3xMRtRizPxJKj2Xp9M",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; ls -la app; echo \"---\"; wc -l app/sequences.fasta"
           },
@@ -144,7 +144,7 @@
             "raw_arguments": {
               "command": "pwd; ls -la app; echo \"---\"; wc -l app/sequences.fasta"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -209,7 +209,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LyshbrLEyLUAENzYsbvkbH",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/sequences.fasta"
@@ -221,7 +221,7 @@
                 "/app/sequences.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -282,7 +282,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016Dsf6dqhjNtpND8g7h1PHT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nprint('len input',len(inp))\nprint('len output',len(out))\n# find common prefix\ni=0\nwhile i<len(inp) and i<len(out) and inp[i]==out[i]:\n    i+=1\nprint('prefix match len',i)\n# common suffix\nj=0\nwhile j<len(inp) and j<len(out) and inp[-1-j]==out[-1-j]:\n    j+=1\nprint('suffix match len',j)\nprint('input diff region:', inp[i-5:len(inp)-j+5])\nprint('output diff region:', out[i-5:len(out)-j+5])\nprint('inserted in output:', out[i:len(out)-j])\nprint('removed from input:', inp[i:len(inp)-j])\n\""
           },
@@ -290,7 +290,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nprint('len input',len(inp))\nprint('len output',len(out))\n# find common prefix\ni=0\nwhile i<len(inp) and i<len(out) and inp[i]==out[i]:\n    i+=1\nprint('prefix match len',i)\n# common suffix\nj=0\nwhile j<len(inp) and j<len(out) and inp[-1-j]==out[-1-j]:\n    j+=1\nprint('suffix match len',j)\nprint('input diff region:', inp[i-5:len(inp)-j+5])\nprint('output diff region:', out[i-5:len(out)-j+5])\nprint('inserted in output:', out[i:len(out)-j])\nprint('removed from input:', inp[i:len(inp)-j])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -351,7 +351,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01JpoVg1L6oY4V7ZJMJT6nPc",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nP=215\nins='tagattagaagaagaattaagaagaagattaacagaa'\nprint('reconstruct ok:', inp[:P]+ins+inp[P:]==out)\nprint('ins len', len(ins))\nprint('upstream ctx', inp[P-30:P])\nprint('downstream ctx', inp[P:P+30])\n\""
           },
@@ -359,12 +359,12 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nP=215\nins='tagattagaagaagaattaagaagaagattaacagaa'\nprint('reconstruct ok:', inp[:P]+ins+inp[P:]==out)\nprint('ins len', len(ins))\nprint('upstream ctx', inp[P-30:P])\nprint('downstream ctx', inp[P:P+30])\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01F6wHbzebxDxrUZgDenNmBa",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y primer3 2>&1 | tail -3; which oligotm primer3_core 2>/dev/null; echo \"===\"; ls /usr/bin/*oligo* 2>/dev/null; echo done"
           },
@@ -372,7 +372,7 @@
             "raw_arguments": {
               "command": "apt-get install -y primer3 2>&1 | tail -3; which oligotm primer3_core 2>/dev/null; echo \"===\"; ls /usr/bin/*oligo* 2>/dev/null; echo done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -437,7 +437,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Gh4GEosgwAJ3Pbo2kPJsmL",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\n# find insertion by trying every prefix split: out = inp[:k] + INS + inp[k:]\nd=len(out)-len(inp)\nfor k in range(len(inp)+1):\n    if inp[:k]==out[:k] and inp[k:]==out[k+d:]:\n        print('split k=',k,'INS=',out[k:k+d])\n        break\n\""
           },
@@ -445,7 +445,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\n# find insertion by trying every prefix split: out = inp[:k] + INS + inp[k:]\nd=len(out)-len(inp)\nfor k in range(len(inp)+1):\n    if inp[:k]==out[:k] and inp[k:]==out[k+d:]:\n        print('split k=',k,'INS=',out[k:k+d])\n        break\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -506,7 +506,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T7XFJALuxrDd1GxTk2886E",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']\nP=213\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nprint('FORWARD anneal (downstream top strand):')\nfor b in range(15,31):\n    d=inp[P:P+b]\n    print(b, d.upper(), round(tm(d),2))\nprint('REVERSE anneal (revcomp upstream):')\nfor a in range(15,31):\n    u=inp[P-a:P]\n    r=rc(u)\n    print(a, r.upper(), round(tm(r),2))\n\""
           },
@@ -514,7 +514,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']\nP=213\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nprint('FORWARD anneal (downstream top strand):')\nfor b in range(15,31):\n    d=inp[P:P+b]\n    print(b, d.upper(), round(tm(d),2))\nprint('REVERSE anneal (revcomp upstream):')\nfor a in range(15,31):\n    u=inp[P-a:P]\n    r=rc(u)\n    print(a, r.upper(), round(tm(r),2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -575,7 +575,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01Ey1vNZKESeQcxgYa6ffVjS",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']\nP=213\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nfor a in range(30,42):\n    u=inp[P-a:P]; r=rc(u)\n    print('rev a=',a, round(tm(r),2))\n\""
           },
@@ -583,7 +583,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']\nP=213\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nfor a in range(30,42):\n    u=inp[P-a:P]; r=rc(u)\n    print('rev a=',a, round(tm(r),2))\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -644,7 +644,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V65QJCAQaUQkLM1PVswGob",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nP=213\nINS='agtagattagaagaagaattaagaagaagattaacagaa'\nassert inp[:P]+INS+inp[P:]==out\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nb=15; a=33\nfwd_anneal=inp[P:P+b]\nrev_anneal=rc(inp[P-a:P])\nINS1=INS[:19]   # goes on reverse primer 5' tail\nINS2=INS[19:]   # goes on forward primer 5' tail\nfwd = INS2 + fwd_anneal\nrev = rc(INS1) + rev_anneal   # = rc(inp[P-a:P]+INS1)\nassert rev==rc(inp[P-a:P]+INS1)\n# simulate assembly: circular product = inp[:P] + INS + inp[P:]\n# junction: forward contributes INS2+downstream, reverse contributes upstream+INS1 (top strand)\nrecon = inp[:P-a] + rc(rev) + fwd + inp[P+b:]\nprint('assembly==output:', recon==out)\nprint('fwd len', len(fwd),'anneal',b,'Tm',round(tm(fwd_anneal),2))\nprint('rev len', len(rev),'anneal',a,'Tm',round(tm(rev_anneal),2))\nprint('deltaTm', round(abs(tm(fwd_anneal)-tm(rev_anneal)),2))\nprint('FWD',fwd.upper())\nprint('REV',rev.upper())\nwith open('primers.fasta','w') as f:\n    f.write('>pair1_forward\\n'+fwd.upper()+'\\n')\n    f.write('>pair1_reverse\\n'+rev.upper()+'\\n')\nprint('written')\n\""
           },
@@ -652,7 +652,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 -c \"\nseqs={}\nname=None\nfor line in open('sequences.fasta'):\n    line=line.strip()\n    if line.startswith('>'):\n        name=line[1:]; seqs[name]=''\n    else:\n        seqs[name]+=line.lower()\ninp=seqs['input']; out=seqs['output']\nP=213\nINS='agtagattagaagaagaattaagaagaagattaacagaa'\nassert inp[:P]+INS+inp[P:]==out\ncomp={'a':'t','t':'a','g':'c','c':'g'}\ndef rc(s): return ''.join(comp[c] for c in reversed(s))\nimport subprocess\ndef tm(s):\n    o=subprocess.run(['oligotm','-tp','1','-sc','1','-mv','50','-dv','2','-n','0.8','-d','500',s.upper()],capture_output=True,text=True)\n    return float(o.stdout.strip())\nb=15; a=33\nfwd_anneal=inp[P:P+b]\nrev_anneal=rc(inp[P-a:P])\nINS1=INS[:19]   # goes on reverse primer 5' tail\nINS2=INS[19:]   # goes on forward primer 5' tail\nfwd = INS2 + fwd_anneal\nrev = rc(INS1) + rev_anneal   # = rc(inp[P-a:P]+INS1)\nassert rev==rc(inp[P-a:P]+INS1)\n# simulate assembly: circular product = inp[:P] + INS + inp[P:]\n# junction: forward contributes INS2+downstream, reverse contributes upstream+INS1 (top strand)\nrecon = inp[:P-a] + rc(rev) + fwd + inp[P+b:]\nprint('assembly==output:', recon==out)\nprint('fwd len', len(fwd),'anneal',b,'Tm',round(tm(fwd_anneal),2))\nprint('rev len', len(rev),'anneal',a,'Tm',round(tm(rev_anneal),2))\nprint('deltaTm', round(abs(tm(fwd_anneal)-tm(rev_anneal)),2))\nprint('FWD',fwd.upper())\nprint('REV',rev.upper())\nwith open('primers.fasta','w') as f:\n    f.write('>pair1_forward\\n'+fwd.upper()+'\\n')\n    f.write('>pair1_reverse\\n'+rev.upper()+'\\n')\nprint('written')\n\""
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -713,7 +713,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01KvRHYKq85jcHLiJFyK2VN9",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "/app/primers.fasta"
@@ -725,7 +725,7 @@
                 "/app/primers.fasta"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],

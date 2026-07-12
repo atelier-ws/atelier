@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BtYHQv1T43goDaGeWMzwg9",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la; echo \"---MAIN---\"; wc -l main.tex input.tex synonyms.txt"
           },
@@ -41,12 +41,12 @@
             "raw_arguments": {
               "command": "ls -la; echo \"---MAIN---\"; wc -l main.tex input.tex synonyms.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         },
         {
           "tool_call_id": "toolu_01LqrSmRMi2Wey4ZLT5mDS9o",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "main.tex",
@@ -60,7 +60,7 @@
                 "synonyms.txt"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -125,7 +125,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SZ2vHvyMCbpMoqc5x3Pqri",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "input.tex"
@@ -137,7 +137,7 @@
                 "input.tex"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -198,7 +198,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CZZ46gS677pgLZstSS37sw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "which pdflatex; pdflatex --version | head -1"
           },
@@ -206,7 +206,7 @@
             "raw_arguments": {
               "command": "which pdflatex; pdflatex --version | head -1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -267,7 +267,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01YL8XGcmX8vFffEkS6Q1JZ1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pdflatex -interaction=nonstopmode -halt-on-error main.tex >/dev/null 2>&1; echo \"exit: $?\"; grep -n \"Overfull\" main.log",
             "cwd": "/root"
@@ -277,7 +277,7 @@
               "command": "pdflatex -interaction=nonstopmode -halt-on-error main.tex >/dev/null 2>&1; echo \"exit: $?\"; grep -n \"Overfull\" main.log",
               "cwd": "/root"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -338,7 +338,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EDvJ6G4p8uD5wBvfLxY2T6",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; echo \"exit: $?\"; grep -n \"Overfull\\|Underfull\" main.log"
           },
@@ -346,7 +346,7 @@
             "raw_arguments": {
               "command": "cd /root && pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; echo \"exit: $?\"; grep -n \"Overfull\\|Underfull\" main.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -407,7 +407,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RYafZxsrrH47KCzjcKKx6W",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /root && tail -30 /tmp/out.txt"
           },
@@ -415,7 +415,7 @@
             "raw_arguments": {
               "command": "cd /root && tail -30 /tmp/out.txt"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -476,7 +476,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VtahdU2LUrjZu5kS4APUef",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pwd; ls; find / -name main.tex 2>/dev/null"
           },
@@ -484,7 +484,7 @@
             "raw_arguments": {
               "command": "pwd; ls; find / -name main.tex 2>/dev/null"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -545,7 +545,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01BMTGwBhaVrWaMNexDnsUf1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; echo \"exit: $?\"; grep -n \"Overfull\" main.log"
           },
@@ -553,7 +553,7 @@
             "raw_arguments": {
               "command": "cd /app && pdflatex -interaction=nonstopmode main.tex >/tmp/out.txt 2>&1; echo \"exit: $?\"; grep -n \"Overfull\" main.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -614,7 +614,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WD3W21aaYYy1gtSR72jKEE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -n '45,90p' main.log"
           },
@@ -622,7 +622,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -n '45,90p' main.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -683,7 +683,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01F6axwufNbFxD81q5eKnMKG",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && cat > /tmp/check.sh <<'EOF'\ncd /app && pdflatex -interaction=nonstopmode main.tex >/tmp/o.txt 2>&1\necho \"compile exit: $?\"\ngrep -c \"Overfull \\\\\\\\hbox\" main.log\ngrep -n \"Overfull \\\\\\\\hbox\" main.log\nEOF\necho done"
           },
@@ -691,7 +691,7 @@
             "raw_arguments": {
               "command": "cd /app && cat > /tmp/check.sh <<'EOF'\ncd /app && pdflatex -interaction=nonstopmode main.tex >/tmp/o.txt 2>&1\necho \"compile exit: $?\"\ngrep -c \"Overfull \\\\\\\\hbox\" main.log\ngrep -n \"Overfull \\\\\\\\hbox\" main.log\nEOF\necho done"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -752,7 +752,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SpTsEDTLc1N1XEGJviMgaR",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -772,7 +772,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -845,7 +845,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012uXW3T7BbncakLW6X4f1bD",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "confidences were unsought frequently feigned sleep"
           },
@@ -853,7 +853,7 @@
             "raw_arguments": {
               "query": "confidences were unsought frequently feigned sleep"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -914,7 +914,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SAsJ7n6PQcfEgzNr7dWt7C",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "input.tex:L5-L5"
@@ -926,7 +926,7 @@
                 "input.tex:L5-L5"
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -987,7 +987,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QKXotCJtxBhbytHywo866n",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1007,7 +1007,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1080,7 +1080,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016YNi6qMeboTJGVKJ7WLgAi",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && grep -n \"unsought\" input.tex"
           },
@@ -1088,7 +1088,7 @@
             "raw_arguments": {
               "command": "cd /app && grep -n \"unsought\" input.tex"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1149,7 +1149,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01URrdKhAXW8uCELMXSGW65Y",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1169,7 +1169,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1327,7 +1327,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01CfGjas2HUCYSQGmc9ezehY",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "reserve all judgments habit curious natures victim veteran bores",
             "paths": "input.tex"
@@ -1337,7 +1337,7 @@
               "query": "reserve all judgments habit curious natures victim veteran bores",
               "paths": "input.tex"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1398,7 +1398,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01T1W8kc2n394ZpexGZjByKe",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "input.tex:expand"
@@ -1412,7 +1412,7 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         }
       ],
@@ -1473,7 +1473,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HN4J8wnF2poa3h7twxB6w6",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1493,7 +1493,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1566,7 +1566,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01StcBZQ793PLXJpJdNC5ie2",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1586,7 +1586,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1659,7 +1659,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01XYif1qFs2UCL48RzfMij1d",
-          "function_name": "mcp__plugin_atelier_atelier__code_search",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__code_search",
           "arguments": {
             "query": "input.tex",
             "include_source": true
@@ -1669,7 +1669,7 @@
               "query": "input.tex",
               "include_source": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__code_search"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__code_search"
           }
         }
       ],
@@ -1827,7 +1827,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RkiNXMKtNCrtXY4x3tdEGL",
-          "function_name": "mcp__plugin_atelier_atelier__read",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__read",
           "arguments": {
             "files": [
               "input.tex:expand"
@@ -1841,12 +1841,12 @@
               ],
               "force": true
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__read"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__read"
           }
         },
         {
           "tool_call_id": "toolu_019EmNWRMCTz3SUwo7bZ87ag",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1866,7 +1866,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -1943,7 +1943,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01LjHS1xyG3RaKMynNhivBV5",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -1963,7 +1963,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2024,7 +2024,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011RTgsGeAe1XkxTnTPYLZJx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/rep.py input.tex \"the confidences were unsought---frequently\" \"the confidences were unrequested---frequently\" && bash /tmp/check.sh"
           },
@@ -2032,7 +2032,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/rep.py input.tex \"the confidences were unsought---frequently\" \"the confidences were unrequested---frequently\" && bash /tmp/check.sh"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2093,7 +2093,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01GAbcM33u5estUqAgMxktAW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && sed -n '52,56p' main.log"
           },
@@ -2101,7 +2101,7 @@
             "raw_arguments": {
               "command": "cd /app && sed -n '52,56p' main.log"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2162,7 +2162,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_0156pGJc8C3SXHVbZHZeN5cU",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/rep.py input.tex \"the confidences were unrequested---frequently\" \"the confidences were unsought---frequently\" && cp input.tex /tmp/input.orig.tex && echo restored"
           },
@@ -2170,7 +2170,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/rep.py input.tex \"the confidences were unrequested---frequently\" \"the confidences were unsought---frequently\" && cp input.tex /tmp/input.orig.tex && echo restored"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2231,7 +2231,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01SJCqddpfSWcihstC83Zt4G",
-          "function_name": "mcp__plugin_atelier_atelier__edit",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__edit",
           "arguments": {
             "edits": [
               {
@@ -2251,7 +2251,7 @@
                 }
               ]
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__edit"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__edit"
           }
         }
       ],
@@ -2312,7 +2312,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01QX1aPywVnQd4iZCC4eh3TE",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && python3 /tmp/search.py 2>&1 | tail -40"
           },
@@ -2320,7 +2320,7 @@
             "raw_arguments": {
               "command": "cd /app && python3 /tmp/search.py 2>&1 | tail -40"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2381,7 +2381,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_011dGMKVg85nPTpEHS58pSwR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && bash /tmp/check.sh; echo \"---DIFF---\"; diff <(tr ' ' '\\n' < /tmp/input.orig.tex) <(tr ' ' '\\n' < input.tex) | grep '^[<>]'"
           },
@@ -2389,7 +2389,7 @@
             "raw_arguments": {
               "command": "cd /app && bash /tmp/check.sh; echo \"---DIFF---\"; diff <(tr ' ' '\\n' < /tmp/input.orig.tex) <(tr ' ' '\\n' < input.tex) | grep '^[<>]'"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2450,7 +2450,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TW3Ljo2KPBHQH5vMsXq9TF",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f main.pdf main.log && pdflatex -interaction=nonstopmode main.tex >/dev/null 2>&1; echo \"exit:$?\"; echo \"overfull: $(grep -c 'Overfull \\\\hbox' main.log)\"; echo \"underfull: $(grep -c 'Underfull \\\\hbox' main.log)\"; ls -la main.pdf; echo \"--- errors ---\"; grep -i \"^!\" main.log || echo none"
           },
@@ -2458,7 +2458,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f main.pdf main.log && pdflatex -interaction=nonstopmode main.tex >/dev/null 2>&1; echo \"exit:$?\"; echo \"overfull: $(grep -c 'Overfull \\\\hbox' main.log)\"; echo \"underfull: $(grep -c 'Underfull \\\\hbox' main.log)\"; ls -la main.pdf; echo \"--- errors ---\"; grep -i \"^!\" main.log || echo none"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -2574,7 +2574,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FFz6ozD6JnhdJvS5ui6sf1",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cd /app && rm -f main.pdf main.log && pdflatex -interaction=nonstopmode main.tex >/dev/null 2>&1; echo \"exit:$?\"; echo \"overfull: $(grep -c 'Overfull \\\\hbox' main.log)\"; ls main.pdf 2>&1"
           },
@@ -2582,7 +2582,7 @@
             "raw_arguments": {
               "command": "cd /app && rm -f main.pdf main.log && pdflatex -interaction=nonstopmode main.tex >/dev/null 2>&1; echo \"exit:$?\"; echo \"overfull: $(grep -c 'Overfull \\\\hbox' main.log)\"; ls main.pdf 2>&1"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],

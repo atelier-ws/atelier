@@ -33,7 +33,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01U1rVz8Y8TKxpzbYRpryHxM",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "ls -la data/ && echo \"---\" && head -c 500 data/*.txt 2>/dev/null; echo \"---files---\"; ls -la /app 2>/dev/null",
             "cwd": "/app"
@@ -43,7 +43,7 @@
               "command": "ls -la data/ && echo \"---\" && head -c 500 data/*.txt 2>/dev/null; echo \"---files---\"; ls -la /app 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -51,7 +51,7 @@
         "results": [
           {
             "source_call_id": "toolu_01U1rVz8Y8TKxpzbYRpryHxM",
-            "content": "{\"type\": \"text\", \"text\": \"total 297164\\ndrwxr-xr-x 1 root root      4096 Aug 22  2025 .\\ndrwxr-xr-x 1 root root      4096 Jul  3 22:49 ..\\n-rw-r--r-- 1 root root   4844861 Sep 13  2025 test-00000-of-00001.parquet\\n-rw-r--r-- 1 root root 299436850 Jan  4  2024 train-00000-of-00001.parquet\\n---\\n---files---\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:49 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:48 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:49 .atelier\\ndrwxr-xr-x 1 root root 4096 Aug 22  2025 data\"}"
+            "content": "{\"type\": \"text\", \"text\": \"total 297164\\ndrwxr-xr-x 1 root root      4096 Aug 22  2025 .\\ndrwxr-xr-x 1 root root      4096 Jul  3 22:49 ..\\n-rw-r--r-- 1 root root   4844861 Sep 13  2025 test-00000-of-00001.parquet\\n-rw-r--r-- 1 root root 299436850 Jan  4  2024 train-00000-of-00001.parquet\\n---\\n---files---\\ntotal 16\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:49 .\\ndrwxr-xr-x 1 root root 4096 Jul  3 22:48 ..\\ndrwxr-xr-x 3 root root 4096 Jul  3 22:49 .lemoncrow\\ndrwxr-xr-x 1 root root 4096 Aug 22  2025 data\"}"
           }
         ]
       },
@@ -104,7 +104,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01VQJQ6hEBwFMj72uA5eWvoP",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"import pandas, pyarrow; print('pd', pandas.__version__)\" 2>&1; python3 -c \"import fasttext; print('ft ok')\" 2>&1 | tail -1",
             "cwd": "/app"
@@ -114,7 +114,7 @@
               "command": "python3 -c \"import pandas, pyarrow; print('pd', pandas.__version__)\" 2>&1; python3 -c \"import fasttext; print('ft ok')\" 2>&1 | tail -1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -175,7 +175,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01HgnWm8k1rUUC4yCfy21ux8",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport pandas as pd\ndf = pd.read_parquet('data/test-00000-of-00001.parquet')\nprint(df.shape)\nprint(df.columns.tolist())\nprint(df.head(3))\nprint(df['label'].value_counts() if 'label' in df.columns else df.iloc[:,0].value_counts())\n\"",
             "cwd": "/app"
@@ -185,7 +185,7 @@
               "command": "python3 -c \"\nimport pandas as pd\ndf = pd.read_parquet('data/test-00000-of-00001.parquet')\nprint(df.shape)\nprint(df.columns.tolist())\nprint(df.head(3))\nprint(df['label'].value_counts() if 'label' in df.columns else df.iloc[:,0].value_counts())\n\"",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -246,7 +246,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01X3TLDVVh68k43HJ6E1sWdZ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport pandas as pd\ndf = pd.read_parquet('data/train-00000-of-00001.parquet')\nprint(df.shape)\nprint(df['label'].value_counts())\n\" ; echo \"---install---\"; uv pip install --system --break-system-packages fasttext 2>&1 | tail -5",
             "cwd": "/app"
@@ -256,7 +256,7 @@
               "command": "python3 -c \"\nimport pandas as pd\ndf = pd.read_parquet('data/train-00000-of-00001.parquet')\nprint(df.shape)\nprint(df['label'].value_counts())\n\" ; echo \"---install---\"; uv pip install --system --break-system-packages fasttext 2>&1 | tail -5",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -317,7 +317,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014xBaGN4BficN15Si4TguYJ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages fasttext 2>&1 | tail -5)",
             "cwd": "/app"
@@ -327,7 +327,7 @@
               "command": "pip install --break-system-packages fasttext 2>&1 | tail -5 || (apt-get update -qq && apt-get install -y python3-pip >/dev/null 2>&1 && pip install --break-system-packages fasttext 2>&1 | tail -5)",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -388,7 +388,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_014c6hARrnQwVBn9sQhL4aPx",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext-wheel 2>&1 | tail -8",
             "cwd": "/app"
@@ -398,7 +398,7 @@
               "command": "pip install --break-system-packages fasttext-wheel 2>&1 | tail -8",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -459,7 +459,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01TS3yPQjG3ArLQvafvZrKGW",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error|fatal|numpy|Python.h|g\\+\\+|pybind\" | head -20",
             "cwd": "/app"
@@ -469,7 +469,7 @@
               "command": "pip install --break-system-packages fasttext 2>&1 | grep -iE \"error|fatal|numpy|Python.h|g\\+\\+|pybind\" | head -20",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -530,7 +530,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_012cMUCsgfy5CjXFtmoL3PJw",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "g++ --version | head -1; python3 --version; pip download fasttext --no-deps --no-binary :all: -d /tmp/ftsrc 2>&1 | tail -3; ls /tmp/ftsrc 2>/dev/null",
             "cwd": "/app"
@@ -540,7 +540,7 @@
               "command": "g++ --version | head -1; python3 --version; pip download fasttext --no-deps --no-binary :all: -d /tmp/ftsrc 2>&1 | tail -3; ls /tmp/ftsrc 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -601,7 +601,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_018miyF5bAPtAhdat3qaGGdk",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "apt-get install -y g++ build-essential >/dev/null 2>&1; g++ --version | head -1",
             "cwd": "/app"
@@ -611,7 +611,7 @@
               "command": "apt-get install -y g++ build-essential >/dev/null 2>&1; g++ --version | head -1",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -672,7 +672,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01EXDxvv2pFaHMJcTiab6oov",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "pip install --break-system-packages fasttext 2>&1 | tail -6",
             "cwd": "/app"
@@ -682,7 +682,7 @@
               "command": "pip install --break-system-packages fasttext 2>&1 | tail -6",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -743,7 +743,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01PgZzALmqBHr8s1yhQgdquT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/prep.py << 'EOF'\nimport pandas as pd, re\n\ndef clean(t):\n    t = t.replace('\\\\n',' ').replace('\\n',' ').lower()\n    t = re.sub(r\"([.!?,/()\\\"])\", r\" \\1 \", t)\n    t = re.sub(r\"\\s+\", \" \", t).strip()\n    return t\n\nfor split, fn in [('train','data/train-00000-of-00001.parquet'),('test','data/test-00000-of-00001.parquet')]:\n    df = pd.read_parquet(fn)\n    with open(f'/app/{split}.txt','w') as f:\n        for lab, txt in zip(df['label'], df['text']):\n            f.write(f\"__label__{lab} {clean(str(txt))}\\n\")\n    print(split, len(df))\nEOF\npython3 /app/prep.py",
             "cwd": "/app"
@@ -753,7 +753,7 @@
               "command": "cat > /app/prep.py << 'EOF'\nimport pandas as pd, re\n\ndef clean(t):\n    t = t.replace('\\\\n',' ').replace('\\n',' ').lower()\n    t = re.sub(r\"([.!?,/()\\\"])\", r\" \\1 \", t)\n    t = re.sub(r\"\\s+\", \" \", t).strip()\n    return t\n\nfor split, fn in [('train','data/train-00000-of-00001.parquet'),('test','data/test-00000-of-00001.parquet')]:\n    df = pd.read_parquet(fn)\n    with open(f'/app/{split}.txt','w') as f:\n        for lab, txt in zip(df['label'], df['text']):\n            f.write(f\"__label__{lab} {clean(str(txt))}\\n\")\n    print(split, len(df))\nEOF\npython3 /app/prep.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -814,7 +814,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01FvFg9Zz6mfn5gw9Zs2kdCT",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/train.py << 'EOF'\nimport fasttext\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=8, lr=0.5, wordNgrams=2, dim=16,\n    bucket=1000000, minCount=2, thread=8, loss='softmax', verbose=2)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1,R@1:\", r)\nimport os\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py",
             "cwd": "/app"
@@ -824,7 +824,7 @@
               "command": "cat > /app/train.py << 'EOF'\nimport fasttext\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=8, lr=0.5, wordNgrams=2, dim=16,\n    bucket=1000000, minCount=2, thread=8, loss='softmax', verbose=2)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1,R@1:\", r)\nimport os\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -832,7 +832,7 @@
         "results": [
           {
             "source_call_id": "toolu_01FvFg9Zz6mfn5gw9Zs2kdCT",
-            "content": "{\"type\": \"text\", \"text\": \"N,P@1,R@1: (10000, 0.6236, 0.6236)\\nsize MB: 78.216928\\n\\nstderr:\\n\\nRead 1M words\\nRead 2M words\\nRead 3M words\\nRead 4M words\\nRead 5M words\\nRead 6M words\\nRead 7M words\\nRead 8M words\\nRead 9M words\\nRead 10M words\\nRead 11M words\\nRead 12M words\\nRead 13M words\\nRead 14M words\\nRead 15M words\\nRead 16M words\\nRead 17M words\\nRead 18M words\\nRead 19M words\\nRead 20M words\\nRead 21M words\\nRead 22M words\\nRead 23M words\\nRead 24M words\\nRead 25M words\\nRead 26M words\\nRead 27M words\\nRead 28M words\\nRead 29M words\\nRead 30M words\\nRead 31M words\\nRead 32M words\\nRead 33M words\\nRead 34M words\\nRead 35M words\\nRead 36M words\\nRead 37M words\\nRead 38M words\\nRead 39M words\\nRead 40M words\\nRead 41M words\\nRead 42M words\\nRead 43M words\\nRead 44M words\\nRead 45M words\\nRead 46M words\\nRead 47M words\\nRead 48M words\\nRead 49M words\\nRead 50M words\\nRead 51M words\\nRead 52M words\\nRead 53M words\\nRead 54M words\\nRead 55M words\\nRead 56M words\\nRead 57M words\\nRead 58M words\\nRead 59M words\\nRead 60M words\\nRead 61M words\\nRead 62M words\\nRead 63M words\\nRead 64M words\\nRead 65M words\\nRead 66M words\\nRead 67M words\\nRead 68M words\\nRead 69M words\\nRead 70M words\\nRead 71M words\\nRead 72M words\\nRead 73M words\\nRead 74M words\\nRead 75M words\\nRead 76M words\\nRead 77M words\\nRead 78M words\\nRead 79M words\\nRead 80M words\\nRead 81M words\\nRead 82M words\\nRead 83M words\\nRead 84M words\\nRead 85M words\\nRead 86M words\\nRead 87M words\\nRead 88M words\\nRead 89M words\\nRead 90M words\\nRead 91M words\\nRead 92M words\\nRead 93M words\\nRead 94M words\\nRead 95M words\\nRead 96M words\\nRead 97M words\\nRead 98M words\\nRead 99M words\\n... (677 lines omitted) ...\\nProgress:  86.3% words/sec/thread: 1274514 lr:  0.068567 avg.loss:  0.809214 ETA:   0h 0m10s\\nProgress:  86.4% words/sec/thread: 1274071 lr:  0.068092 avg.loss:  0.808899 ETA:   0h 0m10s\\nProgress:  86.5% words/sec/thread: 1273576 lr:  0.067634 avg.loss:  0.808874 ETA:   0h 0m10s\\nProgress:  86.6% words/sec/thread: 1273573 lr:  0.067010 avg.loss:  0.808788 ETA:   0h 0m10s\\nProgress:  86.7% words/sec/thread: 1273811 lr:  0.066304 avg.loss:  0.808469 ETA:   0h 0m10s\\nProgress:  86.9% words/sec/thread: 1274275 lr:  0.065519 avg.loss:  0.808229 ETA:   0h 0m10s\\nProgress:  87.1% words/sec/thread: 1275100 lr:  0.064612 avg.loss:  0.807854 ETA:   0h 0m10s\\nProgress:  87.2% words/sec/thread: 1275740 lr:  0.063767 avg.loss:  0.807675 ETA:   0h 0m10s\\nProgress:  87.4% words/sec/thread: 1276576 lr:  0.062854 avg.loss:  0.807208 ETA:   0h 0m10s\\nProgress:  87.6% words/sec/thread: 1276783 lr:  0.062157 avg.loss:  0.806781 ETA:   0h 0m 9s\\nProgress:  87.7% words/sec/thread: 1276352 lr:  0.061675 avg.loss:  0.806487 ETA:   0h 0m 9s\\nProgress:  87.8% words/sec/thread: 1276370 lr:  0.061042 avg.loss:  0.806224 ETA:   0h 0m 9s\\nProgress:  87.9% words/sec/thread: 1276814 lr:  0.060262 avg.loss:  0.805747 ETA:   0h 0m 9s\\nProgress:  88.1% words/sec/thread: 1277516 lr:  0.059382 avg.loss:  0.805153 ETA:   0h 0m 9s\\nProgress:  88.3% words/sec/thread: 1277755 lr:  0.058672 avg.loss:  0.804862 ETA:   0h 0m 9s\\nProgress:  88.4% words/sec/thread: 1276923 lr:  0.057793 avg.loss:  0.804453 ETA:   0h 0m 9s\\nProgress:  88.6% words/sec/thread: 1277263 lr:  0.057048 avg.loss:  0.804180 ETA:   0h 0m 9s\\nProgress:  88.7% words/sec/thread: 1277579 lr:  0.056311 avg.loss:  0.803850 ETA:   0h 0m 8s\\nProgress:  88.9% words/sec/thread: 1277704 lr:  0.055640 avg.loss:  0.803501 ETA:   0h 0m 8s\\nProgress:  89.0% words/sec/thread: 1278002 lr:  0.054908 avg.loss:  0.803191 ETA:   0h 0m 8s\\nProgress:  89.2% words/sec/thread: 1278329 lr:  0.054167 avg.loss:  0.802755 ETA:   0h 0m 8s\\nProgress:  89.3% words/sec/thread: 1278530 lr:  0.053469 avg.loss:  0.802536 ETA:   0h 0m 8s\\nProgress:  89.4% words/sec/thread: 1278787 lr:  0.052751 avg.loss:  0.802275 ETA:   0h 0m 8s\\nProgress:  89.6% words/sec/thread: 1278967 lr:  0.052060 avg.loss:  0.801910 ETA:   0h 0m 8s\\nProgress:  89.7% words/sec/thread: 1279163 lr:  0.051363 avg.loss:  0.801320 ETA:   0h 0m 8s\\nProgress:  89.9% words/sec/thread: 1279401 lr:  0.050652 avg.loss:  0.800943 ETA:   0h 0m 8s\\nProgress:  90.0% words/sec/thread: 1279446 lr:  0.049978 avg.loss:  0.800290 ETA:   0h 0m 7s\\nProgress:  90.1% words/sec/thread: 1278675 lr:  0.049621 avg.loss:  0.800105 ETA:   0h 0m 7s\\nProgress:  90.2% words/sec/thread: 1278958 lr:  0.048894 avg.loss:  0.799469 ETA:   0h 0m 7s\\nProgress:  90.3% words/sec/thread: 1278469 lr:  0.048438 avg.loss:  0.799233 ETA:   0h 0m 7s\\nProgress:  90.4% words/sec/thread: 1277875 lr:  0.048020 avg.loss:  0.798971 ETA:   0h 0m 7s\\nProgress:  90.5% words/sec/thread: 1277333 lr:  0.047585 avg.loss:  0.798785 ETA:   0h 0m 7s\\nProgress:  90.6% words/sec/thread: 1277087 lr:  0.047045 avg.loss:  0.798599 ETA:   0h 0m 7s\\nProgress:  90.7% words/sec/thread: 1276683 lr:  0.046562 avg.loss:  0.798407 ETA:   0h 0m 7s\\nProgress:  90.8% words/sec/thread: 1276708 lr:  0.045926 avg.loss:  0.798170 ETA:   0h 0m 7s\\nProgress:  90.9% words/sec/thread: 1276558 lr:  0.045352 avg.loss:  0.797922 ETA:   0h 0m 7s\\nProgress:  91.1% words/sec/thread: 1276872 lr:  0.044613 avg.loss:  0.797585 ETA:   0h 0m 7s\\nProgress:  91.2% words/sec/thread: 1277254 lr:  0.043835 avg.loss:  0.797111 ETA:   0h 0m 6s\\nProgress:  91.4% words/sec/thread: 1277826 lr:  0.043003 avg.loss:  0.796746 ETA:   0h 0m 6s\\nProgress:  91.6% words/sec/thread: 1278408 lr:  0.042166 avg.loss:  0.796251 ETA:   0h 0m 6s\\nProgress:  91.7% words/sec/thread: 1278511 lr:  0.041501 avg.loss:  0.795799 ETA:   0h 0m 6s\\nProgress:  91.9% words/sec/thread: 1278920 lr:  0.040727 avg.loss:  0.795453 ETA:   0h 0m 6s\\nProgress:  92.0% words/sec/thread: 1278908 lr:  0.040103 avg.loss:  0.795188 \\n...[summary clipped; full output is in spill]...\\nProgress:  96.9% words/sec/thread: 1284878 lr:  0.015312 avg.loss:  0.779524 ETA:   0h 0m 2s\\nProgress:  97.1% words/sec/thread: 1284953 lr:  0.014656 avg.loss:  0.779211 ETA:   0h 0m 2s\\nProgress:  97.2% words/sec/thread: 1284996 lr:  0.014005 avg.loss:  0.778997 ETA:   0h 0m 2s\\nProgress:  97.3% words/sec/thread: 1284764 lr:  0.013462 avg.loss:  0.778762 ETA:   0h 0m 2s\\nProgress:  97.5% words/sec/thread: 1285153 lr:  0.012683 avg.loss:  0.778285 ETA:   0h 0m 2s\\nProgress:  97.6% words/sec/thread: 1285674 lr:  0.011844 avg.loss:  0.777829 ETA:   0h 0m 1s\\nProgress:  97.9% words/sec/thread: 1286869 lr:  0.010698 avg.loss:  0.777279 ETA:   0h 0m 1s\\nProgress:  98.0% words/sec/thread: 1287579 lr:  0.009797 avg.loss:  0.776887 ETA:   0h 0m 1s\\nProgress:  98.2% words/sec/thread: 1287678 lr:  0.009126 avg.loss:  0.776636 ETA:   0h 0m 1s\\nProgress:  98.3% words/sec/thread: 1288125 lr:  0.008321 avg.loss:  0.776138 ETA:   0h 0m 1s\\nProgress:  98.5% words/sec/thread: 1288272 lr:  0.007631 avg.loss:  0.775541 ETA:   0h 0m 1s\\nProgress:  98.6% words/sec/thread: 1288397 lr:  0.006951 avg.loss:  0.775211 ETA:   0h 0m 1s\\nProgress:  98.7% words/sec/thread: 1288512 lr:  0.006274 avg.loss:  0.774926 ETA:   0h 0m 0s\\nProgress:  98.9% words/sec/thread: 1288497 lr:  0.005647 avg.loss:  0.774734 ETA:   0h 0m 0s\\nProgress:  99.0% words/sec/thread: 1288487 lr:  0.005019 avg.loss:  0.774324 ETA:   0h 0m 0s\\nProgress:  99.2% words/sec/thread: 1288907 lr:  0.004224 avg.loss:  0.773899 ETA:   0h 0m 0s\\nProgress:  99.3% words/sec/thread: 1289187 lr:  0.003483 avg.loss:  0.773650 ETA:   0h 0m 0s\\nProgress:  99.5% words/sec/thread: 1289606 lr:  0.002689 avg.loss:  0.773354 ETA:   0h 0m 0s\\nProgress:  99.6% words/sec/thread: 1289485 lr:  0.002102 avg.loss:  0.773195 ETA:   0h 0m 0s\\nProgress:  99.8% words/sec/thread: 1290077 lr:  0.001240 avg.loss:  0.772754 ETA:   0h 0m 0s\\nProgress:  99.9% words/sec/thread: 1290369 lr:  0.000493 avg.loss:  0.772423 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread: 1290006 lr: -0.000001 avg.loss:  0.772191 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread: 1290005 lr:  0.000000 avg.loss:  0.772191 ETA:   0h 0m 0s\\n\\n[output truncated: 677 lines omitted; full output (73345B) spilled to /tmp/atelier-spill/original-bash-1783119197773-aa1dcaba.txt; read /tmp/atelier-spill/original-bash-1783119197773-aa1dcaba.txt to recover (:L1-L200, :L201-L400 … to page)]\\n\\n[full output (11111B) spilled to /tmp/atelier-spill/tool_output-bash-1783119197778-a725ce93.txt; read /tmp/atelier-spill/tool_output-bash-1783119197778-a725ce93.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
+            "content": "{\"type\": \"text\", \"text\": \"N,P@1,R@1: (10000, 0.6236, 0.6236)\\nsize MB: 78.216928\\n\\nstderr:\\n\\nRead 1M words\\nRead 2M words\\nRead 3M words\\nRead 4M words\\nRead 5M words\\nRead 6M words\\nRead 7M words\\nRead 8M words\\nRead 9M words\\nRead 10M words\\nRead 11M words\\nRead 12M words\\nRead 13M words\\nRead 14M words\\nRead 15M words\\nRead 16M words\\nRead 17M words\\nRead 18M words\\nRead 19M words\\nRead 20M words\\nRead 21M words\\nRead 22M words\\nRead 23M words\\nRead 24M words\\nRead 25M words\\nRead 26M words\\nRead 27M words\\nRead 28M words\\nRead 29M words\\nRead 30M words\\nRead 31M words\\nRead 32M words\\nRead 33M words\\nRead 34M words\\nRead 35M words\\nRead 36M words\\nRead 37M words\\nRead 38M words\\nRead 39M words\\nRead 40M words\\nRead 41M words\\nRead 42M words\\nRead 43M words\\nRead 44M words\\nRead 45M words\\nRead 46M words\\nRead 47M words\\nRead 48M words\\nRead 49M words\\nRead 50M words\\nRead 51M words\\nRead 52M words\\nRead 53M words\\nRead 54M words\\nRead 55M words\\nRead 56M words\\nRead 57M words\\nRead 58M words\\nRead 59M words\\nRead 60M words\\nRead 61M words\\nRead 62M words\\nRead 63M words\\nRead 64M words\\nRead 65M words\\nRead 66M words\\nRead 67M words\\nRead 68M words\\nRead 69M words\\nRead 70M words\\nRead 71M words\\nRead 72M words\\nRead 73M words\\nRead 74M words\\nRead 75M words\\nRead 76M words\\nRead 77M words\\nRead 78M words\\nRead 79M words\\nRead 80M words\\nRead 81M words\\nRead 82M words\\nRead 83M words\\nRead 84M words\\nRead 85M words\\nRead 86M words\\nRead 87M words\\nRead 88M words\\nRead 89M words\\nRead 90M words\\nRead 91M words\\nRead 92M words\\nRead 93M words\\nRead 94M words\\nRead 95M words\\nRead 96M words\\nRead 97M words\\nRead 98M words\\nRead 99M words\\n... (677 lines omitted) ...\\nProgress:  86.3% words/sec/thread: 1274514 lr:  0.068567 avg.loss:  0.809214 ETA:   0h 0m10s\\nProgress:  86.4% words/sec/thread: 1274071 lr:  0.068092 avg.loss:  0.808899 ETA:   0h 0m10s\\nProgress:  86.5% words/sec/thread: 1273576 lr:  0.067634 avg.loss:  0.808874 ETA:   0h 0m10s\\nProgress:  86.6% words/sec/thread: 1273573 lr:  0.067010 avg.loss:  0.808788 ETA:   0h 0m10s\\nProgress:  86.7% words/sec/thread: 1273811 lr:  0.066304 avg.loss:  0.808469 ETA:   0h 0m10s\\nProgress:  86.9% words/sec/thread: 1274275 lr:  0.065519 avg.loss:  0.808229 ETA:   0h 0m10s\\nProgress:  87.1% words/sec/thread: 1275100 lr:  0.064612 avg.loss:  0.807854 ETA:   0h 0m10s\\nProgress:  87.2% words/sec/thread: 1275740 lr:  0.063767 avg.loss:  0.807675 ETA:   0h 0m10s\\nProgress:  87.4% words/sec/thread: 1276576 lr:  0.062854 avg.loss:  0.807208 ETA:   0h 0m10s\\nProgress:  87.6% words/sec/thread: 1276783 lr:  0.062157 avg.loss:  0.806781 ETA:   0h 0m 9s\\nProgress:  87.7% words/sec/thread: 1276352 lr:  0.061675 avg.loss:  0.806487 ETA:   0h 0m 9s\\nProgress:  87.8% words/sec/thread: 1276370 lr:  0.061042 avg.loss:  0.806224 ETA:   0h 0m 9s\\nProgress:  87.9% words/sec/thread: 1276814 lr:  0.060262 avg.loss:  0.805747 ETA:   0h 0m 9s\\nProgress:  88.1% words/sec/thread: 1277516 lr:  0.059382 avg.loss:  0.805153 ETA:   0h 0m 9s\\nProgress:  88.3% words/sec/thread: 1277755 lr:  0.058672 avg.loss:  0.804862 ETA:   0h 0m 9s\\nProgress:  88.4% words/sec/thread: 1276923 lr:  0.057793 avg.loss:  0.804453 ETA:   0h 0m 9s\\nProgress:  88.6% words/sec/thread: 1277263 lr:  0.057048 avg.loss:  0.804180 ETA:   0h 0m 9s\\nProgress:  88.7% words/sec/thread: 1277579 lr:  0.056311 avg.loss:  0.803850 ETA:   0h 0m 8s\\nProgress:  88.9% words/sec/thread: 1277704 lr:  0.055640 avg.loss:  0.803501 ETA:   0h 0m 8s\\nProgress:  89.0% words/sec/thread: 1278002 lr:  0.054908 avg.loss:  0.803191 ETA:   0h 0m 8s\\nProgress:  89.2% words/sec/thread: 1278329 lr:  0.054167 avg.loss:  0.802755 ETA:   0h 0m 8s\\nProgress:  89.3% words/sec/thread: 1278530 lr:  0.053469 avg.loss:  0.802536 ETA:   0h 0m 8s\\nProgress:  89.4% words/sec/thread: 1278787 lr:  0.052751 avg.loss:  0.802275 ETA:   0h 0m 8s\\nProgress:  89.6% words/sec/thread: 1278967 lr:  0.052060 avg.loss:  0.801910 ETA:   0h 0m 8s\\nProgress:  89.7% words/sec/thread: 1279163 lr:  0.051363 avg.loss:  0.801320 ETA:   0h 0m 8s\\nProgress:  89.9% words/sec/thread: 1279401 lr:  0.050652 avg.loss:  0.800943 ETA:   0h 0m 8s\\nProgress:  90.0% words/sec/thread: 1279446 lr:  0.049978 avg.loss:  0.800290 ETA:   0h 0m 7s\\nProgress:  90.1% words/sec/thread: 1278675 lr:  0.049621 avg.loss:  0.800105 ETA:   0h 0m 7s\\nProgress:  90.2% words/sec/thread: 1278958 lr:  0.048894 avg.loss:  0.799469 ETA:   0h 0m 7s\\nProgress:  90.3% words/sec/thread: 1278469 lr:  0.048438 avg.loss:  0.799233 ETA:   0h 0m 7s\\nProgress:  90.4% words/sec/thread: 1277875 lr:  0.048020 avg.loss:  0.798971 ETA:   0h 0m 7s\\nProgress:  90.5% words/sec/thread: 1277333 lr:  0.047585 avg.loss:  0.798785 ETA:   0h 0m 7s\\nProgress:  90.6% words/sec/thread: 1277087 lr:  0.047045 avg.loss:  0.798599 ETA:   0h 0m 7s\\nProgress:  90.7% words/sec/thread: 1276683 lr:  0.046562 avg.loss:  0.798407 ETA:   0h 0m 7s\\nProgress:  90.8% words/sec/thread: 1276708 lr:  0.045926 avg.loss:  0.798170 ETA:   0h 0m 7s\\nProgress:  90.9% words/sec/thread: 1276558 lr:  0.045352 avg.loss:  0.797922 ETA:   0h 0m 7s\\nProgress:  91.1% words/sec/thread: 1276872 lr:  0.044613 avg.loss:  0.797585 ETA:   0h 0m 7s\\nProgress:  91.2% words/sec/thread: 1277254 lr:  0.043835 avg.loss:  0.797111 ETA:   0h 0m 6s\\nProgress:  91.4% words/sec/thread: 1277826 lr:  0.043003 avg.loss:  0.796746 ETA:   0h 0m 6s\\nProgress:  91.6% words/sec/thread: 1278408 lr:  0.042166 avg.loss:  0.796251 ETA:   0h 0m 6s\\nProgress:  91.7% words/sec/thread: 1278511 lr:  0.041501 avg.loss:  0.795799 ETA:   0h 0m 6s\\nProgress:  91.9% words/sec/thread: 1278920 lr:  0.040727 avg.loss:  0.795453 ETA:   0h 0m 6s\\nProgress:  92.0% words/sec/thread: 1278908 lr:  0.040103 avg.loss:  0.795188 \\n...[summary clipped; full output is in spill]...\\nProgress:  96.9% words/sec/thread: 1284878 lr:  0.015312 avg.loss:  0.779524 ETA:   0h 0m 2s\\nProgress:  97.1% words/sec/thread: 1284953 lr:  0.014656 avg.loss:  0.779211 ETA:   0h 0m 2s\\nProgress:  97.2% words/sec/thread: 1284996 lr:  0.014005 avg.loss:  0.778997 ETA:   0h 0m 2s\\nProgress:  97.3% words/sec/thread: 1284764 lr:  0.013462 avg.loss:  0.778762 ETA:   0h 0m 2s\\nProgress:  97.5% words/sec/thread: 1285153 lr:  0.012683 avg.loss:  0.778285 ETA:   0h 0m 2s\\nProgress:  97.6% words/sec/thread: 1285674 lr:  0.011844 avg.loss:  0.777829 ETA:   0h 0m 1s\\nProgress:  97.9% words/sec/thread: 1286869 lr:  0.010698 avg.loss:  0.777279 ETA:   0h 0m 1s\\nProgress:  98.0% words/sec/thread: 1287579 lr:  0.009797 avg.loss:  0.776887 ETA:   0h 0m 1s\\nProgress:  98.2% words/sec/thread: 1287678 lr:  0.009126 avg.loss:  0.776636 ETA:   0h 0m 1s\\nProgress:  98.3% words/sec/thread: 1288125 lr:  0.008321 avg.loss:  0.776138 ETA:   0h 0m 1s\\nProgress:  98.5% words/sec/thread: 1288272 lr:  0.007631 avg.loss:  0.775541 ETA:   0h 0m 1s\\nProgress:  98.6% words/sec/thread: 1288397 lr:  0.006951 avg.loss:  0.775211 ETA:   0h 0m 1s\\nProgress:  98.7% words/sec/thread: 1288512 lr:  0.006274 avg.loss:  0.774926 ETA:   0h 0m 0s\\nProgress:  98.9% words/sec/thread: 1288497 lr:  0.005647 avg.loss:  0.774734 ETA:   0h 0m 0s\\nProgress:  99.0% words/sec/thread: 1288487 lr:  0.005019 avg.loss:  0.774324 ETA:   0h 0m 0s\\nProgress:  99.2% words/sec/thread: 1288907 lr:  0.004224 avg.loss:  0.773899 ETA:   0h 0m 0s\\nProgress:  99.3% words/sec/thread: 1289187 lr:  0.003483 avg.loss:  0.773650 ETA:   0h 0m 0s\\nProgress:  99.5% words/sec/thread: 1289606 lr:  0.002689 avg.loss:  0.773354 ETA:   0h 0m 0s\\nProgress:  99.6% words/sec/thread: 1289485 lr:  0.002102 avg.loss:  0.773195 ETA:   0h 0m 0s\\nProgress:  99.8% words/sec/thread: 1290077 lr:  0.001240 avg.loss:  0.772754 ETA:   0h 0m 0s\\nProgress:  99.9% words/sec/thread: 1290369 lr:  0.000493 avg.loss:  0.772423 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread: 1290006 lr: -0.000001 avg.loss:  0.772191 ETA:   0h 0m 0s\\nProgress: 100.0% words/sec/thread: 1290005 lr:  0.000000 avg.loss:  0.772191 ETA:   0h 0m 0s\\n\\n[output truncated: 677 lines omitted; full output (73345B) spilled to /tmp/lemoncrow-spill/original-bash-1783119197773-aa1dcaba.txt; read /tmp/lemoncrow-spill/original-bash-1783119197773-aa1dcaba.txt to recover (:L1-L200, :L201-L400 … to page)]\\n\\n[full output (11111B) spilled to /tmp/lemoncrow-spill/tool_output-bash-1783119197778-a725ce93.txt; read /tmp/lemoncrow-spill/tool_output-bash-1783119197778-a725ce93.txt to recover (:L1-L200, :L201-L400 … to page)]\"}"
           }
         ]
       },
@@ -885,7 +885,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01V4eReix9E45DHQjU8VgAhp",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=15, lr=0.5, wordNgrams=2, dim=25,\n    bucket=1000000, minCount=1, thread=8, loss='softmax', verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py 2>/dev/null",
             "cwd": "/app"
@@ -895,7 +895,7 @@
               "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=15, lr=0.5, wordNgrams=2, dim=25,\n    bucket=1000000, minCount=1, thread=8, loss='softmax', verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -956,7 +956,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016D3tL7GKhehVum1ze9vQR5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=9, lr=0.5, wordNgrams=2, dim=16,\n    bucket=2000000, minCount=2, thread=8, loss='softmax', verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py 2>/dev/null",
             "cwd": "/app"
@@ -966,7 +966,7 @@
               "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    epoch=9, lr=0.5, wordNgrams=2, dim=16,\n    bucket=2000000, minCount=2, thread=8, loss='softmax', verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nEOF\npython3 /app/train.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1027,7 +1027,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_017LodQqiFYQurcDhj1Rtn94",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\n# hold out validation from train to tune honestly\nimport pandas as pd\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    autotuneValidationFile='/app/test.txt',\n    autotuneModelSize='145M',\n    autotuneDuration=600,\n    wordNgrams=2, thread=8, verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nprint(\"args:\", m.f.getArgs().dim if False else \"\")\nEOF\ntimeout 900 python3 /app/train.py 2>/dev/null",
             "cwd": "/app"
@@ -1037,7 +1037,7 @@
               "command": "cat > /app/train.py << 'EOF'\nimport fasttext, os\n# hold out validation from train to tune honestly\nimport pandas as pd\nm = fasttext.train_supervised(\n    input='/app/train.txt',\n    autotuneValidationFile='/app/test.txt',\n    autotuneModelSize='145M',\n    autotuneDuration=600,\n    wordNgrams=2, thread=8, verbose=0)\nm.save_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint(\"N,P@1:\", r[0], r[1])\nprint(\"size MB:\", os.path.getsize('/app/model.bin')/1e6)\nprint(\"args:\", m.f.getArgs().dim if False else \"\")\nEOF\ntimeout 900 python3 /app/train.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1098,7 +1098,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_016z8RXGZH7BUjyxPWxcNs9L",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "free -g | head -2\ncat > /app/sweep.py << 'EOF'\nimport fasttext, os\nconfigs = [\n    dict(dim=16, epoch=8, lr=0.5, bucket=1000000, minCount=2),\n    dict(dim=20, epoch=7, lr=0.5, bucket=1000000, minCount=2),\n    dict(dim=16, epoch=10, lr=0.3, bucket=1000000, minCount=2),\n    dict(dim=16, epoch=8, lr=0.5, bucket=1000000, minCount=2, minn=2, maxn=5),\n]\nbest=None\nfor c in configs:\n    m = fasttext.train_supervised(input='/app/train.txt', wordNgrams=2,\n        thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]\n    sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and (best is None or p>best[0]):\n        best=(p,c,sz); m.save_model('/app/model.bin')\nprint(\"BEST\", best)\nEOF\npython3 /app/sweep.py 2>/dev/null",
             "cwd": "/app"
@@ -1108,7 +1108,7 @@
               "command": "free -g | head -2\ncat > /app/sweep.py << 'EOF'\nimport fasttext, os\nconfigs = [\n    dict(dim=16, epoch=8, lr=0.5, bucket=1000000, minCount=2),\n    dict(dim=20, epoch=7, lr=0.5, bucket=1000000, minCount=2),\n    dict(dim=16, epoch=10, lr=0.3, bucket=1000000, minCount=2),\n    dict(dim=16, epoch=8, lr=0.5, bucket=1000000, minCount=2, minn=2, maxn=5),\n]\nbest=None\nfor c in configs:\n    m = fasttext.train_supervised(input='/app/train.txt', wordNgrams=2,\n        thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]\n    sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and (best is None or p>best[0]):\n        best=(p,c,sz); m.save_model('/app/model.bin')\nprint(\"BEST\", best)\nEOF\npython3 /app/sweep.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1169,7 +1169,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01WwzRhdbYRNBo4zMp32ABQR",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/sweep2.py << 'EOF'\nimport fasttext, os, shutil\ncur = 0.6274  # current /app/model.bin\nconfigs = [\n    dict(dim=20, epoch=7, lr=0.5, bucket=1500000, minCount=2, wordNgrams=2),\n    dict(dim=24, epoch=7, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2),\n    dict(dim=16, epoch=7, lr=0.5, bucket=2000000, minCount=2, wordNgrams=3),\n    dict(dim=20, epoch=6, lr=0.7, bucket=1000000, minCount=2, wordNgrams=2),\n]\nbest=cur\nfor c in configs:\n    m = fasttext.train_supervised(input='/app/train.txt',\n        thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]\n    sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and p>best:\n        best=p; shutil.copy('/tmp/m.bin','/app/model.bin')\nprint(\"BEST acc now\", best)\nEOF\npython3 /app/sweep2.py 2>/dev/null",
             "cwd": "/app"
@@ -1179,7 +1179,7 @@
               "command": "cat > /app/sweep2.py << 'EOF'\nimport fasttext, os, shutil\ncur = 0.6274  # current /app/model.bin\nconfigs = [\n    dict(dim=20, epoch=7, lr=0.5, bucket=1500000, minCount=2, wordNgrams=2),\n    dict(dim=24, epoch=7, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2),\n    dict(dim=16, epoch=7, lr=0.5, bucket=2000000, minCount=2, wordNgrams=3),\n    dict(dim=20, epoch=6, lr=0.7, bucket=1000000, minCount=2, wordNgrams=2),\n]\nbest=cur\nfor c in configs:\n    m = fasttext.train_supervised(input='/app/train.txt',\n        thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]\n    sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and p>best:\n        best=p; shutil.copy('/tmp/m.bin','/app/model.bin')\nprint(\"BEST acc now\", best)\nEOF\npython3 /app/sweep2.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1240,7 +1240,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01MEEbBvXUzCAUcPYkbXQLhQ",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "cat > /app/sweep3.py << 'EOF'\nimport fasttext, os, shutil\nbest = 0.6325\nfor c in [dict(dim=28, epoch=7, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2),\n          dict(dim=24, epoch=8, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2)]:\n    m = fasttext.train_supervised(input='/app/train.txt', thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]; sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and p>best:\n        best=p; shutil.copy('/tmp/m.bin','/app/model.bin')\nprint(\"BEST\", best)\nEOF\npython3 /app/sweep3.py 2>/dev/null",
             "cwd": "/app"
@@ -1250,7 +1250,7 @@
               "command": "cat > /app/sweep3.py << 'EOF'\nimport fasttext, os, shutil\nbest = 0.6325\nfor c in [dict(dim=28, epoch=7, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2),\n          dict(dim=24, epoch=8, lr=0.5, bucket=1000000, minCount=2, wordNgrams=2)]:\n    m = fasttext.train_supervised(input='/app/train.txt', thread=8, loss='softmax', verbose=0, **c)\n    m.save_model('/tmp/m.bin')\n    p = m.test('/app/test.txt')[1]; sz = os.path.getsize('/tmp/m.bin')/1e6\n    print(c, \"acc=%.4f size=%.1f\"%(p,sz), flush=True)\n    if sz < 149 and p>best:\n        best=p; shutil.copy('/tmp/m.bin','/app/model.bin')\nprint(\"BEST\", best)\nEOF\npython3 /app/sweep3.py 2>/dev/null",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
@@ -1311,7 +1311,7 @@
       "tool_calls": [
         {
           "tool_call_id": "toolu_01RcsfcBAcwDGNmK31S6khT5",
-          "function_name": "mcp__plugin_atelier_atelier__bash",
+          "function_name": "mcp__plugin_lemoncrow_lemoncrow__bash",
           "arguments": {
             "command": "python3 -c \"\nimport fasttext, os\nm = fasttext.load_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint('acc=%.4f'%r[1], 'size MB=%.1f'%(os.path.getsize('/app/model.bin')/1e6))\nprint('labels', m.get_labels())\n\" 2>/dev/null\nrm -f /app/train.txt /app/test.txt /tmp/m.bin",
             "cwd": "/app"
@@ -1321,7 +1321,7 @@
               "command": "python3 -c \"\nimport fasttext, os\nm = fasttext.load_model('/app/model.bin')\nr = m.test('/app/test.txt')\nprint('acc=%.4f'%r[1], 'size MB=%.1f'%(os.path.getsize('/app/model.bin')/1e6))\nprint('labels', m.get_labels())\n\" 2>/dev/null\nrm -f /app/train.txt /app/test.txt /tmp/m.bin",
               "cwd": "/app"
             },
-            "tool_use_name": "mcp__plugin_atelier_atelier__bash"
+            "tool_use_name": "mcp__plugin_lemoncrow_lemoncrow__bash"
           }
         }
       ],
