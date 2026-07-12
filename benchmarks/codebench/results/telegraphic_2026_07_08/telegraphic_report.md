@@ -1,4 +1,4 @@
-| ID | Source | Baseline | Lemoncrow (full runtime) | Caveman |
+| ID | Source | Baseline | LemonCrow (full runtime) | Caveman |
 |----|------|------------------:|------------------:|------------------:|
 | react-rerender | benchmarks | 967 | 473 | 348 |
 | auth-middleware-fix | benchmarks | 3746 | 2908 | 3374 |
@@ -22,5 +22,5 @@
 | eval-10 | evals | 909 | 484 | 344 |
 | **Average** |  | **1258** | **694** | **743** |
 
-_Lemoncrow (full runtime) vs baseline: mean 48%, median 46%, range 22%-75%, stdev 12pp across 20 prompts._
+_LemonCrow (full runtime) vs baseline: mean 48%, median 46%, range 22%-75%, stdev 12pp across 20 prompts._
 _Caveman vs baseline: mean 47%, median 47%, range 10%-82%, stdev 16pp across 20 prompts._
