@@ -116,7 +116,7 @@
 {"query": "A calibrated staleness verdict: the action plus its confidence (0", "relevant": ["core.capabilities.memory.staleness::CalibratedAction"]}
 {"query": "How does the code handle mirror entry?", "relevant": ["infra.code_intel.zoekt.server::_mirror_entry"]}
 {"query": "How does the code handle claude import?", "relevant": ["gateway.cli.commands.hosts::claude_import"]}
-{"query": "Start the Atelier HTTP service in the foreground", "relevant": ["core.service.daemon::start"]}
+{"query": "Start the Lemoncrow HTTP service in the foreground", "relevant": ["core.service.daemon::start"]}
 {"query": "How does the code handle write readme?", "relevant": ["core.capabilities.audit_export.exporter::_write_readme"]}
 {"query": "Where is scope search matches to range implemented?", "relevant": ["gateway.adapters.mcp_server::_scope_search_matches_to_range"]}
 {"query": "Semantic type of a prompt block", "relevant": ["core.capabilities.prompt_compilation.models::BlockKind"]}
